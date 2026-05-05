@@ -1,0 +1,23 @@
+# ===== CREDENTIALS — ห้าม commit เด็ดขาด =====
+.env
+.env.local
+.env.*.local
+
+# Next.js build output
+.next/
+out/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
