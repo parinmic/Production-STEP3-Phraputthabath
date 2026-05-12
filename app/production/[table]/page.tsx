@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, Clock } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2 } from 'lucide-react'
 import Link from 'next/link'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
@@ -11,28 +11,30 @@ const CFG: Record<string, { label: string; accent: string; light: string }> = {
 }
 
 const PHASES = [
-  { phase: 1, label: 'Phase 1', sub: '8:00-14:00',         period: 'เช้า', startH: 8,  endH: 14, deadline: '14:00',
-    active: 'bg-sky-500 text-white', inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
-  { phase: 2, label: 'Phase 2', sub: '14:00-16:00',        period: 'บ่าย', startH: 13, endH: 17, deadline: '17:00',
+  { phase: 1, label: 'Phase 1', sub: '8:00-14:00',       period: 'เช้า', startH: 8,  endH: 14,
+    active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
+  { phase: 2, label: 'Phase 2', sub: '14:00-16:00',      period: 'บ่าย', startH: 13, endH: 17,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
-  { phase: 3, label: 'Phase 3', sub: '16:00 เป็นต้นไป',   period: 'ค่ำ',  startH: 17, endH: 19, deadline: null,
+  { phase: 3, label: 'Phase 3', sub: '16:00 เป็นต้นไป', period: 'ค่ำ',  startH: 17, endH: 19,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },
 ]
 
 const BAR_COLORS = [
-  { bg: '#60a5fa', fg: '#1e3a5f' }, // blue
-  { bg: '#34d399', fg: '#064e3b' }, // emerald
-  { bg: '#fb923c', fg: '#7c2d12' }, // orange
-  { bg: '#a78bfa', fg: '#2e1065' }, // violet
-  { bg: '#f472b6', fg: '#831843' }, // pink
-  { bg: '#22d3ee', fg: '#164e63' }, // cyan
-  { bg: '#facc15', fg: '#713f12' }, // yellow
-  { bg: '#f87171', fg: '#7f1d1d' }, // red
-  { bg: '#4ade80', fg: '#14532d' }, // green
-  { bg: '#818cf8', fg: '#1e1b4b' }, // indigo
-  { bg: '#e879f9', fg: '#4a044e' }, // fuchsia
-  { bg: '#2dd4bf', fg: '#134e4a' }, // teal
+  { bg: '#60a5fa', fg: '#1e3a5f' },
+  { bg: '#34d399', fg: '#064e3b' },
+  { bg: '#fb923c', fg: '#7c2d12' },
+  { bg: '#a78bfa', fg: '#2e1065' },
+  { bg: '#f472b6', fg: '#831843' },
+  { bg: '#22d3ee', fg: '#164e63' },
+  { bg: '#facc15', fg: '#713f12' },
+  { bg: '#f87171', fg: '#7f1d1d' },
+  { bg: '#4ade80', fg: '#14532d' },
+  { bg: '#818cf8', fg: '#1e1b4b' },
+  { bg: '#e879f9', fg: '#4a044e' },
+  { bg: '#2dd4bf', fg: '#134e4a' },
 ]
+
+const PX_PER_MIN = 8
 
 interface Assignment {
   id: string
@@ -48,13 +50,12 @@ interface Assignment {
 }
 
 function shortName(full: string) {
-  const parts = full.trim().split(/\s+/)
-  return parts[0] ?? full
+  return full.trim().split(/\s+/)[0] ?? full
 }
 
 function statusIcon(s: string) {
-  if (s === 'เสร็จแล้ว')   return <CheckCircle2 size={11} />
-  if (s === 'กำลังผลิต')   return <PlayCircle   size={11} />
+  if (s === 'เสร็จแล้ว') return <CheckCircle2 size={11} />
+  if (s === 'กำลังผลิต') return <PlayCircle   size={11} />
   return <AlertCircle size={11} />
 }
 
@@ -63,6 +64,14 @@ function statusColor(s: string) {
   if (s === 'กำลังผลิต') return '#f59e0b'
   return '#94a3b8'
 }
+
+function minsToLabel(mins: number) {
+  const hh = Math.floor(mins / 60) % 24
+  const mm = mins % 60
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
+// ─── Worker card view ────────────────────────────────────────────────────────
 
 interface WorkerTableProps {
   items: Assignment[]
@@ -77,19 +86,9 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
-  for (const a of items) {
-    byWorker[a.worker_name] ??= []
-    byWorker[a.worker_name].push(a)
-  }
+  for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
   const workers = Object.keys(byWorker).sort()
   if (!workers.length) return null
-
-  const toTimeLabel = (startH: number, offsetH: number) => {
-    const totalMins = startH * 60 + Math.round(offsetH * 60)
-    const hh = Math.floor(totalMins / 60) % 24
-    const mm = totalMins % 60
-    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
-  }
 
   const taskHours = (task: Assignment) => {
     const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
@@ -98,43 +97,36 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      {/* Header */}
       <div className="grid grid-cols-[180px_1fr_110px] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">พนักงาน</span>
         <span className="text-xs font-semibold text-gray-500">รายการที่ต้องผลิต</span>
         <span className="text-xs font-semibold text-gray-500 text-right">รวม / เสร็จ</span>
       </div>
-
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
           const tasks = byWorker[name]
           const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
-          const allDone  = tasks.every(t => t.status === 'เสร็จแล้ว')
+          const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
-          // compute finish time per task (sequential)
           let offsetH = 0
           const taskInfo = tasks.map(t => {
             const h = taskHours(t)
-            const finishTime = h !== null ? toTimeLabel(phaseStart, offsetH + h) : t.deadline_time?.substring(0, 5) ?? null
+            const startMins = phaseStart * 60 + Math.round(offsetH * 60)
             if (h !== null) offsetH += h
-            return { ...t, finishTime, hours: h }
+            const endMins   = phaseStart * 60 + Math.round(offsetH * 60)
+            return { ...t, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h }
           })
-          const totalFinishTime = toTimeLabel(phaseStart, offsetH)
-
+          const totalFinish = minsToLabel(phaseStart * 60 + Math.round(offsetH * 60))
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
 
           return (
             <div key={name}
               className={`grid grid-cols-[180px_1fr_110px] gap-3 px-4 py-3 items-start ${wi % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-
-              {/* Worker */}
               <div>
                 <p className="text-sm font-semibold text-gray-800 leading-tight">{displayName}</p>
                 <p className="text-xs text-gray-400 font-mono mt-0.5">{tasks[0].worker_code}</p>
               </div>
-
-              {/* Task chips */}
               <div className="flex flex-wrap gap-2">
                 {taskInfo.map(task => {
                   const col = skuColor[task.sku]
@@ -143,20 +135,16 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
                   return (
                     <div key={task.id}
                       style={{ backgroundColor: col.bg, opacity: isDone ? 0.6 : 1 }}
-                      className={`rounded-lg px-3 py-1.5 flex flex-col gap-0.5 min-w-[120px] relative ${isActive ? 'ring-2 ring-white animate-pulse' : ''}`}>
+                      className={`rounded-lg px-3 py-1.5 flex flex-col gap-0.5 min-w-[130px] relative ${isActive ? 'ring-2 ring-white animate-pulse' : ''}`}>
                       <span className="text-xs font-semibold leading-tight" style={{ color: col.fg }}>
                         {task.sku_name ?? task.sku}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: col.fg }}>
-                          {Number(task.target_quantity).toLocaleString()} กก.
-                        </span>
-                        {task.finishTime && (
-                          <span className="text-xs font-mono flex items-center gap-0.5 opacity-80" style={{ color: col.fg }}>
-                            <Clock size={9} />เสร็จ {task.finishTime}
-                          </span>
-                        )}
-                      </div>
+                      <span className="text-xs font-bold" style={{ color: col.fg }}>
+                        {Number(task.target_quantity).toLocaleString()} กก.
+                      </span>
+                      <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
+                        {task.startLabel}–{task.finishLabel}
+                      </span>
                       {(isDone || isActive) && (
                         <span className="absolute top-1 right-1" style={{ color: statusColor(task.status) }}>
                           {statusIcon(task.status)}
@@ -166,13 +154,11 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
                   )
                 })}
               </div>
-
-              {/* Summary */}
               <div className="text-right">
                 <p className={`text-sm font-bold ${allDone ? 'text-green-600' : anyActive ? 'text-amber-600' : 'text-gray-800'}`}>
                   {workerTotal.toLocaleString()} กก.
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">เสร็จ {totalFinishTime} น.</p>
+                <p className="text-xs text-gray-400 mt-0.5">เสร็จ {totalFinish} น.</p>
               </div>
             </div>
           )
@@ -182,6 +168,212 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
   )
 }
 
+// ─── Gantt view ───────────────────────────────────────────────────────────────
+
+interface GanttViewProps {
+  items: Assignment[]
+  phaseStart: number
+  rateMap: Record<string, number>
+  nameMap: Record<string, string>
+}
+
+function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
+  const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
+  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+
+  const byWorker: Record<string, Assignment[]> = {}
+  for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+  const workers = Object.keys(byWorker).sort()
+  if (!workers.length) return null
+
+  const phaseStartMins = phaseStart * 60
+
+  const taskDurationMins = (task: Assignment) => {
+    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+  }
+
+  // Compute segments per worker + find max end time
+  type Seg = { task: Assignment; startMin: number; endMin: number; leftPx: number; widthPx: number }
+  const workerSegs: Record<string, Seg[]> = {}
+  let maxEndMin = phaseStartMins + 10
+
+  for (const name of workers) {
+    let cur = phaseStartMins
+    workerSegs[name] = byWorker[name].map(task => {
+      const dur = taskDurationMins(task)
+      const startMin = cur
+      const endMin   = cur + dur
+      cur = endMin
+      maxEndMin = Math.max(maxEndMin, endMin)
+      return {
+        task,
+        startMin,
+        endMin,
+        leftPx:  (startMin - phaseStartMins) * PX_PER_MIN,
+        widthPx: dur * PX_PER_MIN,
+      }
+    })
+  }
+
+  const totalMins  = maxEndMin - phaseStartMins + 20
+  const chartWidth = totalMins * PX_PER_MIN
+
+  // Tick every 5 min
+  const ticks: number[] = []
+  for (let m = 0; m <= totalMins; m += 5) ticks.push(phaseStartMins + m)
+
+  // SKU totals for legend
+  const skuTotals: Record<string, { name: string | null; total: number }> = {}
+  for (const a of items) {
+    skuTotals[a.sku] ??= { name: a.sku_name, total: 0 }
+    skuTotals[a.sku].total += Number(a.target_quantity)
+  }
+
+  const LEFT_W  = 160
+  const RIGHT_W = 90
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-3 border-b border-gray-100 bg-gray-50">
+        {allSkus.map(sku => {
+          const col  = skuColor[sku]
+          const info = skuTotals[sku]
+          return (
+            <div key={sku} className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+              <span className="text-xs text-gray-700">{info.name ?? sku}</span>
+              <span className="text-xs font-bold text-gray-400">{info.total.toLocaleString()} กก.</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Scrollable table */}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: LEFT_W + chartWidth + RIGHT_W }}>
+
+          {/* Time header */}
+          <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
+            <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50/90"
+              style={{ width: LEFT_W }}>พนักงาน</div>
+            <div className="relative" style={{ width: chartWidth, height: 36 }}>
+              {ticks.map(absMin => {
+                const leftPx = (absMin - phaseStartMins) * PX_PER_MIN
+                const label  = minsToLabel(absMin)
+                return (
+                  <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+                    style={{ left: leftPx }}>
+                    <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
+                      style={{ transform: 'translateX(-50%)' }}>{label}</span>
+                    <div className="w-px h-2 bg-gray-300" />
+                  </div>
+                )
+              })}
+            </div>
+            <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50/90"
+              style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
+          </div>
+
+          {/* Worker rows */}
+          <div className="divide-y divide-gray-50">
+            {workers.map((name, wi) => {
+              const segs        = workerSegs[name]
+              const tasks       = byWorker[name]
+              const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
+              const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
+              const anyActive   = tasks.some(t => t.status === 'กำลังผลิต')
+              const lastSeg     = segs[segs.length - 1]
+              const finishLabel = lastSeg ? minsToLabel(lastSeg.endMin) : ''
+              const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
+              const rowBg       = wi % 2 === 1 ? 'rgba(249,250,251,0.97)' : 'rgba(255,255,255,0.97)'
+
+              return (
+                <div key={name} className="flex items-center" style={{ backgroundColor: wi % 2 === 1 ? '#f9fafb' : '#fff' }}>
+
+                  {/* Name – sticky left */}
+                  <div className="shrink-0 px-4 py-2 sticky left-0 z-10"
+                    style={{ width: LEFT_W, backgroundColor: rowBg }}>
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{displayName}</p>
+                    <p className="text-xs text-gray-400 font-mono">{tasks[0].worker_code}</p>
+                  </div>
+
+                  {/* Bars */}
+                  <div className="relative shrink-0" style={{ width: chartWidth, height: 46 }}>
+                    {/* grid lines */}
+                    {ticks.map(absMin => (
+                      <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-100"
+                        style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }} />
+                    ))}
+
+                    {segs.map(({ task, startMin, endMin, leftPx, widthPx }) => {
+                      const col      = skuColor[task.sku]
+                      const isDone   = task.status === 'เสร็จแล้ว'
+                      const isActive = task.status === 'กำลังผลิต'
+                      const startLbl = minsToLabel(startMin)
+                      const endLbl   = minsToLabel(endMin)
+                      const w        = Math.max(widthPx - 2, 4)
+
+                      return (
+                        <div key={task.id}
+                          title={`${task.sku_name ?? task.sku}\n${Number(task.target_quantity).toLocaleString()} กก.\n${startLbl}–${endLbl}`}
+                          style={{
+                            left: leftPx, width: w,
+                            top: 4, bottom: 4,
+                            backgroundColor: col.bg,
+                            opacity: isDone ? 0.6 : 1,
+                          }}
+                          className={`absolute rounded overflow-hidden flex flex-col justify-center px-1.5 ${isActive ? 'ring-1 ring-white/80 animate-pulse' : ''}`}>
+                          {w > 55 && (
+                            <span className="text-xs font-semibold truncate leading-tight" style={{ color: col.fg }}>
+                              {task.sku_name ?? task.sku}
+                            </span>
+                          )}
+                          <div className="flex items-center gap-1">
+                            {w > 24 && (
+                              <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
+                                {Number(task.target_quantity).toLocaleString()} กก.
+                              </span>
+                            )}
+                            {w > 90 && (
+                              <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
+                                {startLbl}–{endLbl}
+                              </span>
+                            )}
+                          </div>
+                          {(isDone || isActive) && (
+                            <span className="absolute top-0.5 right-0.5" style={{ color: statusColor(task.status) }}>
+                              {statusIcon(task.status)}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Summary – sticky right */}
+                  <div className="shrink-0 px-3 py-2 text-right sticky right-0 z-10"
+                    style={{ width: RIGHT_W, backgroundColor: rowBg }}>
+                    <p className={`text-sm font-bold ${allDone ? 'text-green-600' : anyActive ? 'text-amber-600' : 'text-gray-800'}`}>
+                      {workerTotal.toLocaleString()} กก.
+                    </p>
+                    <p className="text-xs text-gray-400">เสร็จ {finishLabel} น.</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function TablePage() {
   const params       = useParams()
   const searchParams = useSearchParams()
@@ -189,14 +381,15 @@ export default function TablePage() {
   const tableSlug    = params.table as string
   const cfg          = CFG[tableSlug]
 
-  const [date, setDate]               = useState(searchParams.get('date') ?? new Date().toISOString().split('T')[0])
-  const [selectedPhase, setPhase]     = useState(1)
-  const [items, setItems]             = useState<Assignment[]>([])
-  const [rateMap, setRateMap]         = useState<Record<string, number>>({})
-  const [nameMap, setNameMap]         = useState<Record<string, string>>({}) // fullName → display
-  const [loading, setLoading]         = useState(false)
-  const [generating, setGenerating]   = useState(false)
-  const [genResult, setGenResult]     = useState<{ success: boolean; message: string } | null>(null)
+  const [date, setDate]             = useState(searchParams.get('date') ?? new Date().toISOString().split('T')[0])
+  const [selectedPhase, setPhase]   = useState(1)
+  const [items, setItems]           = useState<Assignment[]>([])
+  const [rateMap, setRateMap]       = useState<Record<string, number>>({})
+  const [nameMap, setNameMap]       = useState<Record<string, string>>({})
+  const [loading, setLoading]       = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
+  const [viewMode, setViewMode]     = useState<'worker' | 'gantt'>('gantt')
 
   const loadData = (d: string) => {
     if (!cfg) return
@@ -216,9 +409,7 @@ export default function TablePage() {
       .then(data => {
         const map: Record<string, string> = {}
         for (const w of data.workers ?? []) {
-          const display = w.nickname
-            ? `${w.nickname} (${w.firstName})`
-            : w.firstName
+          const display = w.nickname ? `${w.nickname} (${w.firstName})` : w.firstName
           map[w.fullName] = display
           if (w.nickname) map[w.nickname] = display
           if (w.firstName && w.firstName !== w.nickname) map[w.firstName] = display
@@ -238,8 +429,7 @@ export default function TablePage() {
     setGenerating(true); setGenResult(null)
     try {
       const res    = await fetch('/api/production/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, phase: selectedPhase }),
       })
       const result = await res.json()
@@ -253,18 +443,7 @@ export default function TablePage() {
 
   const phaseConfig = PHASES.find(p => p.phase === selectedPhase)!
   const filtered    = items.filter(a => a.period === phaseConfig.period)
-  const total       = filtered.reduce((s, a) => s + Number(a.target_quantity), 0)
   const others      = Object.entries(CFG).filter(([s]) => s !== tableSlug)
-
-  // SKU summary for current phase
-  const skuSummary = Object.values(
-    filtered.reduce((acc, a) => {
-      const key = a.sku
-      if (!acc[key]) acc[key] = { sku: key, name: a.sku_name, total: 0 }
-      acc[key].total += Number(a.target_quantity)
-      return acc
-    }, {} as Record<string, { sku: string; name: string | null; total: number }>)
-  ).sort((a, b) => b.total - a.total)
 
   return (
     <div className="space-y-5">
@@ -308,7 +487,7 @@ export default function TablePage() {
         </div>
       </div>
 
-{/* Gantt / empty states */}
+      {/* Empty / loading */}
       {loading && (
         <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>
       )}
@@ -318,36 +497,43 @@ export default function TablePage() {
           <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>
         </div>
       )}
+
+      {/* Content */}
       {!loading && filtered.length > 0 && (
-        <div className="flex gap-4 items-start">
-          {/* SKU Summary */}
-          <div className={`card ${cfg.light} w-52 flex-shrink-0`}>
-            <p className="text-sm font-semibold text-gray-600 mb-3">SKU ที่ต้องผลิต</p>
-            <div className="divide-y divide-gray-200">
-              {skuSummary.map(s => (
-                <div key={s.sku} className="flex items-center justify-between gap-3 py-1.5">
-                  <p className="text-xs text-gray-600 leading-tight">{s.name ?? s.sku}</p>
-                  <p className="text-sm font-bold text-gray-900 whitespace-nowrap">
-                    {s.total.toLocaleString()} <span className="text-xs font-normal text-gray-400">กก.</span>
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-gray-200 mt-3 pt-2 flex justify-between items-center">
-              <span className="text-xs text-gray-400">{skuSummary.length} SKU</span>
-              <span className="text-xs font-semibold text-gray-600">{total.toLocaleString()} กก.</span>
-            </div>
+        <div className="space-y-3">
+          {/* View toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode('gantt')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
+                ? 'bg-gray-900 text-white'
+                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              <BarChart2 size={15} />ภาพรวม
+            </button>
+            <button
+              onClick={() => setViewMode('worker')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'worker'
+                ? 'bg-gray-900 text-white'
+                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              <LayoutList size={15} />รายพนักงาน
+            </button>
           </div>
 
-          {/* Worker table */}
-          <div className="flex-1 min-w-0">
+          {viewMode === 'gantt' ? (
+            <GanttView
+              items={filtered}
+              phaseStart={phaseConfig.startH}
+              rateMap={rateMap}
+              nameMap={nameMap}
+            />
+          ) : (
             <WorkerTable
               items={filtered}
               phaseStart={phaseConfig.startH}
               rateMap={rateMap}
               nameMap={nameMap}
             />
-          </div>
+          )}
         </div>
       )}
     </div>
