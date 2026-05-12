@@ -119,7 +119,7 @@ function getMakroVariance(proportionAbove10pct: boolean, orderQty: number, avgBL
   return proportionAbove10pct ? 0.6 : 0.4
 }
 
-/** Distribute targetQty across eligible workers, respecting remaining capacity */
+/** Distribute targetQty evenly across eligible workers (water-fill algorithm) */
 function assignWorkers(
   params: {
     productionDate: string
@@ -135,31 +135,47 @@ function assignWorkers(
   }
 ): Record<string, unknown>[] {
   const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate, workerHours, period, deadline } = params
+
+  // Build working entries: each worker + their capacity in kg + accumulated qty
+  const entries = eligibleWorkers
+    .map(w => ({ worker: w, cap: (workerHours.get(w.emp_id) ?? 0) * rate, qty: 0 }))
+    .filter(e => e.cap > 0)
+
+  if (!entries.length) return []
+
+  // Water-fill: give everyone an equal share each round; workers at capacity drop out
+  let toGive = targetQty
+  let active = [...entries]
+
+  while (toGive > 0.5 && active.length > 0) {
+    const share = toGive / active.length
+    const nextActive: typeof active = []
+
+    for (const e of active) {
+      const give = Math.min(share, e.cap, toGive)
+      e.qty += give
+      e.cap -= give
+      toGive -= give
+      if (e.cap > 0.5) nextActive.push(e)
+    }
+
+    if (nextActive.length === active.length) break  // no more capacity to reallocate
+    active = nextActive
+  }
+
+  // Commit results and deduct hours
   const result: Record<string, unknown>[] = []
-  let remaining = targetQty
-
-  const sorted = [...eligibleWorkers].sort(
-    (a, b) => (workerHours.get(b.emp_id) ?? 0) - (workerHours.get(a.emp_id) ?? 0)
-  )
-
-  for (const worker of sorted) {
-    if (remaining <= 0.5) break
-    const hours = workerHours.get(worker.emp_id) ?? 0
-    if (hours <= 0) continue
-
-    const maxQty = hours * rate
-    const assignQty = Math.min(remaining, maxQty)
-    workerHours.set(worker.emp_id, hours - assignQty / rate)
-    remaining -= assignQty
-
+  for (const e of entries) {
+    if (e.qty < 0.5) continue
+    workerHours.set(e.worker.emp_id, (workerHours.get(e.worker.emp_id) ?? 0) - e.qty / rate)
     result.push({
       production_date: productionDate,
       table_name:      tableName,
-      worker_code:     worker.emp_id,
-      worker_name:     worker.name,
+      worker_code:     e.worker.emp_id,
+      worker_name:     e.worker.name,
       sku,
       sku_name:        skuName,
-      target_quantity: Math.round(assignQty),
+      target_quantity: Math.round(e.qty),
       unit:            'กก.',
       period,
       deadline_time:   deadline,
