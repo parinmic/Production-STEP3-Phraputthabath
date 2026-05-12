@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     .eq('production_date', date)
     .order('worker_name')
     .order('period')
+    .order('seq', { nullsFirst: false })
   if (table) query.eq('table_name', table)
   const { data, error } = await query
   if (error) return NextResponse.json({ assignments: [] })

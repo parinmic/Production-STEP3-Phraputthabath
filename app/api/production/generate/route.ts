@@ -485,6 +485,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Tag each assignment with its position so the frontend can sort tasks per worker in generation order
+    assignments.forEach((a, i) => { a['seq'] = i })
+
     if (!assignments.length)
       return NextResponse.json({
         success: false,

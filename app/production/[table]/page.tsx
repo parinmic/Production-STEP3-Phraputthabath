@@ -46,6 +46,7 @@ interface Assignment {
   period: string
   deadline_time: string | null
   status: string
+  seq: number | null
 }
 
 function shortName(full: string) {

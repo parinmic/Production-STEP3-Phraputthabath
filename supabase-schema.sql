@@ -290,6 +290,9 @@ CREATE INDEX IF NOT EXISTS idx_bom_raw_sap     ON bom_items(raw_sap);
 ALTER TABLE bom_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_bom_items" ON bom_items FOR ALL USING (true) WITH CHECK (true);
 
+-- 15. Migration: เพิ่ม seq เพื่อเก็บลำดับงานของแต่ละพนักงาน
+ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS seq integer;
+
 -- 14. Migration: เพิ่ม upload_round เพื่อแยก รอบ 8:00 / 13:00
 ALTER TABLE daily_workforce   ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 ALTER TABLE makro_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
