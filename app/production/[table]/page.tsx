@@ -372,9 +372,9 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
     })
   }
 
-  // Tick every 10 min, label every 30 min
+  // Tick every 30 min
   const ticks: number[] = []
-  for (let m = 0; m <= totalMins; m += 10) ticks.push(phaseStartMins + m)
+  for (let m = 0; m <= totalMins; m += 30) ticks.push(phaseStartMins + m)
 
   const skuTotals: Record<string, { name: string | null; total: number }> = {}
   for (const a of items) {
@@ -403,32 +403,29 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
         })}
       </div>
 
-      {/* Scrollable table */}
-      <div className="overflow-x-auto">
+      {/* Scrollable table — single overflow:auto so sticky top + sticky left both work */}
+      <div className="overflow-auto" style={{ maxHeight: '72vh' }}>
         <div style={{ minWidth: LEFT_W + chartWidth + RIGHT_W }}>
 
-          {/* Time header */}
-          <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
-            <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50/90"
+          {/* Time header — sticky top; corner cells also sticky left/right */}
+          <div className="flex border-b border-gray-100 sticky top-0 z-30">
+            <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50 sticky left-0 z-40 border-r border-gray-100"
               style={{ width: LEFT_W }}>พนักงาน</div>
-            <div className="relative" style={{ width: chartWidth, height: 36 }}>
+            <div className="relative bg-gray-50/95" style={{ width: chartWidth, height: 36 }}>
               {ticks.map(absMin => {
-                const leftPx  = (absMin - phaseStartMins) * GANTT_PX_PER_MIN
-                const label   = minsToLabel(absMin)
-                const showLbl = (absMin - phaseStartMins) % 30 === 0
+                const leftPx = (absMin - phaseStartMins) * GANTT_PX_PER_MIN
+                const label  = minsToLabel(absMin)
                 return (
                   <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
                     style={{ left: leftPx }}>
-                    {showLbl && (
-                      <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
-                        style={{ transform: 'translateX(-50%)' }}>{label}</span>
-                    )}
-                    <div className={`w-px ${showLbl ? 'h-3 bg-gray-300' : 'h-2 bg-gray-200'}`} />
+                    <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
+                      style={{ transform: 'translateX(-50%)' }}>{label}</span>
+                    <div className="w-px h-3 bg-gray-300" />
                   </div>
                 )
               })}
             </div>
-            <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50/90"
+            <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50 sticky right-0 z-40 border-l border-gray-100"
               style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
           </div>
 
@@ -459,7 +456,7 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
                   <div className="relative shrink-0" style={{ width: chartWidth, height: ROW_H }}>
                     {ticks.map(absMin => (
                       <div key={absMin}
-                        className={`absolute top-0 bottom-0 w-px ${(absMin - phaseStartMins) % 60 === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
+                        className="absolute top-0 bottom-0 w-px bg-gray-200"
                         style={{ left: (absMin - phaseStartMins) * GANTT_PX_PER_MIN }} />
                     ))}
 
