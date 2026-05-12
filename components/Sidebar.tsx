@@ -61,23 +61,6 @@ export default function Sidebar() {
           {!collapsed && <span>ภาพรวม</span>}
         </Link>
 
-        {!collapsed && <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3">อัพโหลดข้อมูล</p>}
-        {collapsed && <div className="border-t border-gray-700 my-2" />}
-
-        {[
-          { href: '/workforce',          icon: Users,        label: 'กำลังคนประจำวัน' },
-          { href: '/makro',              icon: ShoppingCart,  label: 'คำสั่งซื้อ Makro' },
-          { href: '/lotus',              icon: Leaf,          label: 'คำสั่งซื้อ LOTUS' },
-          { href: '/wet-market',         icon: Store,         label: 'คำสั่งซื้อ Wet Market' },
-          { href: '/quota',              icon: BarChart3,     label: 'Quota ช่องทางขาย' },
-          { href: '/stock-raw-material', icon: Package,       label: 'Stock Raw Material' },
-        ].map((m) => (
-          <Link key={m.href} href={m.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`} title={m.label}>
-            <m.icon size={18} className="shrink-0" />
-            {!collapsed && <span>{m.label}</span>}
-          </Link>
-        ))}
-
         {!collapsed && <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3">คำสั่งเบิกและผลิต</p>}
         {collapsed && <div className="border-t border-gray-700 my-2" />}
 
@@ -160,6 +143,23 @@ export default function Sidebar() {
             ))}
           </div>
         )}
+
+        {!collapsed && <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3">อัพโหลดข้อมูล</p>}
+        {collapsed && <div className="border-t border-gray-700 my-2" />}
+
+        {[
+          { href: '/workforce',          icon: Users,        label: 'กำลังคนประจำวัน' },
+          { href: '/makro',              icon: ShoppingCart,  label: 'คำสั่งซื้อ Makro' },
+          { href: '/lotus',              icon: Leaf,          label: 'คำสั่งซื้อ LOTUS' },
+          { href: '/wet-market',         icon: Store,         label: 'คำสั่งซื้อ Wet Market' },
+          { href: '/quota',              icon: BarChart3,     label: 'Quota ช่องทางขาย' },
+          { href: '/stock-raw-material', icon: Package,       label: 'Stock Raw Material' },
+        ].map((m) => (
+          <Link key={m.href} href={m.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`} title={m.label}>
+            <m.icon size={18} className="shrink-0" />
+            {!collapsed && <span>{m.label}</span>}
+          </Link>
+        ))}
 
         {!collapsed && <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3">Master Logic การสร้างแผนผลิต</p>}
         {collapsed && <div className="border-t border-gray-700 my-2" />}
