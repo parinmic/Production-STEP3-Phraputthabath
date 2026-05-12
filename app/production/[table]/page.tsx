@@ -376,21 +376,6 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-3 border-b border-gray-100 bg-gray-50">
-        {allSkus.map(sku => {
-          const col  = skuColor[sku]
-          const info = skuTotals[sku]
-          return (
-            <div key={sku} className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
-              <span className="text-xs text-gray-700">{info.name ?? sku}</span>
-              <span className="text-xs font-bold text-gray-400">{info.total.toLocaleString()} กก.</span>
-            </div>
-          )
-        })}
-      </div>
-
       {/* Scrollable table — single overflow:auto so sticky top + sticky left both work */}
       <div className="overflow-auto" style={{ maxHeight: '72vh' }}>
         <div style={{ minWidth: LEFT_W + chartWidth + RIGHT_W }}>
