@@ -119,7 +119,8 @@ function getMakroVariance(proportionAbove10pct: boolean, orderQty: number, avgBL
   return proportionAbove10pct ? 0.6 : 0.4
 }
 
-/** Distribute targetQty evenly across eligible workers (water-fill algorithm) */
+/** Greedy bin-pack: assign SKU to fewest workers possible (most-capacity-first),
+ *  so each worker gets fewer, larger tasks while totals stay balanced across the table. */
 function assignWorkers(
   params: {
     productionDate: string
@@ -136,31 +137,21 @@ function assignWorkers(
 ): Record<string, unknown>[] {
   const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate, workerHours, period, deadline } = params
 
-  // Build working entries: each worker + their capacity in kg + accumulated qty
+  // Sort by remaining capacity descending — worker with most room gets the SKU first
   const entries = eligibleWorkers
     .map(w => ({ worker: w, cap: (workerHours.get(w.emp_id) ?? 0) * rate, qty: 0 }))
     .filter(e => e.cap > 0)
+    .sort((a, b) => b.cap - a.cap)
 
   if (!entries.length) return []
 
-  // Water-fill: give everyone an equal share each round; workers at capacity drop out
+  // Fill greedily: give as much as possible to the first worker, spill to next only if needed
   let toGive = targetQty
-  let active = [...entries]
-
-  while (toGive > 0.5 && active.length > 0) {
-    const share = toGive / active.length
-    const nextActive: typeof active = []
-
-    for (const e of active) {
-      const give = Math.min(share, e.cap, toGive)
-      e.qty += give
-      e.cap -= give
-      toGive -= give
-      if (e.cap > 0.5) nextActive.push(e)
-    }
-
-    if (nextActive.length === active.length) break  // no more capacity to reallocate
-    active = nextActive
+  for (const e of entries) {
+    if (toGive <= 0.5) break
+    const give = Math.min(e.cap, toGive)
+    e.qty  += give
+    toGive -= give
   }
 
   // Commit results and deduct hours
