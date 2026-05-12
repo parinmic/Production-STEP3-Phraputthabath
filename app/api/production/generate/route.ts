@@ -316,13 +316,11 @@ export async function POST(req: NextRequest) {
       .map(([ch]) => ch)
     const activeChannels = channelOrder.length ? channelOrder : ['Wet Market', 'Makro', 'LOTUS']
 
-    // ------ Workers grouped by station (exclude weighers) ------
+    // ------ Workers grouped by station ------
     const workersByStation: Record<string, WorkforceRow[]> = {}
     for (const w of workforce) {
       const station = normalizeStation(w.work_station ?? '')
       if (!station) continue
-      const jobInfo = jobAssignMap.get(normName(w.name))
-      if (jobInfo?.isWeigher) continue
       workersByStation[station] ??= []
       workersByStation[station].push(w)
     }
