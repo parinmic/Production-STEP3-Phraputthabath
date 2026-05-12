@@ -495,11 +495,6 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
                               {Number(task.target_quantity).toLocaleString()} กก.
                             </span>
                           )}
-                          {w > 60 && (
-                            <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
-                              {startLbl}–{endLbl}
-                            </span>
-                          )}
                           {(isDone || isActive) && (
                             <span className="absolute top-0.5 right-0.5" style={{ color: statusColor(task.status) }}>
                               {statusIcon(task.status)}
