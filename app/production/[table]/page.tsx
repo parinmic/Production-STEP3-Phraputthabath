@@ -240,14 +240,17 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
 
       {/* Time header — no scroll */}
       <div className="flex border-b border-gray-100 bg-gray-50">
-        <div className="relative flex-1" style={{ height: 36 }}>
-          {tickMins.map(absMin => (
-            <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
-              style={{ left: pctLeft(absMin), transform: 'translateX(-50%)' }}>
-              <span className="text-xs text-gray-400 whitespace-nowrap mb-1">{minsToLabel(absMin)}</span>
-              <div className="w-px h-3 bg-gray-300" />
-            </div>
-          ))}
+        {/* px-6 wrapper (non-positioned): inner relative div starts 24px from outer edge */}
+        <div className="flex-1 px-6" style={{ height: 36 }}>
+          <div className="relative h-full">
+            {tickMins.map(absMin => (
+              <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+                style={{ left: pctLeft(absMin), transform: 'translateX(-50%)' }}>
+                <span className="text-xs text-gray-400 whitespace-nowrap mb-1">{minsToLabel(absMin)}</span>
+                <div className="w-px h-3 bg-gray-300" />
+              </div>
+            ))}
+          </div>
         </div>
         <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right" style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
       </div>
@@ -265,31 +268,33 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
 
           return (
             <div key={sku} className="flex items-center" style={{ backgroundColor: rowBg }}>
-              {/* Bar area — percentage based, fills width */}
-              <div className="relative flex-1" style={{ height: ROW_H }}>
-                {tickMins.map(absMin => (
-                  <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-200"
-                    style={{ left: pctLeft(absMin) }} />
-                ))}
-                {/* Idle zone */}
-                {stat.maxEnd < phaseEndMins && (
-                  <div className="absolute top-4 bottom-4 rounded bg-gray-100/70"
-                    style={{ left: pctLeft(stat.maxEnd), width: pctWidth(phaseEndMins - stat.maxEnd) }} />
-                )}
-                {/* Bar */}
-                <div style={{
-                  left: pctLeft(stat.minStart),
-                  width: pctWidth(stat.maxEnd - stat.minStart),
-                  top: 6, bottom: 6,
-                  backgroundColor: col.bg,
-                }}
-                  className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
-                  <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
-                    {stat.name ?? sku}
-                  </span>
-                  <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
-                    {stat.totalQty.toLocaleString()} กก.
-                  </span>
+              {/* px-6 wrapper: bars start 24px from left edge */}
+              <div className="flex-1 px-6">
+                <div className="relative" style={{ height: ROW_H }}>
+                  {tickMins.map(absMin => (
+                    <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-200"
+                      style={{ left: pctLeft(absMin) }} />
+                  ))}
+                  {/* Idle zone */}
+                  {stat.maxEnd < phaseEndMins && (
+                    <div className="absolute top-4 bottom-4 rounded bg-gray-100/70"
+                      style={{ left: pctLeft(stat.maxEnd), width: pctWidth(phaseEndMins - stat.maxEnd) }} />
+                  )}
+                  {/* Bar */}
+                  <div style={{
+                    left: pctLeft(stat.minStart),
+                    width: pctWidth(stat.maxEnd - stat.minStart),
+                    top: 6, bottom: 6,
+                    backgroundColor: col.bg,
+                  }}
+                    className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
+                    <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
+                      {stat.name ?? sku}
+                    </span>
+                    <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
+                      {stat.totalQty.toLocaleString()} กก.
+                    </span>
+                  </div>
                 </div>
               </div>
 
