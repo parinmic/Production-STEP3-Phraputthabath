@@ -227,19 +227,16 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
   const ticks: number[] = []
   for (let m = 0; m <= totalMins; m += 5) ticks.push(phaseStartMins + m)
 
-  const LEFT_W  = 200
   const RIGHT_W = 110
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
-        <div style={{ minWidth: LEFT_W + chartWidth + RIGHT_W }}>
+        <div style={{ minWidth: chartWidth + RIGHT_W }}>
 
           {/* Time header */}
           <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
-            <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50/90"
-              style={{ width: LEFT_W }}>สินค้า (SKU)</div>
-            <div className="relative" style={{ width: chartWidth, height: 36 }}>
+            <div className="relative flex-1" style={{ width: chartWidth, height: 36 }}>
               {ticks.map(absMin => (
                 <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
                   style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }}>
@@ -269,12 +266,6 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
               return (
                 <div key={sku} className="flex items-center" style={{ backgroundColor: ri % 2 === 1 ? '#f9fafb' : '#fff' }}>
 
-                  {/* SKU name – sticky left */}
-                  <div className="shrink-0 px-4 py-3 sticky left-0 z-10" style={{ width: LEFT_W, backgroundColor: rowBg }}>
-                    <p className="text-sm font-semibold text-gray-800 leading-tight">{stat.name ?? sku}</p>
-                    <p className="text-xs text-gray-400 font-mono mt-0.5">{sku} · {stat.workerCount} คน</p>
-                  </div>
-
                   {/* Bar */}
                   <div className="relative shrink-0" style={{ width: chartWidth, height: 52 }}>
                     {ticks.map(absMin => (
@@ -292,13 +283,11 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
                           {stat.name ?? sku}
                         </span>
                       )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {widthPx > 30 && (
-                          <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
-                            {stat.totalQty.toLocaleString()} กก.
-                          </span>
-                        )}
-                      </div>
+                      {widthPx > 30 && (
+                        <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
+                          {stat.totalQty.toLocaleString()} กก.
+                        </span>
+                      )}
                     </div>
                   </div>
 
