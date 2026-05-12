@@ -328,11 +328,15 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
 interface GanttViewProps {
   items: Assignment[]
   phaseStart: number
+  phaseEnd: number
   rateMap: Record<string, number>
   nameMap: Record<string, string>
 }
 
-function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
+const GANTT_PX_PER_MIN = 4   // 4px/min → 1 ชม. = 240px, 6 ชม. = 1440px
+const ROW_H = 62              // row height px — พอให้แสดง 3 บรรทัดได้
+
+function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -343,51 +347,45 @@ function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
   if (!workers.length) return null
 
   const phaseStartMins = phaseStart * 60
+  const phaseEndMins   = phaseEnd   * 60
+  const totalMins      = phaseEndMins - phaseStartMins
+  const chartWidth     = totalMins * GANTT_PX_PER_MIN
 
   const taskDurationMins = (task: Assignment) => {
     const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
     return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
   }
 
-  // Compute segments per worker + find max end time
   type Seg = { task: Assignment; startMin: number; endMin: number; leftPx: number; widthPx: number }
   const workerSegs: Record<string, Seg[]> = {}
-  let maxEndMin = phaseStartMins + 10
 
   for (const name of workers) {
     let cur = phaseStartMins
     workerSegs[name] = byWorker[name].map(task => {
-      const dur = taskDurationMins(task)
+      const dur      = taskDurationMins(task)
       const startMin = cur
       const endMin   = cur + dur
       cur = endMin
-      maxEndMin = Math.max(maxEndMin, endMin)
       return {
-        task,
-        startMin,
-        endMin,
-        leftPx:  (startMin - phaseStartMins) * PX_PER_MIN,
-        widthPx: dur * PX_PER_MIN,
+        task, startMin, endMin,
+        leftPx:  (startMin - phaseStartMins) * GANTT_PX_PER_MIN,
+        widthPx: dur * GANTT_PX_PER_MIN,
       }
     })
   }
 
-  const totalMins  = maxEndMin - phaseStartMins + 20
-  const chartWidth = totalMins * PX_PER_MIN
-
-  // Tick every 5 min
+  // Tick every 10 min, label every 30 min
   const ticks: number[] = []
-  for (let m = 0; m <= totalMins; m += 5) ticks.push(phaseStartMins + m)
+  for (let m = 0; m <= totalMins; m += 10) ticks.push(phaseStartMins + m)
 
-  // SKU totals for legend
   const skuTotals: Record<string, { name: string | null; total: number }> = {}
   for (const a of items) {
     skuTotals[a.sku] ??= { name: a.sku_name, total: 0 }
     skuTotals[a.sku].total += Number(a.target_quantity)
   }
 
-  const LEFT_W  = 160
-  const RIGHT_W = 90
+  const LEFT_W  = 170
+  const RIGHT_W = 95
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
@@ -417,14 +415,17 @@ function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
               style={{ width: LEFT_W }}>พนักงาน</div>
             <div className="relative" style={{ width: chartWidth, height: 36 }}>
               {ticks.map(absMin => {
-                const leftPx = (absMin - phaseStartMins) * PX_PER_MIN
-                const label  = minsToLabel(absMin)
+                const leftPx  = (absMin - phaseStartMins) * GANTT_PX_PER_MIN
+                const label   = minsToLabel(absMin)
+                const showLbl = (absMin - phaseStartMins) % 30 === 0
                 return (
                   <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
                     style={{ left: leftPx }}>
-                    <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
-                      style={{ transform: 'translateX(-50%)' }}>{label}</span>
-                    <div className="w-px h-2 bg-gray-300" />
+                    {showLbl && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
+                        style={{ transform: 'translateX(-50%)' }}>{label}</span>
+                    )}
+                    <div className={`w-px ${showLbl ? 'h-3 bg-gray-300' : 'h-2 bg-gray-200'}`} />
                   </div>
                 )
               })}
@@ -450,18 +451,18 @@ function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
                 <div key={name} className="flex items-center" style={{ backgroundColor: wi % 2 === 1 ? '#f9fafb' : '#fff' }}>
 
                   {/* Name – sticky left */}
-                  <div className="shrink-0 px-4 py-2 sticky left-0 z-10"
-                    style={{ width: LEFT_W, backgroundColor: rowBg }}>
+                  <div className="shrink-0 px-4 sticky left-0 z-10 flex flex-col justify-center"
+                    style={{ width: LEFT_W, height: ROW_H, backgroundColor: rowBg }}>
                     <p className="text-sm font-semibold text-gray-800 leading-tight">{displayName}</p>
-                    <p className="text-xs text-gray-400 font-mono">{tasks[0].worker_code}</p>
+                    <p className="text-xs text-gray-400 font-mono mt-0.5">{tasks[0].worker_code}</p>
                   </div>
 
                   {/* Bars */}
-                  <div className="relative shrink-0" style={{ width: chartWidth, height: 46 }}>
-                    {/* grid lines */}
+                  <div className="relative shrink-0" style={{ width: chartWidth, height: ROW_H }}>
                     {ticks.map(absMin => (
-                      <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-100"
-                        style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }} />
+                      <div key={absMin}
+                        className={`absolute top-0 bottom-0 w-px ${(absMin - phaseStartMins) % 60 === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
+                        style={{ left: (absMin - phaseStartMins) * GANTT_PX_PER_MIN }} />
                     ))}
 
                     {segs.map(({ task, startMin, endMin, leftPx, widthPx }) => {
@@ -477,28 +478,28 @@ function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
                           title={`${task.sku_name ?? task.sku}\n${Number(task.target_quantity).toLocaleString()} กก.\n${startLbl}–${endLbl}`}
                           style={{
                             left: leftPx, width: w,
-                            top: 4, bottom: 4,
+                            top: 5, bottom: 5,
                             backgroundColor: col.bg,
                             opacity: isDone ? 0.6 : 1,
                           }}
-                          className={`absolute rounded overflow-hidden flex flex-col justify-center px-1.5 ${isActive ? 'ring-1 ring-white/80 animate-pulse' : ''}`}>
-                          {w > 55 && (
-                            <span className="text-xs font-semibold truncate leading-tight" style={{ color: col.fg }}>
+                          className={`absolute rounded overflow-hidden flex flex-col justify-center px-2 ${isActive ? 'ring-1 ring-white/80 animate-pulse' : ''}`}>
+                          {/* ชื่อ SKU — แสดงเสมอถ้า bar กว้างพอ */}
+                          {w > 40 && (
+                            <span className="text-xs font-semibold leading-tight" style={{ color: col.fg,
+                              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                               {task.sku_name ?? task.sku}
                             </span>
                           )}
-                          <div className="flex items-center gap-1">
-                            {w > 24 && (
-                              <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
-                                {Number(task.target_quantity).toLocaleString()} กก.
-                              </span>
-                            )}
-                            {w > 90 && (
-                              <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
-                                {startLbl}–{endLbl}
-                              </span>
-                            )}
-                          </div>
+                          {w > 24 && (
+                            <span className="text-xs font-bold whitespace-nowrap mt-0.5" style={{ color: col.fg }}>
+                              {Number(task.target_quantity).toLocaleString()} กก.
+                            </span>
+                          )}
+                          {w > 60 && (
+                            <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
+                              {startLbl}–{endLbl}
+                            </span>
+                          )}
                           {(isDone || isActive) && (
                             <span className="absolute top-0.5 right-0.5" style={{ color: statusColor(task.status) }}>
                               {statusIcon(task.status)}
@@ -507,11 +508,23 @@ function GanttView({ items, phaseStart, rateMap, nameMap }: GanttViewProps) {
                         </div>
                       )
                     })}
+
+                    {/* Idle zone */}
+                    {lastSeg && lastSeg.endMin < phaseEndMins && (() => {
+                      const idleLeft = (lastSeg.endMin - phaseStartMins) * GANTT_PX_PER_MIN
+                      const idleW    = (phaseEndMins - lastSeg.endMin) * GANTT_PX_PER_MIN
+                      return (
+                        <div className="absolute top-5 bottom-5 rounded bg-gray-100/70 flex items-center justify-center"
+                          style={{ left: idleLeft, width: idleW }}>
+                          {idleW > 60 && <span className="text-xs text-gray-300 font-medium">ว่าง</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Summary – sticky right */}
-                  <div className="shrink-0 px-3 py-2 text-right sticky right-0 z-10"
-                    style={{ width: RIGHT_W, backgroundColor: rowBg }}>
+                  <div className="shrink-0 px-3 text-right sticky right-0 z-10 flex flex-col justify-center"
+                    style={{ width: RIGHT_W, height: ROW_H, backgroundColor: rowBg }}>
                     <p className={`text-sm font-bold ${allDone ? 'text-green-600' : anyActive ? 'text-amber-600' : 'text-gray-800'}`}>
                       {workerTotal.toLocaleString()} กก.
                     </p>
@@ -685,6 +698,7 @@ export default function TablePage() {
             <GanttView
               items={filtered}
               phaseStart={phaseConfig.startH}
+              phaseEnd={phaseConfig.endH}
               rateMap={rateMap}
               nameMap={nameMap}
             />
