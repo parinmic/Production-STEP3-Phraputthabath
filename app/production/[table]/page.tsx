@@ -298,11 +298,6 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
                             {stat.totalQty.toLocaleString()} กก.
                           </span>
                         )}
-                        {widthPx > 100 && (
-                          <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
-                            {minsToLabel(stat.minStart)}–{minsToLabel(stat.maxEnd)}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
