@@ -173,10 +173,11 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
 interface SkuGanttViewProps {
   items: Assignment[]
   phaseStart: number
+  phaseEnd: number
   rateMap: Record<string, number>
 }
 
-function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
+function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -220,12 +221,13 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
 
   if (!skuRows.length) return null
 
-  const maxEndMin  = Math.max(...skuRows.map(s => skuStats[s].maxEnd))
-  const totalMins  = maxEndMin - phaseStartMins + 20
-  const chartWidth = totalMins * PX_PER_MIN
+  const phaseEndMins = phaseEnd * 60
+  const totalMins    = phaseEndMins - phaseStartMins
+  const chartWidth   = totalMins * PX_PER_MIN
 
+  // Tick every 10 min, label every 30 min
   const ticks: number[] = []
-  for (let m = 0; m <= totalMins; m += 5) ticks.push(phaseStartMins + m)
+  for (let m = 0; m <= totalMins; m += 10) ticks.push(phaseStartMins + m)
 
   const RIGHT_W = 110
 
@@ -237,14 +239,19 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
           {/* Time header */}
           <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
             <div className="relative flex-1" style={{ width: chartWidth, height: 36 }}>
-              {ticks.map(absMin => (
-                <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
-                  style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }}>
-                  <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
-                    style={{ transform: 'translateX(-50%)' }}>{minsToLabel(absMin)}</span>
-                  <div className="w-px h-2 bg-gray-300" />
-                </div>
-              ))}
+              {ticks.map(absMin => {
+                const showLbl = (absMin - phaseStartMins) % 30 === 0
+                return (
+                  <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+                    style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }}>
+                    {showLbl && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
+                        style={{ transform: 'translateX(-50%)' }}>{minsToLabel(absMin)}</span>
+                    )}
+                    <div className={`w-px ${showLbl ? 'h-3 bg-gray-300' : 'h-2 bg-gray-200'}`} />
+                  </div>
+                )
+              })}
             </div>
             <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50/90"
               style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
@@ -253,30 +260,28 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
           {/* SKU rows */}
           <div className="divide-y divide-gray-50">
             {skuRows.map((sku, ri) => {
-              const stat   = skuStats[sku]
-              const col    = skuColor[sku]
-              const leftPx = (stat.minStart - phaseStartMins) * PX_PER_MIN
-              const widthPx = Math.max((stat.maxEnd - stat.minStart) * PX_PER_MIN - 2, 4)
-              const rowBg  = ri % 2 === 1 ? 'rgba(249,250,251,0.97)' : 'rgba(255,255,255,0.97)'
-              const durationMins = stat.maxEnd - stat.minStart
-              const durationText = durationMins >= 60
-                ? `${Math.floor(durationMins / 60)} ชม. ${durationMins % 60 > 0 ? durationMins % 60 + ' น.' : ''}`
-                : `${durationMins} น.`
+              const stat      = skuStats[sku]
+              const col       = skuColor[sku]
+              const leftPx    = (stat.minStart - phaseStartMins) * PX_PER_MIN
+              const widthPx   = Math.max((stat.maxEnd - stat.minStart) * PX_PER_MIN - 2, 4)
+              const rowBg     = ri % 2 === 1 ? 'rgba(249,250,251,0.97)' : 'rgba(255,255,255,0.97)'
+              const durMins   = stat.maxEnd - stat.minStart
+              const durText   = durMins >= 60
+                ? `${Math.floor(durMins / 60)} ชม. ${durMins % 60 > 0 ? durMins % 60 + ' น.' : ''}`
+                : `${durMins} น.`
+              const ROW_H = 52
 
               return (
                 <div key={sku} className="flex items-center" style={{ backgroundColor: ri % 2 === 1 ? '#f9fafb' : '#fff' }}>
 
                   {/* Bar */}
-                  <div className="relative shrink-0" style={{ width: chartWidth, height: 52 }}>
+                  <div className="relative shrink-0" style={{ width: chartWidth, height: ROW_H }}>
                     {ticks.map(absMin => (
-                      <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-100"
+                      <div key={absMin}
+                        className={`absolute top-0 bottom-0 w-px ${(absMin - phaseStartMins) % 60 === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
                         style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }} />
                     ))}
-                    <div style={{
-                      left: leftPx, width: widthPx,
-                      top: 6, bottom: 6,
-                      backgroundColor: col.bg,
-                    }}
+                    <div style={{ left: leftPx, width: widthPx, top: 6, bottom: 6, backgroundColor: col.bg }}
                       className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
                       {widthPx > 60 && (
                         <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
@@ -289,12 +294,21 @@ function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
                         </span>
                       )}
                     </div>
+                    {/* Idle zone */}
+                    {stat.maxEnd < phaseEndMins && (() => {
+                      const idleLeft = (stat.maxEnd - phaseStartMins) * PX_PER_MIN
+                      const idleW    = (phaseEndMins - stat.maxEnd) * PX_PER_MIN
+                      return (
+                        <div className="absolute top-5 bottom-5 rounded bg-gray-100/60"
+                          style={{ left: idleLeft, width: idleW }} />
+                      )
+                    })()}
                   </div>
 
                   {/* Summary – sticky right */}
-                  <div className="shrink-0 px-3 py-3 text-right sticky right-0 z-10" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
+                  <div className="shrink-0 px-3 py-2 text-right sticky right-0 z-10" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
                     <p className="text-sm font-bold text-gray-800">{stat.totalQty.toLocaleString()} กก.</p>
-                    <p className="text-xs text-gray-400">{durationText}</p>
+                    <p className="text-xs text-gray-400">{durText}</p>
                     <p className="text-xs text-gray-500 font-medium">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
                   </div>
                 </div>
@@ -706,6 +720,7 @@ export default function TablePage() {
               <SkuGanttView
                 items={filtered}
                 phaseStart={phaseConfig.startH}
+                phaseEnd={phaseConfig.endH}
                 rateMap={rateMap}
               />
             )}
