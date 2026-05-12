@@ -34,6 +34,12 @@ const BAR_COLORS = [
   { bg: '#2dd4bf', fg: '#134e4a' },
 ]
 
+const WORKER_AVATAR_COLORS = [
+  '#818cf8','#f472b6','#34d399','#fb923c','#60a5fa',
+  '#a78bfa','#22d3ee','#4ade80','#facc15','#f87171',
+  '#2dd4bf','#e879f9','#38bdf8','#86efac','#fda4af',
+]
+
 
 interface Assignment {
   id: string
@@ -168,16 +174,16 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
   )
 }
 
-// ─── SKU Gantt view (ภาพรวม) ─────────────────────────────────────────────────
+// ─── SKU Schedule view (ภาพรวม) ──────────────────────────────────────────────
 
-interface SkuGanttViewProps {
+interface SkuScheduleViewProps {
   items: Assignment[]
   phaseStart: number
   phaseEnd: number
   rateMap: Record<string, number>
 }
 
-function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProps) {
+function SkuScheduleView({ items, phaseStart, rateMap }: SkuScheduleViewProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -189,11 +195,10 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
     return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
   }
 
-  // Compute each assignment's start/end (sequential per worker)
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workerCount: number }
+  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[] }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const tasks of Object.values(byWorker)) {
@@ -203,103 +208,107 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
       const startMin = cur
       const endMin   = cur + dur
       cur = endMin
-
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workerCount: 0 }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [] }
       }
       const s = skuStats[task.sku]
-      s.totalQty   += Number(task.target_quantity)
-      s.minStart    = Math.min(s.minStart, startMin)
-      s.maxEnd      = Math.max(s.maxEnd, endMin)
-      s.workerCount += 1
+      s.totalQty += Number(task.target_quantity)
+      s.minStart  = Math.min(s.minStart, startMin)
+      s.maxEnd    = Math.max(s.maxEnd, endMin)
+      if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
     }
   }
 
-  const skuRows = allSkus
+  const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
-    .sort((a, b) => skuStats[a].minStart - skuStats[b].minStart)
+    .sort((a, b) => {
+      const d = skuStats[a].minStart - skuStats[b].minStart
+      return d !== 0 ? d : skuStats[b].totalQty - skuStats[a].totalQty
+    })
 
-  if (!skuRows.length) return null
+  if (!sortedSkus.length) return null
 
-  const phaseEndMins = phaseEnd * 60
-  const totalMins    = phaseEndMins - phaseStartMins
-
-  // Percentage helpers — 3% inset left, 1% inset right so start/end labels aren't clipped
-  const L = 3   // left inset %
-  const R = 97  // right boundary %
-  const pctLeft  = (m: number) => `${L + ((m - phaseStartMins) / totalMins) * (R - L)}%`
-  const pctWidth = (dur: number) => `${(dur / totalMins) * (R - L)}%`
-
-  // Tick labels every 30 min
-  const tickMins: number[] = []
-  for (let m = 0; m <= totalMins; m += 30) tickMins.push(phaseStartMins + m)
-
-  const RIGHT_W = 110
-  const ROW_H   = 52
+  // Assign consistent colors per worker
+  const allWorkers = Array.from(new Set(items.map(a => a.worker_name)))
+  const workerColor: Record<string, string> = {}
+  allWorkers.forEach((w, i) => { workerColor[w] = WORKER_AVATAR_COLORS[i % WORKER_AVATAR_COLORS.length] })
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+    <div className="space-y-0">
+      {sortedSkus.map((sku, idx) => {
+        const stat    = skuStats[sku]
+        const col     = skuColor[sku]
+        const isLast  = idx === sortedSkus.length - 1
+        const durMins = stat.maxEnd - stat.minStart
+        const durText = durMins >= 60
+          ? `${Math.floor(durMins / 60)} ชม.${durMins % 60 > 0 ? ` ${durMins % 60} น.` : ''}`
+          : `${durMins} น.`
 
-      {/* Time header — no scroll */}
-      <div className="flex border-b border-gray-100 bg-gray-50">
-        <div className="relative flex-1" style={{ height: 36 }}>
-          {tickMins.map(absMin => (
-            <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
-              style={{ left: pctLeft(absMin), transform: 'translateX(-50%)' }}>
-              <span className="text-xs text-gray-400 whitespace-nowrap mb-1">{minsToLabel(absMin)}</span>
-              <div className="w-px h-3 bg-gray-300" />
+        return (
+          <div key={sku} className="flex gap-3 items-stretch">
+
+            {/* Time label */}
+            <div className="w-14 shrink-0 text-right pt-4">
+              <p className="text-[11px] font-mono text-gray-400 leading-tight">{minsToLabel(stat.minStart)}</p>
             </div>
-          ))}
-        </div>
-        <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right" style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
-      </div>
 
-      {/* SKU rows */}
-      <div className="divide-y divide-gray-50">
-        {skuRows.map((sku, ri) => {
-          const stat    = skuStats[sku]
-          const col     = skuColor[sku]
-          const rowBg   = ri % 2 === 1 ? '#f9fafb' : '#fff'
-          const durMins = stat.maxEnd - stat.minStart
-          const durText = durMins >= 60
-            ? `${Math.floor(durMins / 60)} ชม. ${durMins % 60 > 0 ? durMins % 60 + ' น.' : ''}`
-            : `${durMins} น.`
+            {/* Timeline dot + vertical connector */}
+            <div className="flex flex-col items-center shrink-0 pt-4">
+              <div className="w-3 h-3 rounded-full border-2 border-white shadow shrink-0"
+                style={{ backgroundColor: col.bg }} />
+              {!isLast && <div className="w-0.5 flex-1 mt-1 mb-0" style={{ backgroundColor: '#e5e7eb' }} />}
+            </div>
 
-          return (
-            <div key={sku} className="flex items-center" style={{ backgroundColor: rowBg }}>
-              <div className="relative flex-1" style={{ height: ROW_H }}>
-                {/* Idle zone */}
-                {stat.maxEnd < phaseEndMins && (
-                  <div className="absolute top-4 bottom-4 rounded bg-gray-100/70"
-                    style={{ left: pctLeft(stat.maxEnd), width: pctWidth(phaseEndMins - stat.maxEnd) }} />
-                )}
-                {/* Bar */}
-                <div style={{
-                  left: pctLeft(stat.minStart),
-                  width: pctWidth(stat.maxEnd - stat.minStart),
-                  top: 6, bottom: 6,
-                  backgroundColor: col.bg,
-                }}
-                  className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
-                  <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
-                    {stat.name ?? sku}
-                  </span>
-                  <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
-                    {stat.totalQty.toLocaleString()} กก.
+            {/* Card */}
+            <div className="flex-1 mb-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Colored accent strip */}
+              <div style={{ backgroundColor: col.bg, height: 7 }} />
+              <div className="px-4 py-3">
+                {/* Title row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-800 leading-tight truncate">
+                      {stat.name ?? sku}
+                    </p>
+                    <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                      {minsToLabel(stat.minStart)} – {minsToLabel(stat.maxEnd)}
+                      <span className="text-gray-300 mx-1">·</span>
+                      {durText}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold" style={{ color: col.bg }}>
+                      {stat.totalQty.toLocaleString()} กก.
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
+                  </div>
+                </div>
+
+                {/* Worker avatar circles */}
+                <div className="flex flex-wrap gap-1 mt-2.5">
+                  {stat.workers.slice(0, 14).map((w, i) => (
+                    <div key={i}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm"
+                      style={{ backgroundColor: workerColor[w], fontSize: 9 }}
+                      title={w}>
+                      {w.trim().split(/\s+/)[0]?.charAt(0)?.toUpperCase() ?? '?'}
+                    </div>
+                  ))}
+                  {stat.workers.length > 14 && (
+                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold border-2 border-white shadow-sm text-gray-500"
+                      style={{ fontSize: 8 }}>
+                      +{stat.workers.length - 14}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-gray-400 ml-1 self-center">
+                    {stat.workers.length} คน
                   </span>
                 </div>
               </div>
-
-              {/* Summary */}
-              <div className="shrink-0 px-3 py-2 text-right" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
-                <p className="text-sm font-bold text-gray-800">{stat.totalQty.toLocaleString()} กก.</p>
-                <p className="text-xs text-gray-400">{durText}</p>
-                <p className="text-xs text-gray-500 font-medium">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
-              </div>
             </div>
-          )
-        })}
-      </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -593,7 +602,7 @@ export default function TablePage() {
             </div>
 
             {viewMode === 'sku' && (
-              <SkuGanttView
+              <SkuScheduleView
                 items={filtered}
                 phaseStart={phaseConfig.startH}
                 phaseEnd={phaseConfig.endH}
