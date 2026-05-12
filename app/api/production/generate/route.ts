@@ -119,8 +119,9 @@ function getMakroVariance(proportionAbove10pct: boolean, orderQty: number, avgBL
   return proportionAbove10pct ? 0.6 : 0.4
 }
 
-/** Greedy bin-pack: assign SKU to fewest workers possible (most-capacity-first),
- *  so each worker gets fewer, larger tasks while totals stay balanced across the table. */
+/** Water-fill: ทุกคนที่ทำได้ทำ SKU เดียวกันพร้อมกัน แบ่งปริมาณเท่าๆ กัน
+ *  SKU ถูกเรียงจากมากไปน้อย → SKU ใหญ่สุดเสร็จก่อนเสมอ
+ *  ใครรับได้น้อยกว่า (capacity น้อย) จะได้น้อยกว่า แล้ว load ส่วนที่เหลือกระจายให้คนอื่น */
 function assignWorkers(
   params: {
     productionDate: string
@@ -137,24 +138,31 @@ function assignWorkers(
 ): Record<string, unknown>[] {
   const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate, workerHours, period, deadline } = params
 
-  // Sort by remaining capacity descending — worker with most room gets the SKU first
   const entries = eligibleWorkers
     .map(w => ({ worker: w, cap: (workerHours.get(w.emp_id) ?? 0) * rate, qty: 0 }))
     .filter(e => e.cap > 0)
-    .sort((a, b) => b.cap - a.cap)
 
   if (!entries.length) return []
 
-  // Fill greedily: give as much as possible to the first worker, spill to next only if needed
+  // Water-fill: แบ่งเท่ากันทุกรอบ คนที่เต็มแล้วหลุดออก load ที่เหลือกระจายให้คนอื่น
   let toGive = targetQty
-  for (const e of entries) {
-    if (toGive <= 0.5) break
-    const give = Math.min(e.cap, toGive)
-    e.qty  += give
-    toGive -= give
+  let active = [...entries]
+
+  while (toGive > 0.5 && active.length > 0) {
+    const share = toGive / active.length
+    const nextActive: typeof active = []
+    for (const e of active) {
+      const give = Math.min(share, e.cap, toGive)
+      e.qty  += give
+      e.cap  -= give
+      toGive -= give
+      if (e.cap > 0.5) nextActive.push(e)
+    }
+    if (nextActive.length === active.length) break
+    active = nextActive
   }
 
-  // Commit results and deduct hours
+  // Commit
   const result: Record<string, unknown>[] = []
   for (const e of entries) {
     if (e.qty < 0.5) continue
