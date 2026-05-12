@@ -233,78 +233,93 @@ function SkuScheduleView({ items, phaseStart, rateMap }: SkuScheduleViewProps) {
   const workerColor: Record<string, string> = {}
   allWorkers.forEach((w, i) => { workerColor[w] = WORKER_AVATAR_COLORS[i % WORKER_AVATAR_COLORS.length] })
 
+  // Group SKUs that start at the same time → show side-by-side
+  const groups: { startMin: number; skus: string[] }[] = []
+  for (const sku of sortedSkus) {
+    const s = skuStats[sku].minStart
+    const g = groups.find(x => x.startMin === s)
+    if (g) g.skus.push(sku)
+    else groups.push({ startMin: s, skus: [sku] })
+  }
+
   return (
     <div className="space-y-0">
-      {sortedSkus.map((sku, idx) => {
-        const stat    = skuStats[sku]
-        const col     = skuColor[sku]
-        const isLast  = idx === sortedSkus.length - 1
-        const durMins = stat.maxEnd - stat.minStart
-        const durText = durMins >= 60
-          ? `${Math.floor(durMins / 60)} ชม.${durMins % 60 > 0 ? ` ${durMins % 60} น.` : ''}`
-          : `${durMins} น.`
+      {groups.map((group, gIdx) => {
+        const isLast = gIdx === groups.length - 1
 
         return (
-          <div key={sku} className="flex gap-3 items-stretch">
+          <div key={group.startMin} className="flex gap-3 items-stretch">
 
             {/* Time label */}
             <div className="w-14 shrink-0 text-right pt-4">
-              <p className="text-[11px] font-mono text-gray-400 leading-tight">{minsToLabel(stat.minStart)}</p>
+              <p className="text-[11px] font-mono text-gray-400 leading-tight">{minsToLabel(group.startMin)}</p>
             </div>
 
             {/* Timeline dot + vertical connector */}
-            <div className="flex flex-col items-center shrink-0 pt-4">
-              <div className="w-3 h-3 rounded-full border-2 border-white shadow shrink-0"
-                style={{ backgroundColor: col.bg }} />
-              {!isLast && <div className="w-0.5 flex-1 mt-1 mb-0" style={{ backgroundColor: '#e5e7eb' }} />}
+            <div className="flex flex-col items-center shrink-0 pt-[14px]">
+              <div className="w-2.5 h-2.5 rounded-full bg-gray-300 border-2 border-white shadow-sm shrink-0" />
+              {!isLast && <div className="w-px flex-1 mt-1 bg-gray-200" />}
             </div>
 
-            {/* Card */}
-            <div className="flex-1 mb-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Colored accent strip */}
-              <div style={{ backgroundColor: col.bg, height: 7 }} />
-              <div className="px-4 py-3">
-                {/* Title row */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-gray-800 leading-tight truncate">
-                      {stat.name ?? sku}
-                    </p>
-                    <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                      {minsToLabel(stat.minStart)} – {minsToLabel(stat.maxEnd)}
-                      <span className="text-gray-300 mx-1">·</span>
-                      {durText}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold" style={{ color: col.bg }}>
-                      {stat.totalQty.toLocaleString()} กก.
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
-                  </div>
-                </div>
+            {/* Cards row — side-by-side when same start time */}
+            <div className="flex-1 flex gap-3 mb-3 min-w-0">
+              {group.skus.map(sku => {
+                const stat    = skuStats[sku]
+                const col     = skuColor[sku]
+                const durMins = stat.maxEnd - stat.minStart
+                const durText = durMins >= 60
+                  ? `${Math.floor(durMins / 60)} ชม.${durMins % 60 > 0 ? ` ${durMins % 60} น.` : ''}`
+                  : `${durMins} น.`
 
-                {/* Worker avatar circles */}
-                <div className="flex flex-wrap gap-1 mt-2.5">
-                  {stat.workers.slice(0, 14).map((w, i) => (
-                    <div key={i}
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm"
-                      style={{ backgroundColor: workerColor[w], fontSize: 9 }}
-                      title={w}>
-                      {w.trim().split(/\s+/)[0]?.charAt(0)?.toUpperCase() ?? '?'}
+                return (
+                  <div key={sku} className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 shadow-sm px-4 py-3">
+                    {/* Title row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex items-start gap-2">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-1"
+                          style={{ backgroundColor: col.bg }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-800 leading-tight truncate">
+                            {stat.name ?? sku}
+                          </p>
+                          <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                            {minsToLabel(stat.minStart)} – {minsToLabel(stat.maxEnd)}
+                            <span className="text-gray-300 mx-1">·</span>
+                            {durText}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold" style={{ color: col.bg }}>
+                          {stat.totalQty.toLocaleString()} กก.
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
+                      </div>
                     </div>
-                  ))}
-                  {stat.workers.length > 14 && (
-                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold border-2 border-white shadow-sm text-gray-500"
-                      style={{ fontSize: 8 }}>
-                      +{stat.workers.length - 14}
+
+                    {/* Worker avatar circles */}
+                    <div className="flex flex-wrap gap-1 mt-2.5">
+                      {stat.workers.slice(0, 14).map((w, i) => (
+                        <div key={i}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm"
+                          style={{ backgroundColor: workerColor[w], fontSize: 9 }}
+                          title={w}>
+                          {w.trim().split(/\s+/)[0]?.charAt(0)?.toUpperCase() ?? '?'}
+                        </div>
+                      ))}
+                      {stat.workers.length > 14 && (
+                        <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold border-2 border-white shadow-sm text-gray-500"
+                          style={{ fontSize: 8 }}>
+                          +{stat.workers.length - 14}
+                        </div>
+                      )}
+                      <span className="text-[10px] text-gray-400 ml-1 self-center">
+                        {stat.workers.length} คน
+                      </span>
                     </div>
-                  )}
-                  <span className="text-[10px] text-gray-400 ml-1 self-center">
-                    {stat.workers.length} คน
-                  </span>
-                </div>
-              </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )
