@@ -385,20 +385,22 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
                 const col    = skuColor[t.sku]
                 const isDone = t.status === 'เสร็จแล้ว'
                 return (
-                  <div key={t.id} className="flex items-center gap-2 rounded-lg px-3 py-2"
+                  <div key={t.id} className="flex items-start gap-2 rounded-lg px-3 py-2"
                     style={{ backgroundColor: col.bg + '20' }}>
-                    <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: col.bg, opacity: isDone ? 0.5 : 1 }} />
-                    <span className="flex-1 text-xs font-medium leading-tight" style={{ color: col.fg }}>
-                      {t.sku_name ?? t.sku}
-                    </span>
-                    <span className="text-xs font-mono text-gray-400 whitespace-nowrap">
-                      {t.startLabel} – {t.endLabel}
-                    </span>
-                    <span className="text-xs font-bold whitespace-nowrap ml-1" style={{ color: col.fg }}>
-                      {Number(t.target_quantity).toLocaleString()} กก.
-                    </span>
-                    {isDone && <CheckCircle2 size={12} className="shrink-0 text-green-500" />}
-                    {t.status === 'กำลังผลิต' && <PlayCircle size={12} className="shrink-0 text-amber-500" />}
+                    <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: col.bg, opacity: isDone ? 0.5 : 1 }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium leading-tight" style={{ color: col.fg }}>
+                        {t.sku_name ?? t.sku}
+                      </p>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-xs font-mono text-gray-400">{t.startLabel} – {t.endLabel}</span>
+                        <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
+                          {Number(t.target_quantity).toLocaleString()} กก.
+                        </span>
+                      </div>
+                    </div>
+                    {isDone && <CheckCircle2 size={12} className="shrink-0 mt-1 text-green-500" />}
+                    {t.status === 'กำลังผลิต' && <PlayCircle size={12} className="shrink-0 mt-1 text-amber-500" />}
                   </div>
                 )
               })}
