@@ -168,7 +168,162 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
   )
 }
 
-// ─── Gantt view ───────────────────────────────────────────────────────────────
+// ─── SKU Gantt view (ภาพรวม) ─────────────────────────────────────────────────
+
+interface SkuGanttViewProps {
+  items: Assignment[]
+  phaseStart: number
+  rateMap: Record<string, number>
+}
+
+function SkuGanttView({ items, phaseStart, rateMap }: SkuGanttViewProps) {
+  const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
+  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+
+  const phaseStartMins = phaseStart * 60
+
+  const taskDurMins = (task: Assignment) => {
+    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+  }
+
+  // Compute each assignment's start/end (sequential per worker)
+  const byWorker: Record<string, Assignment[]> = {}
+  for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+
+  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workerCount: number }
+  const skuStats: Record<string, SkuStat> = {}
+
+  for (const tasks of Object.values(byWorker)) {
+    let cur = phaseStartMins
+    for (const task of tasks) {
+      const dur      = taskDurMins(task)
+      const startMin = cur
+      const endMin   = cur + dur
+      cur = endMin
+
+      if (!skuStats[task.sku]) {
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workerCount: 0 }
+      }
+      const s = skuStats[task.sku]
+      s.totalQty   += Number(task.target_quantity)
+      s.minStart    = Math.min(s.minStart, startMin)
+      s.maxEnd      = Math.max(s.maxEnd, endMin)
+      s.workerCount += 1
+    }
+  }
+
+  const skuRows = allSkus
+    .filter(sku => skuStats[sku])
+    .sort((a, b) => skuStats[a].minStart - skuStats[b].minStart)
+
+  if (!skuRows.length) return null
+
+  const maxEndMin  = Math.max(...skuRows.map(s => skuStats[s].maxEnd))
+  const totalMins  = maxEndMin - phaseStartMins + 20
+  const chartWidth = totalMins * PX_PER_MIN
+
+  const ticks: number[] = []
+  for (let m = 0; m <= totalMins; m += 5) ticks.push(phaseStartMins + m)
+
+  const LEFT_W  = 200
+  const RIGHT_W = 110
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: LEFT_W + chartWidth + RIGHT_W }}>
+
+          {/* Time header */}
+          <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
+            <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50/90"
+              style={{ width: LEFT_W }}>สินค้า (SKU)</div>
+            <div className="relative" style={{ width: chartWidth, height: 36 }}>
+              {ticks.map(absMin => (
+                <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+                  style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }}>
+                  <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
+                    style={{ transform: 'translateX(-50%)' }}>{minsToLabel(absMin)}</span>
+                  <div className="w-px h-2 bg-gray-300" />
+                </div>
+              ))}
+            </div>
+            <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50/90"
+              style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
+          </div>
+
+          {/* SKU rows */}
+          <div className="divide-y divide-gray-50">
+            {skuRows.map((sku, ri) => {
+              const stat   = skuStats[sku]
+              const col    = skuColor[sku]
+              const leftPx = (stat.minStart - phaseStartMins) * PX_PER_MIN
+              const widthPx = Math.max((stat.maxEnd - stat.minStart) * PX_PER_MIN - 2, 4)
+              const rowBg  = ri % 2 === 1 ? 'rgba(249,250,251,0.97)' : 'rgba(255,255,255,0.97)'
+              const durationMins = stat.maxEnd - stat.minStart
+              const durationText = durationMins >= 60
+                ? `${Math.floor(durationMins / 60)} ชม. ${durationMins % 60 > 0 ? durationMins % 60 + ' น.' : ''}`
+                : `${durationMins} น.`
+
+              return (
+                <div key={sku} className="flex items-center" style={{ backgroundColor: ri % 2 === 1 ? '#f9fafb' : '#fff' }}>
+
+                  {/* SKU name – sticky left */}
+                  <div className="shrink-0 px-4 py-3 sticky left-0 z-10" style={{ width: LEFT_W, backgroundColor: rowBg }}>
+                    <p className="text-sm font-semibold text-gray-800 leading-tight">{stat.name ?? sku}</p>
+                    <p className="text-xs text-gray-400 font-mono mt-0.5">{sku} · {stat.workerCount} คน</p>
+                  </div>
+
+                  {/* Bar */}
+                  <div className="relative shrink-0" style={{ width: chartWidth, height: 52 }}>
+                    {ticks.map(absMin => (
+                      <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-100"
+                        style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }} />
+                    ))}
+                    <div style={{
+                      left: leftPx, width: widthPx,
+                      top: 6, bottom: 6,
+                      backgroundColor: col.bg,
+                    }}
+                      className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
+                      {widthPx > 60 && (
+                        <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
+                          {stat.name ?? sku}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {widthPx > 30 && (
+                          <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
+                            {stat.totalQty.toLocaleString()} กก.
+                          </span>
+                        )}
+                        {widthPx > 100 && (
+                          <span className="text-xs font-mono opacity-80 whitespace-nowrap" style={{ color: col.fg }}>
+                            {minsToLabel(stat.minStart)}–{minsToLabel(stat.maxEnd)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary – sticky right */}
+                  <div className="shrink-0 px-3 py-3 text-right sticky right-0 z-10" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
+                    <p className="text-sm font-bold text-gray-800">{stat.totalQty.toLocaleString()} กก.</p>
+                    <p className="text-xs text-gray-400">{durationText}</p>
+                    <p className="text-xs text-gray-500 font-medium">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Gantt view (รายพนักงาน) ─────────────────────────────────────────────────
 
 interface GanttViewProps {
   items: Assignment[]
@@ -389,7 +544,7 @@ export default function TablePage() {
   const [loading, setLoading]       = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
-  const [viewMode, setViewMode]     = useState<'worker' | 'gantt'>('gantt')
+  const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku'>('sku')
 
   const loadData = (d: string) => {
     if (!cfg) return
@@ -504,29 +659,37 @@ export default function TablePage() {
           {/* View toggle */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode('gantt')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
+              onClick={() => setViewMode('sku')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'sku'
                 ? 'bg-gray-900 text-white'
                 : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
               <BarChart2 size={15} />ภาพรวม
             </button>
             <button
-              onClick={() => setViewMode('worker')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'worker'
+              onClick={() => setViewMode('gantt')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
                 ? 'bg-gray-900 text-white'
                 : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
               <LayoutList size={15} />รายพนักงาน
             </button>
           </div>
 
-          {viewMode === 'gantt' ? (
+          {viewMode === 'sku' && (
+            <SkuGanttView
+              items={filtered}
+              phaseStart={phaseConfig.startH}
+              rateMap={rateMap}
+            />
+          )}
+          {viewMode === 'gantt' && (
             <GanttView
               items={filtered}
               phaseStart={phaseConfig.startH}
               rateMap={rateMap}
               nameMap={nameMap}
             />
-          ) : (
+          )}
+          {viewMode === 'worker' && (
             <WorkerTable
               items={filtered}
               phaseStart={phaseConfig.startH}
