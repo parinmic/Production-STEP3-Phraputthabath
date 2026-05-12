@@ -223,99 +223,85 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
 
   const phaseEndMins = phaseEnd * 60
   const totalMins    = phaseEndMins - phaseStartMins
-  const chartWidth   = totalMins * PX_PER_MIN
 
-  // Tick every 10 min, label every 30 min
-  const ticks: number[] = []
-  for (let m = 0; m <= totalMins; m += 10) ticks.push(phaseStartMins + m)
+  // Percentage helpers — no fixed px, fills container width
+  const pctLeft  = (m: number) => `${((m - phaseStartMins) / totalMins) * 100}%`
+  const pctWidth = (dur: number) => `${(dur / totalMins) * 100}%`
+
+  // Tick labels every 30 min
+  const tickMins: number[] = []
+  for (let m = 0; m <= totalMins; m += 30) tickMins.push(phaseStartMins + m)
 
   const RIGHT_W = 110
+  const ROW_H   = 52
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: chartWidth + RIGHT_W }}>
 
-          {/* Time header */}
-          <div className="flex border-b border-gray-100 bg-gray-50/90 sticky top-0 z-20">
-            <div className="relative flex-1" style={{ width: chartWidth, height: 36 }}>
-              {ticks.map(absMin => {
-                const showLbl = (absMin - phaseStartMins) % 30 === 0
-                return (
-                  <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
-                    style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }}>
-                    {showLbl && (
-                      <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
-                        style={{ transform: 'translateX(-50%)' }}>{minsToLabel(absMin)}</span>
-                    )}
-                    <div className={`w-px ${showLbl ? 'h-3 bg-gray-300' : 'h-2 bg-gray-200'}`} />
-                  </div>
-                )
-              })}
+      {/* Time header — no scroll */}
+      <div className="flex border-b border-gray-100 bg-gray-50">
+        <div className="relative flex-1" style={{ height: 36 }}>
+          {tickMins.map(absMin => (
+            <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+              style={{ left: pctLeft(absMin), transform: 'translateX(-50%)' }}>
+              <span className="text-xs text-gray-400 whitespace-nowrap mb-1">{minsToLabel(absMin)}</span>
+              <div className="w-px h-3 bg-gray-300" />
             </div>
-            <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50/90"
-              style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
-          </div>
-
-          {/* SKU rows */}
-          <div className="divide-y divide-gray-50">
-            {skuRows.map((sku, ri) => {
-              const stat      = skuStats[sku]
-              const col       = skuColor[sku]
-              const leftPx    = (stat.minStart - phaseStartMins) * PX_PER_MIN
-              const widthPx   = Math.max((stat.maxEnd - stat.minStart) * PX_PER_MIN - 2, 4)
-              const rowBg     = ri % 2 === 1 ? 'rgba(249,250,251,0.97)' : 'rgba(255,255,255,0.97)'
-              const durMins   = stat.maxEnd - stat.minStart
-              const durText   = durMins >= 60
-                ? `${Math.floor(durMins / 60)} ชม. ${durMins % 60 > 0 ? durMins % 60 + ' น.' : ''}`
-                : `${durMins} น.`
-              const ROW_H = 52
-
-              return (
-                <div key={sku} className="flex items-center" style={{ backgroundColor: ri % 2 === 1 ? '#f9fafb' : '#fff' }}>
-
-                  {/* Bar */}
-                  <div className="relative shrink-0" style={{ width: chartWidth, height: ROW_H }}>
-                    {ticks.map(absMin => (
-                      <div key={absMin}
-                        className={`absolute top-0 bottom-0 w-px ${(absMin - phaseStartMins) % 60 === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
-                        style={{ left: (absMin - phaseStartMins) * PX_PER_MIN }} />
-                    ))}
-                    <div style={{ left: leftPx, width: widthPx, top: 6, bottom: 6, backgroundColor: col.bg }}
-                      className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
-                      {widthPx > 60 && (
-                        <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
-                          {stat.name ?? sku}
-                        </span>
-                      )}
-                      {widthPx > 30 && (
-                        <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
-                          {stat.totalQty.toLocaleString()} กก.
-                        </span>
-                      )}
-                    </div>
-                    {/* Idle zone */}
-                    {stat.maxEnd < phaseEndMins && (() => {
-                      const idleLeft = (stat.maxEnd - phaseStartMins) * PX_PER_MIN
-                      const idleW    = (phaseEndMins - stat.maxEnd) * PX_PER_MIN
-                      return (
-                        <div className="absolute top-5 bottom-5 rounded bg-gray-100/60"
-                          style={{ left: idleLeft, width: idleW }} />
-                      )
-                    })()}
-                  </div>
-
-                  {/* Summary – sticky right */}
-                  <div className="shrink-0 px-3 py-2 text-right sticky right-0 z-10" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
-                    <p className="text-sm font-bold text-gray-800">{stat.totalQty.toLocaleString()} กก.</p>
-                    <p className="text-xs text-gray-400">{durText}</p>
-                    <p className="text-xs text-gray-500 font-medium">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          ))}
         </div>
+        <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right" style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
+      </div>
+
+      {/* SKU rows */}
+      <div className="divide-y divide-gray-50">
+        {skuRows.map((sku, ri) => {
+          const stat    = skuStats[sku]
+          const col     = skuColor[sku]
+          const rowBg   = ri % 2 === 1 ? '#f9fafb' : '#fff'
+          const durMins = stat.maxEnd - stat.minStart
+          const durText = durMins >= 60
+            ? `${Math.floor(durMins / 60)} ชม. ${durMins % 60 > 0 ? durMins % 60 + ' น.' : ''}`
+            : `${durMins} น.`
+
+          return (
+            <div key={sku} className="flex items-center" style={{ backgroundColor: rowBg }}>
+              {/* Bar area — percentage based, fills width */}
+              <div className="relative flex-1" style={{ height: ROW_H }}>
+                {tickMins.map(absMin => (
+                  <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-200"
+                    style={{ left: pctLeft(absMin) }} />
+                ))}
+                {/* Idle zone */}
+                {stat.maxEnd < phaseEndMins && (
+                  <div className="absolute top-4 bottom-4 rounded bg-gray-100/70"
+                    style={{ left: pctLeft(stat.maxEnd), width: pctWidth(phaseEndMins - stat.maxEnd) }} />
+                )}
+                {/* Bar */}
+                <div style={{
+                  left: pctLeft(stat.minStart),
+                  width: pctWidth(stat.maxEnd - stat.minStart),
+                  top: 6, bottom: 6,
+                  backgroundColor: col.bg,
+                }}
+                  className="absolute rounded overflow-hidden flex flex-col justify-center px-2">
+                  <span className="text-xs font-semibold truncate" style={{ color: col.fg }}>
+                    {stat.name ?? sku}
+                  </span>
+                  <span className="text-xs font-bold whitespace-nowrap" style={{ color: col.fg }}>
+                    {stat.totalQty.toLocaleString()} กก.
+                  </span>
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="shrink-0 px-3 py-2 text-right" style={{ width: RIGHT_W, backgroundColor: rowBg }}>
+                <p className="text-sm font-bold text-gray-800">{stat.totalQty.toLocaleString()} กก.</p>
+                <p className="text-xs text-gray-400">{durText}</p>
+                <p className="text-xs text-gray-500 font-medium">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -372,9 +358,11 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
     })
   }
 
-  // Tick every 30 min
+  // Tick every 1 min, label every 60 min
   const ticks: number[] = []
-  for (let m = 0; m <= totalMins; m += 30) ticks.push(phaseStartMins + m)
+  for (let m = 0; m <= totalMins; m += 1) ticks.push(phaseStartMins + m)
+  const labelTicks: number[] = []
+  for (let m = 0; m <= totalMins; m += 60) labelTicks.push(phaseStartMins + m)
 
   const skuTotals: Record<string, { name: string | null; total: number }> = {}
   for (const a of items) {
@@ -412,18 +400,20 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
             <div className="shrink-0 px-4 py-2 text-xs font-medium text-gray-400 bg-gray-50 sticky left-0 z-40 border-r border-gray-100"
               style={{ width: LEFT_W }}>พนักงาน</div>
             <div className="relative bg-gray-50/95" style={{ width: chartWidth, height: 36 }}>
-              {ticks.map(absMin => {
-                const leftPx = (absMin - phaseStartMins) * GANTT_PX_PER_MIN
-                const label  = minsToLabel(absMin)
-                return (
-                  <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
-                    style={{ left: leftPx }}>
-                    <span className="text-xs text-gray-400 whitespace-nowrap mb-1"
-                      style={{ transform: 'translateX(-50%)' }}>{label}</span>
-                    <div className="w-px h-3 bg-gray-300" />
-                  </div>
-                )
-              })}
+              {/* 1-min tick marks */}
+              {ticks.map(absMin => (
+                <div key={absMin} className="absolute bottom-0 w-px bg-gray-200"
+                  style={{ left: (absMin - phaseStartMins) * GANTT_PX_PER_MIN, height: 6 }} />
+              ))}
+              {/* 60-min labels */}
+              {labelTicks.map(absMin => (
+                <div key={absMin} className="absolute bottom-0 flex flex-col items-center"
+                  style={{ left: (absMin - phaseStartMins) * GANTT_PX_PER_MIN }}>
+                  <span className="text-xs text-gray-400 whitespace-nowrap mb-2"
+                    style={{ transform: 'translateX(-50%)' }}>{minsToLabel(absMin)}</span>
+                  <div className="w-px h-3 bg-gray-400" />
+                </div>
+              ))}
             </div>
             <div className="shrink-0 px-3 py-2 text-xs text-gray-400 text-right bg-gray-50 sticky right-0 z-40 border-l border-gray-100"
               style={{ width: RIGHT_W }}>รวม / เสร็จ</div>
@@ -454,7 +444,7 @@ function GanttView({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttViewP
 
                   {/* Bars */}
                   <div className="relative shrink-0" style={{ width: chartWidth, height: ROW_H }}>
-                    {ticks.map(absMin => (
+                    {labelTicks.map(absMin => (
                       <div key={absMin}
                         className="absolute top-0 bottom-0 w-px bg-gray-200"
                         style={{ left: (absMin - phaseStartMins) * GANTT_PX_PER_MIN }} />
