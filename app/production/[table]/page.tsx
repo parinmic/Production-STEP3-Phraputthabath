@@ -666,13 +666,15 @@ export default function TablePage() {
                 const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
                 allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
                 return skuList.map(([sku, info]) => (
-                  <div key={sku} className="flex items-start gap-2.5 px-3 py-2.5">
-                    <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-0.5"
+                  <div key={sku} className="flex items-center gap-2.5 px-3 py-2">
+                    <span className="w-2.5 h-2.5 rounded-sm shrink-0"
                       style={{ backgroundColor: skuColor[sku]?.bg ?? '#94a3b8' }} />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-800 leading-tight">{info.name ?? sku}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-xs font-medium text-gray-800 leading-tight truncate">{info.name ?? sku}</p>
+                        <p className="text-xs font-bold text-gray-700 whitespace-nowrap shrink-0">{info.total.toLocaleString()} กก.</p>
+                      </div>
                       <p className="text-xs font-mono text-gray-400 mt-0.5">{sku}</p>
-                      <p className="text-xs font-bold text-gray-700 mt-0.5">{info.total.toLocaleString()} กก.</p>
                     </div>
                   </div>
                 ))
