@@ -64,24 +64,18 @@ function statusColor(s: string) {
   return '#94a3b8'
 }
 
-interface GanttProps {
+interface WorkerTableProps {
   items: Assignment[]
   phaseStart: number
-  phaseEnd: number
   rateMap: Record<string, number>
   nameMap: Record<string, string>
 }
 
-function GanttChart({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttProps) {
-  const totalH = phaseEnd - phaseStart
-  const ticks  = Array.from({ length: totalH + 1 }, (_, i) => phaseStart + i)
-
-  // color map per SKU
+function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
 
-  // group by worker
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) {
     byWorker[a.worker_name] ??= []
@@ -90,170 +84,100 @@ function GanttChart({ items, phaseStart, phaseEnd, rateMap, nameMap }: GanttProp
   const workers = Object.keys(byWorker).sort()
   if (!workers.length) return null
 
-  // helper: hours needed for a task
-  const taskHours = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    if (rate && rate > 0) return Number(task.target_quantity) / rate
-    // fallback: proportional within worker total (no rate data)
-    return null
-  }
-
-  // helper: time label from phase start + offset hours
-  const toTimeLabel = (offsetH: number) => {
-    const totalMins = phaseStart * 60 + Math.round(offsetH * 60)
+  const toTimeLabel = (startH: number, offsetH: number) => {
+    const totalMins = startH * 60 + Math.round(offsetH * 60)
     const hh = Math.floor(totalMins / 60) % 24
     const mm = totalMins % 60
     return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
   }
 
+  const taskHours = (task: Assignment) => {
+    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+    return (rate && rate > 0) ? Number(task.target_quantity) / rate : null
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-      {/* Time axis header */}
-      <div className="flex items-end border-b border-gray-100 bg-gray-50 px-4 py-2">
-        <div className="w-40 shrink-0 text-xs text-gray-400 font-medium">พนักงาน</div>
-        <div className="flex-1 relative h-6">
-          {ticks.map(h => (
-            <div key={h} className="absolute flex flex-col items-center"
-              style={{ left: `${((h - phaseStart) / totalH) * 100}%`, transform: 'translateX(-50%)' }}>
-              <span className="text-xs text-gray-400 whitespace-nowrap">{String(h).padStart(2,'0')}:00</span>
-            </div>
-          ))}
-        </div>
-        <div className="w-24 shrink-0 text-xs text-gray-400 text-right">รวม / เสร็จ</div>
+      {/* Header */}
+      <div className="grid grid-cols-[180px_1fr_110px] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-500">พนักงาน</span>
+        <span className="text-xs font-semibold text-gray-500">รายการที่ต้องผลิต</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">รวม / เสร็จ</span>
       </div>
 
-      {/* Worker rows */}
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
-          const tasks      = byWorker[name]
+          const tasks = byWorker[name]
           const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
-          const allDone    = tasks.every(t => t.status === 'เสร็จแล้ว')
-          const anyActive  = tasks.some(t => t.status === 'กำลังผลิต')
+          const allDone  = tasks.every(t => t.status === 'เสร็จแล้ว')
+          const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
-          // compute hours per task (with fallback)
-          const hoursPerTask = tasks.map(t => taskHours(t))
-          const hasRates     = hoursPerTask.every(h => h !== null)
-          const totalUsedH   = hasRates
-            ? hoursPerTask.reduce((s, h) => s + (h ?? 0), 0)
-            : totalH  // fallback: treat as full
-
-          // pct width & left offset per task (time-based if rates available)
-          const barSegments = tasks.map((task, i) => {
-            let widthPct: number
-            let leftPct: number
-            if (hasRates) {
-              const h = hoursPerTask[i] ?? 0
-              widthPct = (h / totalH) * 100
-              const offsetH = hoursPerTask.slice(0, i).reduce((s, v) => s + (v ?? 0), 0)
-              leftPct = (offsetH / totalH) * 100
-            } else {
-              // proportional fallback
-              const pct = workerTotal > 0 ? (Number(task.target_quantity) / workerTotal) * 100 : 0
-              widthPct = pct
-              leftPct  = tasks.slice(0, i).reduce((s, t) => s + (workerTotal > 0 ? Number(t.target_quantity) / workerTotal * 100 : 0), 0)
-            }
-            return { widthPct, leftPct }
+          // compute finish time per task (sequential)
+          let offsetH = 0
+          const taskInfo = tasks.map(t => {
+            const h = taskHours(t)
+            const finishTime = h !== null ? toTimeLabel(phaseStart, offsetH + h) : t.deadline_time?.substring(0, 5) ?? null
+            if (h !== null) offsetH += h
+            return { ...t, finishTime, hours: h }
           })
+          const totalFinishTime = toTimeLabel(phaseStart, offsetH)
 
-          // end time label
-          const endOffsetH = hasRates ? totalUsedH : totalH
-          const endLabel   = toTimeLabel(endOffsetH)
-          const idlePct    = hasRates ? Math.max(0, ((totalH - totalUsedH) / totalH) * 100) : 0
+          const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
 
           return (
             <div key={name}
-              className={`flex items-center gap-3 px-4 py-2 ${wi % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-              {/* Worker info */}
-              <div className="w-40 shrink-0">
-                <p className="text-sm font-semibold text-gray-800 leading-tight">
-                  {nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)}
-                </p>
-                <p className="text-xs text-gray-400 font-mono">{tasks[0].worker_code}</p>
+              className={`grid grid-cols-[180px_1fr_110px] gap-3 px-4 py-3 items-start ${wi % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+
+              {/* Worker */}
+              <div>
+                <p className="text-sm font-semibold text-gray-800 leading-tight">{displayName}</p>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">{tasks[0].worker_code}</p>
               </div>
 
-              {/* Bar container */}
-              <div className="flex-1 relative h-10">
-                {/* Background track */}
-                <div className="absolute inset-0 bg-gray-100 rounded-lg overflow-hidden">
-                  {/* Hour grid lines */}
-                  {ticks.slice(1, -1).map(h => (
-                    <div key={h} className="absolute top-0 bottom-0 w-px bg-gray-200/80"
-                      style={{ left: `${((h - phaseStart) / totalH) * 100}%` }} />
-                  ))}
-                </div>
-
-                {/* Task bars (absolute positioned) */}
-                {barSegments.map(({ widthPct, leftPct }, i) => {
-                  const task     = tasks[i]
-                  const col      = skuColor[task.sku]
+              {/* Task chips */}
+              <div className="flex flex-wrap gap-2">
+                {taskInfo.map(task => {
+                  const col = skuColor[task.sku]
                   const isDone   = task.status === 'เสร็จแล้ว'
                   const isActive = task.status === 'กำลังผลิต'
-                  const hUsed    = hoursPerTask[i]
-                  const endTime  = hUsed !== null
-                    ? toTimeLabel((barSegments[i].leftPct / 100) * totalH + hUsed)
-                    : task.deadline_time?.substring(0, 5)
-
                   return (
                     <div key={task.id}
-                      title={`${task.sku_name || task.sku}\n${Number(task.target_quantity).toLocaleString()} กก.${hUsed ? ` · ${hUsed.toFixed(1)} ชม.` : ''}\nสถานะ: ${task.status}`}
-                      style={{
-                        left:            `${leftPct}%`,
-                        width:           `${widthPct}%`,
-                        backgroundColor: col.bg,
-                        opacity:         isDone ? 0.55 : 1,
-                      }}
-                      className="absolute top-0.5 bottom-0.5 rounded flex items-center justify-between px-2 overflow-hidden">
-                      {/* SKU label */}
-                      <span className="text-xs font-semibold leading-tight"
-                        style={{ color: col.fg }}>
+                      style={{ backgroundColor: col.bg, opacity: isDone ? 0.6 : 1 }}
+                      className={`rounded-lg px-3 py-1.5 flex flex-col gap-0.5 min-w-[120px] relative ${isActive ? 'ring-2 ring-white animate-pulse' : ''}`}>
+                      <span className="text-xs font-semibold leading-tight" style={{ color: col.fg }}>
                         {task.sku_name ?? task.sku}
                       </span>
-                      {/* End time */}
-                      {widthPct > 10 && endTime && (
-                        <span className="text-xs font-mono ml-1 shrink-0 flex items-center gap-0.5 opacity-80"
-                          style={{ color: col.fg }}>
-                          <Clock size={9} />{endTime}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold" style={{ color: col.fg }}>
+                          {Number(task.target_quantity).toLocaleString()} กก.
                         </span>
-                      )}
-                      {/* Status dot */}
+                        {task.finishTime && (
+                          <span className="text-xs font-mono flex items-center gap-0.5 opacity-80" style={{ color: col.fg }}>
+                            <Clock size={9} />เสร็จ {task.finishTime}
+                          </span>
+                        )}
+                      </div>
                       {(isDone || isActive) && (
                         <span className="absolute top-1 right-1" style={{ color: statusColor(task.status) }}>
                           {statusIcon(task.status)}
                         </span>
                       )}
-                      {/* Active pulse border */}
-                      {isActive && (
-                        <span className="absolute inset-0 rounded ring-2 ring-white/60 animate-pulse" />
-                      )}
                     </div>
                   )
                 })}
-
-                {/* Idle bar */}
-                {idlePct > 1 && (
-                  <div className="absolute top-0.5 bottom-0.5 rounded bg-gray-200/60 flex items-center justify-center"
-                    style={{ left: `${100 - idlePct}%`, width: `${idlePct}%` }}>
-                    {idlePct > 8 && (
-                      <span className="text-xs text-gray-400 font-medium">ว่าง</span>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Summary */}
-              <div className="w-24 shrink-0 text-right">
+              <div className="text-right">
                 <p className={`text-sm font-bold ${allDone ? 'text-green-600' : anyActive ? 'text-amber-600' : 'text-gray-800'}`}>
                   {workerTotal.toLocaleString()} กก.
                 </p>
-                <p className="text-xs text-gray-400">
-                  {hasRates ? `เสร็จ ${endLabel} น.` : `${tasks.length} SKU`}
-                </p>
+                <p className="text-xs text-gray-400 mt-0.5">เสร็จ {totalFinishTime} น.</p>
               </div>
             </div>
           )
         })}
       </div>
-
     </div>
   )
 }
@@ -415,12 +339,11 @@ export default function TablePage() {
             </div>
           </div>
 
-          {/* Gantt */}
+          {/* Worker table */}
           <div className="flex-1 min-w-0">
-            <GanttChart
+            <WorkerTable
               items={filtered}
               phaseStart={phaseConfig.startH}
-              phaseEnd={phaseConfig.endH}
               rateMap={rateMap}
               nameMap={nameMap}
             />
