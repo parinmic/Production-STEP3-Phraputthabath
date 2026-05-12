@@ -268,10 +268,6 @@ function SkuGanttView({ items, phaseStart, phaseEnd, rateMap }: SkuGanttViewProp
           return (
             <div key={sku} className="flex items-center" style={{ backgroundColor: rowBg }}>
               <div className="relative flex-1" style={{ height: ROW_H }}>
-                {tickMins.map(absMin => (
-                  <div key={absMin} className="absolute top-0 bottom-0 w-px bg-gray-200"
-                    style={{ left: pctLeft(absMin) }} />
-                ))}
                 {/* Idle zone */}
                 {stat.maxEnd < phaseEndMins && (
                   <div className="absolute top-4 bottom-4 rounded bg-gray-100/70"
