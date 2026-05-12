@@ -658,49 +658,84 @@ export default function TablePage() {
 
       {/* Content */}
       {!loading && filtered.length > 0 && (
-        <div className="space-y-3">
-          {/* View toggle */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setViewMode('sku')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'sku'
-                ? 'bg-gray-900 text-white'
-                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-              <BarChart2 size={15} />ภาพรวม
-            </button>
-            <button
-              onClick={() => setViewMode('gantt')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
-                ? 'bg-gray-900 text-white'
-                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-              <LayoutList size={15} />รายพนักงาน
-            </button>
+        <div className="flex gap-4 items-start">
+
+          {/* ─── Left: SKU summary box ─── */}
+          <div className="w-52 shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">SKU ที่ต้องผลิตวันนี้</p>
+            </div>
+            <div className="divide-y divide-gray-50 max-h-[70vh] overflow-y-auto">
+              {(() => {
+                const skuMap: Record<string, { name: string | null; total: number }> = {}
+                for (const a of items) {
+                  skuMap[a.sku] ??= { name: a.sku_name, total: 0 }
+                  skuMap[a.sku].total += Number(a.target_quantity)
+                }
+                const skuList = Object.entries(skuMap).sort((a, b) => b[1].total - a[1].total)
+                const allSkus = Array.from(new Set(items.map(a => a.sku)))
+                const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
+                allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+                return skuList.map(([sku, info]) => (
+                  <div key={sku} className="flex items-start gap-2.5 px-3 py-2.5">
+                    <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-0.5"
+                      style={{ backgroundColor: skuColor[sku]?.bg ?? '#94a3b8' }} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-800 leading-tight">{info.name ?? sku}</p>
+                      <p className="text-xs font-mono text-gray-400 mt-0.5">{sku}</p>
+                      <p className="text-xs font-bold text-gray-700 mt-0.5">{info.total.toLocaleString()} กก.</p>
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
           </div>
 
-          {viewMode === 'sku' && (
-            <SkuGanttView
-              items={filtered}
-              phaseStart={phaseConfig.startH}
-              rateMap={rateMap}
-            />
-          )}
-          {viewMode === 'gantt' && (
-            <GanttView
-              items={filtered}
-              phaseStart={phaseConfig.startH}
-              phaseEnd={phaseConfig.endH}
-              rateMap={rateMap}
-              nameMap={nameMap}
-            />
-          )}
-          {viewMode === 'worker' && (
-            <WorkerTable
-              items={filtered}
-              phaseStart={phaseConfig.startH}
-              rateMap={rateMap}
-              nameMap={nameMap}
-            />
-          )}
+          {/* ─── Right: toggle + views ─── */}
+          <div className="flex-1 min-w-0 space-y-3">
+            {/* View toggle */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode('sku')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'sku'
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                <BarChart2 size={15} />ภาพรวม
+              </button>
+              <button
+                onClick={() => setViewMode('gantt')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                <LayoutList size={15} />รายพนักงาน
+              </button>
+            </div>
+
+            {viewMode === 'sku' && (
+              <SkuGanttView
+                items={filtered}
+                phaseStart={phaseConfig.startH}
+                rateMap={rateMap}
+              />
+            )}
+            {viewMode === 'gantt' && (
+              <GanttView
+                items={filtered}
+                phaseStart={phaseConfig.startH}
+                phaseEnd={phaseConfig.endH}
+                rateMap={rateMap}
+                nameMap={nameMap}
+              />
+            )}
+            {viewMode === 'worker' && (
+              <WorkerTable
+                items={filtered}
+                phaseStart={phaseConfig.startH}
+                rateMap={rateMap}
+                nameMap={nameMap}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>
