@@ -174,9 +174,9 @@ export default async function DashboardPage() {
         <h2 className="text-lg font-semibold text-gray-800 mb-4">คำสั่งผลิตแยกตามโต้ะ</h2>
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'โต๊ะสามชั้น', slug: 'sam-chan', cls: 'border-blue-500 bg-blue-50 text-blue-700' },
-            { label: 'โต๊ะสะโพก',   slug: 'sa-phok', cls: 'border-orange-500 bg-orange-50 text-orange-700' },
-            { label: 'โต๊ะไหล่',    slug: 'lai',     cls: 'border-green-500 bg-green-50 text-green-700' },
+            { label: 'Station สามชั้น', slug: 'sam-chan', cls: 'border-blue-500 bg-blue-50 text-blue-700' },
+            { label: 'Station สะโพก',   slug: 'sa-phok', cls: 'border-orange-500 bg-orange-50 text-orange-700' },
+            { label: 'Station ไหล่',    slug: 'lai',     cls: 'border-green-500 bg-green-50 text-green-700' },
           ].map((t) => (
             <Link key={t.slug} href={`/production/${t.slug}`}
               className={`border-2 ${t.cls} rounded-xl p-5 font-semibold text-center hover:opacity-80`}>
@@ -198,9 +198,9 @@ import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, Chevron
 import { useState } from 'react'
 
 const TABLES = [
-  { label: 'โต๊ะสามชั้น', slug: 'sam-chan', dot: 'bg-blue-500' },
-  { label: 'โต๊ะสะโพก',   slug: 'sa-phok', dot: 'bg-orange-500' },
-  { label: 'โต๊ะไหล่',    slug: 'lai',     dot: 'bg-green-500' },
+  { label: 'Station สามชั้น', slug: 'sam-chan', dot: 'bg-blue-500' },
+  { label: 'Station สะโพก',   slug: 'sa-phok', dot: 'bg-orange-500' },
+  { label: 'Station ไหล่',    slug: 'lai',     dot: 'bg-green-500' },
 ]
 
 export default function Sidebar() {
@@ -234,7 +234,7 @@ export default function Sidebar() {
         <button onClick={() => setOpen(!open)}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/production') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
           <ClipboardList size={18} />
-          <span className="flex-1 text-left">คำสั่งผลิตรายโต๊ะ</span>
+          <span className="flex-1 text-left">คำสั่งผลิตราย Station </span>
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </button>
         {open && (
@@ -350,17 +350,17 @@ export default function FileUpload({ title, description, expectedColumns, templa
 w('app/workforce/page.tsx', """'use client'
 import FileUpload from '@/components/FileUpload'
 import { ParsedRow } from '@/lib/parser'
-const COLS = ['วันที่','โต๊ะ','รหัสพนักงาน','ชื่อพนักงาน','กะ']
+const COLS = ['วันที่','Station ','รหัสพนักงาน','ชื่อพนักงาน','กะ']
 const TPL = [
-  {'วันที่':'2024-01-15','โต๊ะ':'สามชั้น','รหัสพนักงาน':'EMP001','ชื่อพนักงาน':'สมชาย ใจดี','กะ':'เช้า'},
-  {'วันที่':'2024-01-15','โต๊ะ':'สะโพก','รหัสพนักงาน':'EMP002','ชื่อพนักงาน':'สมหญิง รักงาน','กะ':'เช้า'},
+  {'วันที่':'2024-01-15','Station ':'สามชั้น','รหัสพนักงาน':'EMP001','ชื่อพนักงาน':'สมชาย ใจดี','กะ':'เช้า'},
+  {'วันที่':'2024-01-15','Station ':'สะโพก','รหัสพนักงาน':'EMP002','ชื่อพนักงาน':'สมหญิง รักงาน','กะ':'เช้า'},
 ]
 async function upload(rows: ParsedRow[]) {
   const res = await fetch('/api/upload-workforce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows})})
   return res.json()
 }
 export default function WorkforcePage() {
-  return <FileUpload title="อัพโหลดกำลังคนประจำวัน" description="อัพโหลดรายชื่อพนักงานแยกตามโต๊ะและกะการผลิต" expectedColumns={COLS} templateData={TPL} templateFilename="template_กำลังคน.csv" onUpload={upload}/>
+  return <FileUpload title="อัพโหลดกำลังคนประจำวัน" description="อัพโหลดรายชื่อพนักงานแยกตามStation และกะการผลิต" expectedColumns={COLS} templateData={TPL} templateFilename="template_กำลังคน.csv" onUpload={upload}/>
 }
 """)
 
@@ -413,7 +413,7 @@ export default function ProductionMenuPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-2">คำสั่งผลิต</h1>
-      <p className="text-gray-500 mb-8">เลือกโต๊ะที่ต้องการดูคำสั่งผลิต หรือกดสร้างคำสั่งผลิตใหม่</p>
+      <p className="text-gray-500 mb-8">เลือกStation ที่ต้องการดูคำสั่งผลิต หรือกดสร้างคำสั่งผลิตใหม่</p>
       <div className="card mb-8">
         <h2 className="font-semibold text-gray-800 mb-1">สร้างคำสั่งผลิตประจำวัน</h2>
         <p className="text-sm text-gray-500 mb-4">ระบบจะคำนวณ Quota รวม หาร จำนวนพนักงานแล้วสร้างคำสั่งอัตโนมัติ</p>
@@ -426,9 +426,9 @@ export default function ProductionMenuPage() {
       </div>
       <div className="grid grid-cols-3 gap-6">
         {[
-          {label:'โต๊ะสามชั้น',slug:'sam-chan',cls:'border-blue-500 bg-blue-50',text:'text-blue-700',dot:'bg-blue-500'},
-          {label:'โต๊ะสะโพก',  slug:'sa-phok',cls:'border-orange-500 bg-orange-50',text:'text-orange-700',dot:'bg-orange-500'},
-          {label:'โต๊ะไหล่',   slug:'lai',    cls:'border-green-500 bg-green-50',text:'text-green-700',dot:'bg-green-500'},
+          {label:'Station สามชั้น',slug:'sam-chan',cls:'border-blue-500 bg-blue-50',text:'text-blue-700',dot:'bg-blue-500'},
+          {label:'Station สะโพก',  slug:'sa-phok',cls:'border-orange-500 bg-orange-50',text:'text-orange-700',dot:'bg-orange-500'},
+          {label:'Station ไหล่',   slug:'lai',    cls:'border-green-500 bg-green-50',text:'text-green-700',dot:'bg-green-500'},
         ].map(t=>(
           <Link key={t.slug} href={`/production/${t.slug}`} className={`border-2 ${t.cls} rounded-xl p-6 hover:opacity-80 transition-opacity`}>
             <div className={`w-4 h-4 rounded-full ${t.dot} mb-3`}/>
@@ -470,7 +470,7 @@ function group(items: ProductionAssignment[]) {
 
 export default async function TablePage({ params }: { params: { table: string } }) {
   const cfg = CFG[params.table]
-  if (!cfg) return <p className="text-red-500">ไม่พบโต๊ะที่ระบุ</p>
+  if (!cfg) return <p className="text-red-500">ไม่พบStation ที่ระบุ</p>
   const items = await getData(cfg.label)
   const byWorker = group(items)
   const workers = Object.keys(byWorker).sort()
@@ -480,9 +480,9 @@ export default async function TablePage({ params }: { params: { table: string } 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">คำสั่งผลิต — โต๊ะ{cfg.label}</h1>
+        <h1 className="text-2xl font-bold text-gray-900">คำสั่งผลิต — Station {cfg.label}</h1>
         <div className="flex gap-2">
-          {others.map(([s, c]) => <Link key={s} href={`/production/${s}`} className="btn-secondary text-sm">โต๊ะ{c.label}</Link>)}
+          {others.map(([s, c]) => <Link key={s} href={`/production/${s}`} className="btn-secondary text-sm">Station {c.label}</Link>)}
         </div>
       </div>
       <div className="grid grid-cols-4 gap-4 mb-8">
@@ -552,7 +552,7 @@ export async function POST(req: NextRequest) {
     if (!rows?.length) return NextResponse.json({success:false,message:'ไม่มีข้อมูล'},{status:400})
     const records = rows.map((r: Record<string,unknown>) => ({
       work_date: toDateString(r['วันที่']),
-      table_name: String(r['โต๊ะ']??'').trim(),
+      table_name: String(r['Station ']??'').trim(),
       worker_code: String(r['รหัสพนักงาน']??'').trim(),
       worker_name: String(r['ชื่อพนักงาน']??'').trim(),
       shift: String(r['กะ']??'เช้า').trim(),

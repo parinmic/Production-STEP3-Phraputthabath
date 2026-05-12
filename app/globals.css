@@ -1,0 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { font-family: 'Sarabun', sans-serif; }
+@layer components {
+  .card { @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6; }
+  .btn-primary { @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-secondary { @apply bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium; }
+  .badge-pending  { @apply bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-medium; }
+  .badge-progress { @apply bg-blue-100   text-blue-800   text-xs px-2 py-1 rounded-full font-medium; }
+  .badge-done     { @apply bg-green-100  text-green-800  text-xs px-2 py-1 rounded-full font-medium; }
+}

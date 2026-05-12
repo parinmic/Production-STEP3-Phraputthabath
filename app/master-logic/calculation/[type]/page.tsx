@@ -1,0 +1,36 @@
+'use client'
+import FileUpload from '@/components/FileUpload'
+import { ParsedRow } from '@/lib/parser'
+
+const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> = {
+  'mas-productivity':        { label: 'Mas Productivity',         desc: 'อัพโหลด Master Calculation — Productivity', dot: 'border-purple-500' },
+  'mas-variance-makro':      { label: 'Mas %Variance Makro',      desc: 'อัพโหลด Master Calculation — %Variance Makro', dot: 'border-blue-500' },
+  'mas-variance-wet-market': { label: 'Mas %Variance Wet Market', desc: 'อัพโหลด Master Calculation — %Variance Wet Market', dot: 'border-cyan-500' },
+  'mas-lotus':               { label: 'Mas LOTUS',                desc: 'อัพโหลด Master Calculation — LOTUS', dot: 'border-green-500' },
+  'mas-channel':             { label: 'Mas Channel',              desc: 'อัพโหลด Master Calculation — Channel', dot: 'border-orange-500' },
+}
+
+export default function CalculationTypePage({ params }: { params: { type: string } }) {
+  const cfg = TYPE_CONFIG[params.type]
+  if (!cfg) return <p className="text-red-500">ไม่พบประเภทที่ระบุ</p>
+
+  async function upload(rows: ParsedRow[], filename: string) {
+    const res = await fetch(`/api/upload-master-logic-calculation?type=${params.type}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows, filename }),
+    })
+    return res.json()
+  }
+
+  return (
+    <div className={`border-t-4 ${cfg.dot} pt-4`}>
+      <FileUpload
+        title={cfg.label}
+        description={cfg.desc}
+        historyEndpoint={`/api/upload-master-logic-calculation?type=${params.type}`}
+        onUpload={upload}
+      />
+    </div>
+  )
+}
