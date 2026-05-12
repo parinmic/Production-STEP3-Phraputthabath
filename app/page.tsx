@@ -1,30 +1,26 @@
 import { supabase } from '@/lib/supabase'
-import { Users, ShoppingCart, BarChart3, ClipboardList } from 'lucide-react'
+import { Users, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 
 async function getStats() {
   const today = new Date().toISOString().split('T')[0]
-  const [w, m, q, a] = await Promise.all([
+  const [w, m] = await Promise.all([
     supabase.from('daily_workforce').select('id', { count: 'exact' }).eq('work_date', today),
     supabase.from('makro_orders').select('id', { count: 'exact' }),
-    supabase.from('channel_quotas').select('id', { count: 'exact' }),
-    supabase.from('production_assignments').select('id', { count: 'exact' }).eq('production_date', today),
   ])
-  return { workforce: w.count ?? 0, makro: m.count ?? 0, quota: q.count ?? 0, assignments: a.count ?? 0 }
+  return { workforce: w.count ?? 0, makro: m.count ?? 0 }
 }
 
 export default async function DashboardPage() {
   const stats = await getStats()
   const cards = [
-    { label: 'พนักงานวันนี้',   value: stats.workforce,   unit: 'คน',     icon: Users,        color: 'bg-blue-500',   href: '/workforce' },
-    { label: 'คำสั่งซื้อ Makro', value: stats.makro,      unit: 'รายการ', icon: ShoppingCart,  color: 'bg-orange-500', href: '/makro' },
-    { label: 'Quota ทั้งหมด',    value: stats.quota,      unit: 'รายการ', icon: BarChart3,     color: 'bg-purple-500', href: '/quota' },
-    { label: 'คำสั่งผลิตวันนี้', value: stats.assignments, unit: 'รายการ', icon: ClipboardList, color: 'bg-green-500',  href: '/production' },
+    { label: 'พนักงานวันนี้',   value: stats.workforce, unit: 'คน',     icon: Users,       color: 'bg-blue-500',   href: '/workforce' },
+    { label: 'คำสั่งซื้อ Makro', value: stats.makro,    unit: 'รายการ', icon: ShoppingCart, color: 'bg-orange-500', href: '/makro' },
   ]
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-8">ภาพรวมระบบ</h1>
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
+      <div className="grid grid-cols-2 gap-6 mb-10">
         {cards.map((c) => (
           <Link key={c.label} href={c.href} className="card hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
