@@ -576,9 +576,9 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
             {card ? (
               <>
                 {/* Progress bar */}
-                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: col.bg + '30' }}>
+                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: isLive ? col.bg + '30' : '#e5e7eb' }}>
                   <div className="h-full rounded-full transition-all duration-1000"
-                    style={{ width: `${taskProgress}%`, backgroundColor: col.bg }} />
+                    style={{ width: isLive ? `${taskProgress}%` : '100%', backgroundColor: isLive ? col.bg : '#d1d5db' }} />
                 </div>
 
                 {/* Current SKU */}
