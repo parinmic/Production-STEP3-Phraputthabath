@@ -224,3 +224,76 @@ export function toDateString(val: unknown): string {
   if (val instanceof Date) return val.toISOString().split('T')[0]
   return String(val).trim()
 }
+
+/**
+ * Parser สำหรับไฟล์ Template แผนผลิต — ชีท "แผน 100%"
+ * โครงสร้าง: หลายเซคชัน แต่ละเซคชันขึ้นต้นด้วยแถว "แพลนผลิต"
+ * Col 0: ลำดับ | Col 1: Step | Col 3: SAP | Col 4: ชื่อสินค้า
+ * Col 5: น้ำหนักต่อถุง | Col 6: จำนวนถุง | Col 7: น้ำหนักรวม
+ * Col 8-13: Lotus's/CPFT/Makro (bags/weight)
+ */
+export function parsePlan100(file: File): Promise<ParsedRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets['แผน 100%']
+        if (!ws) throw new Error('ไม่พบชีท "แผน 100%" ในไฟล์')
+        const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+
+        const results: ParsedRow[] = []
+        let currentStation = ''
+        let planDate = ''
+
+        for (let i = 0; i < raw.length; i++) {
+          const row = raw[i]
+          if (!row) continue
+
+          // Section header: col 0 starts with "แพลนผลิต"
+          if (typeof row[0] === 'string' && row[0].includes('แพลนผลิต')) {
+            currentStation = String(row[8] ?? '').trim()
+            const dateSerial = row[5]
+            if (typeof dateSerial === 'number' && dateSerial > 0) {
+              // Excel serial → ISO date (accounting for Excel 1900 leap year bug)
+              planDate = new Date((dateSerial - 25569) * 86400000).toISOString().split('T')[0]
+            }
+            continue
+          }
+
+          // Data row: col 0 is a number (sequence)
+          if (typeof row[0] !== 'number') continue
+          const sap = String(row[3] ?? '').trim()
+          if (!sap || !currentStation) continue
+
+          results.push({
+            plan_date:      planDate,
+            station:        currentStation,
+            seq:            Number(row[0]),
+            step:           String(row[1] ?? '').trim(),
+            unix_code:      String(row[2] ?? '').trim(),
+            sap:            sap,
+            product_name:   String(row[4] ?? '').trim(),
+            weight_per_bag: Number(row[5]) || 0,
+            qty_bags:       Number(row[6]) || 0,
+            weight_total:   Number(row[7]) || 0,
+            lotus_bags:     Number(row[8]) || 0,
+            lotus_weight:   Number(row[9]) || 0,
+            cpft_bags:      Number(row[10]) || 0,
+            cpft_weight:    Number(row[11]) || 0,
+            makro_bags:     Number(row[12]) || 0,
+            makro_weight:   Number(row[13]) || 0,
+          })
+        }
+
+        if (!results.length) throw new Error('ไม่พบข้อมูลในชีท "แผน 100%"')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ แผน 100% ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}

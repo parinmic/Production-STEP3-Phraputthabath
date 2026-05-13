@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet } from 'lucide-react'
 import { useState } from 'react'
 
 const TABLES = [
@@ -153,7 +153,8 @@ export default function Sidebar() {
           { href: '/lotus',              icon: Leaf,          label: 'คำสั่งซื้อ LOTUS' },
           { href: '/wet-market',         icon: Store,         label: 'คำสั่งซื้อ Wet Market' },
           { href: '/quota',              icon: BarChart3,     label: 'Quota ช่องทางขาย' },
-          { href: '/stock-raw-material', icon: Package,       label: 'Stock Raw Material' },
+          { href: '/stock-raw-material', icon: Package,          label: 'Stock Raw Material' },
+          { href: '/plan-100',           icon: FileSpreadsheet, label: 'แผนผลิต 100%' },
         ].map((m) => (
           <Link key={m.href} href={m.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`} title={m.label}>
             <m.icon size={18} className="shrink-0" />

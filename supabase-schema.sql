@@ -299,6 +299,35 @@ ALTER TABLE makro_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT
 ALTER TABLE wet_market_orders ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 ALTER TABLE lotus_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 
+-- 15. แผนผลิต 100% (Production Plan 100%)
+CREATE TABLE IF NOT EXISTS production_plan_100 (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  plan_date      date,
+  station        text NOT NULL,   -- สายพานสะโพก | สายพานสามชั้น | สายพานไหล่ | etc.
+  seq            int,
+  step           text,
+  unix_code      text,
+  sap            text NOT NULL,
+  product_name   text,
+  weight_per_bag numeric DEFAULT 0,
+  qty_bags       numeric DEFAULT 0,
+  weight_total   numeric DEFAULT 0,  -- ปริมาณผลิตรวม (กก.) — ใช้คำนวณ Phase 3
+  lotus_bags     numeric DEFAULT 0,
+  lotus_weight   numeric DEFAULT 0,
+  cpft_bags      numeric DEFAULT 0,
+  cpft_weight    numeric DEFAULT 0,
+  makro_bags     numeric DEFAULT 0,
+  makro_weight   numeric DEFAULT 0,
+  source_file    text,
+  uploaded_at    timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan100_date    ON production_plan_100(plan_date);
+CREATE INDEX IF NOT EXISTS idx_plan100_station ON production_plan_100(plan_date, station);
+
+ALTER TABLE production_plan_100 ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_plan100" ON production_plan_100 FOR ALL USING (true) WITH CHECK (true);
+
 CREATE INDEX IF NOT EXISTS idx_workforce_round    ON daily_workforce(work_date, upload_round);
 CREATE INDEX IF NOT EXISTS idx_makro_round        ON makro_orders(delivery_date, upload_round);
 CREATE INDEX IF NOT EXISTS idx_wet_market_round   ON wet_market_orders(delivery_date, upload_round);
