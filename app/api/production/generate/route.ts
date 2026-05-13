@@ -310,10 +310,10 @@ export async function POST(req: NextRequest) {
       if (!(plan100Raw ?? []).length)
         return NextResponse.json({ success: false, message: 'ไม่พบแผนผลิต 100% วันนี้ — กรุณาอัพโหลดก่อน' }, { status: 400 })
     } else {
-      // Phase 1 WM ใช้ BL3 ไม่ต้องมี Order วันนี้ → wmHist แทน wmToday
+      // Phase 1 WM+LOTUS ใช้ BL3 ไม่ต้องมี Order วันนี้
       const hasOrders = isPhase2
-        ? (wmToday.length || lotusToday.length || makroToday.length)
-        : (wmHist.length  || lotusToday.length || makroToday.length)
+        ? (wmToday.length    || lotusToday.length    || makroToday.length)
+        : (wmHist.length     || lotusHist.length     || makroToday.length)
       if (!hasOrders)
         return NextResponse.json({
           success: false,
@@ -442,9 +442,10 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: avg BL3 only
-      return Object.entries(lotusMap).map(([sku, { name }]) => ({
-        sku, skuName: name, targetQty: avgLotus.get(sku) ?? 0
+      // Phase 1: Avg BL3 — ไม่ต้องมี Order วันนี้
+      const lotusHistNames = new Map(lotusHist.map(r => [r.sku, r.sku_name]))
+      return Array.from(avgLotus.entries()).map(([sku, avg]) => ({
+        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg,
       })).filter(s => s.targetQty > 0)
     }
 
