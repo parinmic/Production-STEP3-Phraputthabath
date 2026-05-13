@@ -183,7 +183,19 @@ interface SkuScheduleViewProps {
   rateMap: Record<string, number>
 }
 
-function SkuScheduleView({ items, phaseStart, rateMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleViewProps) {
+  const [nowMins, setNowMins] = useState(() => {
+    const d = new Date()
+    return d.getHours() * 60 + d.getMinutes()
+  })
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date()
+      setNowMins(d.getHours() * 60 + d.getMinutes())
+    }, 30000)
+    return () => clearInterval(id)
+  }, [])
+
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -228,102 +240,110 @@ function SkuScheduleView({ items, phaseStart, rateMap }: SkuScheduleViewProps) {
 
   if (!sortedSkus.length) return null
 
-  // Assign consistent colors per worker
-  const allWorkers = Array.from(new Set(items.map(a => a.worker_name)))
-  const workerColor: Record<string, string> = {}
-  allWorkers.forEach((w, i) => { workerColor[w] = WORKER_AVATAR_COLORS[i % WORKER_AVATAR_COLORS.length] })
+  const chartStart = phaseStartMins
+  const chartEnd   = Math.max(phaseEnd * 60, ...sortedSkus.map(s => skuStats[s].maxEnd))
+  const totalRange = chartEnd - chartStart
 
-  // Group SKUs that start at the same time → show side-by-side
-  const groups: { startMin: number; skus: string[] }[] = []
-  for (const sku of sortedSkus) {
-    const s = skuStats[sku].minStart
-    const g = groups.find(x => x.startMin === s)
-    if (g) g.skus.push(sku)
-    else groups.push({ startMin: s, skus: [sku] })
+  const ticks: number[] = []
+  for (let m = chartStart; m <= chartEnd; m += 30) ticks.push(m)
+
+  const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
+
+  const countdown = (endMins: number) => {
+    const diff = endMins - nowMins
+    if (diff <= 0) return { text: 'เสร็จแล้ว', done: true }
+    const h = Math.floor(diff / 60)
+    const m = diff % 60
+    return { text: h > 0 ? `${h}ชม. ${m}น.` : `${m} น.`, done: false }
   }
 
+  const SKU_COL_W = 176
+
   return (
-    <div className="space-y-0">
-      {groups.map((group, gIdx) => {
-        const isLast = gIdx === groups.length - 1
-
-        return (
-          <div key={group.startMin} className="flex gap-3 items-stretch">
-
-            {/* Time label */}
-            <div className="w-14 shrink-0 text-right pt-4">
-              <p className="text-[11px] font-mono text-gray-400 leading-tight">{minsToLabel(group.startMin)}</p>
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* X-axis header */}
+      <div className="flex border-b border-gray-100">
+        <div className="shrink-0 border-r border-gray-100" style={{ width: SKU_COL_W }} />
+        <div className="flex-1 relative h-8">
+          {ticks.map(t => (
+            <div key={t} className="absolute top-0 h-full flex items-end pb-1.5"
+              style={{ left: `${pct(t)}%` }}>
+              <span className="text-[10px] font-mono text-gray-400 -translate-x-1/2 select-none">
+                {minsToLabel(t)}
+              </span>
             </div>
+          ))}
+        </div>
+        <div className="w-32 shrink-0 px-3 flex items-end pb-1.5 border-l border-gray-100">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Countdown</span>
+        </div>
+      </div>
 
-            {/* Timeline dot + vertical connector */}
-            <div className="flex flex-col items-center shrink-0 pt-[14px]">
-              <div className="w-2.5 h-2.5 rounded-full bg-gray-300 border-2 border-white shadow-sm shrink-0" />
-              {!isLast && <div className="w-px flex-1 mt-1 bg-gray-200" />}
-            </div>
+      {/* SKU rows */}
+      <div className="divide-y divide-gray-50">
+        {sortedSkus.map(sku => {
+          const stat   = skuStats[sku]
+          const col    = skuColor[sku]
+          const cd     = countdown(stat.maxEnd)
+          const barLeft  = pct(stat.minStart)
+          const barWidth = Math.max(pct(stat.maxEnd) - pct(stat.minStart), 0.5)
 
-            {/* Cards row — side-by-side when same start time */}
-            <div className="flex-1 flex gap-3 mb-3 min-w-0">
-              {group.skus.map(sku => {
-                const stat    = skuStats[sku]
-                const col     = skuColor[sku]
-                const durMins = stat.maxEnd - stat.minStart
-                const durText = durMins >= 60
-                  ? `${Math.floor(durMins / 60)} ชม.${durMins % 60 > 0 ? ` ${durMins % 60} น.` : ''}`
-                  : `${durMins} น.`
-
-                return (
-                  <div key={sku} className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 shadow-sm px-4 py-3">
-                    {/* Title row */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex items-start gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-1"
-                          style={{ backgroundColor: col.bg }} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-gray-800 leading-tight truncate">
-                            {stat.name ?? sku}
-                          </p>
-                          <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                            {minsToLabel(stat.minStart)} – {minsToLabel(stat.maxEnd)}
-                            <span className="text-gray-300 mx-1">·</span>
-                            {durText}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-bold" style={{ color: col.bg }}>
-                          {stat.totalQty.toLocaleString()} กก.
-                        </p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)} น.</p>
-                      </div>
-                    </div>
-
-                    {/* Worker avatar circles */}
-                    <div className="flex flex-wrap gap-1 mt-2.5">
-                      {stat.workers.slice(0, 14).map((w, i) => (
-                        <div key={i}
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold border-2 border-white shadow-sm"
-                          style={{ backgroundColor: workerColor[w], fontSize: 9 }}
-                          title={w}>
-                          {w.trim().split(/\s+/)[0]?.charAt(0)?.toUpperCase() ?? '?'}
-                        </div>
-                      ))}
-                      {stat.workers.length > 14 && (
-                        <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center font-bold border-2 border-white shadow-sm text-gray-500"
-                          style={{ fontSize: 8 }}>
-                          +{stat.workers.length - 14}
-                        </div>
-                      )}
-                      <span className="text-[10px] text-gray-400 ml-1 self-center">
-                        {stat.workers.length} คน
-                      </span>
-                    </div>
+          return (
+            <div key={sku} className="flex items-center min-h-[56px]">
+              {/* Y-axis: SKU name */}
+              <div className="shrink-0 px-4 py-2 border-r border-gray-100" style={{ width: SKU_COL_W }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 leading-tight truncate">{stat.name ?? sku}</p>
+                    <p className="text-[10px] font-mono text-gray-400">{sku} · {stat.workers.length} คน</p>
                   </div>
-                )
-              })}
+                </div>
+              </div>
+
+              {/* Bar area */}
+              <div className="flex-1 relative h-14">
+                {/* Grid lines */}
+                {ticks.map(t => (
+                  <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100"
+                    style={{ left: `${pct(t)}%` }} />
+                ))}
+                {/* Now indicator */}
+                {nowMins >= chartStart && nowMins <= chartEnd && (
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10 opacity-70"
+                    style={{ left: `${pct(nowMins)}%` }} />
+                )}
+                {/* Bar */}
+                <div className="absolute top-2.5 bottom-2.5 rounded-md flex items-center px-2.5 overflow-hidden"
+                  style={{
+                    left: `${barLeft}%`,
+                    width: `${barWidth}%`,
+                    backgroundColor: col.bg,
+                    opacity: cd.done ? 0.45 : 1,
+                  }}>
+                  <span className="text-[11px] font-bold truncate whitespace-nowrap"
+                    style={{ color: col.fg }}>
+                    {stat.totalQty.toLocaleString()} กก.
+                    <span className="opacity-70 font-normal ml-1">
+                      {minsToLabel(stat.minStart)}–{minsToLabel(stat.maxEnd)}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Countdown */}
+              <div className="w-32 shrink-0 px-3 border-l border-gray-100 text-right">
+                {cd.done ? (
+                  <span className="text-xs text-green-500 font-semibold">✓ เสร็จแล้ว</span>
+                ) : (
+                  <span className="text-sm font-bold text-gray-800">{cd.text}</span>
+                )}
+                <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)}</p>
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
