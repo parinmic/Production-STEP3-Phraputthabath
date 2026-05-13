@@ -40,7 +40,7 @@ export default function Sidebar() {
         <Factory className="text-blue-400 shrink-0" size={28} />
         {!collapsed && (
           <div className="overflow-hidden">
-            <p className="font-bold text-sm whitespace-nowrap">ระบบคำสั่งผลิต</p>
+            <p className="font-bold text-sm whitespace-nowrap">PPTB Production</p>
             <p className="text-gray-400 text-xs whitespace-nowrap">Production Management</p>
           </div>
         )}
@@ -252,7 +252,7 @@ export default function Sidebar() {
       </nav>
 
       {!collapsed && (
-        <div className="px-6 py-4 border-t border-gray-700 text-gray-500 text-xs">CP Foods — Production System</div>
+        <div className="px-6 py-4 border-t border-gray-700 text-gray-500 text-xs">PPTB Production</div>
       )}
     </aside>
   )
