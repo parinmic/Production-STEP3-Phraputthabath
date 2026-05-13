@@ -16,6 +16,15 @@ interface WithdrawalItem {
   note: string | null
 }
 
+interface LotInfo {
+  spec_code: string
+  factory: string
+  prod_date: string
+  available: number
+  to_withdraw: number
+  insufficient?: boolean
+}
+
 interface CalcItem {
   sku: string
   sku_name: string | null
@@ -23,6 +32,7 @@ interface CalcItem {
   unit: string
   work_station: string | null
   note: string | null
+  lots?: LotInfo[]
 }
 
 type RowItem = CalcItem
@@ -89,10 +99,24 @@ export default function WithdrawalPage() {
     if (!preview) return
     setSaving(true); setCalcMsg(null)
     try {
+      // flatten lots into individual rows (one row per lot)
+      const flatItems = preview.flatMap(item => {
+        if (!item.lots?.length) return [item]
+        return item.lots.map(lot => ({
+          sku:          item.sku,
+          sku_name:     item.sku_name,
+          quantity:     lot.to_withdraw,
+          unit:         item.unit,
+          work_station: item.work_station,
+          note:         lot.insufficient
+            ? `ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
+            : `Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
+        }))
+      })
       const res = await fetch('/api/withdrawal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: preview, requestDate: date, phase: Number(phase) }),
+        body: JSON.stringify({ items: flatItems, requestDate: date, phase: Number(phase) }),
       })
       const data = await res.json()
       if (data.success) {
@@ -291,17 +315,44 @@ export default function WithdrawalPage() {
                     </thead>
                     <tbody>
                       {stationItems.map((item, idx) => (
-                        <tr key={`${item.sku}-${idx}`} className="border-b hover:bg-gray-50">
-                          <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                          <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
-                          <td className="px-3 py-2.5 text-gray-800">{item.sku_name ?? '-'}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
-                          <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
-                          <td className="px-3 py-2.5 text-center no-print">
-                            <input type="checkbox" className="w-4 h-4 cursor-pointer" />
-                          </td>
-                        </tr>
+                        <>
+                          <tr key={`${item.sku}-${idx}`} className="border-b hover:bg-gray-50">
+                            <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
+                            <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
+                            <td className="px-3 py-2.5 text-gray-800">{item.sku_name ?? '-'}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
+                            <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
+                            <td className="px-3 py-2.5 text-center no-print">
+                              {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
+                            </td>
+                          </tr>
+                          {item.lots?.map((lot, li) => (
+                            <tr key={`${item.sku}-lot-${li}`}
+                              className={`border-b text-xs ${lot.insufficient ? 'bg-red-50' : 'bg-indigo-50/50'}`}>
+                              <td />
+                              <td className="px-3 py-1.5 pl-7 font-mono text-gray-500">
+                                └ {lot.spec_code}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500">
+                                รร.{lot.factory} · ผลิต {lot.prod_date}
+                                {!lot.insufficient && (
+                                  <span className="ml-2 text-gray-400">มี {lot.available.toLocaleString()} กก.</span>
+                                )}
+                              </td>
+                              <td className={`px-3 py-1.5 text-right font-bold ${lot.insufficient ? 'text-red-600' : 'text-indigo-700'}`}>
+                                {lot.to_withdraw.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500">กก.</td>
+                              <td className="px-3 py-1.5 text-gray-400">
+                                {lot.insufficient ? '⚠ สต็อกไม่เพียงพอ' : ''}
+                              </td>
+                              <td className="px-3 py-1.5 text-center no-print">
+                                {!lot.insufficient && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
+                              </td>
+                            </tr>
+                          ))}
+                        </>
                       ))}
                       <tr className="bg-gray-50 font-semibold">
                         <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
