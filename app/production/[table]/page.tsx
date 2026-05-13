@@ -303,7 +303,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
               <div className="flex-1 relative h-14">
                 {/* Now indicator */}
                 {nowMins >= chartStart && nowMins <= chartEnd && (
-                  <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10 opacity-70"
+                  <div className="absolute -top-px -bottom-px w-px bg-red-400 z-10 opacity-30"
                     style={{ left: `${pct(nowMins)}%` }} />
                 )}
                 {/* Bar */}
