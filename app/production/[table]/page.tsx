@@ -547,10 +547,10 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
         const card = currentTask ?? (notStarted ? taskInfo[0] : null)
         const col  = card ? skuColor[card.sku] : { bg: '#e5e7eb', fg: '#6b7280' }
 
-        const taskProgress = currentTask && isLive
+        const elapsedPct = currentTask
           ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
-          : currentTask ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
           : allDone ? 100 : 0
+        const taskProgress = 100 - elapsedPct
 
         const remainSecs = currentTask && isLive ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
         const rh = Math.floor(remainSecs / 3600)
