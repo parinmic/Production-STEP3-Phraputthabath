@@ -207,7 +207,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
   type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[] }
   const skuStats: Record<string, SkuStat> = {}
 
-  for (const tasks of Object.values(byWorker)) {
+  for (const rawTasks of Object.values(byWorker)) {
+    const tasks = [...rawTasks].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
     let cur = phaseStartMins
     for (const task of tasks) {
       const dur      = taskDurMins(task)
