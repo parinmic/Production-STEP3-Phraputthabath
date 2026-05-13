@@ -28,9 +28,9 @@ interface ProductivityRow {
 // ========== Phase config ==========
 
 const PHASE_CONFIG = [
-  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6 },
-  { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2 },
+  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8  },
+  { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17 },
 ]
 
 // ========== Station mapping ==========
@@ -127,9 +127,15 @@ function maxWorkersForQty(qty: number): number {
   return Infinity
 }
 
-/** Water-fill: ทุกคนที่ทำได้ทำ SKU เดียวกันพร้อมกัน แบ่งปริมาณเท่าๆ กัน
- *  SKU ถูกเรียงจากมากไปน้อย → SKU ใหญ่สุดเสร็จก่อนเสมอ
- *  ใครรับได้น้อยกว่า (capacity น้อย) จะได้น้อยกว่า แล้ว load ส่วนที่เหลือกระจายให้คนอื่น */
+/**
+ * Dynamic work queue: workers join the SKU pool as they become free (earliest first).
+ * Early workers do more; late workers do less. SKU finishes as fast as possible.
+ *
+ * Example: pool=90 kg, rate=60 kg/hr, A free@08:00, B free@09:00, C free@10:00
+ *   - A works alone 08:00–09:00 → consumes 60 kg (30 kg left)
+ *   - B joins 09:00, A+B split 30 kg → done at 09:15
+ *   - C has nothing left to do
+ */
 function assignWorkers(
   params: {
     productionDate: string
@@ -140,41 +146,71 @@ function assignWorkers(
     eligibleWorkers: WorkforceRow[]
     rate: number
     workerHours: Map<string, number>
+    workerFreeAtMins: Map<string, number>
     period: string
     deadline: string | null
   }
 ): Record<string, unknown>[] {
-  const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate, workerHours, period, deadline } = params
+  const {
+    productionDate, tableName, sku, skuName, targetQty,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, period, deadline,
+  } = params
 
   const entries = eligibleWorkers
-    .map(w => ({ worker: w, cap: (workerHours.get(w.emp_id) ?? 0) * rate, qty: 0 }))
-    .filter(e => e.cap > 0)
+    .map(w => ({
+      worker:         w,
+      freeAt:         workerFreeAtMins.get(w.emp_id) ?? 0,
+      remainingHours: workerHours.get(w.emp_id) ?? 0,
+    }))
+    .filter(e => e.remainingHours > 0.01)
+    .sort((a, b) => a.freeAt - b.freeAt)  // earliest-free first
 
   if (!entries.length) return []
 
-  // Water-fill: แบ่งเท่ากันทุกรอบ คนที่เต็มแล้วหลุดออก load ที่เหลือกระจายให้คนอื่น
-  let toGive = targetQty
-  let active = [...entries]
+  let pool    = targetQty
+  let simTime = entries[0].freeAt
+  const active: typeof entries = []
+  const workerQty = new Map<string, number>()
 
-  while (toGive > 0.5 && active.length > 0) {
-    const share = toGive / active.length
-    const nextActive: typeof active = []
-    for (const e of active) {
-      const give = Math.min(share, e.cap, toGive)
-      e.qty  += give
-      e.cap  -= give
-      toGive -= give
-      if (e.cap > 0.5) nextActive.push(e)
+  for (let i = 0; i < entries.length && pool > 0.01; i++) {
+    const e = entries[i]
+
+    // Consume pool from simTime → e.freeAt by all currently active workers
+    if (active.length > 0 && e.freeAt > simTime) {
+      const dtHours  = (e.freeAt - simTime) / 60
+      const consumed = active.length * rate * dtHours
+
+      if (consumed >= pool) {
+        // Pool exhausted before this worker can join
+        const finishMins = simTime + (pool / (active.length * rate)) * 60
+        for (const a of active) {
+          workerQty.set(a.worker.emp_id, ((finishMins - a.freeAt) / 60) * rate)
+          workerFreeAtMins.set(a.worker.emp_id, finishMins)
+        }
+        pool = 0
+        break
+      }
+      pool -= consumed
     }
-    if (nextActive.length === active.length) break
-    active = nextActive
+
+    simTime = e.freeAt
+    active.push(e)
   }
 
-  // Commit
+  // All eligible workers joined — finish remaining pool together
+  if (pool > 0.01 && active.length > 0) {
+    const finishMins = simTime + (pool / (active.length * rate)) * 60
+    for (const a of active) {
+      workerQty.set(a.worker.emp_id, ((finishMins - a.freeAt) / 60) * rate)
+      workerFreeAtMins.set(a.worker.emp_id, finishMins)
+    }
+  }
+
   const result: Record<string, unknown>[] = []
   for (const e of entries) {
-    if (e.qty < 0.5) continue
-    workerHours.set(e.worker.emp_id, (workerHours.get(e.worker.emp_id) ?? 0) - e.qty / rate)
+    const qty = workerQty.get(e.worker.emp_id) ?? 0
+    if (qty < 0.5) continue
+    workerHours.set(e.worker.emp_id, e.remainingHours - qty / rate)
     result.push({
       production_date: productionDate,
       table_name:      tableName,
@@ -182,7 +218,7 @@ function assignWorkers(
       worker_name:     e.worker.name,
       sku,
       sku_name:        skuName,
-      target_quantity: Math.round(e.qty),
+      target_quantity: Math.round(qty),
       unit:            'กก.',
       period,
       deadline_time:   deadline,
@@ -366,9 +402,14 @@ export async function POST(req: NextRequest) {
       workersByStation[station].push(w)
     }
 
-    // Capacity: each worker starts with phaseCfg.hours
+    // Each worker starts with full phase hours and becomes free at phase start
+    const phaseStartMins = phaseCfg.startH * 60
     const workerHours = new Map<string, number>()
-    for (const w of workforce) workerHours.set(w.emp_id, phaseCfg.hours)
+    const workerFreeAtMins = new Map<string, number>()
+    for (const w of workforce) {
+      workerHours.set(w.emp_id, phaseCfg.hours)
+      workerFreeAtMins.set(w.emp_id, phaseStartMins)
+    }
 
     // ------ Historical averages ------
     const avgWM    = buildAvgMap(wmHist)
@@ -525,6 +566,7 @@ export async function POST(req: NextRequest) {
         eligibleWorkers: cappedWorkers,
         rate: prod.rate,
         workerHours,
+        workerFreeAtMins,
         period: phaseCfg.period,
         deadline: phaseCfg.deadline,
       })
