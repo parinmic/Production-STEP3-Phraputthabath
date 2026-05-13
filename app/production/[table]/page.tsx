@@ -294,8 +294,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                   <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
-                    <p className="text-[9px] sm:text-[10px] font-bold mt-0.5" style={{ color: col.bg }}>{stat.totalQty.toLocaleString()} กก.</p>
-                    <p className="text-[9px] sm:text-[10px] text-gray-400">{stat.workers.length} คน</p>
+                    <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
+                      {stat.totalQty.toLocaleString()} กก.
+                      <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
+                    </p>
                   </div>
                 </div>
               </div>
