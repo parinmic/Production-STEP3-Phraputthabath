@@ -1,8 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2 } from 'lucide-react'
-import Link from 'next/link'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
@@ -450,13 +449,11 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TablePage() {
-  const params       = useParams()
-  const searchParams = useSearchParams()
-  const router       = useRouter()
-  const tableSlug    = params.table as string
-  const cfg          = CFG[tableSlug]
+  const params    = useParams()
+  const tableSlug = params.table as string
+  const cfg       = CFG[tableSlug]
 
-  const [date, setDate]             = useState(searchParams.get('date') ?? new Date().toISOString().split('T')[0])
+  const [date]                      = useState(new Date().toISOString().split('T')[0])
   const [selectedPhase, setPhase]   = useState(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
@@ -495,11 +492,6 @@ export default function TablePage() {
 
   useEffect(() => { loadData(date) }, [date, cfg?.label])
 
-  const handleDate = (d: string) => {
-    setDate(d); setGenResult(null)
-    router.replace(`/production/${tableSlug}?date=${d}`)
-  }
-
   const generate = async () => {
     setGenerating(true); setGenResult(null)
     try {
@@ -518,35 +510,28 @@ export default function TablePage() {
 
   const phaseConfig = PHASES.find(p => p.phase === selectedPhase)!
   const filtered    = items.filter(a => a.period === phaseConfig.period)
-  const others      = Object.entries(CFG).filter(([s]) => s !== tableSlug)
+  const dateDisplay = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 sm:space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Station {cfg.label}</h1>
-        <div className="flex items-center gap-2">
-          <input type="date" value={date} onChange={e => handleDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          {others.map(([s, c]) => (
-            <Link key={s} href={`/production/${s}?date=${date}`}
-              className="btn-secondary text-sm">Station {c.label}</Link>
-          ))}
-        </div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Station {cfg.label}</h1>
+        <span className="text-sm font-medium text-gray-500">{dateDisplay}</span>
       </div>
 
       {/* Phase tabs + generate */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2">
         {PHASES.map(p => (
           <button key={p.phase}
             onClick={() => { setPhase(p.phase); setGenResult(null) }}
-            className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
+            className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
             <span className="block">{p.label}</span>
-            <span className="block text-xs font-normal opacity-80">{p.sub}</span>
+            <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
           </button>
         ))}
 
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="hidden sm:flex items-center gap-3 ml-auto">
           <button onClick={generate} disabled={generating}
             className="btn-primary flex items-center gap-2 text-sm">
             <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
