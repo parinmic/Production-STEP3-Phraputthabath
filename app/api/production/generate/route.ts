@@ -310,11 +310,14 @@ export async function POST(req: NextRequest) {
       if (!(plan100Raw ?? []).length)
         return NextResponse.json({ success: false, message: 'ไม่พบแผนผลิต 100% วันนี้ — กรุณาอัพโหลดก่อน' }, { status: 400 })
     } else {
-      const hasOrders = wmToday.length || lotusToday.length || makroToday.length
+      // Phase 1 WM ใช้ BL3 ไม่ต้องมี Order วันนี้ → wmHist แทน wmToday
+      const hasOrders = isPhase2
+        ? (wmToday.length || lotusToday.length || makroToday.length)
+        : (wmHist.length  || lotusToday.length || makroToday.length)
       if (!hasOrders)
         return NextResponse.json({
           success: false,
-          message: `ไม่พบ Order รอบ ${orderRound} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
+          message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
         }, { status: 400 })
     }
 
@@ -400,15 +403,14 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Min(Avg BL3, Quota) × %Variance
-      return Object.entries(wmMap).map(([sku, { qty: quotaToday, name }]) => {
-        const avg = avgWM.get(sku) ?? 0
-        const isShared = lotusTodaySkus.has(sku)
+      // Phase 1: Avg BL3 × %Variance — ไม่ต้องมี Order วันนี้
+      const wmHistNames = new Map(wmHist.map(r => [r.sku, r.sku_name]))
+      const lotusHistSkus = new Set(avgLotus.keys())
+      return Array.from(avgWM.entries()).map(([sku, avg]) => {
+        const isShared = lotusHistSkus.has(sku)
         const lotusBL3 = avgLotus.get(sku) ?? 0
-        const variance = getWetMarketVariance(isShared, quotaToday, avg, lotusBL3)
-        const base = avg > 0 ? Math.min(avg, quotaToday) : quotaToday
-        const targetQty = base * variance
-        return { sku, skuName: name, targetQty }
+        const variance = getWetMarketVariance(isShared, avg, avg, lotusBL3)
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance }
       }).filter(s => s.targetQty > 0)
     }
 
