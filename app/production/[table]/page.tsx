@@ -33,12 +33,6 @@ const BAR_COLORS = [
   { bg: '#2dd4bf', fg: '#134e4a' },
 ]
 
-const WORKER_AVATAR_COLORS = [
-  '#818cf8','#f472b6','#34d399','#fb923c','#60a5fa',
-  '#a78bfa','#22d3ee','#4ade80','#facc15','#f87171',
-  '#2dd4bf','#e879f9','#38bdf8','#86efac','#fda4af',
-]
-
 
 interface Assignment {
   id: string
@@ -255,7 +249,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
     const h = Math.floor(diffSecs / 3600)
     const m = Math.floor((diffSecs % 3600) / 60)
     const s = diffSecs % 60
-    const parts = h > 0 ? `${h}ชม. ${m}น. ${s}วิ` : m > 0 ? `${m}น. ${s}วิ` : `${s}วิ`
+    const parts = h > 0 ? `${h}ชม. ${m}น. ${s}` : m > 0 ? `${m}น. ${s}` : `${s}`
     return { text: parts, done: false }
   }
 
