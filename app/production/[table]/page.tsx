@@ -274,9 +274,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
             </div>
           ))}
         </div>
-        <div className="w-32 shrink-0 px-3 flex items-end pb-1.5 border-l border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Countdown</span>
-        </div>
+        <div className="w-32 shrink-0 border-l border-gray-100" />
       </div>
 
       {/* SKU rows */}
