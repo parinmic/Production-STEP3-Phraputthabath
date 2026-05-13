@@ -52,6 +52,19 @@ function shortName(full: string) {
   return full.trim().split(/\s+/)[0] ?? full
 }
 
+function mergeTasks(tasks: Assignment[]): Assignment[] {
+  const map = new Map<string, Assignment>()
+  for (const t of tasks) {
+    const existing = map.get(t.sku)
+    if (existing) {
+      existing.target_quantity = Number(existing.target_quantity) + Number(t.target_quantity)
+    } else {
+      map.set(t.sku, { ...t })
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
+}
+
 function statusIcon(s: string) {
   if (s === 'เสร็จแล้ว') return <CheckCircle2 size={11} />
   if (s === 'กำลังผลิต') return <PlayCircle   size={11} />
@@ -103,7 +116,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
       </div>
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
-          const tasks = [...byWorker[name]].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
+          const tasks = mergeTasks(byWorker[name])
           const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
@@ -208,7 +221,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
-    const tasks = [...rawTasks].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
+    const tasks = mergeTasks(rawTasks)
     let cur = phaseStartMins
     for (const task of tasks) {
       const dur      = taskDurMins(task)
@@ -359,7 +372,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
   return (
     <div className="grid grid-cols-3 gap-4">
       {workers.map(name => {
-        const tasks       = [...byWorker[name]].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
+        const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
         const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
         const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
