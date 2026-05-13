@@ -458,15 +458,19 @@ interface CurrentTimeViewProps {
 }
 
 function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeViewProps) {
-  const [nowMins, setNowMins] = useState(() => {
+  const [realNowMins, setRealNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
   useEffect(() => {
     const id = setInterval(() => {
-      const d = new Date(); setNowMins(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
+      const d = new Date(); setRealNowMins(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
     }, 5000)
     return () => clearInterval(id)
   }, [])
+
+  // null = live mode, number = selected hour (e.g. 8 = 08:00–09:00)
+  const [selectedHour, setSelectedHour] = useState<number | null>(null)
+  const nowMins = selectedHour !== null ? selectedHour * 60 + 30 : realNowMins
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
@@ -484,8 +488,43 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
     return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
   }
 
+  // Compute max end across all workers to determine hour range
+  let maxEndMins = phaseStartMins
+  for (const workerTasks of Object.values(byWorker)) {
+    const tasks = mergeTasks(workerTasks)
+    const totalDur = tasks.reduce((s, t) => s + taskDurMins(t), 0)
+    maxEndMins = Math.max(maxEndMins, phaseStartMins + totalDur)
+  }
+  const hourSlots: number[] = []
+  for (let h = phaseStart; h * 60 < maxEndMins; h++) hourSlots.push(h)
+
+  const isLive = selectedHour === null
+
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="space-y-4">
+      {/* Hour selector */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setSelectedHour(null)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${isLive
+            ? 'bg-gray-900 text-white'
+            : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
+          ตอนนี้
+        </button>
+        {hourSlots.map(h => (
+          <button key={h}
+            onClick={() => setSelectedHour(h)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedHour === h
+              ? 'bg-gray-900 text-white'
+              : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+            {String(h).padStart(2, '0')}:00
+          </button>
+        ))}
+      </div>
+
+      {/* Worker grid */}
+      <div className="grid grid-cols-3 gap-4">
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
@@ -501,7 +540,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
             endLabel:   minsToLabel(endMin) }
         })
 
-        // Find the task the worker should be doing right now
         const currentTask = taskInfo.find(t => nowMins >= t.startMin && nowMins < t.endMin)
         const allDone     = nowMins >= phaseStartMins + offset
         const notStarted  = nowMins < phaseStartMins
@@ -509,12 +547,12 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
         const card = currentTask ?? (notStarted ? taskInfo[0] : null)
         const col  = card ? skuColor[card.sku] : { bg: '#e5e7eb', fg: '#6b7280' }
 
-        // Progress within current task
-        const taskProgress = currentTask
+        const taskProgress = currentTask && isLive
           ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
+          : currentTask ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
           : allDone ? 100 : 0
 
-        const remainSecs = currentTask ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
+        const remainSecs = currentTask && isLive ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
         const rh = Math.floor(remainSecs / 3600)
         const rm = Math.floor((remainSecs % 3600) / 60)
         const remainLabel = rh > 0 ? `เหลืออีก ${rh}ชม. ${rm}น.` : rm > 0 ? `เหลืออีก ${rm}น.` : currentTask ? 'กำลังเสร็จ' : ''
@@ -554,7 +592,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
                       {Number(card.target_quantity).toLocaleString()} กก.
                     </span>
                   </div>
-                  {currentTask && (
+                  {currentTask && isLive && (
                     <p className="text-xs text-gray-400 mt-1">{remainLabel}</p>
                   )}
                 </div>
@@ -567,6 +605,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
           </div>
         )
       })}
+    </div>
     </div>
   )
 }
