@@ -295,8 +295,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 leading-tight truncate">{stat.name ?? sku}</p>
-                    <p className="text-[10px] font-mono text-gray-400">{sku} · {stat.workers.length} คน</p>
+                    <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{stat.workers.length} คน</p>
                   </div>
                 </div>
               </div>
