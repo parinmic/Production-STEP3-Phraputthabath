@@ -400,14 +400,14 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: quota × variance
+      // Phase 1: Min(Avg BL3, Quota) × %Variance
       return Object.entries(wmMap).map(([sku, { qty: quotaToday, name }]) => {
         const avg = avgWM.get(sku) ?? 0
         const isShared = lotusTodaySkus.has(sku)
         const lotusBL3 = avgLotus.get(sku) ?? 0
         const variance = getWetMarketVariance(isShared, quotaToday, avg, lotusBL3)
-        const effectiveAvg = avg > 0 ? avg : quotaToday
-        const targetQty = Math.min(quotaToday, effectiveAvg * variance)
+        const base = avg > 0 ? Math.min(avg, quotaToday) : quotaToday
+        const targetQty = base * variance
         return { sku, skuName: name, targetQty }
       }).filter(s => s.targetQty > 0)
     }
