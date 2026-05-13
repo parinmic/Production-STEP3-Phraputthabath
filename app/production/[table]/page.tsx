@@ -103,7 +103,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
       </div>
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
-          const tasks = byWorker[name]
+          const tasks = [...byWorker[name]].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
           const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
@@ -227,10 +227,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
 
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
-    .sort((a, b) => {
-      const d = skuStats[a].minStart - skuStats[b].minStart
-      return d !== 0 ? d : skuStats[b].totalQty - skuStats[a].totalQty
-    })
+    .sort((a, b) => skuStats[b].totalQty - skuStats[a].totalQty)
 
   if (!sortedSkus.length) return null
 
@@ -361,7 +358,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
   return (
     <div className="grid grid-cols-3 gap-4">
       {workers.map(name => {
-        const tasks       = byWorker[name]
+        const tasks       = [...byWorker[name]].sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
         const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
         const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
