@@ -8,12 +8,13 @@ export async function POST(req: NextRequest) {
   const period = PERIOD[String(phase)]
   if (!date || !period) return NextResponse.json({ error: 'missing params' }, { status: 400 })
 
-  // 1. ดึง production_assignments ของวันนี้ + phase นี้
+  // 1. ดึง production_assignments เฉพาะ 3 station พิเศษ
   const { data: assignments, error: e1 } = await supabase
     .from('production_assignments')
     .select('table_name, sku, sku_name, target_quantity')
     .eq('production_date', date)
     .eq('period', period)
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
 
   if (e1) return NextResponse.json({ error: e1.message }, { status: 500 })
   if (!assignments?.length) {
