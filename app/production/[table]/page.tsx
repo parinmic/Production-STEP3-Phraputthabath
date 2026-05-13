@@ -301,11 +301,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
 
               {/* Bar area */}
               <div className="flex-1 relative h-14">
-                {/* Grid lines */}
-                {ticks.map(t => (
-                  <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100"
-                    style={{ left: `${pct(t)}%` }} />
-                ))}
                 {/* Now indicator */}
                 {nowMins >= chartStart && nowMins <= chartEnd && (
                   <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10 opacity-70"
