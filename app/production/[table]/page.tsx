@@ -12,7 +12,7 @@ const CFG: Record<string, { label: string; accent: string; light: string }> = {
 const PHASES = [
   { phase: 1, label: 'Phase 1', sub: '8:00-14:00',       period: 'เช้า', startH: 8,  endH: 14,
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
-  { phase: 2, label: 'Phase 2', sub: '14:00-16:00',      period: 'บ่าย', startH: 13, endH: 17,
+  { phase: 2, label: 'Phase 2', sub: '14:00-16:00',      period: 'บ่าย', startH: 14, endH: 16,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
   { phase: 3, label: 'Phase 3', sub: '16:00 เป็นต้นไป', period: 'ค่ำ',  startH: 17, endH: 19,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },
