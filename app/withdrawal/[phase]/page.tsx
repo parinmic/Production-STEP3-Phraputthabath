@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Printer, RefreshCw, PackageOpen } from 'lucide-react'
+import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X } from 'lucide-react'
 
 interface WithdrawalItem {
   id: string
@@ -16,10 +16,21 @@ interface WithdrawalItem {
   note: string | null
 }
 
+interface CalcItem {
+  sku: string
+  sku_name: string | null
+  quantity: number
+  unit: string
+  work_station: string | null
+  note: string | null
+}
+
+type RowItem = CalcItem
+
 const PHASE_CONFIG = {
-  '1': { label: 'Phase 1 — รอบเช้า',   color: 'blue',   time: '08:00 น.' },
-  '2': { label: 'Phase 2 — รอบบ่าย',   color: 'orange', time: '13:00 น.' },
-  '3': { label: 'Phase 3 — แผน 100%',    color: 'purple', time: '18:00 น.' },
+  '1': { label: 'Phase 1 — รอบเช้า',  color: 'blue',   time: '08:00 น.' },
+  '2': { label: 'Phase 2 — รอบบ่าย',  color: 'orange', time: '13:00 น.' },
+  '3': { label: 'Phase 3 — แผน 100%', color: 'purple', time: '18:00 น.' },
 } as const
 
 const STATION_COLORS: Record<string, string> = {
@@ -31,9 +42,13 @@ const STATION_COLORS: Record<string, string> = {
 export default function WithdrawalPage() {
   const { phase } = useParams() as { phase: string }
   const today = new Date().toISOString().split('T')[0]
-  const [date, setDate] = useState(today)
-  const [items, setItems] = useState<WithdrawalItem[]>([])
-  const [loading, setLoading] = useState(false)
+  const [date, setDate]           = useState(today)
+  const [items, setItems]         = useState<WithdrawalItem[]>([])
+  const [loading, setLoading]     = useState(false)
+  const [calculating, setCalc]    = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [preview, setPreview]     = useState<CalcItem[] | null>(null)
+  const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -49,19 +64,60 @@ export default function WithdrawalPage() {
     }
   }, [date, phase])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); setPreview(null); setCalcMsg(null) }, [load])
 
-  const handlePrint = () => window.print()
+  const calculate = async () => {
+    setCalc(true); setCalcMsg(null)
+    try {
+      const res = await fetch('/api/withdrawal/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase: Number(phase) }),
+      })
+      const data = await res.json()
+      if (data.error) { setCalcMsg(data.error); return }
+      if (!data.items?.length) { setCalcMsg(data.message ?? 'ไม่พบข้อมูลคำสั่งผลิต'); return }
+      setPreview(data.items)
+    } catch {
+      setCalcMsg('เกิดข้อผิดพลาด ไม่สามารถคำนวณได้')
+    } finally {
+      setCalc(false)
+    }
+  }
 
-  // Group by work_station
-  const grouped = items.reduce<Record<string, WithdrawalItem[]>>((acc, item) => {
+  const save = async () => {
+    if (!preview) return
+    setSaving(true); setCalcMsg(null)
+    try {
+      const res = await fetch('/api/withdrawal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: preview, requestDate: date, phase: Number(phase) }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPreview(null)
+        await load()
+      } else {
+        setCalcMsg(data.message ?? 'บันทึกไม่สำเร็จ')
+      }
+    } catch {
+      setCalcMsg('บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const displayItems: RowItem[] = preview ?? items
+
+  const grouped = displayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
     const key = item.work_station ?? 'ไม่ระบุ Station'
     if (!acc[key]) acc[key] = []
     acc[key].push(item)
     return acc
   }, {})
 
-  const totalQty = items.reduce((s, i) => s + i.quantity, 0)
+  const totalQty = displayItems.reduce((s, i) => s + i.quantity, 0)
 
   const borderCls = cfg.color === 'blue'   ? 'border-blue-500'
                   : cfg.color === 'orange' ? 'border-orange-500'
@@ -72,7 +128,6 @@ export default function WithdrawalPage() {
 
   return (
     <>
-      {/* Print styles */}
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -88,9 +143,9 @@ export default function WithdrawalPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">รายการเบิกสินค้า</h1>
-            <p className="text-gray-500 mt-1">แสดงรายการสินค้าที่ต้องเบิกเพื่อการผลิต</p>
+            <p className="text-gray-500 mt-1">คำนวณจากคำสั่งผลิต + BOM หรือดูรายการที่บันทึกไว้</p>
           </div>
-          <button onClick={handlePrint}
+          <button onClick={() => window.print()}
             className="no-print flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors text-sm">
             <Printer size={16} /> ดาวน์โหลด / พิมพ์ PDF
           </button>
@@ -114,23 +169,57 @@ export default function WithdrawalPage() {
           })}
         </div>
 
-        {/* Filter bar */}
-        <div className={`no-print card border-l-4 ${borderCls} flex items-center gap-4 flex-wrap`}>
+        {/* Filter + action bar */}
+        <div className={`no-print card border-l-4 ${borderCls} flex items-center gap-3 flex-wrap`}>
           <Calendar size={18} className="text-gray-400 shrink-0" />
           <label className="font-medium text-gray-700 whitespace-nowrap">วันที่</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          <input type="date" value={date} onChange={e => { setDate(e.target.value); setPreview(null) }}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <button onClick={load} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> โหลดใหม่
           </button>
+
+          {/* Calculate button */}
+          <button onClick={calculate} disabled={calculating}
+            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg transition-colors">
+            <Zap size={14} className={calculating ? 'animate-pulse' : ''} />
+            {calculating ? 'กำลังคำนวณ...' : 'คำนวณอัตโนมัติ'}
+          </button>
+
           <span className={`ml-auto px-3 py-1 rounded-full text-sm font-semibold ${badgeCls}`}>
             {cfg.label} · {cfg.time}
           </span>
         </div>
 
+        {/* Calc error message */}
+        {calcMsg && (
+          <div className="no-print bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+            <span className="font-medium">⚠</span> {calcMsg}
+          </div>
+        )}
+
+        {/* Preview banner */}
+        {preview && (
+          <div className="no-print bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="font-semibold text-indigo-800">ผลการคำนวณ — {preview.length} รายการ</p>
+              <p className="text-sm text-indigo-600 mt-0.5">ตรวจสอบแล้วกด "บันทึก" เพื่อบันทึกลงระบบ</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPreview(null)}
+                className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg font-medium">
+                <X size={14} /> ยกเลิก
+              </button>
+              <button onClick={save} disabled={saving}
+                className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg transition-colors">
+                <Save size={14} /> {saving ? 'กำลังบันทึก...' : 'บันทึกรายการ'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Print area */}
         <div id="print-area" ref={printRef}>
-          {/* Print header (only visible when printing) */}
           <div className="hidden print:block mb-6">
             <div className="flex items-center justify-between border-b-2 border-gray-800 pb-3 mb-4">
               <div>
@@ -151,21 +240,21 @@ export default function WithdrawalPage() {
             </div>
           )}
 
-          {!loading && items.length === 0 && (
+          {!loading && displayItems.length === 0 && (
             <div className="card text-center py-12 no-print">
               <PackageOpen size={40} className="mx-auto text-gray-300 mb-3" />
               <p className="text-gray-500 font-medium">ยังไม่มีรายการเบิกสินค้า</p>
-              <p className="text-sm text-gray-400 mt-1">วันที่ {date} · {cfg.label}</p>
+              <p className="text-sm text-gray-400 mt-1">กด "คำนวณอัตโนมัติ" เพื่อสร้างรายการจากคำสั่งผลิต</p>
             </div>
           )}
 
-          {!loading && items.length > 0 && (
+          {!loading && displayItems.length > 0 && (
             <div className="space-y-6">
               {/* Summary */}
               <div className="grid grid-cols-3 gap-4 no-print">
                 <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">{items.length}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">รายการ SKU</p>
+                  <p className="text-2xl font-bold text-gray-900">{displayItems.length}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">รายการ</p>
                 </div>
                 <div className="card text-center">
                   <p className="text-2xl font-bold text-gray-900">{Object.keys(grouped).length}</p>
@@ -173,7 +262,7 @@ export default function WithdrawalPage() {
                 </div>
                 <div className="card text-center">
                   <p className="text-2xl font-bold text-gray-900">{totalQty.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">จำนวนรวม</p>
+                  <p className="text-sm text-gray-500 mt-0.5">รวม กก.</p>
                 </div>
               </div>
 
@@ -185,15 +274,15 @@ export default function WithdrawalPage() {
                       {station}
                     </span>
                     <span className="text-sm text-gray-500">
-                      {stationItems.length} รายการ · รวม {stationItems.reduce((s, i) => s + i.quantity, 0).toLocaleString()} ชิ้น
+                      {stationItems.length} รายการ · รวม {stationItems.reduce((s, i) => s + i.quantity, 0).toLocaleString()} กก.
                     </span>
                   </div>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b">
                         <th className="px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">รหัส SKU</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า</th>
+                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
+                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า / วัตถุดิบ</th>
                         <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
                         <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
                         <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
@@ -202,7 +291,7 @@ export default function WithdrawalPage() {
                     </thead>
                     <tbody>
                       {stationItems.map((item, idx) => (
-                        <tr key={item.id} className="border-b hover:bg-gray-50">
+                        <tr key={`${item.sku}-${idx}`} className="border-b hover:bg-gray-50">
                           <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
                           <td className="px-3 py-2.5 text-gray-800">{item.sku_name ?? '-'}</td>
@@ -229,7 +318,7 @@ export default function WithdrawalPage() {
               {/* Grand total */}
               <div className="card bg-gray-900 text-white flex items-center justify-between px-6 py-4">
                 <span className="font-semibold">รวมทั้งหมด — {cfg.label}</span>
-                <span className="text-2xl font-bold">{totalQty.toLocaleString()} ชิ้น</span>
+                <span className="text-2xl font-bold">{totalQty.toLocaleString()} กก.</span>
               </div>
 
               {/* Signature area for print */}
