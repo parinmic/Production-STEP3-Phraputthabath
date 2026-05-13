@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-function toISODate(val: unknown): string {
-  if (!val) return ''
+function toISODate(val: unknown): string | null {
+  if (!val) return null
   const s = String(val).trim()
+  if (!s) return null
   const parts = s.split('/')
   if (parts.length === 3) {
     const [d, m, y] = parts
