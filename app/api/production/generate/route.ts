@@ -193,6 +193,7 @@ export async function POST(req: NextRequest) {
     const productionDate: string = date ?? new Date().toISOString().split('T')[0]
     const selectedPhase: number = phaseParam ? Number(phaseParam) : 1
     const isPhase2 = selectedPhase === 2
+    const isPhase3 = selectedPhase === 3
 
     const phaseCfg = PHASE_CONFIG.find(p => p.phase === selectedPhase)
     if (!phaseCfg) return NextResponse.json({ success: false, message: 'Phase ไม่ถูกต้อง' }, { status: 400 })
@@ -220,7 +221,8 @@ export async function POST(req: NextRequest) {
       { data: masterProdRaw },
       { data: masterChannelRaw },
       { data: jobAssignRaw },
-      { data: phase1Raw },
+      { data: prevAssignedRaw },
+      { data: plan100Raw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
         .select('emp_id, name, work_station, shift')
@@ -265,13 +267,19 @@ export async function POST(req: NextRequest) {
         .order('uploaded_at', { ascending: false }),
       supabase.from('master_logic_manpower')
         .select('row_data'),
-      // Phase 2: load Phase 1 assignments to deduct already-produced qty
-      isPhase2
+      // Phase 2/3: load previously-assigned quantities to deduct
+      (isPhase2 || isPhase3)
         ? supabase.from('production_assignments')
             .select('sku, target_quantity')
             .eq('production_date', productionDate)
-            .eq('period', 'เช้า')
+            .in('period', isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'])
         : Promise.resolve({ data: [] as { sku: string; target_quantity: number }[], error: null }),
+      // Phase 3: load 100% production plan
+      isPhase3
+        ? supabase.from('production_plan_100')
+            .select('sap, product_name, weight_total')
+            .eq('plan_date', productionDate)
+        : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
     ])
 
     // Merge workforce: Phase 2 = 0800 + 1300 (deduplicated)
@@ -298,12 +306,17 @@ export async function POST(req: NextRequest) {
     const makroToday = (makroTodayRaw ?? []) as OrderRow[]
     const makroHist  = (makroHistRaw  ?? []) as OrderRow[]
 
-    const hasOrders = wmToday.length || lotusToday.length || makroToday.length
-    if (!hasOrders)
-      return NextResponse.json({
-        success: false,
-        message: `ไม่พบ Order รอบ ${orderRound} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
-      }, { status: 400 })
+    if (isPhase3) {
+      if (!(plan100Raw ?? []).length)
+        return NextResponse.json({ success: false, message: 'ไม่พบแผนผลิต 100% วันนี้ — กรุณาอัพโหลดก่อน' }, { status: 400 })
+    } else {
+      const hasOrders = wmToday.length || lotusToday.length || makroToday.length
+      if (!hasOrders)
+        return NextResponse.json({
+          success: false,
+          message: `ไม่พบ Order รอบ ${orderRound} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
+        }, { status: 400 })
+    }
 
     // ------ Parse master data ------
     const productivity: ProductivityRow[] = masterProdRaw?.length
@@ -353,7 +366,7 @@ export async function POST(req: NextRequest) {
 
     // ------ Phase 1 produced qty per SKU (Phase 2 only) ------
     const phase1Assigned = new Map<string, number>()
-    for (const a of (phase1Raw ?? []) as { sku: string; target_quantity: number }[]) {
+    for (const a of (prevAssignedRaw ?? []) as { sku: string; target_quantity: number }[]) {
       phase1Assigned.set(a.sku, (phase1Assigned.get(a.sku) ?? 0) + Number(a.target_quantity))
     }
 
@@ -439,51 +452,71 @@ export async function POST(req: NextRequest) {
       'LOTUS':      buildLotusTargets(),
     }
 
+    // ------ Build assignment list ------
+    let assignList: SkuTarget[]
+    if (isPhase3) {
+      // Phase 3: plan_100 − Ph1 − Ph2
+      const plan100 = (plan100Raw ?? []) as { sap: string; product_name: string | null; weight_total: number }[]
+      const planMap = new Map<string, { name: string | null; qty: number }>()
+      for (const r of plan100) {
+        const cur = planMap.get(r.sap) ?? { name: r.product_name ?? null, qty: 0 }
+        cur.qty += Number(r.weight_total)
+        planMap.set(r.sap, cur)
+      }
+      assignList = Array.from(planMap.entries())
+        .map(([sku, { name, qty }]) => ({
+          sku, skuName: name,
+          targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
+        }))
+        .filter(t => t.targetQty > 0)
+        .sort((a, b) => b.targetQty - a.targetQty)
+    } else {
+      // Phase 1/2: channel priority order, sorted by qty desc within each channel
+      assignList = activeChannels.flatMap(ch =>
+        (channelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
+      )
+    }
+
     // ------ Assign workers ------
     const assignments: Record<string, unknown>[] = []
 
-    for (const channel of activeChannels) {
-      const targets = (channelTargets[channel] ?? [])
-        .sort((a, b) => b.targetQty - a.targetQty)
+    for (const { sku, skuName, targetQty } of assignList) {
+      const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
+      if (!prod) continue
 
-      for (const { sku, skuName, targetQty } of targets) {
-        const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
-        if (!prod) continue
+      const station   = normalizeStation(prod.station)
+      const tableName = STATION_TABLE[station] ?? station
+      const skuGroup  = prod.product_group
 
-        const station   = normalizeStation(prod.station)
-        const tableName = STATION_TABLE[station] ?? station
-        const skuGroup  = prod.product_group
-
-        const allAtStation = workersByStation[station] ?? []
-        const eligibleWorkers = allAtStation
-          .filter(w => {
-            const jobInfo = jobAssignMap.get(normName(w.name))
-            if (!jobInfo || jobInfo.groups.size === 0) return true
-            return skuGroup ? jobInfo.groups.has(skuGroup) : true
-          })
-          .sort((a, b) => {
-            const lvA = jobAssignMap.get(normName(a.name))?.groups.get(skuGroup) ?? 99
-            const lvB = jobAssignMap.get(normName(b.name))?.groups.get(skuGroup) ?? 99
-            if (lvA !== lvB) return lvA - lvB
-            return (workerHours.get(b.emp_id) ?? 0) - (workerHours.get(a.emp_id) ?? 0)
-          })
-        if (!eligibleWorkers.length) continue
-
-        const newAssignments = assignWorkers({
-          productionDate,
-          tableName,
-          sku: String(sku),
-          skuName: prod.sku_name || skuName || null,
-          targetQty,
-          eligibleWorkers,
-          rate: prod.rate,
-          workerHours,
-          period: phaseCfg.period,
-          deadline: phaseCfg.deadline,
+      const allAtStation = workersByStation[station] ?? []
+      const eligibleWorkers = allAtStation
+        .filter(w => {
+          const jobInfo = jobAssignMap.get(normName(w.name))
+          if (!jobInfo || jobInfo.groups.size === 0) return true
+          return skuGroup ? jobInfo.groups.has(skuGroup) : true
         })
+        .sort((a, b) => {
+          const lvA = jobAssignMap.get(normName(a.name))?.groups.get(skuGroup) ?? 99
+          const lvB = jobAssignMap.get(normName(b.name))?.groups.get(skuGroup) ?? 99
+          if (lvA !== lvB) return lvA - lvB
+          return (workerHours.get(b.emp_id) ?? 0) - (workerHours.get(a.emp_id) ?? 0)
+        })
+      if (!eligibleWorkers.length) continue
 
-        assignments.push(...newAssignments)
-      }
+      const newAssignments = assignWorkers({
+        productionDate,
+        tableName,
+        sku: String(sku),
+        skuName: prod.sku_name || skuName || null,
+        targetQty,
+        eligibleWorkers,
+        rate: prod.rate,
+        workerHours,
+        period: phaseCfg.period,
+        deadline: phaseCfg.deadline,
+      })
+
+      assignments.push(...newAssignments)
     }
 
     // Tag each assignment with its position so the frontend can sort tasks per worker in generation order
@@ -505,14 +538,16 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase.from('production_assignments').insert(assignments)
     if (error) throw error
 
-    const channelSummary = activeChannels
-      .map(ch => {
-        const targets = channelTargets[ch] ?? []
-        const count = assignments.filter(a => targets.find(t => t.sku === a['sku'])).length
-        return count > 0 ? `${ch} ${count}` : null
-      })
-      .filter(Boolean)
-      .join(', ')
+    const channelSummary = isPhase3
+      ? 'แผน 100% − Ph1 − Ph2'
+      : activeChannels
+          .map(ch => {
+            const targets = channelTargets[ch] ?? []
+            const count = assignments.filter(a => targets.find(t => t.sku === a['sku'])).length
+            return count > 0 ? `${ch} ${count}` : null
+          })
+          .filter(Boolean)
+          .join(', ')
 
     return NextResponse.json({
       success: true,
