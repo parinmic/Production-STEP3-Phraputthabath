@@ -28,9 +28,9 @@ interface ProductivityRow {
 // ========== Phase config ==========
 
 const PHASE_CONFIG = [
-  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8  },
-  { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17 },
+  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8,  endH: 14 },
+  { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17, endH: 19 },
 ]
 
 // ========== Station mapping ==========
@@ -128,13 +128,16 @@ function maxWorkersForQty(qty: number): number {
 }
 
 /**
- * Dynamic work queue: workers join the SKU pool as they become free (earliest first).
- * Early workers do more; late workers do less. SKU finishes as fast as possible.
+ * Dynamic work queue with per-phase time cap.
  *
- * Example: pool=90 kg, rate=60 kg/hr, A free@08:00, B free@09:00, C free@10:00
- *   - A works alone 08:00–09:00 → consumes 60 kg (30 kg left)
- *   - B joins 09:00, A+B split 30 kg → done at 09:15
- *   - C has nothing left to do
+ * Workers join the shared SKU pool as they become free (earliest first).
+ * Each worker is capped at phaseEndMins and their own remainingHours.
+ * When a worker exhausts their capacity mid-SKU, remaining work flows to others.
+ *
+ * Example: pool=90 kg, rate=60 kg/hr, A@08:00, B@09:00, C@10:00, phase ends 14:00
+ *   Segment [08:00–09:00]: A alone → 60 kg consumed, 30 left
+ *   Segment [09:00–...]:   A+B split 30 → done at 09:15
+ *   C never joins (pool exhausted)
  */
 function assignWorkers(
   params: {
@@ -147,62 +150,66 @@ function assignWorkers(
     rate: number
     workerHours: Map<string, number>
     workerFreeAtMins: Map<string, number>
+    phaseEndMins: number
     period: string
     deadline: string | null
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
-    eligibleWorkers, rate, workerHours, workerFreeAtMins, period, deadline,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, deadline,
   } = params
 
   const entries = eligibleWorkers
-    .map(w => ({
-      worker:         w,
-      freeAt:         workerFreeAtMins.get(w.emp_id) ?? 0,
-      remainingHours: workerHours.get(w.emp_id) ?? 0,
-    }))
-    .filter(e => e.remainingHours > 0.01)
-    .sort((a, b) => a.freeAt - b.freeAt)  // earliest-free first
+    .map(w => {
+      const freeAt         = workerFreeAtMins.get(w.emp_id) ?? 0
+      const remainingHours = workerHours.get(w.emp_id) ?? 0
+      // cap to time remaining in phase
+      const effectiveHours = Math.min(remainingHours, Math.max(0, (phaseEndMins - freeAt) / 60))
+      return { worker: w, freeAt, exhaustAt: freeAt + effectiveHours * 60, remainingHours }
+    })
+    .filter(e => e.exhaustAt > e.freeAt + 0.1)  // must have usable capacity
+    .sort((a, b) => a.freeAt - b.freeAt)
 
   if (!entries.length) return []
 
-  let pool    = targetQty
-  let simTime = entries[0].freeAt
-  const active: typeof entries = []
-  const workerQty = new Map<string, number>()
+  // Build sorted event timeline: every join time + every exhaust time
+  const eventTimes = Array.from(
+    new Set(entries.flatMap(e => [e.freeAt, e.exhaustAt]))
+  ).sort((a, b) => a - b)
 
-  for (let i = 0; i < entries.length && pool > 0.01; i++) {
-    const e = entries[i]
+  let pool = targetQty
+  const workerQty      = new Map<string, number>()
+  const workerFinishAt = new Map<string, number>()
 
-    // Consume pool from simTime → e.freeAt by all currently active workers
-    if (active.length > 0 && e.freeAt > simTime) {
-      const dtHours  = (e.freeAt - simTime) / 60
-      const consumed = active.length * rate * dtHours
+  for (let i = 0; i < eventTimes.length - 1 && pool > 0.01; i++) {
+    const t0 = eventTimes[i]
+    const t1 = eventTimes[i + 1]
 
-      if (consumed >= pool) {
-        // Pool exhausted before this worker can join
-        const finishMins = simTime + (pool / (active.length * rate)) * 60
-        for (const a of active) {
-          workerQty.set(a.worker.emp_id, ((finishMins - a.freeAt) / 60) * rate)
-          workerFreeAtMins.set(a.worker.emp_id, finishMins)
-        }
-        pool = 0
-        break
+    // Active in this segment: joined (freeAt ≤ t0) and not yet exhausted (exhaustAt > t0)
+    const active = entries.filter(e => e.freeAt <= t0 && e.exhaustAt > t0)
+    if (!active.length) continue
+
+    const totalRate  = active.length * rate
+    const maxConsume = totalRate * (t1 - t0) / 60
+
+    if (maxConsume >= pool) {
+      // Pool exhausted within this segment — each active worker gets equal share
+      const perWorkerQty = pool / active.length
+      const finishAt     = t0 + (pool / totalRate) * 60
+      for (const a of active) {
+        workerQty.set(a.worker.emp_id, (workerQty.get(a.worker.emp_id) ?? 0) + perWorkerQty)
+        workerFinishAt.set(a.worker.emp_id, finishAt)
       }
-      pool -= consumed
-    }
-
-    simTime = e.freeAt
-    active.push(e)
-  }
-
-  // All eligible workers joined — finish remaining pool together
-  if (pool > 0.01 && active.length > 0) {
-    const finishMins = simTime + (pool / (active.length * rate)) * 60
-    for (const a of active) {
-      workerQty.set(a.worker.emp_id, ((finishMins - a.freeAt) / 60) * rate)
-      workerFreeAtMins.set(a.worker.emp_id, finishMins)
+      pool = 0
+    } else {
+      // Full segment: each active worker contributes equally
+      const perWorkerQty = rate * (t1 - t0) / 60
+      for (const a of active) {
+        workerQty.set(a.worker.emp_id, (workerQty.get(a.worker.emp_id) ?? 0) + perWorkerQty)
+        workerFinishAt.set(a.worker.emp_id, t1)
+      }
+      pool -= maxConsume
     }
   }
 
@@ -210,7 +217,9 @@ function assignWorkers(
   for (const e of entries) {
     const qty = workerQty.get(e.worker.emp_id) ?? 0
     if (qty < 0.5) continue
+    const finishAt = workerFinishAt.get(e.worker.emp_id) ?? e.freeAt
     workerHours.set(e.worker.emp_id, e.remainingHours - qty / rate)
+    workerFreeAtMins.set(e.worker.emp_id, finishAt)
     result.push({
       production_date: productionDate,
       table_name:      tableName,
@@ -404,6 +413,7 @@ export async function POST(req: NextRequest) {
 
     // Each worker starts with full phase hours and becomes free at phase start
     const phaseStartMins = phaseCfg.startH * 60
+    const phaseEndMins   = phaseCfg.endH   * 60
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     for (const w of workforce) {
@@ -567,6 +577,7 @@ export async function POST(req: NextRequest) {
         rate: prod.rate,
         workerHours,
         workerFreeAtMins,
+        phaseEndMins,
         period: phaseCfg.period,
         deadline: phaseCfg.deadline,
       })
