@@ -184,17 +184,18 @@ interface SkuScheduleViewProps {
 }
 
 function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleViewProps) {
-  const [nowMins, setNowMins] = useState(() => {
+  const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
-    return d.getHours() * 60 + d.getMinutes()
+    return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
   })
   useEffect(() => {
     const id = setInterval(() => {
       const d = new Date()
-      setNowMins(d.getHours() * 60 + d.getMinutes())
-    }, 30000)
+      setNowSecs(d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds())
+    }, 1000)
     return () => clearInterval(id)
   }, [])
+  const nowMins = nowSecs / 60
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
@@ -250,11 +251,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
   const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
 
   const countdown = (endMins: number) => {
-    const diff = endMins - nowMins
-    if (diff <= 0) return { text: 'เสร็จแล้ว', done: true }
-    const h = Math.floor(diff / 60)
-    const m = diff % 60
-    return { text: h > 0 ? `${h}ชม. ${m}น.` : `${m} น.`, done: false }
+    const diffSecs = endMins * 60 - nowSecs
+    if (diffSecs <= 0) return { text: 'เสร็จแล้ว', done: true }
+    const h = Math.floor(diffSecs / 3600)
+    const m = Math.floor((diffSecs % 3600) / 60)
+    const s = diffSecs % 60
+    const parts = h > 0 ? `${h}ชม. ${m}น. ${s}วิ` : m > 0 ? `${m}น. ${s}วิ` : `${s}วิ`
+    return { text: parts, done: false }
   }
 
   const SKU_COL_W = 176
