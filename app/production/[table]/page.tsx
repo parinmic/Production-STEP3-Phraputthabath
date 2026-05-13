@@ -314,21 +314,18 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                     style={{ left: `${pct(nowMins)}%` }} />
                 )}
                 {/* Bar */}
-                <div className="absolute top-2.5 bottom-2.5 rounded-md flex items-center px-2.5 overflow-hidden"
+                <div className="absolute top-2.5 bottom-2.5 rounded-md"
                   style={{
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
                     backgroundColor: col.bg,
                     opacity: cd.done ? 0.45 : 1,
-                  }}>
-                  <span className="text-[11px] font-bold truncate whitespace-nowrap"
-                    style={{ color: col.fg }}>
-                    {stat.totalQty.toLocaleString()} กก.
-                    <span className="opacity-70 font-normal ml-1">
-                      {minsToLabel(stat.minStart)}–{minsToLabel(stat.maxEnd)}
-                    </span>
-                  </span>
-                </div>
+                  }} />
+                {/* Quantity label after bar */}
+                <span className="absolute top-1/2 -translate-y-1/2 text-[11px] font-bold whitespace-nowrap pl-1.5"
+                  style={{ left: `${barLeft + barWidth}%`, color: col.bg }}>
+                  {stat.totalQty.toLocaleString()} กก.
+                </span>
               </div>
 
               {/* Countdown */}
