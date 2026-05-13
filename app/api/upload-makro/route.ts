@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
             quantity:      parseFloat(String(r['rPlan_qty'] || '0')) || 0,
             period:        String(r['rShip_name'] ?? '').trim() || null,
             upload_round:  round ?? '0800',
+            source_file:   filename ?? 'unknown',
           }
         }
         return {
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
           quantity:      Number(r['ปริมาณ']) || 0,
           period:        String(r['ช่วงเวลา'] ?? '').trim() || null,
           upload_round:  round ?? '0800',
+          source_file:   filename ?? 'unknown',
         }
       })
       .filter((r: { sku: string; quantity: number }) => r.sku && r.quantity > 0)
@@ -62,7 +64,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'ไม่พบรายการที่มี SKU และปริมาณ > 0' }, { status: 400 })
     }
 
-    // Replace existing records for same delivery dates + round to prevent duplicates
     const deliveryDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
     if (deliveryDates.length) {
       await supabase.from('makro_orders')
@@ -82,6 +83,20 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    const round      = req.nextUrl.searchParams.get('round')
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    const tableName = round ? `makro_orders_${round}` : 'makro_orders'
+    await supabase.from('makro_orders').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
   }

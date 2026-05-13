@@ -31,11 +31,9 @@ export async function POST(req: NextRequest) {
     const { rows, filename, round } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
-    // Return column names on first upload to help identify format
     const cols = Object.keys(rows[0])
     const sample = rows[0]
 
-    // Try to detect known column patterns — update these once file format is known
     const hasNativeFormat = cols.some(c => c.startsWith('r') && c.length > 2)
     const records = rows
       .map((r: Record<string, unknown>) => {
@@ -53,6 +51,7 @@ export async function POST(req: NextRequest) {
             quantity:      parseFloat(String(r[qtyCol] || '0')) || 0,
             period:        null,
             upload_round:  round ?? '0800',
+            source_file:   filename ?? 'unknown',
           }
         }
         return {
@@ -63,6 +62,7 @@ export async function POST(req: NextRequest) {
           quantity:      Number(r['ปริมาณ'] ?? r['จำนวน'] ?? r['qty'] ?? 0) || 0,
           period:        String(r['ช่วงเวลา'] ?? '').trim() || null,
           upload_round:  round ?? '0800',
+          source_file:   filename ?? 'unknown',
         }
       })
       .filter((r: { sku: string; quantity: number }) => r.sku && r.quantity > 0)
@@ -75,7 +75,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Replace existing records for same delivery dates + round to prevent duplicates
     const deliveryDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
     if (deliveryDates.length) {
       await supabase.from('lotus_orders')
@@ -100,5 +99,19 @@ export async function POST(req: NextRequest) {
       : typeof e === 'object' && e !== null && 'message' in e ? String((e as {message:unknown}).message)
       : 'เกิดข้อผิดพลาด'
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    const round      = req.nextUrl.searchParams.get('round')
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    const tableName = round ? `lotus_orders_${round}` : 'lotus_orders'
+    await supabase.from('lotus_orders').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
   }
 }

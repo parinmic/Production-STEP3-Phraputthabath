@@ -31,11 +31,11 @@ export async function POST(req: NextRequest) {
       work_station:   String(r['work_station'] ?? '').trim() || null,
       shift:          String(r['shift'] ?? '').trim() || null,
       required_skill: String(r['required_skill'] ?? '').trim() || null,
+      source_file:    filename ?? 'unknown',
     })).filter((r: { emp_id: string; name: string }) => r.emp_id && r.name)
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง (ต้องมี emp_id และ name)' }, { status: 400 })
 
-    // Replace existing records for same date + round to prevent duplicates
     await supabase.from('daily_workforce')
       .delete()
       .eq('work_date', workDate)
@@ -57,5 +57,19 @@ export async function POST(req: NextRequest) {
       : typeof e === 'object' && e !== null && 'message' in e ? String((e as {message:unknown}).message)
       : 'เกิดข้อผิดพลาด'
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    const round      = req.nextUrl.searchParams.get('round')
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    const tableName = round ? `daily_workforce_${round}` : 'daily_workforce'
+    await supabase.from('daily_workforce').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
   }
 }

@@ -63,3 +63,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    const type       = req.nextUrl.searchParams.get('type') ?? ''
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    const tableName = type ? `master_logic_calc_${type.replace(/-/g, '_')}` : ''
+    await supabase.from('master_logic_calculation').delete().eq('source_file', sourceFile)
+    if (tableName) await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
+  }
+}

@@ -65,3 +65,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    await supabase.from('production_plan_100').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('table_name', 'production_plan_100').eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
+  }
+}

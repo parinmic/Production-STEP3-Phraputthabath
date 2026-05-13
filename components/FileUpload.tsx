@@ -24,6 +24,7 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
   const [filename, setFilename] = useState('')
   const [history, setHistory] = useState<UploadRecord[]>([])
   const [currentFile, setCurrentFile] = useState<File | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const fetchHistory = async () => {
@@ -71,6 +72,19 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
     if (inputRef.current) inputRef.current.value = ''
   }
 
+  const handleDelete = async (sourceFile: string) => {
+    if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
+    setDeleting(sourceFile)
+    try {
+      const sep = historyEndpoint.includes('?') ? '&' : '?'
+      const res = await fetch(`${historyEndpoint}${sep}file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) fetchHistory()
+      else alert(data.message ?? 'ลบไม่สำเร็จ')
+    } catch { alert('เกิดข้อผิดพลาด') }
+    finally { setDeleting(null) }
+  }
+
   const cols = preview.length ? Object.keys(preview[0]) : []
   return (
     <div className="space-y-6">
@@ -113,6 +127,7 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
                   <th className="px-3 py-2 text-left text-gray-600 font-medium border-b">ชื่อไฟล์</th>
                   <th className="px-3 py-2 text-right text-gray-600 font-medium border-b">รายการ</th>
                   <th className="px-3 py-2 text-left text-gray-600 font-medium border-b">เวลาอัพโหลด</th>
+                  <th className="px-3 py-2 border-b w-8" />
                 </tr>
               </thead>
               <tbody>
@@ -122,6 +137,16 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
                     <td className="px-3 py-2 text-gray-700 text-right">{h.record_count.toLocaleString()}</td>
                     <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
                       {new Date(h.uploaded_at).toLocaleString('th-TH', {dateStyle:'short', timeStyle:'short'})}
+                    </td>
+                    <td className="px-2 py-2">
+                      <button
+                        onClick={() => handleDelete(h.source_file)}
+                        disabled={deleting === h.source_file}
+                        className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                        title="ลบ"
+                      >
+                        <X size={14} />
+                      </button>
                     </td>
                   </tr>
                 ))}

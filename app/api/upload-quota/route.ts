@@ -5,7 +5,6 @@ const TARGET_WAREHOUSE = 'โรงชำแหละสุกรพระพุ
 
 function daykeyToDate(daykey: unknown): string {
   if (!daykey) return ''
-  // cellDates:true in the parser serializes Excel date cells to ISO strings via JSON
   if (typeof daykey === 'string' && daykey.includes('T')) return daykey.split('T')[0]
   const n = Number(daykey)
   if (!n || isNaN(n)) return ''
@@ -32,16 +31,17 @@ export async function POST(req: NextRequest) {
       String(r['WarehouseForPlan1'] ?? '').trim() === TARGET_WAREHOUSE
     )
     if (!filtered.length) {
-      return NextResponse.json({ success: false, message: `ไม่พบข้อมูลของโรงชำแหละสุกรพระพุทธบาทในไฟล์` }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลของโรงชำแหละสุกรพระพุทธบาทในไฟล์' }, { status: 400 })
     }
 
     const records = filtered.map((r: Record<string, unknown>) => ({
-      quota_date: daykeyToDate(r['daykey']),
-      channel:    String(r['CustomerForPlan2'] ?? '').trim(),
-      sku:        String(r['ProductBKey'] ?? '').trim(),
-      sku_name:   String(r['ProductNameTha'] ?? '').trim(),
-      quantity:   Number(r['*Confirm_BaseUnit']) || Number(r['*Forecast_BaseUnit']) || 0,
-      period:     null,
+      quota_date:  daykeyToDate(r['daykey']),
+      channel:     String(r['CustomerForPlan2'] ?? '').trim(),
+      sku:         String(r['ProductBKey'] ?? '').trim(),
+      sku_name:    String(r['ProductNameTha'] ?? '').trim(),
+      quantity:    Number(r['*Confirm_BaseUnit']) || Number(r['*Forecast_BaseUnit']) || 0,
+      period:      null,
+      source_file: filename ?? 'unknown',
     })).filter((r: { sku: string; channel: string; quantity: number }) =>
       r.sku && r.channel && r.quantity > 0
     )
@@ -64,5 +64,17 @@ export async function POST(req: NextRequest) {
       : typeof e === 'object' && e !== null && 'message' in e ? String((e as {message:unknown}).message)
       : 'เกิดข้อผิดพลาด'
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const sourceFile = req.nextUrl.searchParams.get('file')
+    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
+    await supabase.from('channel_quotas').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('table_name', 'channel_quotas').eq('source_file', sourceFile)
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
   }
 }
