@@ -314,7 +314,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                     style={{ left: `${pct(nowMins)}%` }} />
                 )}
                 {/* Bar */}
-                <div className="absolute top-2.5 bottom-2.5 rounded-md"
+                <div className="absolute top-2.5 bottom-2.5"
                   style={{
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
