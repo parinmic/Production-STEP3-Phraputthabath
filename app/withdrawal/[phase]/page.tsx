@@ -132,7 +132,54 @@ export default function WithdrawalPage() {
     }
   }
 
-  const displayItems: RowItem[] = preview ?? items
+  // Parse lot info from saved note: "Lot: [spec] | รร.[factory] | ผลิต [date]"
+  function parseLotNote(note: string | null): { spec_code: string; factory: string; prod_date: string } | null {
+    if (!note?.startsWith('Lot:')) return null
+    const parts = note.split(' | ')
+    return {
+      spec_code: parts[0]?.replace('Lot:', '').trim() ?? note,
+      factory:   parts[1]?.replace('รร.', '').trim() ?? '-',
+      prod_date: parts[2]?.replace('ผลิต', '').trim() ?? '-',
+    }
+  }
+
+  // Group saved items by (station, sku) and reconstruct lot sub-rows from notes
+  function groupSaved(raw: WithdrawalItem[]): RowItem[] {
+    const map = new Map<string, WithdrawalItem[]>()
+    for (const item of raw) {
+      const k = `${item.work_station ?? ''}|||${item.sku}`
+      const list = map.get(k) ?? []
+      list.push(item)
+      map.set(k, list)
+    }
+    return Array.from(map.values()).map(group => {
+      const first = group[0]
+      const hasLot = group.some(i => parseLotNote(i.note) !== null)
+      if (!hasLot) return { ...first } as RowItem
+      return {
+        sku:          first.sku,
+        sku_name:     first.sku_name,
+        quantity:     group.reduce((s, i) => s + i.quantity, 0),
+        unit:         first.unit,
+        work_station: first.work_station,
+        note:         'คำนวณจาก BOM',
+        lots: group.map(item => {
+          const p = parseLotNote(item.note)
+          const isInsufficient = item.note?.includes('ไม่เพียงพอ') ?? false
+          return {
+            spec_code:    p?.spec_code ?? item.note ?? '-',
+            factory:      p?.factory   ?? '-',
+            prod_date:    p?.prod_date ?? '-',
+            available:    0,
+            to_withdraw:  item.quantity,
+            insufficient: isInsufficient,
+          } satisfies LotInfo
+        }),
+      } as RowItem
+    })
+  }
+
+  const displayItems: RowItem[] = preview ?? groupSaved(items)
 
   const grouped = displayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
     const key = item.work_station ?? 'ไม่ระบุ Station'
