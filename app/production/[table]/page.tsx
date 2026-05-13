@@ -561,43 +561,7 @@ export default function TablePage() {
 
       {/* Content */}
       {!loading && filtered.length > 0 && (
-        <div className="flex gap-4 items-start">
-
-          {/* ─── Left: SKU summary box ─── */}
-          <div className="w-56 shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">SKU ที่ต้องผลิตวันนี้</p>
-            </div>
-            <div className="divide-y divide-gray-50 max-h-[84vh] overflow-y-auto">
-              {(() => {
-                const skuMap: Record<string, { name: string | null; total: number }> = {}
-                for (const a of items) {
-                  skuMap[a.sku] ??= { name: a.sku_name, total: 0 }
-                  skuMap[a.sku].total += Number(a.target_quantity)
-                }
-                const skuList = Object.entries(skuMap).sort((a, b) => b[1].total - a[1].total)
-                const allSkus = Array.from(new Set(items.map(a => a.sku)))
-                const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-                allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
-                return skuList.map(([sku, info]) => (
-                  <div key={sku} className="flex items-start gap-2 px-3 py-2">
-                    <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-0.5"
-                      style={{ backgroundColor: skuColor[sku]?.bg ?? '#94a3b8' }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-1">
-                        <p className="text-[11px] font-medium text-gray-800 leading-tight">{info.name ?? sku}</p>
-                        <p className="text-[11px] font-bold text-gray-700 whitespace-nowrap shrink-0 ml-1">{info.total.toLocaleString()} กก.</p>
-                      </div>
-                      <p className="text-[10px] font-mono text-gray-400 mt-0.5">{sku}</p>
-                    </div>
-                  </div>
-                ))
-              })()}
-            </div>
-          </div>
-
-          {/* ─── Right: toggle + views ─── */}
-          <div className="flex-1 min-w-0 space-y-3">
+        <div className="space-y-3">
             {/* View toggle */}
             <div className="flex items-center gap-2">
               <button
@@ -640,7 +604,6 @@ export default function TablePage() {
                 nameMap={nameMap}
               />
             )}
-          </div>
         </div>
       )}
     </div>
