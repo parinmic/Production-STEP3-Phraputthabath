@@ -119,6 +119,14 @@ function getMakroVariance(proportionAbove10pct: boolean, orderQty: number, avgBL
   return proportionAbove10pct ? 0.6 : 0.4
 }
 
+/** Cap number of workers based on target quantity */
+function maxWorkersForQty(qty: number): number {
+  if (qty <= 15) return 1
+  if (qty <= 30) return 2
+  if (qty <= 45) return 3
+  return Infinity
+}
+
 /** Water-fill: ทุกคนที่ทำได้ทำ SKU เดียวกันพร้อมกัน แบ่งปริมาณเท่าๆ กัน
  *  SKU ถูกเรียงจากมากไปน้อย → SKU ใหญ่สุดเสร็จก่อนเสมอ
  *  ใครรับได้น้อยกว่า (capacity น้อย) จะได้น้อยกว่า แล้ว load ส่วนที่เหลือกระจายให้คนอื่น */
@@ -506,13 +514,15 @@ export async function POST(req: NextRequest) {
         })
       if (!eligibleWorkers.length) continue
 
+      const cappedWorkers = eligibleWorkers.slice(0, maxWorkersForQty(targetQty))
+
       const newAssignments = assignWorkers({
         productionDate,
         tableName,
         sku: String(sku),
         skuName: prod.sku_name || skuName || null,
         targetQty,
-        eligibleWorkers,
+        eligibleWorkers: cappedWorkers,
         rate: prod.rate,
         workerHours,
         period: phaseCfg.period,
