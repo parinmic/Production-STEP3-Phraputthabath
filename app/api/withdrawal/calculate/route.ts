@@ -56,6 +56,7 @@ function allocateFIFO(
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const { date, phase } = await req.json()
   const period = PERIOD[String(phase)]
   if (!date || !period) return NextResponse.json({ error: 'missing params' }, { status: 400 })
@@ -121,14 +122,21 @@ export async function POST(req: NextRequest) {
     Array.from(rawMap.values() as Iterable<{ raw_sap: string }>).map(v => v.raw_sap)
   ))
 
-  const [res0010, res20] = await Promise.all([
-    supabase.from('stock_0010').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-    supabase.from('stock_20').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-  ])
+  // ถ้าไม่มีวัตถุดิบจาก BOM เลย ข้ามขั้นตอน stock
+  const stockRows: { material_code: string; spec_code: string; weight_total: number }[] = []
+  if (rawSaps.length > 0) {
+    const [res0010, res20] = await Promise.all([
+      supabase.from('stock_0010').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+    ])
+    if (res0010.error) console.error('stock_0010 error:', res0010.error.message)
+    if (res20.error)   console.error('stock_20 error:',   res20.error.message)
+    stockRows.push(...(res0010.data ?? []), ...(res20.data ?? []))
+  }
 
   // รวม weight_total ต่อ (material_code, spec_code) จากทั้งสองตาราง
   const lotAgg = new Map<string, number>()  // key = `${material_code}|||${spec_code}`
-  for (const row of [...(res0010.data ?? []), ...(res20.data ?? [])]) {
+  for (const row of stockRows) {
     if (!row.material_code || !row.spec_code) continue
     const k = `${row.material_code}|||${row.spec_code}`
     lotAgg.set(k, (lotAgg.get(k) ?? 0) + Number(row.weight_total))
@@ -187,4 +195,9 @@ export async function POST(req: NextRequest) {
   )
 
   return NextResponse.json({ items })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('calculate error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
