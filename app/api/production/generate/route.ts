@@ -238,14 +238,16 @@ export async function POST(req: NextRequest) {
         .eq('upload_round', orderRound),
       supabase.from('wet_market_orders')
         .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates),
+        .in('delivery_date', histDates)
+        .eq('upload_round', '1600'),
       supabase.from('lotus_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
         .eq('upload_round', orderRound),
       supabase.from('lotus_orders')
         .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates),
+        .in('delivery_date', histDates)
+        .eq('upload_round', '1600'),
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
