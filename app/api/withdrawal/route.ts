@@ -45,10 +45,15 @@ export async function POST(req: NextRequest) {
     })).filter((r: { sku: string }) => r.sku)
 
     const { error } = await supabase.from('withdrawal_requests').insert(records)
-    if (error) throw error
+    if (error) {
+      console.error('withdrawal insert error:', error)
+      return NextResponse.json({ success: false, message: `DB error: ${error.message} (${error.code})` }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {
-    return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
+    const msg = e instanceof Error ? e.message : JSON.stringify(e)
+    console.error('withdrawal POST error:', msg)
+    return NextResponse.json({ success: false, message: msg }, { status: 500 })
   }
 }
