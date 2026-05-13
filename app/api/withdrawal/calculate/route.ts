@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       continue
     }
     for (const b of boms) {
-      const rawQty = b.yield_pct > 0 ? qty / (b.yield_pct / 100) : qty
+      const rawQty = b.yield_pct > 0 ? qty / b.yield_pct : qty
       const key = `${station}|||${b.raw_sap}`
       const cur = rawMap.get(key)
       if (cur) {
