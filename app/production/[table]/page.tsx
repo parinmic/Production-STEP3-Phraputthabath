@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2 } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock } from 'lucide-react'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
@@ -448,6 +448,129 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
   )
 }
 
+// ─── Current-time view (รายเวลา) ─────────────────────────────────────────────
+
+interface CurrentTimeViewProps {
+  items: Assignment[]
+  phaseStart: number
+  rateMap: Record<string, number>
+  nameMap: Record<string, string>
+}
+
+function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeViewProps) {
+  const [nowMins, setNowMins] = useState(() => {
+    const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
+  })
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date(); setNowMins(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
+    }, 5000)
+    return () => clearInterval(id)
+  }, [])
+
+  const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
+  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+
+  const byWorker: Record<string, Assignment[]> = {}
+  for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+  const workers = Object.keys(byWorker).sort()
+  if (!workers.length) return null
+
+  const phaseStartMins = phaseStart * 60
+
+  const taskDurMins = (task: Assignment) => {
+    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      {workers.map(name => {
+        const tasks       = mergeTasks(byWorker[name])
+        const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
+
+        let offset = 0
+        const taskInfo = tasks.map(t => {
+          const dur      = taskDurMins(t)
+          const startMin = phaseStartMins + offset
+          offset += dur
+          const endMin   = phaseStartMins + offset
+          return { ...t, startMin, endMin, dur,
+            startLabel: minsToLabel(startMin),
+            endLabel:   minsToLabel(endMin) }
+        })
+
+        // Find the task the worker should be doing right now
+        const currentTask = taskInfo.find(t => nowMins >= t.startMin && nowMins < t.endMin)
+        const allDone     = nowMins >= phaseStartMins + offset
+        const notStarted  = nowMins < phaseStartMins
+
+        const card = currentTask ?? (notStarted ? taskInfo[0] : null)
+        const col  = card ? skuColor[card.sku] : { bg: '#e5e7eb', fg: '#6b7280' }
+
+        // Progress within current task
+        const taskProgress = currentTask
+          ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
+          : allDone ? 100 : 0
+
+        const remainSecs = currentTask ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
+        const rh = Math.floor(remainSecs / 3600)
+        const rm = Math.floor((remainSecs % 3600) / 60)
+        const remainLabel = rh > 0 ? `เหลืออีก ${rh}ชม. ${rm}น.` : rm > 0 ? `เหลืออีก ${rm}น.` : currentTask ? 'กำลังเสร็จ' : ''
+
+        return (
+          <div key={name}
+            className={`bg-white rounded-2xl border shadow-sm p-4 transition-opacity ${allDone ? 'opacity-50 border-gray-100' : 'border-gray-200'}`}>
+
+            {/* Header */}
+            <div className="flex items-start justify-between mb-1">
+              <p className="text-sm font-semibold text-gray-900 leading-tight">{displayName}</p>
+              {allDone
+                ? <span className="text-xs font-semibold text-green-500 flex items-center gap-1"><CheckCircle2 size={12} />เสร็จแล้ว</span>
+                : notStarted
+                  ? <span className="text-xs text-gray-400">เริ่ม {taskInfo[0]?.startLabel ?? ''}</span>
+                  : <span className="text-xs font-semibold text-amber-500 flex items-center gap-1"><PlayCircle size={12} />กำลังผลิต</span>
+              }
+            </div>
+            <p className="text-xs font-mono text-gray-400 mb-3">{tasks[0].worker_code}</p>
+
+            {card ? (
+              <>
+                {/* Progress bar */}
+                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: col.bg + '30' }}>
+                  <div className="h-full rounded-full transition-all duration-1000"
+                    style={{ width: `${taskProgress}%`, backgroundColor: col.bg }} />
+                </div>
+
+                {/* Current SKU */}
+                <div className="rounded-xl px-3 py-2.5" style={{ backgroundColor: col.bg + '25' }}>
+                  <p className="text-sm font-semibold leading-tight mb-1" style={{ color: col.fg }}>
+                    {card.sku_name ?? card.sku}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-500">{card.startLabel} – {card.endLabel}</span>
+                    <span className="text-xs font-bold" style={{ color: col.fg }}>
+                      {Number(card.target_quantity).toLocaleString()} กก.
+                    </span>
+                  </div>
+                  {currentTask && (
+                    <p className="text-xs text-gray-400 mt-1">{remainLabel}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl px-3 py-4 bg-gray-50 text-center">
+                <p className="text-xs text-gray-400">เสร็จสิ้นทุก SKU แล้ว</p>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TablePage() {
@@ -463,7 +586,7 @@ export default function TablePage() {
   const [loading, setLoading]       = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
-  const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku'>('sku')
+  const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time'>('sku')
 
   const loadData = (d: string) => {
     if (!cfg) return
@@ -579,6 +702,13 @@ export default function TablePage() {
                   : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
                 <LayoutList size={15} />รายพนักงาน
               </button>
+              <button
+                onClick={() => setViewMode('time')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'time'
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                <Clock size={15} />รายเวลา
+              </button>
             </div>
 
             {viewMode === 'sku' && (
@@ -599,6 +729,14 @@ export default function TablePage() {
             )}
             {viewMode === 'worker' && (
               <WorkerTable
+                items={filtered}
+                phaseStart={phaseConfig.startH}
+                rateMap={rateMap}
+                nameMap={nameMap}
+              />
+            )}
+            {viewMode === 'time' && (
+              <CurrentTimeView
                 items={filtered}
                 phaseStart={phaseConfig.startH}
                 rateMap={rateMap}
