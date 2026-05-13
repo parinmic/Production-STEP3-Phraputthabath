@@ -260,13 +260,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
     return { text: parts, done: false }
   }
 
-  const SKU_COL_W = 176
-
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* X-axis header */}
-      <div className="flex border-b border-gray-100">
-        <div className="shrink-0 border-r border-gray-100" style={{ width: SKU_COL_W }} />
+      {/* X-axis header — hidden on mobile */}
+      <div className="hidden sm:flex border-b border-gray-100">
+        <div className="w-28 sm:w-44 shrink-0 border-r border-gray-100" />
         <div className="flex-1 relative h-8">
           {ticks.map(t => (
             <div key={t} className="absolute top-0 h-full flex items-end pb-1.5"
@@ -277,61 +275,64 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
             </div>
           ))}
         </div>
-        <div className="w-32 shrink-0 border-l border-gray-100" />
+        <div className="w-24 sm:w-32 shrink-0 border-l border-gray-100" />
       </div>
 
       {/* SKU rows */}
       <div className="divide-y divide-gray-50">
         {sortedSkus.map(sku => {
-          const stat   = skuStats[sku]
-          const col    = skuColor[sku]
-          const cd     = countdown(stat.maxEnd)
+          const stat     = skuStats[sku]
+          const col      = skuColor[sku]
+          const cd       = countdown(stat.maxEnd)
           const barLeft  = pct(stat.minStart)
           const barWidth = Math.max(pct(stat.maxEnd) - pct(stat.minStart), 0.5)
 
           return (
-            <div key={sku} className="flex items-center min-h-[56px]">
+            <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px]">
               {/* Y-axis: SKU name */}
-              <div className="shrink-0 px-4 py-2 border-r border-gray-100" style={{ width: SKU_COL_W }}>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{stat.workers.length} คน</p>
+                    <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
+                    <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">{stat.workers.length} คน</p>
                   </div>
                 </div>
               </div>
 
               {/* Bar area */}
-              <div className="flex-1 relative h-14">
+              <div className="flex-1 relative h-10 sm:h-14">
                 {/* Now indicator */}
                 {nowMins >= chartStart && nowMins <= chartEnd && (
                   <div className="absolute -top-px -bottom-px w-px bg-red-400 z-10 opacity-30"
                     style={{ left: `${pct(nowMins)}%` }} />
                 )}
                 {/* Bar */}
-                <div className="absolute top-2.5 bottom-2.5"
+                <div className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5"
                   style={{
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
                     backgroundColor: col.bg,
                     opacity: cd.done ? 0.45 : 1,
                   }} />
-                {/* Quantity label after bar */}
-                <span className="absolute top-1/2 -translate-y-1/2 text-[11px] font-bold whitespace-nowrap pl-1.5"
+                {/* Quantity label after bar — desktop only */}
+                <span className="hidden sm:block absolute top-1/2 -translate-y-1/2 text-[11px] font-bold whitespace-nowrap pl-1.5"
                   style={{ left: `${barLeft + barWidth}%`, color: col.bg }}>
                   {stat.totalQty.toLocaleString()} กก.
                 </span>
               </div>
 
               {/* Countdown */}
-              <div className="w-32 shrink-0 px-3 border-l border-gray-100 text-right">
+              <div className="w-24 sm:w-32 shrink-0 px-2 sm:px-3 border-l border-gray-100 text-right">
                 {cd.done ? (
-                  <span className="text-xs text-green-500 font-semibold">✓ เสร็จแล้ว</span>
+                  <span className="text-[10px] sm:text-xs text-green-500 font-semibold">✓ เสร็จแล้ว</span>
                 ) : (
-                  <span className="text-sm font-bold text-gray-800">{cd.text}</span>
+                  <span className="text-xs sm:text-sm font-bold text-gray-800">{cd.text}</span>
                 )}
-                <p className="text-[10px] text-gray-400 mt-0.5">เสร็จ {minsToLabel(stat.maxEnd)}</p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
+                  <span className="hidden sm:inline">{stat.totalQty.toLocaleString()} กก. · </span>
+                  เสร็จ {minsToLabel(stat.maxEnd)}
+                </p>
               </div>
             </div>
           )
