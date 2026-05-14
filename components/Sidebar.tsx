@@ -182,9 +182,9 @@ export default function Sidebar() {
             { href: '/makro',              icon: ShoppingCart,   label: 'คำสั่งซื้อ Makro' },
             { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS' },
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
+            { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
             { href: '/quota',              icon: BarChart3,      label: 'Quota ช่องทางขาย' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
-            { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
           ].map((m) => (
             <Link key={m.href} href={m.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`}
