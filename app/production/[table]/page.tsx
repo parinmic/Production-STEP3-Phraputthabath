@@ -370,7 +370,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
   }
 
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
@@ -524,7 +524,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
       </div>
 
       {/* Worker grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
