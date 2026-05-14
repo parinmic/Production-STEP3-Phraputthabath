@@ -760,11 +760,21 @@ export default function TablePage() {
             <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
           </button>
           {genResult && (
-            <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${genResult.success
-              ? 'bg-green-50 text-green-700 border-green-200'
-              : 'bg-red-50 text-red-700 border-red-200'}`}>
-              {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              {genResult.message}
+            <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${genResult.success
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : 'bg-red-50 text-red-700 border-red-200'}`}>
+                {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                {genResult.message}
+              </div>
+              {genResult.success && (
+                <button
+                  onClick={() => exportExcel(cfg.label, date, items, rateMap, nameMap)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
+                  <Download size={14} />
+                  ดาวน์โหลด
+                </button>
+              )}
             </div>
           )}
         </div>

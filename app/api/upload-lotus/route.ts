@@ -47,12 +47,14 @@ export async function POST(req: NextRequest) {
                         : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? '')
           const nameCol = cols.includes('rProduct_name') ? 'rProduct_name'
                         : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('name')) ?? '')
-          const qtyCol  = cols.includes('rPlan_wgt') ? 'rPlan_wgt'
-                        : (cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('quantity')) ?? '')
+          const qtyCol  = cols.includes('rStock_wgt') ? 'rStock_wgt'
+                        : cols.includes('rPlan_wgt') ? 'rPlan_wgt'
+                        : (cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('quantity') || c.toLowerCase().includes('wgt')) ?? '')
           const dateCol = cols.includes('rDoc_date') ? 'rDoc_date'
                         : (cols.find(c => c.toLowerCase().includes('doc') && c.toLowerCase().includes('date'))
-                           ?? cols.find(c => c.toLowerCase().includes('date')) ?? '')
-          const dlvCol  = cols.includes('rReq_date') ? 'rReq_date'
+                           ?? cols.find(c => c.toLowerCase().includes('date') && !c.toLowerCase().startsWith('rr')) ?? '')
+          const dlvCol  = cols.includes('rRDate1') ? 'rRDate1'
+                        : cols.includes('rReq_date') ? 'rReq_date'
                         : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? '')
           return {
             order_date:    toISODate(r[dateCol]),

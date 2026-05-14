@@ -79,9 +79,10 @@ export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array' })
         // ข้อมูลอยู่ที่ sheet 2 (index 1) ถ้ามี ไม่งั้นใช้ sheet 1
+        // Row 1 = ชื่อบริษัท, Row 2 = headers (rXxx) → range:1 ข้าม Row 1
         const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
         const sheet = wb.Sheets[sheetName]
-        resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null }))
+        resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null, range: 1 }))
       } catch { reject(new Error('ไม่สามารถอ่านไฟล์ Excel ได้')) }
     }
     reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
@@ -98,12 +99,64 @@ function thaiDateToISO(s: string): string {
 }
 
 /**
- * Parser สำหรับไฟล์แผนผลิต Makro 100% (Pivot Table จาก Makro)
- * - ชีท "แผน Makro 100%"
- * - Row 4 (col 1=rReq_date, col 2=วันที่): วันส่งสินค้า
- * - Row 8: header [สายพาน, rProduct_code, rProduct_name, สาขา..., ผลรวมทั้งหมด]
- * - Rows 9+: ข้อมูลสินค้า (quantity = col ผลรวมทั้งหมด)
+ * ประมวลผล sheet "แผน Makro 100%" จาก raw array-of-arrays
+ * รองรับ rReq_date ที่ col A หรือ col B, รหัสสินค้าที่เป็น number หรือ string
  */
+function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[] {
+  // หาวันส่ง: rReq_date อาจอยู่ col A (index 0) หรือ col B (index 1)
+  let deliveryDate = ''
+  for (let i = 0; i < 10; i++) {
+    const row = raw[i]
+    if (!row) continue
+    const a = String(row[0] ?? '').trim()
+    const b = String(row[1] ?? '').trim()
+    if (a === 'rReq_date') { deliveryDate = thaiDateToISO(b); break }
+    if (b === 'rReq_date') { deliveryDate = thaiDateToISO(String(row[2] ?? '')); break }
+  }
+
+  // หา header row (col 1 = 'rProduct_code')
+  const hIdx = raw.findIndex(row => row && String(row[1] ?? '') === 'rProduct_code')
+  if (hIdx < 0) throw new Error('ไม่พบ header row (rProduct_code) ในชีท แผน Makro 100%')
+
+  const hRow = raw[hIdx]
+  const totalCol = hRow.findIndex(c =>
+    String(c ?? '').includes('ผลรวม') || String(c ?? '').toLowerCase().includes('grand total')
+  )
+
+  const results: ParsedRow[] = []
+  let currentStation = ''
+
+  for (let i = hIdx + 1; i < raw.length; i++) {
+    const row = raw[i]
+    if (!row) continue
+    const col1 = row[1]
+    if (col1 === null || col1 === '') continue
+    // รองรับรหัสสินค้าทั้ง number และ string-number; ข้าม text ที่ไม่ใช่ตัวเลข (subtotal, header)
+    if (typeof col1 === 'string' && isNaN(Number(col1))) continue
+
+    const stationVal = String(row[0] ?? '').trim()
+    if (stationVal) currentStation = stationVal
+
+    // ถ้าหาคอลัมน์ผลรวมไม่เจอ ให้รวมค่าสาขาทั้งหมด (col 3 เป็นต้นไป)
+    const qty = totalCol >= 0
+      ? (Number(row[totalCol]) || 0)
+      : (row.slice(3) as (string | number | null)[]).reduce<number>((s, v) => s + (Number(v) || 0), 0)
+    if (!qty) continue
+
+    results.push({
+      delivery_date: deliveryDate || null,
+      order_date:    deliveryDate || null,
+      sku:           String(col1),
+      sku_name:      String(row[2] ?? '').trim(),
+      quantity:      qty,
+      period:        currentStation || null,
+    })
+  }
+
+  if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')
+  return results
+}
+
 export function parseMakroPlan100(file: File): Promise<ParsedRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -114,52 +167,7 @@ export function parseMakroPlan100(file: File): Promise<ParsedRow[]> {
         const ws = wb.Sheets['แผน Makro 100%']
         if (!ws) throw new Error('ไม่พบชีท "แผน Makro 100%"')
         const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
-
-        // หาวันส่ง จาก filter section (rReq_date อยู่ใน 8 แถวแรก)
-        let deliveryDate = ''
-        for (let i = 0; i < 8; i++) {
-          const row = raw[i]
-          if (row && String(row[1] ?? '').trim() === 'rReq_date') {
-            deliveryDate = thaiDateToISO(String(row[2] ?? ''))
-            break
-          }
-        }
-
-        // หา header row (col 1 = 'rProduct_code')
-        const hIdx = raw.findIndex(row => row && String(row[1] ?? '') === 'rProduct_code')
-        if (hIdx < 0) throw new Error('ไม่พบ header row (rProduct_code) ในชีท แผน Makro 100%')
-
-        const hRow = raw[hIdx]
-        const totalCol = hRow.findIndex(c => String(c ?? '').includes('ผลรวม'))
-
-        const results: ParsedRow[] = []
-        let currentStation = ''
-
-        for (let i = hIdx + 1; i < raw.length; i++) {
-          const row = raw[i]
-          if (!row) continue
-          const col1 = row[1]
-          if (col1 === null || col1 === '') continue
-          if (typeof col1 !== 'number') continue  // skip subtotal/header rows
-
-          const stationVal = String(row[0] ?? '').trim()
-          if (stationVal) currentStation = stationVal
-
-          const qty = totalCol >= 0 ? (Number(row[totalCol]) || 0) : 0
-          if (!qty) continue
-
-          results.push({
-            delivery_date: deliveryDate || null,
-            order_date:    deliveryDate || null,
-            sku:           String(col1),
-            sku_name:      String(row[2] ?? '').trim(),
-            quantity:      qty,
-            period:        currentStation || null,
-          })
-        }
-
-        if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')
-        resolve(results)
+        resolve(processMakroPlan100Sheet(raw))
       } catch (e) {
         reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ แผน Makro 100% ได้'))
       }
@@ -187,45 +195,12 @@ export function parseMakroAuto(file: File): Promise<ParsedRow[]> {
         if (wb.SheetNames.includes('แผน Makro 100%')) {
           const ws = wb.Sheets['แผน Makro 100%']
           const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
-          let deliveryDate = ''
-          for (let i = 0; i < 8; i++) {
-            const row = raw[i]
-            if (row && String(row[1] ?? '').trim() === 'rReq_date') {
-              deliveryDate = thaiDateToISO(String(row[2] ?? ''))
-              break
-            }
-          }
-          const hIdx = raw.findIndex(row => row && String(row[1] ?? '') === 'rProduct_code')
-          if (hIdx < 0) throw new Error('ไม่พบ header row ในชีท แผน Makro 100%')
-          const hRow = raw[hIdx]
-          const totalCol = hRow.findIndex(c => String(c ?? '').includes('ผลรวม'))
-          const results: ParsedRow[] = []
-          let currentStation = ''
-          for (let i = hIdx + 1; i < raw.length; i++) {
-            const row = raw[i]
-            if (!row) continue
-            const col1 = row[1]
-            if (col1 === null || col1 === '' || typeof col1 !== 'number') continue
-            const stationVal = String(row[0] ?? '').trim()
-            if (stationVal) currentStation = stationVal
-            const qty = totalCol >= 0 ? (Number(row[totalCol]) || 0) : 0
-            if (!qty) continue
-            results.push({
-              delivery_date: deliveryDate || null,
-              order_date:    deliveryDate || null,
-              sku:           String(col1),
-              sku_name:      String(row[2] ?? '').trim(),
-              quantity:      qty,
-              period:        currentStation || null,
-            })
-          }
-          if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')
-          resolve(results)
+          resolve(processMakroPlan100Sheet(raw))
         } else {
-          // rXxx format: ข้อมูลอยู่ sheet 2
+          // rXxx format: ข้อมูลอยู่ sheet 2, Row 1 = ชื่อบริษัท → range:1
           const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
           const sheet = wb.Sheets[sheetName]
-          resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null }))
+          resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null, range: 1 }))
         }
       } catch (e) {
         reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ Makro ได้'))
