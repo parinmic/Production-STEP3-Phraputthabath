@@ -5,6 +5,7 @@ function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
   if (!s) return null
+  if (s.includes('T')) return s.split('T')[0]
   const parts = s.split('/')
   if (parts.length === 3) {
     const [d, m, y] = parts
@@ -38,11 +39,17 @@ export async function POST(req: NextRequest) {
     const records = rows
       .map((r: Record<string, unknown>) => {
         if (hasNativeFormat) {
-          const skuCol  = cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? ''
-          const nameCol = cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('name')) ?? ''
-          const qtyCol  = cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('quantity')) ?? ''
-          const dateCol = cols.find(c => c.toLowerCase().includes('date') || c.toLowerCase().includes('doc')) ?? ''
-          const dlvCol  = cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? ''
+          const skuCol  = cols.includes('rProduct_code') ? 'rProduct_code'
+                        : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? '')
+          const nameCol = cols.includes('rProduct_name') ? 'rProduct_name'
+                        : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('name')) ?? '')
+          const qtyCol  = cols.includes('rPlan_wgt') ? 'rPlan_wgt'
+                        : (cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('quantity')) ?? '')
+          const dateCol = cols.includes('rDoc_date') ? 'rDoc_date'
+                        : (cols.find(c => c.toLowerCase().includes('doc') && c.toLowerCase().includes('date'))
+                           ?? cols.find(c => c.toLowerCase().includes('date')) ?? '')
+          const dlvCol  = cols.includes('rReq_date') ? 'rReq_date'
+                        : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? '')
           return {
             order_date:    toISODate(r[dateCol]),
             delivery_date: toISODate(r[dlvCol]),

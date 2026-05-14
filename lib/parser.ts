@@ -64,6 +64,31 @@ function parseExcel(file: File, sheetName?: string): Promise<ParsedRow[]> {
   })
 }
 
+/**
+ * Parser สำหรับไฟล์คำสั่งซื้อ LOTUS / Wet Market (รูปแบบ rXxx 66 คอลัมน์)
+ * - XLSX: ข้อมูลอยู่ที่ Sheet 2 (index 1)
+ * - CSV: TIS-620, ตัดบรรทัดแรก (ชื่อบริษัท) เหมือน parseMakroFile
+ */
+export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseMakroFile(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array', cellDates: true })
+        // ข้อมูลอยู่ที่ sheet 2 (index 1) ถ้ามี ไม่งั้นใช้ sheet 1
+        const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
+        const sheet = wb.Sheets[sheetName]
+        resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null }))
+      } catch { reject(new Error('ไม่สามารถอ่านไฟล์ Excel ได้')) }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 export function parseQuotaForecast(file: File): Promise<ParsedRow[]> {
   const name = file.name.toLowerCase()
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
