@@ -91,11 +91,21 @@ export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
 }
 
 function thaiDateToISO(s: string): string {
-  const parts = s.trim().split('/')
-  if (parts.length !== 3) return s
-  const [d, m, y] = parts
-  const year = parseInt(y) > 2400 ? parseInt(y) - 543 : parseInt(y)
-  return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  const t = s.trim()
+  const parts = t.split('/')
+  if (parts.length === 3) {
+    const [d, m, y] = parts
+    const year = parseInt(y) > 2400 ? parseInt(y) - 543 : parseInt(y)
+    return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  // Excel serial จากปฏิทิน BE (Thai locale เก็บปี พ.ศ. เป็น CE) → แปลงแล้วลบ 543
+  const num = parseFloat(t)
+  if (!isNaN(num) && num > 40000) {
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000))
+    const y = d.getUTCFullYear() > 2400 ? d.getUTCFullYear() - 543 : d.getUTCFullYear()
+    return `${y}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  }
+  return t
 }
 
 /**

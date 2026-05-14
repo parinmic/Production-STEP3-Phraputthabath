@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase'
 function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
-  if (!s) return null
+  if (!s || s === 'null') return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
   if (s.includes('T')) return s.split('T')[0]
   const parts = s.split('/')
   if (parts.length === 3) {
@@ -13,10 +14,13 @@ function toISODate(val: unknown): string | null {
     return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
   }
   const num = parseFloat(s)
-  if (!isNaN(num) && num > 1000) {
-    return new Date(Math.round((num - 25569) * 86400 * 1000)).toISOString().split('T')[0]
+  if (!isNaN(num) && num > 40000) {
+    // Excel serial จากปฏิทิน BE (Thai locale) → ปีจะเป็น พ.ศ. → ลบ 543
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000))
+    const y = d.getUTCFullYear() > 2400 ? d.getUTCFullYear() - 543 : d.getUTCFullYear()
+    return `${y}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
   }
-  return s
+  return null
 }
 
 export async function GET(req: NextRequest) {
@@ -42,9 +46,10 @@ export async function POST(req: NextRequest) {
     const records = rows
       .map((r: Record<string, unknown>) => {
         if (isPlanMapped) {
+          const today = new Date().toISOString().split('T')[0]
           return {
-            order_date:    String(r['order_date'] ?? r['delivery_date'] ?? ''),
-            delivery_date: String(r['delivery_date'] ?? ''),
+            order_date:    toISODate(r['order_date'] ?? r['delivery_date']) ?? today,
+            delivery_date: toISODate(r['delivery_date']),
             sku:           String(r['sku'] ?? '').trim(),
             sku_name:      String(r['sku_name'] ?? '').trim(),
             quantity:      Number(r['quantity']) || 0,
