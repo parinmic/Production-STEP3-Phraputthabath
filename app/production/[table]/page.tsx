@@ -469,9 +469,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
     return () => clearInterval(id)
   }, [])
 
-  // null = live mode, number = selected hour (e.g. 8 = 08:00–09:00)
-  const [selectedHour, setSelectedHour] = useState<number | null>(null)
-  const nowMins = selectedHour !== null ? selectedHour * 60 + 30 : realNowMins
+  const nowMins = realNowMins
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
@@ -489,42 +487,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
     return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
   }
 
-  // Compute max end across all workers to determine hour range
-  let maxEndMins = phaseStartMins
-  for (const workerTasks of Object.values(byWorker)) {
-    const tasks = mergeTasks(workerTasks)
-    const totalDur = tasks.reduce((s, t) => s + taskDurMins(t), 0)
-    maxEndMins = Math.max(maxEndMins, phaseStartMins + totalDur)
-  }
-  const hourSlots: number[] = []
-  for (let h = phaseStart; h * 60 < maxEndMins; h++) hourSlots.push(h)
-
-  const isLive = selectedHour === null
-
   return (
-    <div className="space-y-4">
-      {/* Hour selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setSelectedHour(null)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${isLive
-            ? 'bg-gray-900 text-white'
-            : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-          ตอนนี้
-        </button>
-        {hourSlots.map(h => (
-          <button key={h}
-            onClick={() => setSelectedHour(h)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedHour === h
-              ? 'bg-gray-900 text-white'
-              : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-            {String(h).padStart(2, '0')}:00
-          </button>
-        ))}
-      </div>
-
-      {/* Worker grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
@@ -553,7 +516,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
           : allDone ? 100 : 0
         const taskProgress = 100 - elapsedPct
 
-        const remainSecs = currentTask && isLive ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
+        const remainSecs = currentTask && true ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
         const rh = Math.floor(remainSecs / 3600)
         const rm = Math.floor((remainSecs % 3600) / 60)
         const remainLabel = rh > 0 ? `เหลืออีก ${rh}ชม. ${rm}น.` : rm > 0 ? `เหลืออีก ${rm}น.` : currentTask ? 'กำลังเสร็จ' : ''
@@ -577,9 +540,9 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
             {card ? (
               <>
                 {/* Progress bar */}
-                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: isLive ? col.bg + '30' : '#e5e7eb' }}>
+                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: true ? col.bg + '30' : '#e5e7eb' }}>
                   <div className="h-full rounded-full transition-all duration-1000"
-                    style={{ width: isLive ? `${taskProgress}%` : '100%', backgroundColor: isLive ? col.bg : '#d1d5db' }} />
+                    style={{ width: true ? `${taskProgress}%` : '100%', backgroundColor: true ? col.bg : '#d1d5db' }} />
                 </div>
 
                 {/* Current SKU */}
@@ -593,7 +556,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
                       {Number(card.target_quantity).toLocaleString()} กก.
                     </span>
                   </div>
-                  {currentTask && isLive && (
+                  {currentTask && true && (
                     <p className="text-xs text-gray-400 mt-1">{remainLabel}</p>
                   )}
                 </div>
@@ -606,7 +569,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
           </div>
         )
       })}
-    </div>
     </div>
   )
 }
