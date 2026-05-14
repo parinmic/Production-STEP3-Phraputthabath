@@ -58,7 +58,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8,  endH: 14 },
   { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 8, startH: 16, endH: 24 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17, endH: 19 },
 ]
 
 // ========== Station mapping ==========
@@ -181,7 +181,7 @@ function assignWorkers(
     phaseEndMins: number
     period: string
     deadline: string | null
-    channel?: string
+    channel: string
   }
 ): Record<string, unknown>[] {
   const {
@@ -265,7 +265,7 @@ function assignWorkers(
       period,
       deadline_time:   deadline,
       status:          'รอดำเนินการ',
-      channel:         channel ?? null,
+      channel,
     })
   }
 
@@ -460,22 +460,20 @@ export async function POST(req: NextRequest) {
     const avgLotus = buildAvgMap(lotusHist)
     const avgMakro = buildAvgMap(makroHist)
 
-    // ------ Phase 1/2 produced qty per SKU — split by channel ------
-    type PrevRow = { sku: string; target_quantity: number; channel: string | null }
-    const phase1WM    = new Map<string, number>()
-    const phase1Lotus = new Map<string, number>()
-    const phase1Makro = new Map<string, number>()
-    const phase1All   = new Map<string, number>()   // for Phase 3
-    for (const a of (prevAssignedRaw ?? []) as PrevRow[]) {
+    // ------ Phase 1 produced qty per SKU ------
+    // combined: used by Phase 3 (deduct all previous phases)
+    // perChannel: used by Phase 2 (deduct only same-channel Phase 1)
+    const phase1Assigned   = new Map<string, number>()
+    const phase1ByChannel  = new Map<string, Map<string, number>>()
+    for (const a of (prevAssignedRaw ?? []) as { sku: string; target_quantity: number; channel: string | null }[]) {
       const qty = Number(a.target_quantity)
-      phase1All.set(a.sku, (phase1All.get(a.sku) ?? 0) + qty)
-      if (a.channel === 'Wet Market') phase1WM.set(a.sku, (phase1WM.get(a.sku) ?? 0) + qty)
-      else if (a.channel === 'LOTUS') phase1Lotus.set(a.sku, (phase1Lotus.get(a.sku) ?? 0) + qty)
-      else if (a.channel === 'Makro') phase1Makro.set(a.sku, (phase1Makro.get(a.sku) ?? 0) + qty)
+      phase1Assigned.set(a.sku, (phase1Assigned.get(a.sku) ?? 0) + qty)
+      if (a.channel) {
+        if (!phase1ByChannel.has(a.channel)) phase1ByChannel.set(a.channel, new Map())
+        const m = phase1ByChannel.get(a.channel)!
+        m.set(a.sku, (m.get(a.sku) ?? 0) + qty)
+      }
     }
-
-    // Shared SKU set: appears in both WM and LOTUS today (Phase 1 only)
-    const lotusTodaySkus = new Set(lotusToday.map(r => r.sku))
 
     // Aggregate today's orders per SKU
     const aggregateToday = (rows: OrderRow[]): Record<string, { qty: number; name: string | null }> => {
@@ -492,16 +490,18 @@ export async function POST(req: NextRequest) {
 
     // ------ Build SKU targets per channel ------
 
-    interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel?: string }
+    interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
 
     const buildWetMarketTargets = (): SkuTarget[] => {
+      const ch = 'Wet Market'
       if (isPhase2) {
-        // Phase 2: Min(1400 order, BL3) − WM Phase1 only
+        // Phase 2: Min(1300 order, avg BL3) − Phase 1 WM assigned (per channel)
+        const p1 = phase1ByChannel.get(ch) ?? new Map()
         return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgWM.get(sku) ?? 0
           const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
-          const targetQty = Math.max(0, base - (phase1WM.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty, channel: 'Wet Market' }
+          const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: Avg BL3 × %Variance
@@ -511,16 +511,18 @@ export async function POST(req: NextRequest) {
         const isShared = lotusHistSkus.has(sku)
         const lotusBL3 = avgLotus.get(sku) ?? 0
         const variance = getWetMarketVariance(isShared, avg, avg, lotusBL3)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: 'Wet Market' }
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
       }).filter(s => s.targetQty > 0)
     }
 
     const buildMakroTargets = (): SkuTarget[] => {
+      const ch = 'Makro'
       if (isPhase2) {
-        // Phase 2: 1400 order − Makro Phase1 only (no variance)
+        // Phase 2: 1300 order − Phase 1 Makro assigned (per channel, no variance)
+        const p1 = phase1ByChannel.get(ch) ?? new Map()
         return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
-          const targetQty = Math.max(0, orderQty - (phase1Makro.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty, channel: 'Makro' }
+          const targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: order × variance
@@ -529,24 +531,26 @@ export async function POST(req: NextRequest) {
         const avg = avgMakro.get(sku) ?? 0
         const proportion = makroTotal > 0 ? orderQty / makroTotal : 0
         const variance = getMakroVariance(proportion > 0.1, orderQty, avg)
-        return { sku, skuName: name, targetQty: orderQty * variance, channel: 'Makro' }
+        return { sku, skuName: name, targetQty: orderQty * variance, channel: ch }
       }).filter(s => s.targetQty > 0)
     }
 
     const buildLotusTargets = (): SkuTarget[] => {
+      const ch = 'LOTUS'
       if (isPhase2) {
-        // Phase 2: Min(1400 order, BL3) − LOTUS Phase1 only
+        // Phase 2: Min(1300 order, avg BL3) − Phase 1 LOTUS assigned (per channel)
+        const p1 = phase1ByChannel.get(ch) ?? new Map()
         return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgLotus.get(sku) ?? 0
           const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
-          const targetQty = Math.max(0, base - (phase1Lotus.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty, channel: 'LOTUS' }
+          const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: Avg BL3
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku, r.sku_name]))
       return Array.from(avgLotus.entries()).map(([sku, avg]) => ({
-        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: 'LOTUS',
+        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
       })).filter(s => s.targetQty > 0)
     }
 
@@ -570,7 +574,8 @@ export async function POST(req: NextRequest) {
       assignList = Array.from(planMap.entries())
         .map(([sku, { name, qty }]) => ({
           sku, skuName: name,
-          targetQty: Math.max(0, qty - (phase1All.get(sku) ?? 0)),
+          targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
+          channel: 'plan100',
         }))
         .filter(t => t.targetQty > 0)
         .sort((a, b) => b.targetQty - a.targetQty)

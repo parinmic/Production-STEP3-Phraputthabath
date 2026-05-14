@@ -293,7 +293,7 @@ CREATE POLICY "allow_all_bom_items" ON bom_items FOR ALL USING (true) WITH CHECK
 -- 15. Migration: เพิ่ม seq เพื่อเก็บลำดับงานของแต่ละพนักงาน
 ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS seq integer;
 
--- Migration: เพิ่ม channel เพื่อแยก Phase 2 deduction per-channel
+-- Migration: เพิ่ม channel เพื่อ track ว่างานมาจากช่องทางไหน (Wet Market / LOTUS / Makro / plan100)
 ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS channel text;
 
 -- 14. Migration: เพิ่ม upload_round เพื่อแยก รอบ 8:00 / 13:00
