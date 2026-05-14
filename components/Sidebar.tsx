@@ -71,25 +71,28 @@ export default function Sidebar() {
       ].join(' ')}>
 
         {/* Header */}
-        <div className="px-3 py-5 border-b border-gray-700 flex items-center gap-3 overflow-hidden">
-          <Factory className="text-blue-400 shrink-0" size={28} />
-          <div className={`overflow-hidden flex-1 ${labelCls}`}>
-            <p className="font-bold text-sm whitespace-nowrap">PPTB Production</p>
-            <p className="text-gray-400 text-xs whitespace-nowrap">Production Management</p>
+        <div className="border-b border-gray-700">
+          {/* Logo + title */}
+          <div className="px-3 pt-5 pb-3 flex items-center gap-3 overflow-hidden">
+            <Factory className="text-blue-400 shrink-0" size={26} />
+            <div className={`overflow-hidden flex-1 ${labelCls}`}>
+              <p className="font-bold text-sm whitespace-nowrap">PPTB Production</p>
+              <p className="text-gray-400 text-xs whitespace-nowrap">Production Management</p>
+            </div>
+            {/* Mobile close button */}
+            <button className="md:hidden ml-auto p-1 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
+              <X size={18} />
+            </button>
           </div>
-          {/* Mobile close button */}
-          <button className="md:hidden ml-auto p-1 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
-            <X size={18} />
+          {/* Hamburger toggle — desktop only, below title */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={`hidden md:flex w-full items-center py-2.5 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors border-t border-gray-700/50 ${collapsed ? 'justify-center' : 'gap-2.5'}`}
+          >
+            <Menu size={18} />
+            {!collapsed && <span className="text-xs text-gray-400">ย่อเมนู</span>}
           </button>
         </div>
-
-        {/* Desktop collapse toggle */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:flex absolute -right-3 top-5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-full w-7 h-7 items-center justify-center z-10 transition-colors"
-        >
-          <Menu size={15} />
-        </button>
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
