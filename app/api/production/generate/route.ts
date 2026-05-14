@@ -181,11 +181,12 @@ function assignWorkers(
     phaseEndMins: number
     period: string
     deadline: string | null
+    channel?: string
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
-    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, deadline,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, deadline, channel,
   } = params
 
   const entries = eligibleWorkers
@@ -264,6 +265,7 @@ function assignWorkers(
       period,
       deadline_time:   deadline,
       status:          'รอดำเนินการ',
+      channel:         channel ?? null,
     })
   }
 
@@ -355,10 +357,10 @@ export async function POST(req: NextRequest) {
       // Phase 2/3: load previously-assigned quantities to deduct
       (isPhase2 || isPhase3)
         ? supabase.from('production_assignments')
-            .select('sku, target_quantity')
+            .select('sku, target_quantity, channel')
             .eq('production_date', productionDate)
             .in('period', isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'])
-        : Promise.resolve({ data: [] as { sku: string; target_quantity: number }[], error: null }),
+        : Promise.resolve({ data: [] as { sku: string; target_quantity: number; channel: string | null }[], error: null }),
       // Phase 3: load 100% production plan
       isPhase3
         ? supabase.from('production_plan_100')
@@ -458,10 +460,18 @@ export async function POST(req: NextRequest) {
     const avgLotus = buildAvgMap(lotusHist)
     const avgMakro = buildAvgMap(makroHist)
 
-    // ------ Phase 1 produced qty per SKU (Phase 2 only) ------
-    const phase1Assigned = new Map<string, number>()
-    for (const a of (prevAssignedRaw ?? []) as { sku: string; target_quantity: number }[]) {
-      phase1Assigned.set(a.sku, (phase1Assigned.get(a.sku) ?? 0) + Number(a.target_quantity))
+    // ------ Phase 1/2 produced qty per SKU — split by channel ------
+    type PrevRow = { sku: string; target_quantity: number; channel: string | null }
+    const phase1WM    = new Map<string, number>()
+    const phase1Lotus = new Map<string, number>()
+    const phase1Makro = new Map<string, number>()
+    const phase1All   = new Map<string, number>()   // for Phase 3
+    for (const a of (prevAssignedRaw ?? []) as PrevRow[]) {
+      const qty = Number(a.target_quantity)
+      phase1All.set(a.sku, (phase1All.get(a.sku) ?? 0) + qty)
+      if (a.channel === 'Wet Market') phase1WM.set(a.sku, (phase1WM.get(a.sku) ?? 0) + qty)
+      else if (a.channel === 'LOTUS') phase1Lotus.set(a.sku, (phase1Lotus.get(a.sku) ?? 0) + qty)
+      else if (a.channel === 'Makro') phase1Makro.set(a.sku, (phase1Makro.get(a.sku) ?? 0) + qty)
     }
 
     // Shared SKU set: appears in both WM and LOTUS today (Phase 1 only)
@@ -482,35 +492,35 @@ export async function POST(req: NextRequest) {
 
     // ------ Build SKU targets per channel ------
 
-    interface SkuTarget { sku: string; skuName: string | null; targetQty: number }
+    interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel?: string }
 
     const buildWetMarketTargets = (): SkuTarget[] => {
       if (isPhase2) {
-        // Phase 2: Min(1300 order, avg BL3) − Phase 1 assigned
+        // Phase 2: Min(1400 order, BL3) − WM Phase1 only
         return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgWM.get(sku) ?? 0
           const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
-          const targetQty = Math.max(0, base - (phase1Assigned.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty }
+          const targetQty = Math.max(0, base - (phase1WM.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: 'Wet Market' }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 × %Variance — ไม่ต้องมี Order วันนี้
+      // Phase 1: Avg BL3 × %Variance
       const wmHistNames = new Map(wmHist.map(r => [r.sku, r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
       return Array.from(avgWM.entries()).map(([sku, avg]) => {
         const isShared = lotusHistSkus.has(sku)
         const lotusBL3 = avgLotus.get(sku) ?? 0
         const variance = getWetMarketVariance(isShared, avg, avg, lotusBL3)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance }
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: 'Wet Market' }
       }).filter(s => s.targetQty > 0)
     }
 
     const buildMakroTargets = (): SkuTarget[] => {
       if (isPhase2) {
-        // Phase 2: 1300 order − Phase 1 assigned (no variance)
+        // Phase 2: 1400 order − Makro Phase1 only (no variance)
         return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
-          const targetQty = Math.max(0, orderQty - (phase1Assigned.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty }
+          const targetQty = Math.max(0, orderQty - (phase1Makro.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: 'Makro' }
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: order × variance
@@ -519,24 +529,24 @@ export async function POST(req: NextRequest) {
         const avg = avgMakro.get(sku) ?? 0
         const proportion = makroTotal > 0 ? orderQty / makroTotal : 0
         const variance = getMakroVariance(proportion > 0.1, orderQty, avg)
-        return { sku, skuName: name, targetQty: orderQty * variance }
+        return { sku, skuName: name, targetQty: orderQty * variance, channel: 'Makro' }
       }).filter(s => s.targetQty > 0)
     }
 
     const buildLotusTargets = (): SkuTarget[] => {
       if (isPhase2) {
-        // Phase 2: Min(1300 order, avg BL3) − Phase 1 assigned
+        // Phase 2: Min(1400 order, BL3) − LOTUS Phase1 only
         return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgLotus.get(sku) ?? 0
           const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
-          const targetQty = Math.max(0, base - (phase1Assigned.get(sku) ?? 0))
-          return { sku, skuName: name, targetQty }
+          const targetQty = Math.max(0, base - (phase1Lotus.get(sku) ?? 0))
+          return { sku, skuName: name, targetQty, channel: 'LOTUS' }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 — ไม่ต้องมี Order วันนี้
+      // Phase 1: Avg BL3
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku, r.sku_name]))
       return Array.from(avgLotus.entries()).map(([sku, avg]) => ({
-        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg,
+        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: 'LOTUS',
       })).filter(s => s.targetQty > 0)
     }
 
@@ -560,7 +570,7 @@ export async function POST(req: NextRequest) {
       assignList = Array.from(planMap.entries())
         .map(([sku, { name, qty }]) => ({
           sku, skuName: name,
-          targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
+          targetQty: Math.max(0, qty - (phase1All.get(sku) ?? 0)),
         }))
         .filter(t => t.targetQty > 0)
         .sort((a, b) => b.targetQty - a.targetQty)
@@ -574,7 +584,7 @@ export async function POST(req: NextRequest) {
     // ------ Assign workers ------
     const assignments: Record<string, unknown>[] = []
 
-    for (const { sku, skuName, targetQty } of assignList) {
+    for (const { sku, skuName, targetQty, channel } of assignList) {
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
 
@@ -612,6 +622,7 @@ export async function POST(req: NextRequest) {
         phaseEndMins,
         period: phaseCfg.period,
         deadline: phaseCfg.deadline,
+        channel,
       })
 
       assignments.push(...newAssignments)
