@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+function shiftDate(iso: string | null, days: number): string | null {
+  if (!iso) return null
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
 function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
                         : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? '')
           return {
             order_date:    toISODate(r[dateCol]),
-            delivery_date: toISODate(r[dlvCol]),
+            delivery_date: shiftDate(toISODate(r[dlvCol]), -1),
             sku:           String(r[skuCol] ?? '').trim(),
             sku_name:      String(r[nameCol] ?? '').trim(),
             quantity:      parseFloat(String(r[qtyCol] || '0')) || 0,
