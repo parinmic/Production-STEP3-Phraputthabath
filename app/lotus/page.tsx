@@ -32,10 +32,10 @@ export default function LotusPage() {
         </div>
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
           <FileUpload
-            title="รอบ 13.00 น."
+            title="รอบ 14.00 น."
             description="อัพโหลดคำสั่งซื้อรอบบ่าย"
-            historyEndpoint="/api/upload-lotus?round=1300"
-            onUpload={makeUpload('1300')}
+            historyEndpoint="/api/upload-lotus?round=1400"
+            onUpload={makeUpload('1400')}
             parseFileFn={parseMakroFile}
           />
         </div>
