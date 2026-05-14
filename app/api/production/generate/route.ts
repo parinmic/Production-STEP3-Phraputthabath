@@ -58,7 +58,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8,  endH: 14 },
   { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17, endH: 19 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 3, startH: 16, endH: 19 },
 ]
 
 // ========== Station mapping ==========
