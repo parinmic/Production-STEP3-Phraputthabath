@@ -77,7 +77,7 @@ export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array', cellDates: true })
+        const wb = XLSX.read(data, { type: 'array' })
         // ข้อมูลอยู่ที่ sheet 2 (index 1) ถ้ามี ไม่งั้นใช้ sheet 1
         const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
         const sheet = wb.Sheets[sheetName]

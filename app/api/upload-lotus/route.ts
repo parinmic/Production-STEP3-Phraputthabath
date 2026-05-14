@@ -12,6 +12,10 @@ function toISODate(val: unknown): string | null {
     const year = parseInt(y) > 2400 ? parseInt(y) - 543 : parseInt(y)
     return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
   }
+  const num = parseFloat(s)
+  if (!isNaN(num) && num > 1000) {
+    return new Date(Math.round((num - 25569) * 86400 * 1000)).toISOString().split('T')[0]
+  }
   return s
 }
 
