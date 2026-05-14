@@ -454,3 +454,46 @@ export function parsePlan100(file: File): Promise<ParsedRow[]> {
     reader.readAsArrayBuffer(file)
   })
 }
+
+/**
+ * Parser สำหรับไฟล์ Mas หน่วยหยิบสินค้า
+ * รองรับ Excel/CSV คอลัมน์: SAP, ชื่อสินค้า, น้ำหนักต่อถุง (กก.), หน่วย
+ */
+export function parsePickingUnit(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseCsv(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+        const results: ParsedRow[] = raw
+          .map(r => {
+            const keys = Object.keys(r)
+            const find = (...kws: string[]) =>
+              keys.find(k => kws.every(kw => k.toLowerCase().includes(kw))) ?? ''
+            const sapCol  = keys.includes('sap') ? 'sap' : find('sap') || find('รหัส') || ''
+            const nameCol = keys.includes('product_name') ? 'product_name' : find('ชื่อ') || find('name') || ''
+            const wgtCol  = keys.includes('weight_per_bag') ? 'weight_per_bag' : find('น้ำหนัก') || find('weight') || find('กก') || ''
+            const unitCol = keys.includes('unit') ? 'unit' : find('หน่วย') || find('unit') || ''
+            return {
+              sap:            String(r[sapCol]  ?? '').trim(),
+              product_name:   String(r[nameCol] ?? '').trim() || null,
+              weight_per_bag: Number(r[wgtCol]) || 0,
+              unit:           String(r[unitCol] ?? '').trim() || 'ถุง',
+            }
+          })
+          .filter((r: { sap: string }) => r.sap)
+        if (!results.length) throw new Error('ไม่พบรายการที่มีรหัส SAP')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}

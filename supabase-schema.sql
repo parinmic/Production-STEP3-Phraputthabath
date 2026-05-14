@@ -332,3 +332,19 @@ CREATE INDEX IF NOT EXISTS idx_workforce_round    ON daily_workforce(work_date, 
 CREATE INDEX IF NOT EXISTS idx_makro_round        ON makro_orders(delivery_date, upload_round);
 CREATE INDEX IF NOT EXISTS idx_wet_market_round   ON wet_market_orders(delivery_date, upload_round);
 CREATE INDEX IF NOT EXISTS idx_lotus_round        ON lotus_orders(delivery_date, upload_round);
+
+-- 16. Mas หน่วยหยิบสินค้า — เทียบ กก. เป็นจำนวนถุง/หน่วย
+CREATE TABLE IF NOT EXISTS picking_unit_master (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  sap            text        NOT NULL,
+  product_name   text,
+  weight_per_bag numeric     NOT NULL DEFAULT 0,  -- กก. ต่อถุง
+  unit           text        NOT NULL DEFAULT 'ถุง',
+  source_file    text,
+  uploaded_at    timestamptz DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_picking_unit_sap ON picking_unit_master(sap);
+
+ALTER TABLE picking_unit_master ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_picking_unit" ON picking_unit_master FOR ALL USING (true) WITH CHECK (true);
