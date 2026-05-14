@@ -475,11 +475,17 @@ export function parsePickingUnit(file: File): Promise<ParsedRow[]> {
             const keys = Object.keys(r)
             const find = (...kws: string[]) =>
               keys.find(k => kws.every(kw => k.toLowerCase().includes(kw))) ?? ''
-            const sapCol  = keys.includes('sap') ? 'sap' : find('sap') || find('รหัส') || ''
-            const nameCol = keys.includes('product_name') ? 'product_name' : find('ชื่อ') || find('name') || ''
-            const wgtCol  = keys.includes('weight_per_bag') ? 'weight_per_bag' : find('น้ำหนัก') || find('weight') || find('กก') || ''
+            const stepCol = keys.includes('step') ? 'step' : find('step') || ''
+            const unixCol = keys.includes('unix') ? 'unix' : find('unix') || ''
+            const sapCol  = keys.includes('sap')  ? 'sap'  : find('sap')  || find('รหัส') || ''
+            const nameCol = keys.includes('product_name') ? 'product_name'
+                          : find('sku', 'name') || find('ชื่อ') || find('name') || ''
+            const wgtCol  = keys.includes('weight_per_bag') ? 'weight_per_bag'
+                          : find('น้ำหนัก') || find('weight') || find('กก') || ''
             const unitCol = keys.includes('unit') ? 'unit' : find('หน่วย') || find('unit') || ''
             return {
+              step:           String(r[stepCol] ?? '').trim() || null,
+              unix_code:      String(r[unixCol] ?? '').trim() || null,
               sap:            String(r[sapCol]  ?? '').trim(),
               product_name:   String(r[nameCol] ?? '').trim() || null,
               weight_per_bag: Number(r[wgtCol]) || 0,

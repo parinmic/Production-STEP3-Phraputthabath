@@ -18,6 +18,8 @@ export async function POST(req: NextRequest) {
 
     const records = rows
       .map((r: Record<string, unknown>) => ({
+        step:           String(r['step']      ?? '').trim() || null,
+        unix_code:      String(r['unix_code'] ?? '').trim() || null,
         sap:            String(r['sap'] ?? '').trim(),
         product_name:   String(r['product_name'] ?? '').trim() || null,
         weight_per_bag: Number(r['weight_per_bag']) || 0,

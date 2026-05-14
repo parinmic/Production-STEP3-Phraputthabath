@@ -336,6 +336,8 @@ CREATE INDEX IF NOT EXISTS idx_lotus_round        ON lotus_orders(delivery_date,
 -- 16. Mas หน่วยหยิบสินค้า — เทียบ กก. เป็นจำนวนถุง/หน่วย
 CREATE TABLE IF NOT EXISTS picking_unit_master (
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  step           text,
+  unix_code      text,
   sap            text        NOT NULL,
   product_name   text,
   weight_per_bag numeric     NOT NULL DEFAULT 0,  -- กก. ต่อถุง
@@ -343,6 +345,10 @@ CREATE TABLE IF NOT EXISTS picking_unit_master (
   source_file    text,
   uploaded_at    timestamptz DEFAULT now()
 );
+
+-- Migration: ถ้า table เดิมมีอยู่แล้ว ให้รัน ALTER เหล่านี้
+-- ALTER TABLE picking_unit_master ADD COLUMN IF NOT EXISTS step text;
+-- ALTER TABLE picking_unit_master ADD COLUMN IF NOT EXISTS unix_code text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_picking_unit_sap ON picking_unit_master(sap);
 
