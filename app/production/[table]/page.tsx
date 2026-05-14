@@ -770,21 +770,6 @@ export default function TablePage() {
         </div>
       </div>
 
-      {/* Mobile generate button */}
-      <div className="sm:hidden space-y-2">
-        <button onClick={generate} disabled={generating}
-          className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
-          <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
-        </button>
-        {genResult && (
-          <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs border ${genResult.success
-            ? 'bg-green-50 text-green-700 border-green-200'
-            : 'bg-red-50 text-red-700 border-red-200'}`}>
-            {genResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-            <span className="flex-1">{genResult.message}</span>
-          </div>
-        )}
-      </div>
 
       {/* Empty / loading */}
       {loading && (
