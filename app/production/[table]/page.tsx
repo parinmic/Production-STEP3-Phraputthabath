@@ -622,16 +622,14 @@ function exportExcel(
 ) {
   const wb = XLSX.utils.book_new()
 
-  for (const phase of PHASES) {
-    const phaseItems = allItems.filter(a => a.period === phase.period)
+  const colWidths = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 36 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }]
+  const header = ['ลำดับ', 'รหัสพนักงาน', 'ชื่อพนักงาน', 'รหัสสินค้า', 'ชื่อสินค้า', 'ปริมาณ (กก.)', 'เวลาเริ่ม', 'เวลาเสร็จ', 'Phase']
+
+  const buildRows = (items: Assignment[], phaseStartMins: number, phaseLabel?: string) => {
     const byWorker: Record<string, Assignment[]> = {}
-    for (const a of phaseItems) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
-
-    const header = ['ลำดับ', 'รหัสพนักงาน', 'ชื่อพนักงาน', 'รหัสสินค้า', 'ชื่อสินค้า', 'ปริมาณ (กก.)', 'เวลาเริ่ม', 'เวลาเสร็จ']
-    const rows: (string | number)[][] = [header]
+    for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+    const rows: (string | number)[][] = []
     let seq = 1
-    const phaseStartMins = phase.startH * 60
-
     for (const [workerName, workerTasks] of Object.entries(byWorker).sort()) {
       const tasks = mergeTasks(workerTasks)
       const displayName = nameMap[workerName.replace(/\s+/g, ' ').trim()] ?? shortName(workerName)
@@ -650,14 +648,30 @@ function exportExcel(
           Number(task.target_quantity),
           minsToLabel(startMin),
           minsToLabel(phaseStartMins + offset),
+          phaseLabel ?? task.period,
         ])
       }
     }
+    return rows
+  }
 
+  for (const phase of PHASES) {
+    const phaseItems = allItems.filter(a => a.period === phase.period)
+    const rows = [[...header], ...buildRows(phaseItems, phase.startH * 60)]
     const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 36 }, { wch: 14 }, { wch: 10 }, { wch: 10 }]
+    ws['!cols'] = colWidths
     XLSX.utils.book_append_sheet(wb, ws, `Phase ${phase.phase} (${phase.sub})`)
   }
+
+  // Sheet รวม 3 Phase
+  const allRows: (string | number)[][] = [[...header]]
+  for (const phase of PHASES) {
+    const phaseItems = allItems.filter(a => a.period === phase.period)
+    allRows.push(...buildRows(phaseItems, phase.startH * 60, `Phase ${phase.phase}`))
+  }
+  const wsAll = XLSX.utils.aoa_to_sheet(allRows)
+  wsAll['!cols'] = colWidths
+  XLSX.utils.book_append_sheet(wb, wsAll, 'รวมทั้งหมด')
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
   const blob = new Blob([wbout], { type: 'application/octet-stream' })
