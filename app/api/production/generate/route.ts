@@ -258,8 +258,9 @@ export async function POST(req: NextRequest) {
       return h.toISOString().split('T')[0]
     })
 
-    // Phase 2 reads orders from 1300 round; Phase 1 from 0800
+    // Phase 2 reads orders from 1300 round (WM/LOTUS) or 1400 (Makro); Phase 1 from 0800
     const orderRound = isPhase2 ? '1300' : '0800'
+    const makroRound = isPhase2 ? '1400' : '0800'
 
     // ------ Load all data in parallel ------
     const [
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound),
+        .eq('upload_round', makroRound),
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates),
