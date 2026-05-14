@@ -415,8 +415,8 @@ export async function POST(req: NextRequest) {
 
     const skuMap = new Map<string, ProductivityRow>()
     for (const p of productivity) {
-      skuMap.set(p.sku, p)
-      skuMap.set(p.sku.replace(/^0+/, ''), p)
+      if (!skuMap.has(p.sku))                    skuMap.set(p.sku, p)
+      if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
     }
 
     const jobAssignMap = buildJobAssignMap(

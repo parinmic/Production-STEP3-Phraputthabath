@@ -16,7 +16,7 @@ export async function GET() {
     const r = row.row_data as Record<string, unknown>
     const sku  = String(r['SAP'] ?? '').trim()
     const rate = Number(r['กำลังการผลิต (กก./ชม./คน)'] ?? 0)
-    if (sku && rate > 0) rateMap[sku] = rate
+    if (sku && rate > 0 && !rateMap[sku]) rateMap[sku] = rate
   }
 
   return NextResponse.json({ rateMap })
