@@ -711,6 +711,22 @@ export default function TablePage() {
         </div>
       </div>
 
+      {/* Mobile generate button */}
+      <div className="sm:hidden space-y-2">
+        <button onClick={generate} disabled={generating}
+          className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
+          <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
+        </button>
+        {genResult && (
+          <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs border ${genResult.success
+            ? 'bg-green-50 text-green-700 border-green-200'
+            : 'bg-red-50 text-red-700 border-red-200'}`}>
+            {genResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+            <span className="flex-1">{genResult.message}</span>
+          </div>
+        )}
+      </div>
+
       {/* Empty / loading */}
       {loading && (
         <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>
@@ -726,28 +742,20 @@ export default function TablePage() {
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
             {/* View toggle */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setViewMode('sku')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'sku'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                <BarChart2 size={15} />ภาพรวม
-              </button>
-              <button
-                onClick={() => setViewMode('gantt')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'gantt'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                <LayoutList size={15} />รายพนักงาน
-              </button>
-              <button
-                onClick={() => setViewMode('time')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'time'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                <Clock size={15} />รายเวลา
-              </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {([
+                { mode: 'sku',   icon: BarChart2,  label: 'ภาพรวม' },
+                { mode: 'gantt', icon: LayoutList,  label: 'รายพนักงาน' },
+                { mode: 'time',  icon: Clock,       label: 'รายเวลา' },
+              ] as const).map(({ mode, icon: Icon, label }) => (
+                <button key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-1 sm:flex-none justify-center sm:justify-start ${viewMode === mode
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                  <Icon size={14} />{label}
+                </button>
+              ))}
             </div>
 
             {viewMode === 'sku' && (

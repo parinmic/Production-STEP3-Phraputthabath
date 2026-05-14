@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-8">ภาพรวมระบบ</h1>
-      <div className="grid grid-cols-2 gap-6 mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-10">
         {cards.map((c) => (
           <Link key={c.label} href={c.href} className="card hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
@@ -38,7 +38,7 @@ export default async function DashboardPage() {
       </div>
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">คำสั่งผลิตแยกตามโต้ะ</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {[
             { label: ' Station สามชั้น', slug: 'sam-chan', cls: 'border-blue-500 bg-blue-50 text-blue-700' },
             { label: 'Station สะโพก',   slug: 'sa-phok', cls: 'border-orange-500 bg-orange-50 text-orange-700' },
