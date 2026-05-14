@@ -89,6 +89,153 @@ export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
   })
 }
 
+function thaiDateToISO(s: string): string {
+  const parts = s.trim().split('/')
+  if (parts.length !== 3) return s
+  const [d, m, y] = parts
+  const year = parseInt(y) > 2400 ? parseInt(y) - 543 : parseInt(y)
+  return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
+/**
+ * Parser สำหรับไฟล์แผนผลิต Makro 100% (Pivot Table จาก Makro)
+ * - ชีท "แผน Makro 100%"
+ * - Row 4 (col 1=rReq_date, col 2=วันที่): วันส่งสินค้า
+ * - Row 8: header [สายพาน, rProduct_code, rProduct_name, สาขา..., ผลรวมทั้งหมด]
+ * - Rows 9+: ข้อมูลสินค้า (quantity = col ผลรวมทั้งหมด)
+ */
+export function parseMakroPlan100(file: File): Promise<ParsedRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets['แผน Makro 100%']
+        if (!ws) throw new Error('ไม่พบชีท "แผน Makro 100%"')
+        const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+
+        // หาวันส่ง จาก filter section (rReq_date อยู่ใน 8 แถวแรก)
+        let deliveryDate = ''
+        for (let i = 0; i < 8; i++) {
+          const row = raw[i]
+          if (row && String(row[1] ?? '').trim() === 'rReq_date') {
+            deliveryDate = thaiDateToISO(String(row[2] ?? ''))
+            break
+          }
+        }
+
+        // หา header row (col 1 = 'rProduct_code')
+        const hIdx = raw.findIndex(row => row && String(row[1] ?? '') === 'rProduct_code')
+        if (hIdx < 0) throw new Error('ไม่พบ header row (rProduct_code) ในชีท แผน Makro 100%')
+
+        const hRow = raw[hIdx]
+        const totalCol = hRow.findIndex(c => String(c ?? '').includes('ผลรวม'))
+
+        const results: ParsedRow[] = []
+        let currentStation = ''
+
+        for (let i = hIdx + 1; i < raw.length; i++) {
+          const row = raw[i]
+          if (!row) continue
+          const col1 = row[1]
+          if (col1 === null || col1 === '') continue
+          if (typeof col1 !== 'number') continue  // skip subtotal/header rows
+
+          const stationVal = String(row[0] ?? '').trim()
+          if (stationVal) currentStation = stationVal
+
+          const qty = totalCol >= 0 ? (Number(row[totalCol]) || 0) : 0
+          if (!qty) continue
+
+          results.push({
+            delivery_date: deliveryDate || null,
+            order_date:    deliveryDate || null,
+            sku:           String(col1),
+            sku_name:      String(row[2] ?? '').trim(),
+            quantity:      qty,
+            period:        currentStation || null,
+          })
+        }
+
+        if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ แผน Makro 100% ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+/**
+ * Auto-detect parser สำหรับ Makro 14:00
+ * - CSV → parseMakroFile (TIS-620)
+ * - XLSX มีชีท "แผน Makro 100%" → parseMakroPlan100
+ * - XLSX ไม่มี → parseLotusWetMarketFile (Sheet 2, rXxx)
+ */
+export function parseMakroAuto(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseMakroFile(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        if (wb.SheetNames.includes('แผน Makro 100%')) {
+          const ws = wb.Sheets['แผน Makro 100%']
+          const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+          let deliveryDate = ''
+          for (let i = 0; i < 8; i++) {
+            const row = raw[i]
+            if (row && String(row[1] ?? '').trim() === 'rReq_date') {
+              deliveryDate = thaiDateToISO(String(row[2] ?? ''))
+              break
+            }
+          }
+          const hIdx = raw.findIndex(row => row && String(row[1] ?? '') === 'rProduct_code')
+          if (hIdx < 0) throw new Error('ไม่พบ header row ในชีท แผน Makro 100%')
+          const hRow = raw[hIdx]
+          const totalCol = hRow.findIndex(c => String(c ?? '').includes('ผลรวม'))
+          const results: ParsedRow[] = []
+          let currentStation = ''
+          for (let i = hIdx + 1; i < raw.length; i++) {
+            const row = raw[i]
+            if (!row) continue
+            const col1 = row[1]
+            if (col1 === null || col1 === '' || typeof col1 !== 'number') continue
+            const stationVal = String(row[0] ?? '').trim()
+            if (stationVal) currentStation = stationVal
+            const qty = totalCol >= 0 ? (Number(row[totalCol]) || 0) : 0
+            if (!qty) continue
+            results.push({
+              delivery_date: deliveryDate || null,
+              order_date:    deliveryDate || null,
+              sku:           String(col1),
+              sku_name:      String(row[2] ?? '').trim(),
+              quantity:      qty,
+              period:        currentStation || null,
+            })
+          }
+          if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')
+          resolve(results)
+        } else {
+          // rXxx format: ข้อมูลอยู่ sheet 2
+          const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
+          const sheet = wb.Sheets[sheetName]
+          resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null }))
+        }
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ Makro ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 export function parseQuotaForecast(file: File): Promise<ParsedRow[]> {
   const name = file.name.toLowerCase()
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) {

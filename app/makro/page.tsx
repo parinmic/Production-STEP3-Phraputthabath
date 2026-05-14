@@ -1,6 +1,6 @@
 'use client'
 import FileUpload from '@/components/FileUpload'
-import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
+import { ParsedRow, parseLotusWetMarketFile, parseMakroAuto } from '@/lib/parser'
 
 function makeUpload(round: string) {
   return async (rows: ParsedRow[], filename: string) => {
@@ -34,10 +34,10 @@ export default function MakroPage() {
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
           <FileUpload
             title="รอบ 14.00 น."
-            description="อัพโหลดคำสั่งซื้อรอบบ่าย"
+            description="อัพโหลดคำสั่งซื้อรอบบ่าย หรือไฟล์แผนผลิต Makro 100%"
             historyEndpoint="/api/upload-makro?round=1400"
             onUpload={makeUpload('1400')}
-            parseFileFn={parseLotusWetMarketFile}
+            parseFileFn={parseMakroAuto}
           />
         </div>
       </div>

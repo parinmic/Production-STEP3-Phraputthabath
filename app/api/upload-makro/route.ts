@@ -36,10 +36,23 @@ export async function POST(req: NextRequest) {
     const { rows, filename, round } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
-    const isMakroNative = 'rProduct_code' in rows[0]
+    const isPlanMapped  = 'sku' in rows[0] && 'delivery_date' in rows[0]
+    const isMakroNative = !isPlanMapped && 'rProduct_code' in rows[0]
 
     const records = rows
       .map((r: Record<string, unknown>) => {
+        if (isPlanMapped) {
+          return {
+            order_date:    String(r['order_date'] ?? r['delivery_date'] ?? ''),
+            delivery_date: String(r['delivery_date'] ?? ''),
+            sku:           String(r['sku'] ?? '').trim(),
+            sku_name:      String(r['sku_name'] ?? '').trim(),
+            quantity:      Number(r['quantity']) || 0,
+            period:        String(r['period'] ?? '').trim() || null,
+            upload_round:  round ?? '0800',
+            source_file:   filename ?? 'unknown',
+          }
+        }
         if (isMakroNative) {
           return {
             order_date:    toISODate(r['rDoc_date']),
