@@ -5,6 +5,7 @@ function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
   if (!s) return null
+  if (s.includes('T')) return s.split('T')[0]
   const parts = s.split('/')
   if (parts.length === 3) {
     const [d, m, y] = parts
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
             delivery_date: toISODate(r['rReq_date']),
             sku:           String(r['rProduct_code'] ?? '').trim(),
             sku_name:      String(r['rProduct_name'] ?? '').trim(),
-            quantity:      parseFloat(String(r['rPlan_qty'] || '0')) || 0,
+            quantity:      parseFloat(String(r['rPlan_qty'] ?? r['rPlan_wgt'] ?? '0')) || 0,
             period:        String(r['rShip_name'] ?? '').trim() || null,
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',
