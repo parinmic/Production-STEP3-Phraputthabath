@@ -90,6 +90,13 @@ export function parseLotusWetMarketFile(file: File): Promise<ParsedRow[]> {
   })
 }
 
+function shiftISODate(iso: string, days: number): string {
+  if (!iso) return iso
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
 function thaiDateToISO(s: string): string {
   const t = s.trim()
   const parts = t.split('/')
@@ -120,8 +127,8 @@ function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[
     if (!row) continue
     const a = String(row[0] ?? '').trim()
     const b = String(row[1] ?? '').trim()
-    if (a === 'rReq_date') { deliveryDate = thaiDateToISO(b); break }
-    if (b === 'rReq_date') { deliveryDate = thaiDateToISO(String(row[2] ?? '')); break }
+    if (a === 'rReq_date') { deliveryDate = shiftISODate(thaiDateToISO(b), -1); break }
+    if (b === 'rReq_date') { deliveryDate = shiftISODate(thaiDateToISO(String(row[2] ?? '')), -1); break }
   }
 
   // หา header row (col 1 = 'rProduct_code')
