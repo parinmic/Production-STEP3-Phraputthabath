@@ -86,9 +86,9 @@ export default function Sidebar() {
         {/* Desktop collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden md:flex absolute -right-3 top-6 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-full w-6 h-6 items-center justify-center z-10 transition-colors"
+          className="hidden md:flex absolute -right-3 top-5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-full w-7 h-7 items-center justify-center z-10 transition-colors"
         >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          <Menu size={15} />
         </button>
 
         {/* Nav */}
