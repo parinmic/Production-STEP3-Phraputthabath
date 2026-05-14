@@ -825,10 +825,9 @@ export default function TablePage() {
               ))}
               <button
                 onClick={() => exportExcel(cfg.label, date, items, rateMap, nameMap)}
-                className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                className="ml-auto hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors whitespace-nowrap">
                 <Download size={14} />
-                <span className="hidden sm:inline">Export Excel</span>
-                <span className="sm:hidden">Export</span>
+                Export Excel
               </button>
             </div>
 
