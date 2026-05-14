@@ -677,7 +677,7 @@ export default function TablePage() {
   const cfg       = CFG[tableSlug]
 
   const [date]                      = useState(new Date().toISOString().split('T')[0])
-  const [selectedPhase, setPhase]   = useState(1)
+  const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
   const [nameMap, setNameMap]       = useState<Record<string, string>>({})
@@ -716,6 +716,7 @@ export default function TablePage() {
   useEffect(() => { loadData(date) }, [date, cfg?.label])
 
   const generate = async () => {
+    if (selectedPhase === 'all') return
     setGenerating(true); setGenResult(null)
     try {
       const res    = await fetch('/api/production/generate', {
@@ -731,9 +732,11 @@ export default function TablePage() {
 
   if (!cfg) return <p className="text-red-500">ไม่พบ Station</p>
 
-  const phaseConfig = PHASES.find(p => p.phase === selectedPhase)!
-  const filtered    = items.filter(a => a.period === phaseConfig.period)
-  const dateDisplay = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  const phaseConfig  = selectedPhase === 'all' ? null : PHASES.find(p => p.phase === selectedPhase)!
+  const filtered     = selectedPhase === 'all' ? items : items.filter(a => a.period === phaseConfig!.period)
+  const viewStartH   = selectedPhase === 'all' ? PHASES[0].startH  : phaseConfig!.startH
+  const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
+  const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 
   return (
     <div className="space-y-3 sm:space-y-5">
@@ -753,12 +756,22 @@ export default function TablePage() {
             <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
           </button>
         ))}
+        <button
+          onClick={() => { setPhase('all'); setGenResult(null) }}
+          className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors border ${selectedPhase === 'all'
+            ? 'bg-gray-800 text-white border-gray-800'
+            : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+          <span className="block">ทั้งหมด</span>
+          <span className="block text-[10px] sm:text-xs font-normal opacity-80">3 Phase</span>
+        </button>
 
         <div className="hidden sm:flex items-center gap-3 ml-auto">
-          <button onClick={generate} disabled={generating}
-            className="btn-primary flex items-center gap-2 text-sm">
-            <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
-          </button>
+          {selectedPhase !== 'all' && (
+            <button onClick={generate} disabled={generating}
+              className="btn-primary flex items-center gap-2 text-sm">
+              <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
+            </button>
+          )}
           {genResult && (
             <div className="flex items-center gap-2">
               <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${genResult.success
@@ -787,8 +800,8 @@ export default function TablePage() {
       )}
       {!loading && filtered.length === 0 && (
         <div className="card text-center py-16 text-gray-400">
-          <p className="font-medium">ยังไม่มีคำสั่งผลิต Phase {selectedPhase} วันที่ {date}</p>
-          <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>
+          <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
+          {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
         </div>
       )}
 
@@ -822,15 +835,15 @@ export default function TablePage() {
             {viewMode === 'sku' && (
               <SkuScheduleView
                 items={filtered}
-                phaseStart={phaseConfig.startH}
-                phaseEnd={phaseConfig.endH}
+                phaseStart={viewStartH}
+                phaseEnd={viewEndH}
                 rateMap={rateMap}
               />
             )}
             {viewMode === 'gantt' && (
               <WorkerCardView
                 items={filtered}
-                phaseStart={phaseConfig.startH}
+                phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
               />
@@ -838,7 +851,7 @@ export default function TablePage() {
             {viewMode === 'worker' && (
               <WorkerTable
                 items={filtered}
-                phaseStart={phaseConfig.startH}
+                phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
               />
@@ -846,7 +859,7 @@ export default function TablePage() {
             {viewMode === 'time' && (
               <CurrentTimeView
                 items={filtered}
-                phaseStart={phaseConfig.startH}
+                phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
               />
