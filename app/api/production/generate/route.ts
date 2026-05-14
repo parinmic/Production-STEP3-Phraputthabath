@@ -287,43 +287,26 @@ export async function POST(req: NextRequest) {
             .eq('work_date', productionDate)
             .eq('upload_round', '1300')
         : Promise.resolve({ data: [] as WorkforceRow[], error: null }),
-      // Phase 2: ใช้ uploaded_at >= productionDate แทน delivery_date = today
-      // เพราะ delivery_date ในไฟล์อาจเป็นวันส่งสินค้าจริง (ไม่ใช่วันผลิต)
-      isPhase2
-        ? supabase.from('wet_market_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .gte('uploaded_at', productionDate)
-            .eq('upload_round', '1400')
-        : supabase.from('wet_market_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .eq('delivery_date', productionDate)
-            .eq('upload_round', '0800'),
+      supabase.from('wet_market_orders')
+        .select('sku, sku_name, quantity, delivery_date')
+        .eq('delivery_date', productionDate)
+        .eq('upload_round', orderRound),
       supabase.from('wet_market_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates)
         .eq('upload_round', '1600'),
-      isPhase2
-        ? supabase.from('lotus_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .gte('uploaded_at', productionDate)
-            .eq('upload_round', '1400')
-        : supabase.from('lotus_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .eq('delivery_date', productionDate)
-            .eq('upload_round', '0800'),
+      supabase.from('lotus_orders')
+        .select('sku, sku_name, quantity, delivery_date')
+        .eq('delivery_date', productionDate)
+        .eq('upload_round', orderRound),
       supabase.from('lotus_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates)
         .eq('upload_round', '1600'),
-      isPhase2
-        ? supabase.from('makro_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .gte('uploaded_at', productionDate)
-            .eq('upload_round', '1400')
-        : supabase.from('makro_orders')
-            .select('sku, sku_name, quantity, delivery_date')
-            .eq('delivery_date', productionDate)
-            .eq('upload_round', '0800'),
+      supabase.from('makro_orders')
+        .select('sku, sku_name, quantity, delivery_date')
+        .eq('delivery_date', productionDate)
+        .eq('upload_round', orderRound),
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates),
