@@ -25,6 +25,34 @@ interface ProductivityRow {
   rate: number  // กก./ชม./คน
 }
 
+// ========== Break config ==========
+
+const BREAK_START_MINS = 720  // 12:00
+const BREAK_END_MINS   = 780  // 13:00
+
+/** Work minutes available between fromMins and toMins, excluding break */
+function availableWorkMins(fromMins: number, toMins: number): number {
+  const total = Math.max(0, toMins - fromMins)
+  const breakOverlap = Math.max(0,
+    Math.min(BREAK_END_MINS, toMins) - Math.max(BREAK_START_MINS, fromMins)
+  )
+  return Math.max(0, total - breakOverlap)
+}
+
+/** Wall-clock finish time when starting at fromMins and doing workMins of actual work */
+function wallClockFinish(fromMins: number, workMins: number): number {
+  if (workMins <= 0) return fromMins
+  // If start falls inside break, jump to break end
+  const start = (fromMins >= BREAK_START_MINS && fromMins < BREAK_END_MINS)
+    ? BREAK_END_MINS : fromMins
+  if (start < BREAK_START_MINS) {
+    const beforeBreak = BREAK_START_MINS - start
+    if (workMins <= beforeBreak) return start + workMins
+    return BREAK_END_MINS + (workMins - beforeBreak)
+  }
+  return start + workMins
+}
+
 // ========== Phase config ==========
 
 const PHASE_CONFIG = [
@@ -162,20 +190,21 @@ function assignWorkers(
 
   const entries = eligibleWorkers
     .map(w => {
-      const freeAt         = workerFreeAtMins.get(w.emp_id) ?? 0
-      const remainingHours = workerHours.get(w.emp_id) ?? 0
-      // cap to time remaining in phase
-      const effectiveHours = Math.min(remainingHours, Math.max(0, (phaseEndMins - freeAt) / 60))
-      return { worker: w, freeAt, exhaustAt: freeAt + effectiveHours * 60, remainingHours }
+      const freeAt          = workerFreeAtMins.get(w.emp_id) ?? 0
+      const remainingHours  = workerHours.get(w.emp_id) ?? 0
+      // cap to actual work time remaining in phase (excluding break)
+      const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, phaseEndMins)))
+      const exhaustAt       = wallClockFinish(freeAt, availWorkMins)
+      return { worker: w, freeAt, exhaustAt, remainingHours }
     })
     .filter(e => e.exhaustAt > e.freeAt + 0.1)  // must have usable capacity
     .sort((a, b) => a.freeAt - b.freeAt)
 
   if (!entries.length) return []
 
-  // Build sorted event timeline: every join time + every exhaust time
+  // Build sorted event timeline: join/exhaust times + break boundaries
   const eventTimes = Array.from(
-    new Set(entries.flatMap(e => [e.freeAt, e.exhaustAt]))
+    new Set([...entries.flatMap(e => [e.freeAt, e.exhaustAt]), BREAK_START_MINS, BREAK_END_MINS])
   ).sort((a, b) => a - b)
 
   let pool = targetQty
@@ -185,6 +214,9 @@ function assignWorkers(
   for (let i = 0; i < eventTimes.length - 1 && pool > 0.01; i++) {
     const t0 = eventTimes[i]
     const t1 = eventTimes[i + 1]
+
+    // Skip lunch break 12:00–13:00
+    if (t0 >= BREAK_START_MINS && t1 <= BREAK_END_MINS) continue
 
     // Active in this segment: joined (freeAt ≤ t0) and not yet exhausted (exhaustAt > t0)
     const active = entries.filter(e => e.freeAt <= t0 && e.exhaustAt > t0)
