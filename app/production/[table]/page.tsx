@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
@@ -610,6 +611,64 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
   )
 }
 
+// ─── Excel Export ─────────────────────────────────────────────────────────────
+
+function exportExcel(
+  stationLabel: string,
+  date: string,
+  allItems: Assignment[],
+  rateMap: Record<string, number>,
+  nameMap: Record<string, string>,
+) {
+  const wb = XLSX.utils.book_new()
+
+  for (const phase of PHASES) {
+    const phaseItems = allItems.filter(a => a.period === phase.period)
+    const byWorker: Record<string, Assignment[]> = {}
+    for (const a of phaseItems) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+
+    const header = ['ลำดับ', 'รหัสพนักงาน', 'ชื่อพนักงาน', 'รหัสสินค้า', 'ชื่อสินค้า', 'ปริมาณ (กก.)', 'เวลาเริ่ม', 'เวลาเสร็จ']
+    const rows: (string | number)[][] = [header]
+    let seq = 1
+    const phaseStartMins = phase.startH * 60
+
+    for (const [workerName, workerTasks] of Object.entries(byWorker).sort()) {
+      const tasks = mergeTasks(workerTasks)
+      const displayName = nameMap[workerName.replace(/\s+/g, ' ').trim()] ?? shortName(workerName)
+      let offset = 0
+      for (const task of tasks) {
+        const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+        const dur = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        const startMin = phaseStartMins + offset
+        offset += dur
+        rows.push([
+          seq++,
+          task.worker_code,
+          displayName,
+          task.sku,
+          task.sku_name ?? '',
+          Number(task.target_quantity),
+          minsToLabel(startMin),
+          minsToLabel(phaseStartMins + offset),
+        ])
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!cols'] = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 36 }, { wch: 14 }, { wch: 10 }, { wch: 10 }]
+    XLSX.utils.book_append_sheet(wb, ws, `Phase ${phase.phase} (${phase.sub})`)
+  }
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([wbout], { type: 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `คำสั่งผลิต_${stationLabel}_${date}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TablePage() {
@@ -756,6 +815,13 @@ export default function TablePage() {
                   <Icon size={14} />{label}
                 </button>
               ))}
+              <button
+                onClick={() => exportExcel(cfg.label, date, items, rateMap, nameMap)}
+                className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors whitespace-nowrap">
+                <Download size={14} />
+                <span className="hidden sm:inline">Export Excel</span>
+                <span className="sm:hidden">Export</span>
+              </button>
             </div>
 
             {viewMode === 'sku' && (
