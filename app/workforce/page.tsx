@@ -24,6 +24,7 @@ function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
   const [preview, setPreview] = useState<ParsedRow[]>([])
   const [filename, setFilename] = useState('')
   const [history, setHistory] = useState<UploadRecord[]>([])
+  const [deleting, setDeleting] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const fetchHistory = async () => {
@@ -35,6 +36,18 @@ function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
   }
 
   useEffect(() => { fetchHistory() }, [round])
+
+  const handleDelete = async (sourceFile: string) => {
+    if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
+    setDeleting(sourceFile)
+    try {
+      const res = await fetch(`/api/upload-workforce?round=${round}&file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) fetchHistory()
+      else alert(data.message ?? 'ลบไม่สำเร็จ')
+    } catch { alert('เกิดข้อผิดพลาด') }
+    finally { setDeleting(null) }
+  }
 
   const handleFile = async (file: File) => {
     setStatus('parsing'); setMessage(''); setPreview([]); setFilename(file.name)
@@ -139,26 +152,28 @@ function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
       {history.length > 0 && (
         <div className="card">
           <p className="font-semibold text-gray-800 mb-3">ประวัติการอัพโหลด</p>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-3 py-2 text-left text-gray-600 font-medium border-b">ชื่อไฟล์</th>
-                <th className="px-3 py-2 text-right text-gray-600 font-medium border-b">รายการ</th>
-                <th className="px-3 py-2 text-left text-gray-600 font-medium border-b">เวลาอัพโหลด</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((h, i) => (
-                <tr key={i} className="border-b hover:bg-gray-50">
-                  <td className="px-3 py-2 text-gray-700 font-mono text-xs">{h.source_file}</td>
-                  <td className="px-3 py-2 text-gray-700 text-right">{h.record_count.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+          <div className="space-y-0 divide-y divide-gray-100">
+            {history.map((h, i) => (
+              <div key={i} className="flex items-center gap-3 py-2.5 hover:bg-gray-50 -mx-1 px-1 rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-mono text-gray-700 truncate">{h.source_file}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {h.record_count.toLocaleString()} รายการ
+                    <span className="mx-1.5">·</span>
                     {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDelete(h.source_file)}
+                  disabled={deleting === h.source_file}
+                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
+                  title="ลบ"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -189,7 +204,7 @@ export default function WorkforcePage() {
         <span className="text-sm text-gray-500">ใช้ร่วมกันทั้งสองรอบ</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <RoundUpload round="0800" label="รอบ 8.00 น." color="blue" workDate={workDate} />
         <RoundUpload round="1300" label="รอบ 13.00 น." color="orange" workDate={workDate} />
       </div>
