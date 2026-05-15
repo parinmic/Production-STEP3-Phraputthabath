@@ -549,9 +549,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
     return () => clearInterval(id)
   }, [])
 
-  // null = live mode, number = selected hour (e.g. 8 = 08:00–09:00)
-  const [selectedHour, setSelectedHour] = useState<number | null>(null)
-  const nowMins = selectedHour !== null ? selectedHour * 60 + 30 : realNowMins
+  const nowMins = realNowMins
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
@@ -569,41 +567,10 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
     return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
   }
 
-  // Compute max end across all workers to determine hour range
-  let maxEndMins = phaseStartMins
-  for (const workerTasks of Object.values(byWorker)) {
-    const tasks = mergeTasks(workerTasks)
-    let cur = phaseStartMins
-    for (const t of tasks) cur = wallClockFinish(cur, taskDurMins(t))
-    maxEndMins = Math.max(maxEndMins, cur)
-  }
-  const hourSlots: number[] = []
-  for (let h = phaseStart; h * 60 < maxEndMins; h++) hourSlots.push(h)
-
-  const isLive = selectedHour === null
+  const isLive = true
 
   return (
     <div className="space-y-4">
-      {/* Hour selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setSelectedHour(null)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${isLive
-            ? 'bg-gray-900 text-white'
-            : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`} />
-          ตอนนี้
-        </button>
-        {hourSlots.map(h => (
-          <button key={h}
-            onClick={() => setSelectedHour(h)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedHour === h
-              ? 'bg-gray-900 text-white'
-              : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-            {String(h).padStart(2, '0')}:00
-          </button>
-        ))}
-      </div>
 
       {/* Worker grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
