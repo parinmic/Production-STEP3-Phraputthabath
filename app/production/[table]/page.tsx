@@ -512,7 +512,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
                 className={`text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
                 {hasData ? total.toLocaleString() : '—'}
               </button>
-              <div className="flex justify-end items-center gap-1">
+              <div className="flex justify-end">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -524,13 +524,8 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
                   }}
                   onKeyDown={e => { if (e.key === 'Enter') confirm(sku) }}
                   placeholder="—"
-                  className="w-14 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                  className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
-                <button
-                  onClick={() => confirm(sku)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 active:scale-95 transition-all shrink-0">
-                  ✓
-                </button>
               </div>
             </div>
           )
