@@ -290,10 +290,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
           <>
             {/* mobile: left col w-28 (7rem) + right col w-24 (6rem) */}
             <div className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-20"
-              style={{ left: `calc(7rem + (100% - 13rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#dc2626' }} />
+              style={{ left: `calc(7rem + (100% - 13rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#a91b1b' }} />
             {/* desktop: left col w-44 (11rem) + right col w-32 (8rem) */}
             <div className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
-              style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#dc2626' }} />
+              style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#a91b1b' }} />
           </>
         )}
 
