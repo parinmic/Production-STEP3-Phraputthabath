@@ -189,9 +189,10 @@ interface SkuScheduleViewProps {
   phaseStart: number
   phaseEnd: number
   rateMap: Record<string, number>
+  bagMap: Record<string, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -324,7 +325,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {stat.totalQty.toLocaleString()} กก.
+                      {(() => { const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(stat.totalQty / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{stat.totalQty.toLocaleString()} กก.
                       <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                     </p>
                   </div>
@@ -875,6 +876,7 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 phaseEnd={viewEndH}
                 rateMap={rateMap}
+                bagMap={bagMap}
               />
             )}
             {viewMode === 'gantt' && (
