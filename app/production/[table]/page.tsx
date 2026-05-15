@@ -431,8 +431,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
   const [actualBags, setActualBags] = useState<Record<string, string>>({})
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
 
   const phaseStartMins = phaseStart * 60
 
@@ -486,15 +484,13 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       <div className="divide-y divide-gray-50">
         {sortedSkus.map((sku, i) => {
           const stat = skuStats[sku]
-          const col  = skuColor[sku]
           const wpb  = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
           const bags = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
 
           return (
             <div key={sku}
               className={`grid grid-cols-[1fr_100px_110px] gap-0 px-4 py-2.5 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+              <div className="flex items-center min-w-0">
                 <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
               </div>
               <p className="text-sm font-semibold text-gray-600 text-right">
