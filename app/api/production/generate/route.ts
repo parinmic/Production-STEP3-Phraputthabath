@@ -600,14 +600,39 @@ export async function POST(req: NextRequest) {
         cur.qty += Number(r.weight_total)
         planMap.set(r.sap, cur)
       }
-      assignList = Array.from(planMap.entries())
-        .map(([sku, { name, qty }]) => ({
-          sku, skuName: name,
-          targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
-          channel: 'plan100',
-        }))
+      
+      const allPhase3Targets = Array.from(planMap.entries())
+        .map(([sku, { name, qty }]) => {
+          // Find which channel this SKU belongs to based on Phase 1 assignments, or default to plan100
+          let channel = 'plan100'
+          for (const [ch, m] of phase1ByChannel.entries()) {
+            if (m.has(sku)) { channel = ch; break; }
+          }
+          return {
+            sku, skuName: name,
+            targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
+            channel,
+          }
+        })
         .filter(t => t.targetQty > 0)
-        .sort((a, b) => b.targetQty - a.targetQty)
+
+      // Group by channel
+      const p3ChannelTargets: Record<string, SkuTarget[]> = {}
+      for (const t of allPhase3Targets) {
+        p3ChannelTargets[t.channel] ??= []
+        p3ChannelTargets[t.channel].push(t)
+      }
+      
+      // Sort by active channels first, then by quantity desc
+      const channelsToProcess = [...activeChannels]
+      // Add any remaining channels (like 'plan100' for SKUs not in Ph1) to the end
+      for (const ch of Object.keys(p3ChannelTargets)) {
+        if (!channelsToProcess.includes(ch)) channelsToProcess.push(ch)
+      }
+
+      assignList = channelsToProcess.flatMap(ch =>
+        (p3ChannelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
+      )
     } else {
       // Phase 1/2: channel priority order, sorted by qty desc within each channel
       assignList = activeChannels.flatMap(ch =>
