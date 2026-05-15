@@ -605,7 +605,7 @@ export async function POST(req: NextRequest) {
         .map(([sku, { name, qty }]) => {
           // Find which channel this SKU belongs to based on Phase 1 assignments, or default to plan100
           let channel = 'plan100'
-          for (const [ch, m] of phase1ByChannel.entries()) {
+          for (const [ch, m] of Array.from(phase1ByChannel.entries())) {
             if (m.has(sku)) { channel = ch; break; }
           }
           return {
