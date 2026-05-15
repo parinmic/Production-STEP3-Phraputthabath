@@ -118,8 +118,9 @@ function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
 function buildAvgMap(rows: OrderRow[]): Map<string, number> {
   const bySkuDate: Record<string, Record<string, number>> = {}
   for (const r of rows) {
-    if (!bySkuDate[r.sku]) bySkuDate[r.sku] = {}
-    bySkuDate[r.sku][r.delivery_date] = (bySkuDate[r.sku][r.delivery_date] ?? 0) + r.quantity
+    const sku = r.sku.replace(/^0+/, '')
+    if (!bySkuDate[sku]) bySkuDate[sku] = {}
+    bySkuDate[sku][r.delivery_date] = (bySkuDate[sku][r.delivery_date] ?? 0) + r.quantity
   }
   const result = new Map<string, number>()
   for (const sku of Object.keys(bySkuDate)) {
@@ -495,12 +496,13 @@ export async function POST(req: NextRequest) {
     const phase1Assigned   = new Map<string, number>()
     const phase1ByChannel  = new Map<string, Map<string, number>>()
     for (const a of (prevAssignedRaw ?? []) as { sku: string; target_quantity: number; channel: string | null }[]) {
+      const sku = a.sku.replace(/^0+/, '')
       const qty = Number(a.target_quantity)
-      phase1Assigned.set(a.sku, (phase1Assigned.get(a.sku) ?? 0) + qty)
+      phase1Assigned.set(sku, (phase1Assigned.get(sku) ?? 0) + qty)
       if (a.channel) {
         if (!phase1ByChannel.has(a.channel)) phase1ByChannel.set(a.channel, new Map())
         const m = phase1ByChannel.get(a.channel)!
-        m.set(a.sku, (m.get(a.sku) ?? 0) + qty)
+        m.set(sku, (m.get(sku) ?? 0) + qty)
       }
     }
 
@@ -508,7 +510,8 @@ export async function POST(req: NextRequest) {
     const aggregateToday = (rows: OrderRow[]): Record<string, { qty: number; name: string | null }> => {
       const m: Record<string, { qty: number; name: string | null }> = {}
       for (const r of rows) {
-        m[r.sku] = { qty: (m[r.sku]?.qty ?? 0) + r.quantity, name: m[r.sku]?.name ?? r.sku_name }
+        const sku = r.sku.replace(/^0+/, '')
+        m[sku] = { qty: (m[sku]?.qty ?? 0) + r.quantity, name: m[sku]?.name ?? r.sku_name }
       }
       return m
     }
@@ -534,7 +537,7 @@ export async function POST(req: NextRequest) {
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: Avg BL3 × %Variance
-      const wmHistNames = new Map(wmHist.map(r => [r.sku, r.sku_name]))
+      const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
       return Array.from(avgWM.entries()).map(([sku, avg]) => {
         const isShared = lotusHistSkus.has(sku)
@@ -577,7 +580,7 @@ export async function POST(req: NextRequest) {
         }).filter(s => s.targetQty > 0)
       }
       // Phase 1: Avg BL3
-      const lotusHistNames = new Map(lotusHist.map(r => [r.sku, r.sku_name]))
+      const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       return Array.from(avgLotus.entries()).map(([sku, avg]) => ({
         sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
       })).filter(s => s.targetQty > 0)
@@ -596,9 +599,10 @@ export async function POST(req: NextRequest) {
       const plan100 = (plan100Raw ?? []) as { sap: string; product_name: string | null; weight_total: number }[]
       const planMap = new Map<string, { name: string | null; qty: number }>()
       for (const r of plan100) {
-        const cur = planMap.get(r.sap) ?? { name: r.product_name ?? null, qty: 0 }
+        const sap = r.sap.replace(/^0+/, '')
+        const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
         cur.qty += Number(r.weight_total)
-        planMap.set(r.sap, cur)
+        planMap.set(sap, cur)
       }
       
       const allPhase3Targets = Array.from(planMap.entries())
