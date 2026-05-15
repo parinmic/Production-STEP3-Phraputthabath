@@ -330,6 +330,22 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
       {/* SKU rows */}
       <div className="divide-y divide-gray-50 relative">
+        {/* Single continuous break bands spanning all rows */}
+        {BREAKS.map(([bs, be]) => {
+          if (bs >= chartEnd || be <= chartStart) return null
+          const l = pct(Math.max(bs, chartStart)) / 100
+          const w = Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0) / 100
+          return (
+            <div key={bs} className="absolute top-0 bottom-0 pointer-events-none z-10">
+              {/* mobile */}
+              <div className="sm:hidden absolute top-0 bottom-0"
+                style={{ left: `calc(7rem + (100% - 13rem) * ${l})`, width: `calc((100% - 13rem) * ${w})`, backgroundColor: '#e5e7eb' }} />
+              {/* desktop */}
+              <div className="hidden sm:block absolute top-0 bottom-0"
+                style={{ left: `calc(11rem + (100% - 19rem) * ${l})`, width: `calc((100% - 19rem) * ${w})`, backgroundColor: '#e5e7eb' }} />
+            </div>
+          )
+        })}
         {/* Single continuous now-line spanning all rows */}
         {nowMins >= chartStart && nowMins <= chartEnd && (
           <>
@@ -385,19 +401,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                     backgroundColor: col.bg,
                     opacity: cd.done ? 0.45 : isPending ? 0.35 : 1,
                   }} />
-                {/* Break bands */}
-                {BREAKS.map(([bs, be]) => {
-                  if (bs >= chartEnd || be <= chartStart) return null
-                  return (
-                    <div key={bs}
-                      className="absolute top-0 bottom-0 z-10 pointer-events-none"
-                      style={{
-                        left: `${pct(Math.max(bs, chartStart))}%`,
-                        width: `${Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0)}%`,
-                        backgroundColor: '#e5e7eb',
-                      }} />
-                  )
-                })}
               </div>
 
               {/* Countdown */}
