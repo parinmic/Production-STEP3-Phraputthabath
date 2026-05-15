@@ -502,10 +502,14 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
-  const confirm = async (sku: string) => {
-    const val = parseInt(inputVals[sku] ?? '', 10)
+  const confirm = async (sku: string, rawValue: string) => {
+    const val = parseInt(rawValue.replace(/[^0-9]/g, ''), 10)
     if (isNaN(val) || val <= 0) return
+    // Optimistic update — แสดงทันที ไม่รอ Supabase
+    const tempId = `temp_${Date.now()}`
+    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), { id: tempId, quantity: val }] }))
     setInputVals(prev => ({ ...prev, [sku]: '' }))
+    // บันทึก DB — Realtime จะ trigger fetchActual แทน tempId ด้วย id จริง
     await supabase.from('production_actual').insert({ production_date: date, table_name: tableName, sku, quantity: val })
   }
 
@@ -563,8 +567,8 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                     const val = e.target.value.replace(/[^0-9]/g, '')
                     setInputVals(prev => ({ ...prev, [sku]: val }))
                   }}
-                  onKeyDown={e => { if (e.key === 'Enter') confirm(sku) }}
-                  onBlur={() => confirm(sku)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirm(sku, (e.target as HTMLInputElement).value) }}
+                  onBlur={e => confirm(sku, e.currentTarget.value)}
                   placeholder="—"
                   className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
