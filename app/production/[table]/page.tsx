@@ -15,7 +15,7 @@ const PHASES = [
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
   { phase: 2, label: 'Phase 2', sub: '14:00-16:00',      period: 'บ่าย', startH: 14, endH: 16,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
-  { phase: 3, label: 'Phase 3', sub: '16:00 เป็นต้นไป', period: 'ค่ำ',  startH: 17, endH: 19,
+  { phase: 3, label: 'Phase 3', sub: '16:00 เป็นต้นไป', period: 'ค่ำ',  startH: 16, endH: 24,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },
 ]
 
@@ -84,6 +84,27 @@ function minsToLabel(mins: number) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
+const BREAKS: [number, number][] = [
+  [720, 780],   // 12:00–13:00
+  [1020, 1080], // 17:00–18:00
+]
+
+function wallClockFinish(fromMins: number, workMins: number): number {
+  if (workMins <= 0) return fromMins
+  let pos = fromMins
+  let remaining = workMins
+  for (const [bs, be] of BREAKS) {
+    if (pos >= bs && pos < be) pos = be
+    if (pos >= be) continue
+    if (remaining <= 0) break
+    const beforeBreak = bs - pos
+    if (remaining <= beforeBreak) return pos + remaining
+    remaining -= beforeBreak
+    pos = be
+  }
+  return pos + remaining
+}
+
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
@@ -130,15 +151,16 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
-          let offsetH = 0
+          let curMins = phaseStart * 60
           const taskInfo = tasks.map(t => {
-            const h = taskHours(t)
-            const startMins = phaseStart * 60 + Math.round(offsetH * 60)
-            if (h !== null) offsetH += h
-            const endMins   = phaseStart * 60 + Math.round(offsetH * 60)
+            const h         = taskHours(t)
+            const startMins = curMins
+            const durMins   = h !== null ? Math.round(h * 60) : 0
+            const endMins   = wallClockFinish(curMins, durMins)
+            curMins = endMins
             return { ...t, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h }
           })
-          const totalFinish = minsToLabel(phaseStart * 60 + Math.round(offsetH * 60))
+          const totalFinish = minsToLabel(curMins)
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
 
           return (
@@ -236,7 +258,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
     for (const task of tasks) {
       const dur      = taskDurMins(task)
       const startMin = cur
-      const endMin   = cur + dur
+      const endMin   = wallClockFinish(cur, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
         skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [] }
@@ -406,17 +428,18 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
         const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
         const anyActive   = tasks.some(t => t.status === 'กำลังผลิต')
 
-        let offset = 0
+        let curMins = phaseStartMins
         const taskInfo = tasks.map(t => {
           const dur      = taskDurMins(t)
-          const startMin = phaseStartMins + offset
-          offset += dur
-          return { ...t, startMin, endMin: phaseStartMins + offset, dur,
-            startLabel: minsToLabel(phaseStartMins + offset - dur),
-            endLabel:   minsToLabel(phaseStartMins + offset) }
+          const startMin = curMins
+          const endMin   = wallClockFinish(curMins, dur)
+          curMins = endMin
+          return { ...t, startMin, endMin, dur,
+            startLabel: minsToLabel(startMin),
+            endLabel:   minsToLabel(endMin) }
         })
-        const totalDur    = offset
-        const finishLabel = minsToLabel(phaseStartMins + totalDur)
+        const totalDur    = curMins - phaseStartMins
+        const finishLabel = minsToLabel(curMins)
 
         return (
           <div key={name} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -521,8 +544,9 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
   let maxEndMins = phaseStartMins
   for (const workerTasks of Object.values(byWorker)) {
     const tasks = mergeTasks(workerTasks)
-    const totalDur = tasks.reduce((s, t) => s + taskDurMins(t), 0)
-    maxEndMins = Math.max(maxEndMins, phaseStartMins + totalDur)
+    let cur = phaseStartMins
+    for (const t of tasks) cur = wallClockFinish(cur, taskDurMins(t))
+    maxEndMins = Math.max(maxEndMins, cur)
   }
   const hourSlots: number[] = []
   for (let h = phaseStart; h * 60 < maxEndMins; h++) hourSlots.push(h)
@@ -558,19 +582,19 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
 
-        let offset = 0
+        let curMins2 = phaseStartMins
         const taskInfo = tasks.map(t => {
           const dur      = taskDurMins(t)
-          const startMin = phaseStartMins + offset
-          offset += dur
-          const endMin   = phaseStartMins + offset
+          const startMin = curMins2
+          const endMin   = wallClockFinish(curMins2, dur)
+          curMins2 = endMin
           return { ...t, startMin, endMin, dur,
             startLabel: minsToLabel(startMin),
             endLabel:   minsToLabel(endMin) }
         })
 
         const currentTask = taskInfo.find(t => nowMins >= t.startMin && nowMins < t.endMin)
-        const allDone     = nowMins >= phaseStartMins + offset
+        const allDone     = nowMins >= curMins2
         const notStarted  = nowMins < phaseStartMins
 
         const card = currentTask ?? (notStarted ? taskInfo[0] : null)
@@ -661,12 +685,13 @@ function exportExcel(
     for (const [workerName, workerTasks] of Object.entries(byWorker).sort()) {
       const tasks = mergeTasks(workerTasks)
       const displayName = nameMap[workerName.replace(/\s+/g, ' ').trim()] ?? shortName(workerName)
-      let offset = 0
+      let curMins = phaseStartMins
       for (const task of tasks) {
         const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-        const dur = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-        const startMin = phaseStartMins + offset
-        offset += dur
+        const dur    = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        const startMin = curMins
+        const endMin   = wallClockFinish(curMins, dur)
+        curMins = endMin
         rows.push([
           seq++,
           task.worker_code,
@@ -675,7 +700,7 @@ function exportExcel(
           task.sku_name ?? '',
           Number(task.target_quantity),
           minsToLabel(startMin),
-          minsToLabel(phaseStartMins + offset),
+          minsToLabel(endMin),
           phaseLabel ?? task.period,
         ])
       }
