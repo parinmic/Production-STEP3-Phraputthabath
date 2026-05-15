@@ -490,11 +490,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       {/* SKU rows */}
       <div className="divide-y divide-gray-50">
         {sortedSkus.map((sku, i) => {
-          const stat    = skuStats[sku]
-          const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags    = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
-          const cumSum  = runningSums[sku]
-          const hasCum  = cumSum > 0
+          const stat       = skuStats[sku]
+          const wpb        = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+          const bags       = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+          const cumSum     = runningSums[sku]
+          const rowVal     = parseInt(actualBags[sku] ?? '', 10)
+          const hasCum     = !isNaN(rowVal) && rowVal > 0
 
           return (
             <div key={sku}
