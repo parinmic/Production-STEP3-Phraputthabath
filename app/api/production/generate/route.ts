@@ -495,11 +495,11 @@ export async function POST(req: NextRequest) {
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
       if (isPhase2) {
-        // Phase 2: Min(1300 order, avg BL3) − Phase 1 WM assigned (per channel)
+        // Phase 2: min(avg BL3, order) − Phase 1 WM assigned (per channel)
         const p1 = phase1ByChannel.get(ch) ?? new Map()
         return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgWM.get(sku) ?? 0
-          const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
+          const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
           const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
@@ -538,11 +538,11 @@ export async function POST(req: NextRequest) {
     const buildLotusTargets = (): SkuTarget[] => {
       const ch = 'LOTUS'
       if (isPhase2) {
-        // Phase 2: Min(1300 order, avg BL3) − Phase 1 LOTUS assigned (per channel)
+        // Phase 2: min(avg BL3, order) − Phase 1 LOTUS assigned (per channel)
         const p1 = phase1ByChannel.get(ch) ?? new Map()
         return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgLotus.get(sku) ?? 0
-          const base = avg > 0 ? Math.min(orderQty, avg) : orderQty
+          const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
           const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)

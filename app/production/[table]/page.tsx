@@ -91,9 +91,10 @@ interface WorkerTableProps {
   phaseStart: number
   rateMap: Record<string, number>
   nameMap: Record<string, string>
+  bagMap: Record<string, number>
 }
 
-function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) {
+function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTableProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -153,7 +154,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap }: WorkerTableProps) 
                         {task.sku_name ?? task.sku}
                       </span>
                       <span className="text-xs font-bold" style={{ color: col.fg }}>
-                        {Number(task.target_quantity).toLocaleString()} กก.
+                        {(() => { const wpb = bagMap[task.sku] ?? bagMap[task.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(task.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(task.target_quantity).toLocaleString()} กก.
                       </span>
                       <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
                         {task.startLabel}–{task.finishLabel}
@@ -368,9 +369,10 @@ interface WorkerCardViewProps {
   phaseStart: number
   rateMap: Record<string, number>
   nameMap: Record<string, string>
+  bagMap: Record<string, number>
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewProps) {
+function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerCardViewProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
   allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
@@ -449,7 +451,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap }: WorkerCardViewP
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono text-gray-400">{t.startLabel} – {t.endLabel}</span>
                         <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
-                          {Number(t.target_quantity).toLocaleString()} กก.
+                          {(() => { const wpb = bagMap[t.sku] ?? bagMap[t.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(t.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(t.target_quantity).toLocaleString()} กก.
                         </span>
                       </div>
                     </div>
@@ -473,9 +475,10 @@ interface CurrentTimeViewProps {
   phaseStart: number
   rateMap: Record<string, number>
   nameMap: Record<string, string>
+  bagMap: Record<string, number>
 }
 
-function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeViewProps) {
+function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: CurrentTimeViewProps) {
   const [realNowMins, setRealNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
@@ -607,7 +610,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap }: CurrentTimeVie
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono text-gray-500">{card.startLabel} – {card.endLabel}</span>
                     <span className="text-xs font-bold" style={{ color: col.fg }}>
-                      {Number(card.target_quantity).toLocaleString()} กก.
+                      {(() => { const wpb = bagMap[card.sku] ?? bagMap[card.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(card.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(card.target_quantity).toLocaleString()} กก.
                     </span>
                   </div>
                   {currentTask && isLive && (
@@ -712,6 +715,7 @@ export default function TablePage() {
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
   const [nameMap, setNameMap]       = useState<Record<string, string>>({})
+  const [bagMap, setBagMap]         = useState<Record<string, number>>({})
   const [loading, setLoading]       = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
@@ -730,6 +734,9 @@ export default function TablePage() {
     fetch('/api/master/productivity')
       .then(r => r.json())
       .then(data => setRateMap(data.rateMap ?? {}))
+    fetch('/api/master/picking-unit')
+      .then(r => r.json())
+      .then(data => setBagMap(data.bagMap ?? {}))
     fetch('/api/master/job-assign')
       .then(r => r.json())
       .then(data => {
@@ -876,6 +883,7 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
+                bagMap={bagMap}
               />
             )}
             {viewMode === 'worker' && (
@@ -884,6 +892,7 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
+                bagMap={bagMap}
               />
             )}
             {viewMode === 'time' && (
@@ -892,6 +901,7 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
+                bagMap={bagMap}
               />
             )}
         </div>
