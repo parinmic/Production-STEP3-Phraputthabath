@@ -286,11 +286,21 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
       {/* SKU rows */}
       <div className="divide-y divide-gray-50">
         {sortedSkus.map(sku => {
-          const stat     = skuStats[sku]
-          const col      = skuColor[sku]
-          const cd       = countdown(stat.maxEnd)
-          const barLeft  = pct(stat.minStart)
-          const barWidth = Math.max(pct(stat.maxEnd) - pct(stat.minStart), 0.5)
+          const stat      = skuStats[sku]
+          const col       = skuColor[sku]
+          const cd        = countdown(stat.maxEnd)
+          const barLeft   = pct(stat.minStart)
+          const barWidth  = Math.max(pct(stat.maxEnd) - pct(stat.minStart), 0.5)
+          const isActive  = !cd.done && nowMins >= stat.minStart && nowMins < stat.maxEnd
+          const isPending = !cd.done && nowMins < stat.minStart
+
+          const countdownCls = cd.done
+            ? 'text-[10px] sm:text-xs text-green-500 font-semibold'
+            : isActive
+              ? 'text-xs sm:text-sm font-bold text-red-500'
+              : isPending
+                ? 'text-xs sm:text-sm font-bold text-gray-300'
+                : 'text-xs sm:text-sm font-bold text-gray-800'
 
           return (
             <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px]">
@@ -321,16 +331,16 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
                     left: `${barLeft}%`,
                     width: `${barWidth}%`,
                     backgroundColor: col.bg,
-                    opacity: cd.done ? 0.45 : 1,
+                    opacity: cd.done ? 0.45 : isPending ? 0.35 : 1,
                   }} />
               </div>
 
               {/* Countdown */}
               <div className="w-24 sm:w-32 shrink-0 px-2 sm:px-3 border-l border-gray-100 text-right">
                 {cd.done ? (
-                  <span className="text-[10px] sm:text-xs text-green-500 font-semibold">✓ เสร็จแล้ว</span>
+                  <span className={countdownCls}>✓ เสร็จแล้ว</span>
                 ) : (
-                  <span className="text-xs sm:text-sm font-bold text-gray-800">{cd.text}</span>
+                  <span className={countdownCls}>{cd.text}</span>
                 )}
                 <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
                   เสร็จ {minsToLabel(stat.maxEnd)}
