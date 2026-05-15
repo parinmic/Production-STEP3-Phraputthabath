@@ -466,35 +466,45 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     return s + (wpb && wpb > 0 ? Math.round(skuStats[sku].totalQty / wpb) : 0)
   }, 0)
-  const totalActual = sortedSkus.reduce((s, sku) => {
+  let runningSum = 0
+  const runningSums: Record<string, number> = {}
+  for (const sku of sortedSkus) {
     const v = parseInt(actualBags[sku] ?? '', 10)
-    return s + (isNaN(v) ? 0 : v)
-  }, 0)
+    runningSum += isNaN(v) ? 0 : v
+    runningSums[sku] = runningSum
+  }
+  const totalActual = runningSum
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[1fr_100px_110px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+      <div className="grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
         <span className="text-xs font-semibold text-gray-500 text-right">แผน(ถุง)</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">ผลิต(ถุง)</span>
         <span className="text-xs font-semibold text-gray-500 text-right">ผลิตได้ (ถุง)</span>
       </div>
 
       {/* SKU rows */}
       <div className="divide-y divide-gray-50">
         {sortedSkus.map((sku, i) => {
-          const stat = skuStats[sku]
-          const wpb  = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+          const stat    = skuStats[sku]
+          const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+          const bags    = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+          const cumSum  = runningSums[sku]
+          const hasCum  = cumSum > 0
 
           return (
             <div key={sku}
-              className={`grid grid-cols-[1fr_100px_110px] gap-0 px-4 py-2.5 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+              className={`grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-2.5 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
               <div className="flex items-center min-w-0">
                 <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
               </div>
               <p className="text-sm font-semibold text-gray-600 text-right">
                 {bags !== null ? bags.toLocaleString() : '—'}
+              </p>
+              <p className={`text-sm font-bold text-right ${hasCum ? 'text-blue-600' : 'text-gray-300'}`}>
+                {hasCum ? cumSum.toLocaleString() : '—'}
               </p>
               <div className="flex justify-end">
                 <input
@@ -512,9 +522,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       </div>
 
       {/* Footer totals */}
-      <div className="grid grid-cols-[1fr_100px_110px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
+      <div className="grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
         <span className="text-sm font-bold text-gray-700">รวมทั้งหมด</span>
         <span className="text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
+        <span className="text-sm font-bold text-right text-blue-600">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
         <span className="text-sm font-bold text-right text-gray-900">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
       </div>
     </div>
