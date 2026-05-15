@@ -328,26 +328,32 @@ export async function POST(req: NextRequest) {
       supabase.from('wet_market_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound),
+        .eq('upload_round', orderRound)
+        .limit(10000),
       supabase.from('wet_market_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates)
-        .eq('upload_round', '1600'),
+        .eq('upload_round', '1600')
+        .limit(10000),
       supabase.from('lotus_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound),
+        .eq('upload_round', orderRound)
+        .limit(10000),
       supabase.from('lotus_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .in('delivery_date', histDates)
-        .eq('upload_round', '1600'),
+        .eq('upload_round', '1600')
+        .limit(10000),
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
         .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound),
+        .eq('upload_round', orderRound)
+        .limit(10000),
       supabase.from('makro_orders')
         .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates),
+        .in('delivery_date', histDates)
+        .limit(10000),
       supabase.from('master_logic_calculation')
         .select('row_data')
         .eq('calculation_type', 'Mas Productivity')
@@ -364,6 +370,7 @@ export async function POST(req: NextRequest) {
             .select('sku, target_quantity, channel')
             .eq('production_date', productionDate)
             .in('period', isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'])
+            .limit(10000)
         : Promise.resolve({ data: [] as { sku: string; target_quantity: number; channel: string | null }[], error: null }),
       // Phase 3: load 100% production plan
       isPhase3
