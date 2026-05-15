@@ -394,9 +394,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                       style={{
                         left: `${pct(Math.max(bs, chartStart))}%`,
                         width: `${Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0)}%`,
-                        backgroundColor: 'rgba(243,244,246,0.92)',
-                        borderLeft: '1px dashed #d1d5db',
-                        borderRight: '1px dashed #d1d5db',
+                        backgroundColor: '#e5e7eb',
                       }} />
                   )
                 })}
