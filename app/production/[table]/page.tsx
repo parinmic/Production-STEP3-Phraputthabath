@@ -429,6 +429,8 @@ interface ProductionSummaryViewProps {
 
 function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: ProductionSummaryViewProps) {
   const [actualBags, setActualBags] = useState<Record<string, string>>({})
+  const [popupSku, setPopupSku]     = useState<string | null>(null)
+  const [editMode, setEditMode]     = useState(false)
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
@@ -503,15 +505,21 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
               <p className="text-sm font-semibold text-gray-600 text-right">
                 {bags !== null ? bags.toLocaleString() : '—'}
               </p>
-              <p className={`text-sm font-bold text-right ${hasCum ? 'text-blue-600' : 'text-gray-300'}`}>
+              <button
+                onClick={() => { setPopupSku(sku); setEditMode(false) }}
+                className={`text-sm font-bold text-right w-full pr-0 ${hasCum ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
                 {hasCum ? cumSum.toLocaleString() : '—'}
-              </p>
+              </button>
               <div className="flex justify-end">
                 <input
-                  type="number"
-                  min={0}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={actualBags[sku] ?? ''}
-                  onChange={e => setActualBags(prev => ({ ...prev, [sku]: e.target.value }))}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^0-9]/g, '')
+                    setActualBags(prev => ({ ...prev, [sku]: val }))
+                  }}
                   placeholder="—"
                   className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
@@ -528,6 +536,84 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
         <span className="text-sm font-bold text-right text-blue-600">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
         <span className="text-sm font-bold text-right text-gray-900">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
       </div>
+
+      {/* Popup */}
+      {popupSku && (() => {
+        const idx      = sortedSkus.indexOf(popupSku)
+        const rows     = sortedSkus.slice(0, idx + 1).map(sku => ({
+          sku,
+          name: skuStats[sku]?.name ?? sku,
+          val:  parseInt(actualBags[sku] ?? '', 10),
+        }))
+        const nonZero  = rows.filter(r => !isNaN(r.val) && r.val > 0)
+        const formula  = nonZero.map(r => r.val).join(' + ')
+        const total    = runningSums[popupSku] ?? 0
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={() => { setPopupSku(null); setEditMode(false) }}>
+            <div className="bg-white rounded-2xl shadow-xl p-5 w-80 max-w-[90vw]"
+              onClick={e => e.stopPropagation()}>
+
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-gray-800">รายละเอียด ผลิต(ถุง)</h3>
+                <button onClick={() => { setPopupSku(null); setEditMode(false) }}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
+              </div>
+
+              {!editMode && (
+                <p className="text-center text-base font-bold text-blue-600 bg-blue-50 rounded-xl py-2 px-3 mb-4 break-all">
+                  {formula || '—'}{nonZero.length > 0 ? ` = ${total}` : ''}
+                </p>
+              )}
+
+              <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                {rows.map(r => (
+                  <div key={r.sku} className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-gray-600 truncate flex-1">{r.name}</span>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={actualBags[r.sku] ?? ''}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9]/g, '')
+                          setActualBags(prev => ({ ...prev, [r.sku]: v }))
+                        }}
+                        className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    ) : (
+                      <span className={`text-sm font-bold shrink-0 ${!isNaN(r.val) && r.val > 0 ? 'text-blue-600' : 'text-gray-300'}`}>
+                        {!isNaN(r.val) && r.val > 0 ? r.val.toLocaleString() : '—'}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {editMode && (
+                <p className="text-center text-sm font-bold text-blue-600 bg-blue-50 rounded-xl py-2 mb-4">
+                  รวม: {runningSums[popupSku] ?? 0}
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditMode(m => !m)}
+                  className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
+                  {editMode ? 'เสร็จ' : 'แก้ไข'}
+                </button>
+                <button
+                  onClick={() => { setPopupSku(null); setEditMode(false) }}
+                  className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors">
+                  ปิด
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
