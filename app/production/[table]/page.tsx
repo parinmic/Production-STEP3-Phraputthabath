@@ -755,7 +755,11 @@ export default function TablePage() {
     setLoading(true)
     fetch(`/api/production?date=${d}&table=${cfg.label}`)
       .then(r => r.json())
-      .then(data => setItems(data.assignments ?? []))
+      .then(data => {
+        const assignments = (data.assignments ?? []) as Assignment[]
+        const normalized = assignments.map(a => ({ ...a, sku: a.sku.replace(/^0+/, '') }))
+        setItems(normalized)
+      })
       .finally(() => setLoading(false))
   }
 
