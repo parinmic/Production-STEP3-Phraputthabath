@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
@@ -418,6 +418,101 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   )
 }
 
+// ─── Production summary view (สรุปแผนผลิต) ───────────────────────────────────
+
+interface ProductionSummaryViewProps {
+  items: Assignment[]
+  phaseStart: number
+  rateMap: Record<string, number>
+  bagMap: Record<string, number>
+}
+
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: ProductionSummaryViewProps) {
+  const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
+  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+
+  const phaseStartMins = phaseStart * 60
+
+  const taskDurMins = (task: Assignment) => {
+    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
+    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+  }
+
+  const byWorker: Record<string, Assignment[]> = {}
+  for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
+
+  type SkuStat = { name: string | null; totalQty: number }
+  const skuStats: Record<string, SkuStat> = {}
+
+  for (const rawTasks of Object.values(byWorker)) {
+    const tasks = mergeTasks(rawTasks)
+    let cur = phaseStartMins
+    for (const task of tasks) {
+      const dur = taskDurMins(task)
+      cur = wallClockFinish(cur, dur)
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0 }
+      skuStats[task.sku].totalQty += Number(task.target_quantity)
+    }
+  }
+
+  const sortedSkus = allSkus
+    .filter(sku => skuStats[sku])
+    .sort((a, b) => skuStats[b].totalQty - skuStats[a].totalQty)
+
+  if (!sortedSkus.length) return null
+
+  const totalWeight = sortedSkus.reduce((s, sku) => s + skuStats[sku].totalQty, 0)
+  const totalBags = sortedSkus.reduce((s, sku) => {
+    const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+    return s + (wpb && wpb > 0 ? Math.round(skuStats[sku].totalQty / wpb) : 0)
+  }, 0)
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header row */}
+      <div className="grid grid-cols-[1fr_120px_80px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">น้ำหนัก (กก.)</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">ถุง</span>
+      </div>
+
+      {/* SKU rows */}
+      <div className="divide-y divide-gray-50">
+        {sortedSkus.map((sku, i) => {
+          const stat = skuStats[sku]
+          const col  = skuColor[sku]
+          const wpb  = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+          const bags = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+
+          return (
+            <div key={sku}
+              className={`grid grid-cols-[1fr_120px_80px] gap-0 px-4 py-3 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+                <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
+              </div>
+              <p className="text-sm font-bold text-right" style={{ color: col.bg }}>
+                {stat.totalQty.toLocaleString()}
+              </p>
+              <p className="text-sm font-semibold text-gray-600 text-right">
+                {bags !== null ? bags.toLocaleString() : '—'}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer totals */}
+      <div className="grid grid-cols-[1fr_120px_80px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
+        <span className="text-sm font-bold text-gray-700">รวมทั้งหมด</span>
+        <span className="text-sm font-bold text-right text-gray-900">{totalWeight.toLocaleString()}</span>
+        <span className="text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Worker card view (รายพนักงาน) ──────────────────────────────────────────
 
 interface WorkerCardViewProps {
@@ -745,7 +840,7 @@ export default function TablePage() {
   const [loading, setLoading]       = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
-  const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time'>('sku')
+  const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
 
   const loadData = (d: string) => {
     if (!cfg) return
@@ -879,9 +974,10 @@ export default function TablePage() {
             {/* View toggle */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               {([
-                { mode: 'sku',   icon: BarChart2,  label: 'ภาพรวม' },
-                { mode: 'gantt', icon: LayoutList,  label: 'รายพนักงาน' },
-                { mode: 'time',  icon: Clock,       label: 'รายเวลา' },
+                { mode: 'sku',     icon: BarChart2,    label: 'ภาพรวม' },
+                { mode: 'gantt',   icon: LayoutList,   label: 'รายพนักงาน' },
+                { mode: 'time',    icon: Clock,        label: 'รายเวลา' },
+                { mode: 'summary', icon: ClipboardList, label: 'สรุปแผนผลิต' },
               ] as const).map(({ mode, icon: Icon, label }) => (
                 <button key={mode}
                   onClick={() => setViewMode(mode)}
@@ -932,6 +1028,14 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
+                bagMap={bagMap}
+              />
+            )}
+            {viewMode === 'summary' && (
+              <ProductionSummaryView
+                items={filtered}
+                phaseStart={viewStartH}
+                rateMap={rateMap}
                 bagMap={bagMap}
               />
             )}
