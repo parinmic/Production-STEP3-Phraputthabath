@@ -196,12 +196,13 @@ function assignWorkers(
 
   const entries = eligibleWorkers
     .map(w => {
-      const freeAt          = workerFreeAtMins.get(w.emp_id) ?? 0
-      const remainingHours  = workerHours.get(w.emp_id) ?? 0
+      const nameKey = normName(w.name)
+      const freeAt          = workerFreeAtMins.get(nameKey) ?? 0
+      const remainingHours  = workerHours.get(nameKey) ?? 0
       // cap to actual work time remaining in phase (excluding break)
       const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, phaseEndMins)))
       const exhaustAt       = wallClockFinish(freeAt, availWorkMins)
-      return { worker: w, freeAt, exhaustAt, remainingHours }
+      return { worker: w, nameKey, freeAt, exhaustAt, remainingHours }
     })
     .filter(e => e.exhaustAt > e.freeAt + 0.1)  // must have usable capacity
     .sort((a, b) => a.freeAt - b.freeAt)
@@ -236,16 +237,16 @@ function assignWorkers(
       const perWorkerQty = pool / active.length
       const finishAt     = t0 + (pool / totalRate) * 60
       for (const a of active) {
-        workerQty.set(a.worker.emp_id, (workerQty.get(a.worker.emp_id) ?? 0) + perWorkerQty)
-        workerFinishAt.set(a.worker.emp_id, finishAt)
+        workerQty.set(a.nameKey, (workerQty.get(a.nameKey) ?? 0) + perWorkerQty)
+        workerFinishAt.set(a.nameKey, finishAt)
       }
       pool = 0
     } else {
       // Full segment: each active worker contributes equally
       const perWorkerQty = rate * (t1 - t0) / 60
       for (const a of active) {
-        workerQty.set(a.worker.emp_id, (workerQty.get(a.worker.emp_id) ?? 0) + perWorkerQty)
-        workerFinishAt.set(a.worker.emp_id, t1)
+        workerQty.set(a.nameKey, (workerQty.get(a.nameKey) ?? 0) + perWorkerQty)
+        workerFinishAt.set(a.nameKey, t1)
       }
       pool -= maxConsume
     }
@@ -253,11 +254,11 @@ function assignWorkers(
 
   const result: Record<string, unknown>[] = []
   for (const e of entries) {
-    const qty = workerQty.get(e.worker.emp_id) ?? 0
+    const qty = workerQty.get(e.nameKey) ?? 0
     if (qty < 0.5) continue
-    const finishAt = workerFinishAt.get(e.worker.emp_id) ?? e.freeAt
-    workerHours.set(e.worker.emp_id, e.remainingHours - qty / rate)
-    workerFreeAtMins.set(e.worker.emp_id, finishAt)
+    const finishAt = workerFinishAt.get(e.nameKey) ?? e.freeAt
+    workerHours.set(e.nameKey, e.remainingHours - qty / rate)
+    workerFreeAtMins.set(e.nameKey, finishAt)
     result.push({
       production_date: productionDate,
       table_name:      tableName,
@@ -400,11 +401,12 @@ export async function POST(req: NextRequest) {
     ])
 
     // Merge workforce: Phase 2/3 = 1300 overrides 0800
-    const seenEmpIds = new Set<string>()
+    const seenNames = new Set<string>()
     const workforce: WorkforceRow[] = []
     for (const w of [...(workforceRaw1300 ?? []), ...(workforceRaw0800 ?? [])] as WorkforceRow[]) {
-      if (seenEmpIds.has(w.emp_id)) continue
-      seenEmpIds.add(w.emp_id)
+      const nameKey = normName(w.name)
+      if (seenNames.has(nameKey)) continue
+      seenNames.add(nameKey)
       workforce.push(w)
     }
 
@@ -492,8 +494,9 @@ export async function POST(req: NextRequest) {
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
       const actualHours = Math.max(0, actualEndMins - phaseStartMins) / 60
 
-      workerHours.set(w.emp_id, actualHours)
-      workerFreeAtMins.set(w.emp_id, phaseStartMins)
+      const nameKey = normName(w.name)
+      workerHours.set(nameKey, actualHours)
+      workerFreeAtMins.set(nameKey, phaseStartMins)
     }
 
     // ------ Historical averages ------
@@ -677,7 +680,7 @@ export async function POST(req: NextRequest) {
           const lvA = jobAssignMap.get(normName(a.name))?.groups.get(skuGroup) ?? 99
           const lvB = jobAssignMap.get(normName(b.name))?.groups.get(skuGroup) ?? 99
           if (lvA !== lvB) return lvA - lvB
-          return (workerHours.get(b.emp_id) ?? 0) - (workerHours.get(a.emp_id) ?? 0)
+          return (workerHours.get(normName(b.name)) ?? 0) - (workerHours.get(normName(a.name)) ?? 0)
         })
       if (!eligibleWorkers.length) continue
 
