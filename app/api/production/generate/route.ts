@@ -399,10 +399,10 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
     ])
 
-    // Merge workforce: Phase 2 = 0800 + 1300 (deduplicated)
+    // Merge workforce: Phase 2/3 = 1300 overrides 0800
     const seenEmpIds = new Set<string>()
     const workforce: WorkforceRow[] = []
-    for (const w of [...(workforceRaw0800 ?? []), ...(workforceRaw1300 ?? [])] as WorkforceRow[]) {
+    for (const w of [...(workforceRaw1300 ?? []), ...(workforceRaw0800 ?? [])] as WorkforceRow[]) {
       if (seenEmpIds.has(w.emp_id)) continue
       seenEmpIds.add(w.emp_id)
       workforce.push(w)
@@ -475,13 +475,24 @@ export async function POST(req: NextRequest) {
       workersByStation[station].push(w)
     }
 
-    // Each worker starts with full phase hours and becomes free at phase start
+    // Each worker starts with available phase hours, capped by their shift end
     const phaseStartMins = phaseCfg.startH * 60
     const phaseEndMins   = phaseCfg.endH   * 60
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     for (const w of workforce) {
-      workerHours.set(w.emp_id, phaseCfg.hours)
+      // Determine end time of shift in minutes
+      let shiftEndMins = phaseEndMins
+      if (w.shift === 'กะ 1') {
+        shiftEndMins = 17 * 60 // กะ 1 เลิก 17:00
+      } else if (w.shift === 'กะ 2' || w.shift === 'กะ 3') {
+        shiftEndMins = 24 * 60 // กะ 2/3 อยู่จนจบ Phase 3
+      }
+      
+      const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
+      const actualHours = Math.max(0, actualEndMins - phaseStartMins) / 60
+
+      workerHours.set(w.emp_id, actualHours)
       workerFreeAtMins.set(w.emp_id, phaseStartMins)
     }
 
