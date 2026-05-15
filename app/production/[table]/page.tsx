@@ -84,6 +84,13 @@ function minsToLabel(mins: number) {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
+function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
+  const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+  if (!wpb || wpb <= 0) return ''
+  const bags = Math.round(qty / wpb)
+  return bags > 0 ? `${bags} ถุง · ` : ''
+}
+
 // ─── Worker card view ────────────────────────────────────────────────────────
 
 interface WorkerTableProps {
@@ -154,7 +161,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
                         {task.sku_name ?? task.sku}
                       </span>
                       <span className="text-xs font-bold" style={{ color: col.fg }}>
-                        {(() => { const wpb = bagMap[task.sku] ?? bagMap[task.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(task.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(task.target_quantity).toLocaleString()} กก.
+                        {bagLabel(task.sku, Number(task.target_quantity), bagMap)}{Number(task.target_quantity).toLocaleString()} กก.
                       </span>
                       <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
                         {task.startLabel}–{task.finishLabel}
@@ -325,7 +332,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {(() => { const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(stat.totalQty / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{stat.totalQty.toLocaleString()} กก.
+                      {bagLabel(sku, stat.totalQty, bagMap)}{stat.totalQty.toLocaleString()} กก.
                       <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                     </p>
                   </div>
@@ -452,7 +459,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono text-gray-400">{t.startLabel} – {t.endLabel}</span>
                         <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
-                          {(() => { const wpb = bagMap[t.sku] ?? bagMap[t.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(t.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(t.target_quantity).toLocaleString()} กก.
+                          {bagLabel(t.sku, Number(t.target_quantity), bagMap)}{Number(t.target_quantity).toLocaleString()} กก.
                         </span>
                       </div>
                     </div>
@@ -611,7 +618,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono text-gray-500">{card.startLabel} – {card.endLabel}</span>
                     <span className="text-xs font-bold" style={{ color: col.fg }}>
-                      {(() => { const wpb = bagMap[card.sku] ?? bagMap[card.sku.replace(/^0+/,'')]; const bags = wpb > 0 ? Math.round(Number(card.target_quantity) / wpb) : null; return bags ? `${bags} ถุง · ` : '' })()}{Number(card.target_quantity).toLocaleString()} กก.
+                      {bagLabel(card.sku, Number(card.target_quantity), bagMap)}{Number(card.target_quantity).toLocaleString()} กก.
                     </span>
                   </div>
                   {currentTask && isLive && (
