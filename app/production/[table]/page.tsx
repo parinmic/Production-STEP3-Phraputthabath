@@ -523,6 +523,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
                     setInputVals(prev => ({ ...prev, [sku]: val }))
                   }}
                   onKeyDown={e => { if (e.key === 'Enter') confirm(sku) }}
+                  onBlur={() => confirm(sku)}
                   placeholder="—"
                   className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
