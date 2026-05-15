@@ -27,30 +27,34 @@ interface ProductivityRow {
 
 // ========== Break config ==========
 
-const BREAK_START_MINS = 720  // 12:00
-const BREAK_END_MINS   = 780  // 13:00
+const BREAKS: [number, number][] = [
+  [720,  780],  // 12:00–13:00
+  [1020, 1080], // 17:00–18:00
+]
 
-/** Work minutes available between fromMins and toMins, excluding break */
+/** Work minutes available between fromMins and toMins, excluding all breaks */
 function availableWorkMins(fromMins: number, toMins: number): number {
   const total = Math.max(0, toMins - fromMins)
-  const breakOverlap = Math.max(0,
-    Math.min(BREAK_END_MINS, toMins) - Math.max(BREAK_START_MINS, fromMins)
-  )
-  return Math.max(0, total - breakOverlap)
+  const overlap = BREAKS.reduce((sum, [bs, be]) =>
+    sum + Math.max(0, Math.min(be, toMins) - Math.max(bs, fromMins)), 0)
+  return Math.max(0, total - overlap)
 }
 
 /** Wall-clock finish time when starting at fromMins and doing workMins of actual work */
 function wallClockFinish(fromMins: number, workMins: number): number {
   if (workMins <= 0) return fromMins
-  // If start falls inside break, jump to break end
-  const start = (fromMins >= BREAK_START_MINS && fromMins < BREAK_END_MINS)
-    ? BREAK_END_MINS : fromMins
-  if (start < BREAK_START_MINS) {
-    const beforeBreak = BREAK_START_MINS - start
-    if (workMins <= beforeBreak) return start + workMins
-    return BREAK_END_MINS + (workMins - beforeBreak)
+  let pos = fromMins
+  let remaining = workMins
+  for (const [bs, be] of BREAKS) {
+    if (pos >= bs && pos < be) pos = be  // jump past break if starting inside
+    if (pos >= be) continue              // break already passed
+    if (remaining <= 0) break
+    const beforeBreak = bs - pos
+    if (remaining <= beforeBreak) return pos + remaining
+    remaining -= beforeBreak
+    pos = be
   }
-  return start + workMins
+  return pos + remaining
 }
 
 // ========== Phase config ==========
@@ -205,7 +209,7 @@ function assignWorkers(
 
   // Build sorted event timeline: join/exhaust times + break boundaries
   const eventTimes = Array.from(
-    new Set([...entries.flatMap(e => [e.freeAt, e.exhaustAt]), BREAK_START_MINS, BREAK_END_MINS])
+    new Set([...entries.flatMap(e => [e.freeAt, e.exhaustAt]), ...BREAKS.flat()])
   ).sort((a, b) => a - b)
 
   let pool = targetQty
@@ -216,8 +220,8 @@ function assignWorkers(
     const t0 = eventTimes[i]
     const t1 = eventTimes[i + 1]
 
-    // Skip lunch break 12:00–13:00
-    if (t0 >= BREAK_START_MINS && t1 <= BREAK_END_MINS) continue
+    // Skip break periods (12:00–13:00, 17:00–18:00)
+    if (BREAKS.some(([bs, be]) => t0 >= bs && t1 <= be)) continue
 
     // Active in this segment: joined (freeAt ≤ t0) and not yet exhausted (exhaustAt > t0)
     const active = entries.filter(e => e.freeAt <= t0 && e.exhaustAt > t0)
