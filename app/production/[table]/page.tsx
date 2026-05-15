@@ -89,6 +89,20 @@ const BREAKS: [number, number][] = [
   [1020, 1080], // 17:00–18:00
 ]
 
+/** Return time label like "10:55 → 12:00 │ 13:00 → 13:15" when task spans a break */
+function timeRangeLabel(startMins: number, endMins: number): string {
+  const parts: string[] = []
+  let cur = startMins
+  for (const [bs, be] of BREAKS) {
+    if (cur >= endMins || bs >= endMins) break
+    if (be <= cur) continue
+    if (bs > cur) parts.push(`${minsToLabel(cur)} → ${minsToLabel(bs)}`)
+    cur = be
+  }
+  if (cur < endMins) parts.push(`${minsToLabel(cur)} → ${minsToLabel(endMins)}`)
+  return parts.join(' │ ')
+}
+
 function wallClockFinish(fromMins: number, workMins: number): number {
   if (workMins <= 0) return fromMins
   let pos = fromMins
@@ -158,7 +172,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
             const durMins   = h !== null ? Math.round(h * 60) : 0
             const endMins   = wallClockFinish(curMins, durMins)
             curMins = endMins
-            return { ...t, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h }
+            return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h }
           })
           const totalFinish = minsToLabel(curMins)
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
@@ -186,7 +200,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
                         {bagLabel(task.sku, Number(task.target_quantity), bagMap)}{Number(task.target_quantity).toLocaleString()} กก.
                       </span>
                       <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
-                        {task.startLabel}–{task.finishLabel}
+                        {timeRangeLabel(task.startMins, task.endMins)}
                       </span>
                       {(isDone || isActive) && (
                         <span className="absolute top-1 right-1" style={{ color: statusColor(task.status) }}>
@@ -371,6 +385,21 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                     backgroundColor: col.bg,
                     opacity: cd.done ? 0.45 : isPending ? 0.35 : 1,
                   }} />
+                {/* Break bands */}
+                {BREAKS.map(([bs, be]) => {
+                  if (bs >= chartEnd || be <= chartStart) return null
+                  return (
+                    <div key={bs}
+                      className="absolute top-0 bottom-0 z-10 pointer-events-none"
+                      style={{
+                        left: `${pct(Math.max(bs, chartStart))}%`,
+                        width: `${Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0)}%`,
+                        backgroundColor: 'rgba(243,244,246,0.92)',
+                        borderLeft: '1px dashed #d1d5db',
+                        borderRight: '1px dashed #d1d5db',
+                      }} />
+                  )
+                })}
               </div>
 
               {/* Countdown */}
@@ -480,7 +509,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
                         {t.sku_name ?? t.sku}
                       </p>
                       <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-xs font-mono text-gray-400">{t.startLabel} – {t.endLabel}</span>
+                        <span className="text-xs font-mono text-gray-400">{timeRangeLabel(t.startMin, t.endMin)}</span>
                         <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
                           {bagLabel(t.sku, Number(t.target_quantity), bagMap)}{Number(t.target_quantity).toLocaleString()} กก.
                         </span>
@@ -640,7 +669,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
                     {card.sku_name ?? card.sku}
                   </p>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-gray-500">{card.startLabel} – {card.endLabel}</span>
+                    <span className="text-xs font-mono text-gray-500">{timeRangeLabel(card.startMin, card.endMin)}</span>
                     <span className="text-xs font-bold" style={{ color: col.fg }}>
                       {bagLabel(card.sku, Number(card.target_quantity), bagMap)}{Number(card.target_quantity).toLocaleString()} กก.
                     </span>
