@@ -428,9 +428,10 @@ interface ProductionSummaryViewProps {
 }
 
 function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: ProductionSummaryViewProps) {
-  const [actualBags, setActualBags] = useState<Record<string, string>>({})
-  const [popupSku, setPopupSku]     = useState<string | null>(null)
-  const [editMode, setEditMode]     = useState(false)
+  const [inputVals, setInputVals] = useState<Record<string, string>>({})
+  const [history, setHistory]     = useState<Record<string, number[]>>({})
+  const [popupSku, setPopupSku]   = useState<string | null>(null)
+  const [editMode, setEditMode]   = useState(false)
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
@@ -464,23 +465,24 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
 
   if (!sortedSkus.length) return null
 
-  const totalBags = sortedSkus.reduce((s, sku) => {
+  const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, v) => s + v, 0)
+  const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     return s + (wpb && wpb > 0 ? Math.round(skuStats[sku].totalQty / wpb) : 0)
   }, 0)
-  let runningSum = 0
-  const runningSums: Record<string, number> = {}
-  for (const sku of sortedSkus) {
-    const v = parseInt(actualBags[sku] ?? '', 10)
-    runningSum += isNaN(v) ? 0 : v
-    runningSums[sku] = runningSum
+  const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
+
+  const confirm = (sku: string) => {
+    const val = parseInt(inputVals[sku] ?? '', 10)
+    if (isNaN(val) || val <= 0) return
+    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), val] }))
+    setInputVals(prev => ({ ...prev, [sku]: '' }))
   }
-  const totalActual = runningSum
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+      <div className="grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
         <span className="text-xs font-semibold text-gray-500 text-right">แผน(ถุง)</span>
         <span className="text-xs font-semibold text-gray-500 text-right">ผลิต(ถุง)</span>
@@ -490,16 +492,15 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       {/* SKU rows */}
       <div className="divide-y divide-gray-50">
         {sortedSkus.map((sku, i) => {
-          const stat       = skuStats[sku]
-          const wpb        = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags       = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
-          const cumSum     = runningSums[sku]
-          const rowVal     = parseInt(actualBags[sku] ?? '', 10)
-          const hasCum     = !isNaN(rowVal) && rowVal > 0
+          const stat    = skuStats[sku]
+          const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+          const bags    = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+          const total   = skuTotal(sku)
+          const hasData = total > 0
 
           return (
             <div key={sku}
-              className={`grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-2.5 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+              className={`grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
               <div className="flex items-center min-w-0">
                 <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
               </div>
@@ -507,23 +508,29 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
                 {bags !== null ? bags.toLocaleString() : '—'}
               </p>
               <button
-                onClick={() => { setPopupSku(sku); setEditMode(false) }}
-                className={`text-sm font-bold text-right w-full pr-0 ${hasCum ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
-                {hasCum ? cumSum.toLocaleString() : '—'}
+                onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
+                className={`text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
+                {hasData ? total.toLocaleString() : '—'}
               </button>
-              <div className="flex justify-end">
+              <div className="flex justify-end items-center gap-1">
                 <input
                   type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  value={actualBags[sku] ?? ''}
+                  value={inputVals[sku] ?? ''}
                   onChange={e => {
                     const val = e.target.value.replace(/[^0-9]/g, '')
-                    setActualBags(prev => ({ ...prev, [sku]: val }))
+                    setInputVals(prev => ({ ...prev, [sku]: val }))
                   }}
+                  onKeyDown={e => { if (e.key === 'Enter') confirm(sku) }}
                   placeholder="—"
-                  className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                  className="w-14 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
+                <button
+                  onClick={() => confirm(sku)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 active:scale-95 transition-all shrink-0">
+                  ✓
+                </button>
               </div>
             </div>
           )
@@ -531,24 +538,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       </div>
 
       {/* Footer totals */}
-      <div className="grid grid-cols-[1fr_100px_100px_110px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
+      <div className="grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
         <span className="text-sm font-bold text-gray-700">รวมทั้งหมด</span>
         <span className="text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
-        <span className="text-sm font-bold text-right text-blue-600">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
-        <span className="text-sm font-bold text-right text-gray-900">{totalActual > 0 ? totalActual.toLocaleString() : '—'}</span>
+        <span className="text-sm font-bold text-right text-blue-600">{totalProduced > 0 ? totalProduced.toLocaleString() : '—'}</span>
+        <span />
       </div>
 
       {/* Popup */}
       {popupSku && (() => {
-        const idx      = sortedSkus.indexOf(popupSku)
-        const rows     = sortedSkus.slice(0, idx + 1).map(sku => ({
-          sku,
-          name: skuStats[sku]?.name ?? sku,
-          val:  parseInt(actualBags[sku] ?? '', 10),
-        }))
-        const nonZero  = rows.filter(r => !isNaN(r.val) && r.val > 0)
-        const formula  = nonZero.map(r => r.val).join(' + ')
-        const total    = runningSums[popupSku] ?? 0
+        const hist    = history[popupSku] ?? []
+        const total   = skuTotal(popupSku)
+        const formula = hist.join(' + ')
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -557,37 +558,39 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
               onClick={e => e.stopPropagation()}>
 
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-gray-800">รายละเอียด ผลิต(ถุง)</h3>
+                <h3 className="text-sm font-bold text-gray-800">
+                  {skuStats[popupSku]?.name ?? popupSku}
+                </h3>
                 <button onClick={() => { setPopupSku(null); setEditMode(false) }}
                   className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
               </div>
 
-              {!editMode && (
-                <p className="text-center text-base font-bold text-blue-600 bg-blue-50 rounded-xl py-2 px-3 mb-4 break-all">
-                  {formula || '—'}{nonZero.length > 0 ? ` = ${total}` : ''}
-                </p>
-              )}
+              <p className="text-center text-base font-bold text-blue-600 bg-blue-50 rounded-xl py-2 px-3 mb-4 break-all">
+                {formula || '—'}{hist.length > 0 ? ` = ${total}` : ''}
+              </p>
 
               <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-                {rows.map(r => (
-                  <div key={r.sku} className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-gray-600 truncate flex-1">{r.name}</span>
+                {hist.map((v, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3">
+                    <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
                     {editMode ? (
                       <input
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        value={actualBags[r.sku] ?? ''}
+                        value={String(v)}
                         onChange={e => {
-                          const v = e.target.value.replace(/[^0-9]/g, '')
-                          setActualBags(prev => ({ ...prev, [r.sku]: v }))
+                          const newVal = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10)
+                          setHistory(prev => {
+                            const arr = [...(prev[popupSku] ?? [])]
+                            arr[idx] = isNaN(newVal) ? 0 : newVal
+                            return { ...prev, [popupSku]: arr }
+                          })
                         }}
-                        className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        className="w-24 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
                       />
                     ) : (
-                      <span className={`text-sm font-bold shrink-0 ${!isNaN(r.val) && r.val > 0 ? 'text-blue-600' : 'text-gray-300'}`}>
-                        {!isNaN(r.val) && r.val > 0 ? r.val.toLocaleString() : '—'}
-                      </span>
+                      <span className="text-sm font-bold text-blue-600">{v.toLocaleString()}</span>
                     )}
                   </div>
                 ))}
@@ -595,7 +598,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
 
               {editMode && (
                 <p className="text-center text-sm font-bold text-blue-600 bg-blue-50 rounded-xl py-2 mb-4">
-                  รวม: {runningSums[popupSku] ?? 0}
+                  รวม: {skuTotal(popupSku).toLocaleString()}
                 </p>
               )}
 
