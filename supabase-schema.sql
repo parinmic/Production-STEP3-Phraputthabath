@@ -357,3 +357,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_picking_unit_sap ON picking_unit_master(sa
 
 ALTER TABLE picking_unit_master ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_picking_unit" ON picking_unit_master FOR ALL USING (true) WITH CHECK (true);
+
+-- 17. บันทึกผลผลิตจริง (ถุง) — ใช้ใน สรุปแผนผลิต
+CREATE TABLE IF NOT EXISTS production_actual (
+  id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  production_date date        NOT NULL,
+  table_name      text        NOT NULL,
+  sku             text        NOT NULL,
+  quantity        integer     NOT NULL CHECK (quantity > 0),
+  created_at      timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_actual_date_table ON production_actual(production_date, table_name);
+ALTER TABLE production_actual ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_actual" ON production_actual FOR ALL USING (true) WITH CHECK (true);

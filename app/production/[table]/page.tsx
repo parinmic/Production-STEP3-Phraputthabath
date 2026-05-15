@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { supabase } from '@/lib/supabase'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
@@ -425,13 +426,42 @@ interface ProductionSummaryViewProps {
   phaseStart: number
   rateMap: Record<string, number>
   bagMap: Record<string, number>
+  date: string
+  tableName: string
 }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: ProductionSummaryViewProps) {
-  const [inputVals, setInputVals] = useState<Record<string, string>>({})
-  const [history, setHistory]     = useState<Record<string, number[]>>({})
-  const [popupSku, setPopupSku]   = useState<string | null>(null)
-  const [editMode, setEditMode]   = useState(false)
+type ActualEntry = { id: string; quantity: number }
+
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName }: ProductionSummaryViewProps) {
+  const [inputVals, setInputVals]   = useState<Record<string, string>>({})
+  const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
+  const [popupSku, setPopupSku]     = useState<string | null>(null)
+  const [editMode, setEditMode]     = useState(false)
+  const [editValues, setEditValues] = useState<Record<string, string>>({})
+
+  const fetchActual = useCallback(async () => {
+    const { data } = await supabase
+      .from('production_actual')
+      .select('id, sku, quantity')
+      .eq('production_date', date)
+      .eq('table_name', tableName)
+      .order('created_at')
+    const grouped: Record<string, ActualEntry[]> = {}
+    for (const row of (data ?? [])) {
+      grouped[row.sku] ??= []
+      grouped[row.sku].push({ id: row.id, quantity: row.quantity })
+    }
+    setHistory(grouped)
+  }, [date, tableName])
+
+  useEffect(() => {
+    fetchActual()
+    const channel = supabase
+      .channel(`production_actual:${date}:${tableName}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_actual' }, fetchActual)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchActual])
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
@@ -465,18 +495,29 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
 
   if (!sortedSkus.length) return null
 
-  const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, v) => s + v, 0)
+  const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     return s + (wpb && wpb > 0 ? Math.round(skuStats[sku].totalQty / wpb) : 0)
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
-  const confirm = (sku: string) => {
+  const confirm = async (sku: string) => {
     const val = parseInt(inputVals[sku] ?? '', 10)
     if (isNaN(val) || val <= 0) return
-    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), val] }))
     setInputVals(prev => ({ ...prev, [sku]: '' }))
+    await supabase.from('production_actual').insert({ production_date: date, table_name: tableName, sku, quantity: val })
+  }
+
+  const saveEdits = async () => {
+    for (const [id, val] of Object.entries(editValues)) {
+      const qty = parseInt(val, 10)
+      if (!isNaN(qty) && qty > 0) {
+        await supabase.from('production_actual').update({ quantity: qty }).eq('id', id)
+      }
+    }
+    setEditMode(false)
+    setEditValues({})
   }
 
   return (
@@ -544,12 +585,16 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
       {/* Popup */}
       {popupSku && (() => {
         const hist    = history[popupSku] ?? []
-        const total   = skuTotal(popupSku)
-        const formula = hist.join(' + ')
+        const total   = editMode
+          ? Object.values(editValues).reduce((s, v) => s + (parseInt(v, 10) || 0), 0)
+          : skuTotal(popupSku)
+        const formula = editMode
+          ? Object.values(editValues).filter(v => parseInt(v, 10) > 0).join(' + ')
+          : hist.map(e => e.quantity).join(' + ')
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            onClick={() => { setPopupSku(null); setEditMode(false) }}>
+            onClick={() => { setPopupSku(null); setEditMode(false); setEditValues({}) }}>
             <div className="bg-white rounded-2xl shadow-xl p-5 w-80 max-w-[90vw]"
               onClick={e => e.stopPropagation()}>
 
@@ -557,7 +602,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
                 <h3 className="text-sm font-bold text-gray-800">
                   {skuStats[popupSku]?.name ?? popupSku}
                 </h3>
-                <button onClick={() => { setPopupSku(null); setEditMode(false) }}
+                <button onClick={() => { setPopupSku(null); setEditMode(false); setEditValues({}) }}
                   className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
               </div>
 
@@ -566,46 +611,45 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap }: Productio
               </p>
 
               <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-                {hist.map((v, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-3">
+                {hist.map((entry, idx) => (
+                  <div key={entry.id} className="flex items-center justify-between gap-3">
                     <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
                     {editMode ? (
                       <input
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        value={String(v)}
+                        value={editValues[entry.id] ?? String(entry.quantity)}
                         onChange={e => {
-                          const newVal = parseInt(e.target.value.replace(/[^0-9]/g, ''), 10)
-                          setHistory(prev => {
-                            const arr = [...(prev[popupSku] ?? [])]
-                            arr[idx] = isNaN(newVal) ? 0 : newVal
-                            return { ...prev, [popupSku]: arr }
-                          })
+                          const v = e.target.value.replace(/[^0-9]/g, '')
+                          setEditValues(prev => ({ ...prev, [entry.id]: v }))
                         }}
                         className="w-24 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
                       />
                     ) : (
-                      <span className="text-sm font-bold text-blue-600">{v.toLocaleString()}</span>
+                      <span className="text-sm font-bold text-blue-600">{entry.quantity.toLocaleString()}</span>
                     )}
                   </div>
                 ))}
               </div>
 
-              {editMode && (
-                <p className="text-center text-sm font-bold text-blue-600 bg-blue-50 rounded-xl py-2 mb-4">
-                  รวม: {skuTotal(popupSku).toLocaleString()}
-                </p>
-              )}
-
               <div className="flex gap-2">
                 <button
-                  onClick={() => setEditMode(m => !m)}
+                  onClick={() => {
+                    if (editMode) {
+                      saveEdits()
+                    } else {
+                      const init: Record<string, string> = {}
+                      for (const e of hist) init[e.id] = String(e.quantity)
+                      setEditValues(init)
+                      setEditMode(true)
+                    }
+                  }}
                   className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
-                  {editMode ? 'เสร็จ' : 'แก้ไข'}
+                  {editMode ? 'บันทึก' : 'แก้ไข'}
                 </button>
                 <button
-                  onClick={() => { setPopupSku(null); setEditMode(false) }}
+                  onClick={() => { setPopupSku(null); setEditMode(false); setEditValues({}) }}
                   className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors">
                   ปิด
                 </button>
@@ -1142,6 +1186,8 @@ export default function TablePage() {
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 bagMap={bagMap}
+                date={date}
+                tableName={cfg.label}
               />
             )}
         </div>
