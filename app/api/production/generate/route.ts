@@ -278,6 +278,30 @@ function assignWorkers(
 
 // ========== Main ==========
 
+// Paginate Supabase queries to bypass the 1000-row hard limit
+async function fetchAll<T = Record<string, unknown>>(
+  table: string,
+  select: string,
+  filters: { col: string; op: 'eq' | 'in'; val: unknown }[],
+): Promise<T[]> {
+  const PAGE = 1000
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    let q = supabase.from(table).select(select).range(from, from + PAGE - 1)
+    for (const f of filters) {
+      if (f.op === 'eq') q = q.eq(f.col, f.val)
+      else if (f.op === 'in') q = q.in(f.col, f.val as string[])
+    }
+    const { data, error } = await q
+    if (error) throw error
+    all.push(...((data ?? []) as T[]))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { date, phase: phaseParam } = await req.json()
@@ -303,16 +327,16 @@ export async function POST(req: NextRequest) {
     const [
       { data: workforceRaw0800 },
       { data: workforceRaw1300 },
-      { data: wmTodayRaw },
-      { data: wmHistRaw },
-      { data: lotusTodayRaw },
-      { data: lotusHistRaw },
-      { data: makroTodayRaw },
-      { data: makroHistRaw },
+      wmTodayRaw,
+      wmHistRaw,
+      lotusTodayRaw,
+      lotusHistRaw,
+      makroTodayRaw,
+      makroHistRaw,
       { data: masterProdRaw },
       { data: masterChannelRaw },
       { data: jobAssignRaw },
-      { data: prevAssignedRaw },
+      prevAssignedRaw,
       { data: plan100Raw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
@@ -325,35 +349,29 @@ export async function POST(req: NextRequest) {
             .eq('work_date', productionDate)
             .eq('upload_round', '1300')
         : Promise.resolve({ data: [] as WorkforceRow[], error: null }),
-      supabase.from('wet_market_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound)
-        .limit(10000),
-      supabase.from('wet_market_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates)
-        .eq('upload_round', '1600')
-        .limit(10000),
-      supabase.from('lotus_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound)
-        .limit(10000),
-      supabase.from('lotus_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates)
-        .eq('upload_round', '1600')
-        .limit(10000),
-      supabase.from('makro_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .eq('delivery_date', productionDate)
-        .eq('upload_round', orderRound)
-        .limit(10000),
-      supabase.from('makro_orders')
-        .select('sku, sku_name, quantity, delivery_date')
-        .in('delivery_date', histDates)
-        .limit(10000),
+      fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'eq', val: productionDate },
+        { col: 'upload_round', op: 'eq', val: orderRound },
+      ]),
+      fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'in', val: histDates },
+        { col: 'upload_round', op: 'eq', val: '1600' },
+      ]),
+      fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'eq', val: productionDate },
+        { col: 'upload_round', op: 'eq', val: orderRound },
+      ]),
+      fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'in', val: histDates },
+        { col: 'upload_round', op: 'eq', val: '1600' },
+      ]),
+      fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'eq', val: productionDate },
+        { col: 'upload_round', op: 'eq', val: orderRound },
+      ]),
+      fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date', [
+        { col: 'delivery_date', op: 'in', val: histDates },
+      ]),
       supabase.from('master_logic_calculation')
         .select('row_data')
         .eq('calculation_type', 'Mas Productivity')
@@ -366,12 +384,12 @@ export async function POST(req: NextRequest) {
         .select('row_data'),
       // Phase 2/3: load previously-assigned quantities to deduct
       (isPhase2 || isPhase3)
-        ? supabase.from('production_assignments')
-            .select('sku, target_quantity, channel')
-            .eq('production_date', productionDate)
-            .in('period', isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'])
-            .limit(10000)
-        : Promise.resolve({ data: [] as { sku: string; target_quantity: number; channel: string | null }[], error: null }),
+        ? fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
+            'production_assignments', 'sku, target_quantity, channel', [
+              { col: 'production_date', op: 'eq', val: productionDate },
+              { col: 'period', op: 'in', val: isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'] },
+            ])
+        : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),
       // Phase 3: load 100% production plan
       isPhase3
         ? supabase.from('production_plan_100')

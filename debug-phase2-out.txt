@@ -1,0 +1,40 @@
+﻿Channel priority Phase 2: { Makro: 1, LOTUS: 2, 'Wet Market': 3 }
+
+=== WM Phase 2 target for 23015177 (α╕¬α╕░α╣éα╕₧α╕üα╣üα╕òα╣êα╕ç) ===
+  WM order (1400): 80
+  WM avg BL3: 10
+  base = min(avg, order): 10
+  Phase 1 WM deduct: 3
+  >>> TARGET: 7
+
+=== LOTUS Phase 2 target for 23086964 (α╕¬α╕░α╣éα╕₧α╕üα╣üα╕òα╣êα╕çα╕òα╕▒α╕öα╕èα╕┤α╣ëα╕Ö SIS) ===
+  LOTUS order (1400): 1062
+  LOTUS avg BL3: 861
+  base = min(avg, order): 861
+  Phase 1 LOTUS deduct: 860
+  >>> TARGET: 1
+
+=== ALL Phase 2 targets at α╕¬α╕░α╣éα╕₧α╕ü ===
+  Wet Market | 23015177 | α╕¬α╕░α╣éα╕₧α╕üα╣üα╕òα╣êα╕ç: order=80 avg=10 base=10 deduct=3 TARGET=7
+  Wet Market | 23015189 | α╣Çα╕Öα╕╖α╣ëα╕¡α╣üα╕öα╕çα╕½α╕▒α╣êα╕Öα╕èα╕┤α╣ëα╕Ö: order=90 avg=55 base=55 deduct=16 TARGET=39
+  LOTUS | 23015189 | α╣Çα╕Öα╕╖α╣ëα╕¡α╣üα╕öα╕çα╕½α╕▒α╣êα╕Öα╕èα╕┤α╣ëα╕Ö: order=30 avg=0 base=30 deduct=0 TARGET=30
+  LOTUS | 23086964 | α╕¬α╕░α╣éα╕₧α╕üα╣üα╕òα╣êα╕çα╕òα╕▒α╕öα╕èα╕┤α╣ëα╕Ö SIS α╕üα╕ü.α╕Ñα╕░: order=1062 avg=861 base=861 deduct=860 TARGET=1
+  LOTUS | 23087034 | α╕¬α╕░α╣éα╕₧α╕üα╕½α╕íα╕╣α╕òα╕▒α╕öα╣Çα╕¬α╣ëα╕Ö(M): order=10 avg=0 base=10 deduct=0 TARGET=10
+  LOTUS | 23095547 | α╣Çα╕Öα╕╖α╣ëα╕¡α╕½α╕íα╕╣α╕½α╕▒α╣êα╕Öα╕èα╕┤α╣ëα╕Ö (SIS) α╕üα╕ü. α╕Ñα╕░: order=240 avg=333 base=240 deduct=336 TARGET=0
+
+=== Phase 1 assigned (α╕¬α╕░α╣éα╕₧α╕ü SKUs) ===
+  Wet Market | 23086964: 26 α╕üα╕ü.
+  Wet Market | 23015189: 16 α╕üα╕ü.
+  Wet Market | 23015177: 3 α╕üα╕ü.
+  Makro | 23106549: 44 α╕üα╕ü.
+  Makro | 23074625: 39 α╕üα╕ü.
+  Makro | 23087034: 22 α╕üα╕ü.
+  Makro | 23097789: 2 α╕üα╕ü.
+  Makro | 23098986: 2 α╕üα╕ü.
+  Makro | 23104868: 2 α╕üα╕ü.
+  Makro | 23110588: 2 α╕üα╕ü.
+  Makro | 23110589: 2 α╕üα╕ü.
+  Makro | 23111029: 2 α╕üα╕ü.
+  Makro | 23111030: 2 α╕üα╕ü.
+  LOTUS | 23086964: 860 α╕üα╕ü.
+  LOTUS | 23095547: 336 α╕üα╕ü.
