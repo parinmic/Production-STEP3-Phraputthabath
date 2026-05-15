@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -185,6 +185,7 @@ export default function Sidebar() {
             { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
             { href: '/quota',              icon: BarChart3,      label: 'Quota ช่องทางขาย' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
+            { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้' },
           ].map((m) => (
             <Link key={m.href} href={m.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`}
