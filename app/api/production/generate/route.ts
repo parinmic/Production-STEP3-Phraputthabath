@@ -58,7 +58,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8,  endH: 14 },
   { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 2, startH: 17, endH: 19 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 3, startH: 16, endH: 19 },
 ]
 
 // ========== Station mapping ==========
@@ -315,7 +315,7 @@ export async function POST(req: NextRequest) {
         .select('emp_id, name, work_station, shift')
         .eq('work_date', productionDate)
         .eq('upload_round', '0800'),
-      isPhase2
+      (isPhase2 || isPhase3)
         ? supabase.from('daily_workforce')
             .select('emp_id, name, work_station, shift')
             .eq('work_date', productionDate)
@@ -381,7 +381,7 @@ export async function POST(req: NextRequest) {
     if (!workforce.length)
       return NextResponse.json({
         success: false,
-        message: isPhase2
+        message: (isPhase2 || isPhase3)
           ? 'ไม่พบกำลังคนรอบ 8:00 หรือ 13:00 วันนี้ — กรุณาอัพโหลดก่อน'
           : 'ไม่พบกำลังคนรอบ 8:00 วันนี้ — กรุณาอัพโหลดก่อน',
       }, { status: 400 })
