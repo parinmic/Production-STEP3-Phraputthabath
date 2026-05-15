@@ -284,7 +284,19 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
       </div>
 
       {/* SKU rows */}
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-gray-50 relative">
+        {/* Single continuous now-line spanning all rows */}
+        {nowMins >= chartStart && nowMins <= chartEnd && (
+          <>
+            {/* mobile: left col w-28 (7rem) + right col w-24 (6rem) */}
+            <div className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-20"
+              style={{ left: `calc(7rem + (100% - 13rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#f87171' }} />
+            {/* desktop: left col w-44 (11rem) + right col w-32 (8rem) */}
+            <div className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
+              style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#f87171' }} />
+          </>
+        )}
+
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
           const col       = skuColor[sku]
@@ -320,11 +332,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap }: SkuScheduleVi
 
               {/* Bar area */}
               <div className="flex-1 relative h-10 sm:h-14">
-                {/* Now indicator */}
-                {nowMins >= chartStart && nowMins <= chartEnd && (
-                  <div className="absolute -top-px -bottom-px w-0.5 bg-red-900 z-10"
-                    style={{ left: `${pct(nowMins)}%` }} />
-                )}
                 {/* Bar */}
                 <div className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5"
                   style={{
