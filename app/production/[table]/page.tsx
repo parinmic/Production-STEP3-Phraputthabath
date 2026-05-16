@@ -1038,9 +1038,9 @@ export default function TablePage() {
   const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
 
-  const loadData = (d: string) => {
+  const loadData = (d: string, silent = false) => {
     if (!cfg) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     fetch(`/api/production?date=${d}&table=${cfg.label}`)
       .then(r => r.json())
       .then(data => {
@@ -1048,7 +1048,7 @@ export default function TablePage() {
         const normalized = assignments.map(a => ({ ...a, sku: a.sku.replace(/^0+/, '') }))
         setItems(normalized)
       })
-      .finally(() => setLoading(false))
+      .finally(() => { if (!silent) setLoading(false) })
   }
 
   useEffect(() => {
@@ -1072,7 +1072,11 @@ export default function TablePage() {
       })
   }, [])
 
-  useEffect(() => { loadData(date) }, [date, cfg?.label])
+  useEffect(() => {
+    loadData(date)
+    const id = setInterval(() => loadData(date, true), 3000)
+    return () => clearInterval(id)
+  }, [date, cfg?.label])
 
   const generate = async () => {
     if (selectedPhase === 'all') return
