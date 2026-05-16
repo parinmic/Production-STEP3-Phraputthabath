@@ -456,6 +456,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
   useEffect(() => {
     fetchActual()
+    const poll = setInterval(fetchActual, 3000)
 
     type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string }
 
@@ -499,7 +500,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [fetchActual])
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
