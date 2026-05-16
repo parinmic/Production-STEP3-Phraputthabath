@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
 
   // 4. คำนวณปริมาณวัตถุดิบ raw_qty = finished_qty / yield_pct
   const rawMap = new Map<string, { station: string; raw_sap: string; raw_name: string | null; qty: number }>()
+  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number }[] = []
 
   for (const { station, sku, sku_name, qty } of Array.from(finMap.values())) {
@@ -114,6 +115,10 @@ export async function POST(req: NextRequest) {
       const cur = rawMap.get(key)
       if (cur) { cur.qty += rawQty }
       else { rawMap.set(key, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty }) }
+      // inverse: raw → which finished goods use it
+      const prodList = rawToProducts.get(key) ?? []
+      prodList.push({ sku, sku_name: sku_name ?? null, qty })
+      rawToProducts.set(key, prodList)
     }
   }
 
@@ -168,6 +173,7 @@ export async function POST(req: NextRequest) {
   ).map(({ station, raw_sap, raw_name, qty }) => {
     const needed = Math.round(qty * 100) / 100
     const lots   = stockByMat.get(raw_sap)
+    const key    = `${station}|||${raw_sap}`
     return {
       sku:          raw_sap,
       sku_name:     raw_name,
@@ -176,6 +182,7 @@ export async function POST(req: NextRequest) {
       work_station: station,
       note:         'คำนวณจาก BOM',
       lots:         lots ? allocateFIFO(lots, needed) : [],
+      for_products: rawToProducts.get(key) ?? [],
     }
   })
 

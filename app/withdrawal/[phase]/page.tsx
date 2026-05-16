@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X } from 'lucide-react'
+import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface WithdrawalItem {
   id: string
@@ -25,6 +25,12 @@ interface LotInfo {
   insufficient?: boolean
 }
 
+interface ForProduct {
+  sku: string
+  sku_name: string | null
+  qty: number
+}
+
 interface CalcItem {
   sku: string
   sku_name: string | null
@@ -33,6 +39,7 @@ interface CalcItem {
   work_station: string | null
   note: string | null
   lots?: LotInfo[]
+  for_products?: ForProduct[]
 }
 
 type RowItem = CalcItem
@@ -59,6 +66,7 @@ export default function WithdrawalPage() {
   const [saving, setSaving]       = useState(false)
   const [preview, setPreview]     = useState<CalcItem[] | null>(null)
   const [calcMsg, setCalcMsg]     = useState<string | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -361,19 +369,51 @@ export default function WithdrawalPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {stationItems.map((item, idx) => (
+                      {stationItems.map((item, idx) => {
+                        const rowKey = `${station}|||${item.sku}|||${idx}`
+                        const isExpanded = expandedKey === rowKey
+                        const hasProducts = (item.for_products?.length ?? 0) > 0
+                        return (
                         <>
-                          <tr key={`${item.sku}-${idx}`} className="border-b hover:bg-gray-50">
+                          <tr key={`${item.sku}-${idx}`}
+                            className={`border-b hover:bg-gray-50 ${hasProducts ? 'cursor-pointer' : ''}`}
+                            onClick={() => hasProducts && setExpandedKey(isExpanded ? null : rowKey)}>
                             <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
                             <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
-                            <td className="px-3 py-2.5 text-gray-800">{item.sku_name ?? '-'}</td>
+                            <td className="px-3 py-2.5 text-gray-800">
+                              <div className="flex items-center gap-1.5">
+                                {hasProducts && (
+                                  isExpanded
+                                    ? <ChevronDown size={14} className="text-indigo-500 shrink-0" />
+                                    : <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                                )}
+                                {item.sku_name ?? '-'}
+                              </div>
+                            </td>
                             <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
                             <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
                             <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
                             <td className="px-3 py-2.5 text-center no-print">
-                              {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
+                              {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" onClick={e => e.stopPropagation()} />}
                             </td>
                           </tr>
+                          {isExpanded && hasProducts && (
+                            <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
+                              <td />
+                              <td colSpan={6} className="px-3 py-2.5 pl-7">
+                                <p className="text-xs font-semibold text-indigo-700 mb-1.5">ใช้ผลิต</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {item.for_products!.map((p, pi) => (
+                                    <div key={pi} className="flex items-center gap-1.5 bg-white border border-indigo-200 rounded-lg px-2.5 py-1">
+                                      <span className="text-xs font-mono text-gray-500">{p.sku}</span>
+                                      <span className="text-xs text-gray-700 font-medium">{p.sku_name ?? p.sku}</span>
+                                      <span className="text-xs font-bold text-indigo-600">{p.qty.toLocaleString()} กก.</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                           {item.lots?.map((lot, li) => (
                             <tr key={`${item.sku}-lot-${li}`}
                               className={`border-b text-xs ${lot.insufficient ? 'bg-red-50' : 'bg-indigo-50/50'}`}>
@@ -400,7 +440,8 @@ export default function WithdrawalPage() {
                             </tr>
                           ))}
                         </>
-                      ))}
+                        )
+                      })}
                       <tr className="bg-gray-50 font-semibold">
                         <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
                         <td className="px-3 py-2.5 text-right text-gray-900">
