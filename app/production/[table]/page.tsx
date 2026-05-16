@@ -438,6 +438,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const [popupSku, setPopupSku]     = useState<string | null>(null)
   const [editMode, setEditMode]     = useState(false)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
+  const [yieldMap, setYieldMap]     = useState<Record<string, number>>({})
 
   const fetchActual = useCallback(async () => {
     const { data } = await supabase
@@ -454,9 +455,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     setHistory(grouped)
   }, [date, tableName])
 
+  const fetchYield = useCallback(async () => {
+    try {
+      const res  = await fetch(`/api/yield-actual?date=${date}`)
+      const data = await res.json()
+      setYieldMap(data.yieldMap ?? {})
+    } catch { /* silent */ }
+  }, [date])
+
   useEffect(() => {
     fetchActual()
-    const poll = setInterval(fetchActual, 3000)
+    fetchYield()
+    const poll = setInterval(() => { fetchActual(); fetchYield() }, 3000)
 
     type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string }
 
@@ -501,7 +511,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       .subscribe()
 
     return () => { supabase.removeChannel(channel); clearInterval(poll) }
-  }, [fetchActual])
+  }, [fetchActual, fetchYield])
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
@@ -571,11 +581,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+      <div className="grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
         <span className="text-xs font-semibold text-gray-500 text-right">แผน(ถุง)</span>
         <span className="text-xs font-semibold text-gray-500 text-right">ผลิต(ถุง)</span>
-        <span className="text-xs font-semibold text-gray-500 text-right">ผลิตได้ (ถุง)</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">รับผลได้(ถุง)</span>
+        <span className="text-xs font-semibold text-gray-500 text-right">ผลิตได้(ถุง)</span>
       </div>
 
       {/* SKU rows */}
@@ -587,9 +598,11 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           const total   = skuTotal(sku)
           const hasData = total > 0
 
+          const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
+
           return (
             <div key={sku}
-              className={`grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+              className={`grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
               <div className="flex items-center min-w-0">
                 <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
               </div>
@@ -601,6 +614,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                 className={`text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
                 {hasData ? total.toLocaleString() : '—'}
               </button>
+              <p className="text-sm font-semibold text-right text-green-600">
+                {yieldBags !== null ? yieldBags.toLocaleString() : '—'}
+              </p>
               <div className="flex justify-end">
                 <input
                   type="text"
@@ -623,10 +639,13 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       </div>
 
       {/* Footer totals */}
-      <div className="grid grid-cols-[1fr_90px_90px_120px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
+      <div className="grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
         <span className="text-sm font-bold text-gray-700">รวมทั้งหมด</span>
         <span className="text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
         <span className="text-sm font-bold text-right text-blue-600">{totalProduced > 0 ? totalProduced.toLocaleString() : '—'}</span>
+        <span className="text-sm font-bold text-right text-green-600">
+          {(() => { const t = sortedSkus.reduce((s, sku) => s + (yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0), 0); return t > 0 ? t.toLocaleString() : '—' })()}
+        </span>
         <span />
       </div>
 

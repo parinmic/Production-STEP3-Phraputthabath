@@ -1,7 +1,9 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { Upload, AlertCircle, CheckCircle2, X, Calendar } from 'lucide-react'
-import { parseFile, ParsedRow } from '@/lib/parser'
+
+interface SapResult { sapCode: string; bags: number }
 
 interface UploadRecord {
   source_file: string
@@ -9,15 +11,48 @@ interface UploadRecord {
   uploaded_at: string
 }
 
+function parseYieldFile(file: File): Promise<SapResult[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target?.result, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
+
+        const agg: Record<string, number> = {}
+        for (const row of rows as unknown[][]) {
+          const colC = String(row[2] ?? '').trim()   // column C = index 2
+          if (colC !== '168' && colC !== '169M') continue
+          const sapCode = String(row[6] ?? '').trim() // column G = index 6
+          const bagsRaw = row[9]                      // column J = index 9
+          if (!sapCode) continue
+          const bags = typeof bagsRaw === 'number' ? bagsRaw : parseInt(String(bagsRaw ?? '0'), 10)
+          if (isNaN(bags) || bags <= 0) continue
+          agg[sapCode] = (agg[sapCode] ?? 0) + bags
+        }
+
+        const results = Object.entries(agg).map(([sapCode, bags]) => ({ sapCode, bags }))
+        if (!results.length) throw new Error('ไม่พบข้อมูลรหัส 168 หรือ 169M ในไฟล์')
+        resolve(results)
+      } catch (err) {
+        reject(err)
+      }
+    }
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่ได้'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 export default function YieldPage() {
   const today = new Date().toISOString().split('T')[0]
-  const [workDate, setWorkDate]   = useState(today)
-  const [status, setStatus]       = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
-  const [message, setMessage]     = useState('')
-  const [preview, setPreview]     = useState<ParsedRow[]>([])
-  const [filename, setFilename]   = useState('')
-  const [history, setHistory]     = useState<UploadRecord[]>([])
-  const [deleting, setDeleting]   = useState<string | null>(null)
+  const [workDate, setWorkDate]     = useState(today)
+  const [status, setStatus]         = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
+  const [message, setMessage]       = useState('')
+  const [sapResults, setSapResults] = useState<SapResult[]>([])
+  const [filename, setFilename]     = useState('')
+  const [history, setHistory]       = useState<UploadRecord[]>([])
+  const [deleting, setDeleting]     = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const fetchHistory = async () => {
@@ -31,33 +66,30 @@ export default function YieldPage() {
   useEffect(() => { fetchHistory() }, [])
 
   const handleFile = async (file: File) => {
-    setStatus('parsing'); setMessage(''); setPreview([]); setFilename(file.name)
+    setStatus('parsing'); setMessage(''); setSapResults([]); setFilename(file.name)
     try {
-      const rows = await parseFile(file)
-      if (!rows.length) throw new Error('ไฟล์ไม่มีข้อมูล')
-      setPreview(rows.slice(0, 5)); setStatus('idle')
+      const results = await parseYieldFile(file)
+      setSapResults(results); setStatus('idle')
     } catch (e: unknown) {
       setStatus('error'); setMessage(e instanceof Error ? e.message : 'อ่านไฟล์ไม่ได้')
     }
   }
 
   const handleSubmit = async () => {
-    if (!preview.length) return
+    if (!sapResults.length) return
     if (!workDate) { setStatus('error'); setMessage('กรุณาเลือกวันที่ก่อน'); return }
     setStatus('uploading')
     try {
-      const file = (inputRef.current!.files as FileList)[0]
-      const rows = await parseFile(file)
-      const res  = await fetch('/api/upload-yield', {
+      const res = await fetch('/api/upload-yield', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, filename: file.name, workDate }),
+        body: JSON.stringify({ sapResults, workDate, filename }),
       })
       const result = await res.json()
       setStatus(result.success ? 'success' : 'error')
       setMessage(result.message)
       if (result.success) {
-        setPreview([]); setFilename(''); inputRef.current!.value = ''
+        setSapResults([]); setFilename(''); inputRef.current!.value = ''
         fetchHistory()
       }
     } catch (e: unknown) {
@@ -76,8 +108,6 @@ export default function YieldPage() {
     } catch { alert('เกิดข้อผิดพลาด') }
     finally { setDeleting(null) }
   }
-
-  const cols = preview.length ? Object.keys(preview[0]) : []
 
   return (
     <div className="space-y-6">
@@ -106,11 +136,16 @@ export default function YieldPage() {
         onClick={() => inputRef.current?.click()}>
         <Upload className="mx-auto text-gray-400 mb-3" size={36} />
         <p className="font-medium text-gray-700">{filename || 'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
-        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv</p>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls</p>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
           onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
       </div>
 
+      {status === 'parsing' && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-700">
+          กำลังอ่านไฟล์...
+        </div>
+      )}
       {status === 'error' && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
           <AlertCircle size={20} />{message}
@@ -122,30 +157,39 @@ export default function YieldPage() {
         </div>
       )}
 
-      {/* Preview */}
-      {preview.length > 0 && (
+      {/* Preview — SAP aggregated results */}
+      {sapResults.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="font-semibold text-gray-800">ตัวอย่างข้อมูล (5 แถวแรก)</p>
-              <p className="text-xs text-gray-500 mt-0.5">วันที่: {workDate || '—'}</p>
+              <p className="font-semibold text-gray-800">สรุปรับผลได้ ({sapResults.length} รหัส SAP)</p>
+              <p className="text-xs text-gray-500 mt-0.5">วันที่: {workDate || '—'} · กรองเฉพาะรหัส 168, 169M</p>
             </div>
-            <button onClick={() => { setPreview([]); setFilename(''); inputRef.current!.value = '' }}
+            <button onClick={() => { setSapResults([]); setFilename(''); inputRef.current!.value = '' }}
               className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50">
-                  {cols.map(c => <th key={c} className="px-3 py-2 text-left text-gray-600 font-medium border-b whitespace-nowrap">{c}</th>)}
+                  <th className="px-3 py-2 text-left text-gray-600 font-medium border-b">รหัส SAP</th>
+                  <th className="px-3 py-2 text-right text-gray-600 font-medium border-b">จำนวนถุง</th>
                 </tr>
               </thead>
               <tbody>
-                {preview.map((row, i) => (
-                  <tr key={i} className="border-b hover:bg-gray-50">
-                    {cols.map(c => <td key={c} className="px-3 py-2 text-gray-700 whitespace-nowrap">{String(row[c] ?? '-')}</td>)}
+                {sapResults.slice(0, 10).map((r) => (
+                  <tr key={r.sapCode} className="border-b hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-700 font-mono">{r.sapCode}</td>
+                    <td className="px-3 py-2 text-gray-700 text-right font-semibold">{r.bags.toLocaleString()}</td>
                   </tr>
                 ))}
+                {sapResults.length > 10 && (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-2 text-xs text-gray-400 text-center">
+                      ...และอีก {sapResults.length - 10} รหัส
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -165,7 +209,7 @@ export default function YieldPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-mono text-gray-700 truncate">{h.source_file}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {h.record_count.toLocaleString()} รายการ
+                    {h.record_count.toLocaleString()} รหัส SAP
                     <span className="mx-1.5">·</span>
                     {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
                   </p>
