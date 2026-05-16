@@ -569,8 +569,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         .filter(([id]) => !id.startsWith('temp_'))
         .map(([id, val]) => {
           const qty = parseInt(val, 10)
-          if (!isNaN(qty) && qty > 0)
-            return supabase.from('production_actual').update({ quantity: qty }).eq('id', id)
+          if (isNaN(qty) || qty < 0) return
+          if (qty === 0)
+            return supabase.from('production_actual').delete().eq('id', id)
+          return supabase.from('production_actual').update({ quantity: qty }).eq('id', id)
         })
     )
     setEditMode(false)
