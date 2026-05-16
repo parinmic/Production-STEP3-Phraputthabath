@@ -509,19 +509,23 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     const tempId = `temp_${Date.now()}`
     setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), { id: tempId, quantity: val }] }))
     setInputVals(prev => ({ ...prev, [sku]: '' }))
-    // บันทึก DB — Realtime จะ trigger fetchActual แทน tempId ด้วย id จริง
     await supabase.from('production_actual').insert({ production_date: date, table_name: tableName, sku, quantity: val })
+    fetchActual() // แทน tempId ด้วย id จริงจาก DB โดยเร็ว
   }
 
   const saveEdits = async () => {
-    for (const [id, val] of Object.entries(editValues)) {
-      const qty = parseInt(val, 10)
-      if (!isNaN(qty) && qty > 0) {
-        await supabase.from('production_actual').update({ quantity: qty }).eq('id', id)
-      }
-    }
+    await Promise.all(
+      Object.entries(editValues)
+        .filter(([id]) => !id.startsWith('temp_'))
+        .map(([id, val]) => {
+          const qty = parseInt(val, 10)
+          if (!isNaN(qty) && qty > 0)
+            return supabase.from('production_actual').update({ quantity: qty }).eq('id', id)
+        })
+    )
     setEditMode(false)
     setEditValues({})
+    fetchActual()
   }
 
   return (
