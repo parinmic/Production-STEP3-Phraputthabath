@@ -368,5 +368,6 @@ CREATE TABLE IF NOT EXISTS production_actual (
   created_at      timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_actual_date_table ON production_actual(production_date, table_name);
+ALTER TABLE production_actual REPLICA IDENTITY FULL;
 ALTER TABLE production_actual ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_actual" ON production_actual FOR ALL USING (true) WITH CHECK (true);

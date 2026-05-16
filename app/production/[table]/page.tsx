@@ -456,10 +456,49 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
   useEffect(() => {
     fetchActual()
+
+    type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string }
+
     const channel = supabase
       .channel(`production_actual:${date}:${tableName}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_actual' }, fetchActual)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'production_actual' },
+        (payload) => {
+          const row = payload.new as Row
+          if (row.production_date !== date || row.table_name !== tableName) return
+          setHistory(prev => {
+            const entries = prev[row.sku] ?? []
+            if (entries.some(e => e.id === row.id)) return prev          // ซ้ำ
+            const tempIdx = entries.findIndex(e => e.id.startsWith('temp_'))
+            if (tempIdx >= 0) {
+              const next = [...entries]
+              next[tempIdx] = { id: row.id, quantity: row.quantity }     // แทน temp
+              return { ...prev, [row.sku]: next }
+            }
+            return { ...prev, [row.sku]: [...entries, { id: row.id, quantity: row.quantity }] }
+          })
+        }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'production_actual' },
+        (payload) => {
+          const row = payload.new as Row
+          if (row.production_date !== date || row.table_name !== tableName) return
+          setHistory(prev => {
+            for (const [sku, entries] of Object.entries(prev)) {
+              const idx = entries.findIndex(e => e.id === row.id)
+              if (idx >= 0) {
+                const next = [...entries]
+                next[idx] = { id: row.id, quantity: row.quantity }
+                return { ...prev, [sku]: next }
+              }
+            }
+            return prev
+          })
+        }
+      )
       .subscribe()
+
     return () => { supabase.removeChannel(channel) }
   }, [fetchActual])
 
