@@ -293,11 +293,12 @@ export default function WithdrawalPage() {
                       <tr key={`${item.sku}-date-${date}`}
                         className={`border-b text-xs ${insufficient ? 'bg-red-50' : 'bg-blue-50/40'}`}>
                         <td />
-                        <td colSpan={2} className="px-3 py-1.5 pl-8 text-gray-600">
+                        <td className="px-3 py-1.5 text-gray-500">
                           {insufficient
                             ? <span className="text-red-500 font-medium">⚠ สต็อกไม่เพียงพอ</span>
-                            : <span>└ ผลิต <span className="font-medium">{date}</span></span>}
+                            : <span>ผลิต <span className="font-medium">{date}</span></span>}
                         </td>
+                        <td />
                         <td className={`px-3 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
                           {qty.toLocaleString()}
                         </td>
