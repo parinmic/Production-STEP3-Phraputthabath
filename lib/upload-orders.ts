@@ -122,7 +122,10 @@ async function insertDirect(
     if (error) return { success: false, message: error.message }
   }
 
-  // Log the upload
+  // Replace any previous log entries for this file (clean up old chunks)
+  await supabase.from('upload_log').delete()
+    .eq('table_name', logTable)
+    .eq('source_file', filename)
   await supabase.from('upload_log').insert({
     table_name:   logTable,
     source_file:  filename,
