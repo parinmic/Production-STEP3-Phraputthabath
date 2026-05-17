@@ -82,6 +82,23 @@ export async function downloadWithdrawalPDF(params: {
     if (!rate || rate <= 0) return null
     return Math.ceil(qty / rate)
   }
+
+  const getTotalBaskets = (item: ItemData): number | null => {
+    if (!item.lots?.length) return getBaskets(item.sku, item.quantity)
+    const byDate = new Map<string, number>()
+    for (const lot of item.lots) {
+      if (lot.insufficient) continue
+      byDate.set(lot.prod_date, (byDate.get(lot.prod_date) ?? 0) + lot.to_withdraw)
+    }
+    if (!byDate.size) return null
+    let total = 0
+    for (const qty of Array.from(byDate.values())) {
+      const b = getBaskets(item.sku, qty)
+      if (b == null) return null
+      total += b
+    }
+    return total
+  }
   const accent = PHASE_COLOR[cfg.color] ?? [55, 65, 81]
   const doc = new jsPDF({ format: 'a4', unit: 'mm', orientation: 'portrait' })
 
@@ -148,7 +165,7 @@ export async function downloadWithdrawalPDF(params: {
       // Build table rows
       const bodyRows: (string | { content: string; styles: object })[][] = []
       stItems.forEach((item, idx) => {
-        const b = getBaskets(item.sku, item.quantity)
+        const b = getTotalBaskets(item)
         bodyRows.push([
           String(idx + 1),
           item.sku,

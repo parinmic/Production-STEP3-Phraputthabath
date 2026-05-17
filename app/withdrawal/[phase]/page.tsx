@@ -216,6 +216,24 @@ export default function WithdrawalPage() {
     return Math.ceil(qty / rate)
   }
 
+  // ถ้ามี lots ให้ sum ceil ต่อ lot แทน ceil ของ total (เพื่อให้ sub-rows + = หัว)
+  function getTotalBaskets(item: RowItem): number | null {
+    if (!item.lots?.length) return getBaskets(item.sku, item.quantity)
+    const byDate = new Map<string, number>()
+    for (const lot of item.lots) {
+      if (lot.insufficient) continue
+      byDate.set(lot.prod_date, (byDate.get(lot.prod_date) ?? 0) + lot.to_withdraw)
+    }
+    if (!byDate.size) return null
+    let total = 0
+    for (const qty of Array.from(byDate.values())) {
+      const b = getBaskets(item.sku, qty)
+      if (b == null) return null
+      total += b
+    }
+    return total
+  }
+
   function groupSaved(raw: WithdrawalItem[]): RowItem[] {
     const map = new Map<string, WithdrawalItem[]>()
     for (const item of raw) {
@@ -315,8 +333,8 @@ export default function WithdrawalPage() {
                     <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
                     <td className="px-3 py-2.5 text-right text-orange-600 font-medium">
-                      {getBaskets(item.sku, item.quantity) != null
-                        ? `${getBaskets(item.sku, item.quantity)} ตะกร้า`
+                      {getTotalBaskets(item) != null
+                        ? `${getTotalBaskets(item)} ตะกร้า`
                         : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
