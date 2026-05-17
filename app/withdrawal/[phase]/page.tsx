@@ -136,6 +136,7 @@ export default function WithdrawalPage() {
         rounds: Array.from(printRoundSel),
         items: filteredItems,
         cfg: { label: cfg.label, time: cfg.time, color: cfg.color },
+        basketMap,
       })
     } catch {
       alert('เกิดข้อผิดพลาดในการสร้าง PDF')
@@ -360,6 +361,11 @@ export default function WithdrawalPage() {
                           {qty.toLocaleString()}
                         </td>
                         <td className="px-3 py-1.5 text-gray-500">กก.</td>
+                        <td className="px-3 py-1.5 text-right text-orange-500 text-xs">
+                          {!insufficient && getBaskets(item.sku, qty) != null
+                            ? `${getBaskets(item.sku, qty)} ตะกร้า`
+                            : ''}
+                        </td>
                         <td />
                       </tr>
                     ))
@@ -370,7 +376,7 @@ export default function WithdrawalPage() {
             <tr className="bg-gray-50 font-semibold">
               <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
               <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
-              <td colSpan={2} />
+              <td colSpan={3} />
             </tr>
           </tbody>
         </table>

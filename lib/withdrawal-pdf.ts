@@ -72,8 +72,16 @@ export async function downloadWithdrawalPDF(params: {
   rounds: string[]
   items: ItemData[]
   cfg: CfgData
+  basketMap?: Map<string, number>
 }) {
-  const { date, phase, rounds, items, cfg } = params
+  const { date, phase, rounds, items, cfg, basketMap } = params
+
+  const getBaskets = (sku: string, qty: number): number | null => {
+    if (!basketMap) return null
+    const rate = basketMap.get(String(sku).replace(/^0+/, '').trim())
+    if (!rate || rate <= 0) return null
+    return Math.ceil(qty / rate)
+  }
   const accent = PHASE_COLOR[cfg.color] ?? [55, 65, 81]
   const doc = new jsPDF({ format: 'a4', unit: 'mm', orientation: 'portrait' })
 
@@ -140,29 +148,34 @@ export async function downloadWithdrawalPDF(params: {
       // Build table rows
       const bodyRows: (string | { content: string; styles: object })[][] = []
       stItems.forEach((item, idx) => {
+        const b = getBaskets(item.sku, item.quantity)
         bodyRows.push([
           String(idx + 1),
           item.sku,
           item.sku_name ?? '-',
           fmt(item.quantity),
           item.unit,
+          b != null ? `${b}` : '',
         ])
         if (item.lots?.length) {
           for (const { date: ld, qty, insufficient } of groupLots(item.lots)) {
+            const lb = !insufficient ? getBaskets(item.sku, qty) : null
+            const bg: [number, number, number] = insufficient ? [254, 242, 242] : [239, 246, 255]
             bodyRows.push([
               '',
               {
                 content: insufficient ? `⚠ ${ld}` : `ผลิต ${ld}`,
-                styles: { textColor: insufficient ? [220, 38, 38] : [37, 99, 235], fillColor: insufficient ? [254, 242, 242] : [239, 246, 255] },
+                styles: { textColor: insufficient ? [220, 38, 38] : [37, 99, 235], fillColor: bg },
               },
               '',
               {
                 content: fmt(qty),
-                styles: { textColor: insufficient ? [220, 38, 38] : [29, 78, 216], fontStyle: 'bold', fillColor: insufficient ? [254, 242, 242] : [239, 246, 255] },
+                styles: { textColor: insufficient ? [220, 38, 38] : [29, 78, 216], fontStyle: 'bold', fillColor: bg },
               },
+              { content: 'กก.', styles: { fillColor: bg } },
               {
-                content: 'กก.',
-                styles: { fillColor: insufficient ? [254, 242, 242] : [239, 246, 255] },
+                content: lb != null ? `${lb}` : '',
+                styles: { textColor: [234, 88, 12], fillColor: bg },
               },
             ])
           }
@@ -174,12 +187,13 @@ export async function downloadWithdrawalPDF(params: {
         '', '', { content: 'รวม', styles: { halign: 'right', fontStyle: 'bold', fillColor: [243, 244, 246] } },
         { content: fmt(stTotal), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
         { content: 'กก.', styles: { fillColor: [243, 244, 246] } },
+        '',
       ])
 
       autoTable(doc, {
         startY: y,
         margin: { left: margin, right: margin },
-        head: [['#', 'รหัส', 'ชื่อสินค้า / วัตถุดิบ', 'จำนวน', 'หน่วย']],
+        head: [['#', 'รหัส', 'ชื่อสินค้า / วัตถุดิบ', 'จำนวน', 'หน่วย', 'ตะกร้า']],
         body: bodyRows,
         theme: 'plain',
         styles: { font: 'Sarabun', fontSize: 8.5, cellPadding: 2, overflow: 'linebreak' },
@@ -191,6 +205,7 @@ export async function downloadWithdrawalPDF(params: {
           2: { cellWidth: 'auto' },
           3: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
           4: { cellWidth: 12, textColor: [107, 114, 128] },
+          5: { cellWidth: 18, halign: 'right', textColor: [234, 88, 12] },
         },
         didParseCell: (data) => {
           if (data.section === 'body') {
