@@ -215,12 +215,18 @@ export async function POST(req: NextRequest) {
     stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
   }
 
-  // Name-based fallback: when BOM raw_sap codes don't match stock material_codes,
-  // try matching by raw_name vs material_name (e.g. "สะโพก-Raw" = "สะโพก-Raw")
-  if (stockRows.length === 0 && rawNames.length > 0) {
+  // Name-based fallback: for any raw_sap that returned no stock rows, re-query by material_name
+  const foundCodes = new Set(stockRows.map(r => r.material_code))
+  const missingNames = Array.from(new Set(
+    Array.from(rawMap.values())
+      .filter(v => !foundCodes.has(v.raw_sap))
+      .map(v => v.raw_name)
+      .filter(Boolean) as string[]
+  ))
+  if (missingNames.length > 0) {
     const [res0010n, res20n] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', rawNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', rawNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', missingNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', missingNames).gt('weight_total', 0),
     ])
     stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
   }
