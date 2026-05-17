@@ -6,6 +6,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
   'sa-phok-special':  { label: 'สะโพกพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สะโพกพิเศษ' },
   'lai-special':      { label: 'ไหล่พิเศษ',    desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์ไหล่พิเศษ' },
   'sam-chan-special':  { label: 'สามชั้นพิเศษ', desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สามชั้นพิเศษ' },
+  'recommended':      { label: 'กำลังคนแนะนำ', desc: 'อัพโหลด Master Logic กำลังคนแนะนำ' },
 }
 
 export default function ManpowerTypePage({ params }: { params: { type: string } }) {

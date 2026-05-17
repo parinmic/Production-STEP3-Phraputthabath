@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -14,6 +14,7 @@ const MANPOWER_TYPES = [
   { label: 'สะโพกพิเศษ',   slug: 'sa-phok-special', dot: 'bg-orange-500' },
   { label: 'ไหล่พิเศษ',    slug: 'lai-special',     dot: 'bg-green-500' },
   { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special', dot: 'bg-blue-500' },
+  { label: 'กำลังคนแนะนำ', slug: 'recommended',     dot: 'bg-pink-500' },
 ]
 
 const CALCULATION_TYPES = [
