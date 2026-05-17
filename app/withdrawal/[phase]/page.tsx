@@ -408,7 +408,6 @@ export default function WithdrawalPage() {
                 <p className="text-sm text-gray-600 mt-0.5">วันที่ผลิต: {date} · เวลา: {cfg.time}</p>
               </div>
               <div className="text-right text-sm text-gray-600">
-                <p>CP Foods Production System</p>
                 <p>พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}</p>
               </div>
             </div>
