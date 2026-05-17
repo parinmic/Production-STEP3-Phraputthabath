@@ -84,6 +84,7 @@ function allocateFIFO(
   let remaining = needed
   for (const lot of lots) {
     if (remaining <= 0.005) break
+    if (lot.weight <= 0.005) continue  // lot นี้ถูกใช้หมดแล้วจากรอบก่อน
     const take = Math.min(remaining, lot.weight)
     result.push({
       spec_code:   lot.spec_code,
@@ -92,7 +93,8 @@ function allocateFIFO(
       available:   Math.round(lot.weight * 100) / 100,
       to_withdraw: Math.round(take  * 100) / 100,
     })
-    remaining -= take
+    lot.weight -= take  // หักจาก stock จริง เพื่อให้รอบถัดไปเห็น stock ที่เหลือ
+    remaining  -= take
   }
   if (remaining > 0.005) {
     result.push({
@@ -274,7 +276,10 @@ export async function POST(req: NextRequest) {
   for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
   // 6. สร้าง output items พร้อม withdrawal_round
-  const rawItems = Array.from(rawMap.values()).map(({ station, raw_sap, raw_name, qty, roundMins }) => {
+  // sort by roundMins ก่อน เพื่อให้ FIFO หักรอบเก่าออกก่อนเสมอ
+  const rawItems = Array.from(rawMap.values())
+    .sort((a, b) => a.roundMins - b.roundMins)
+    .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
     const needed  = Math.round(qty * 100) / 100
     const nameKey = normMatName(raw_name ?? '')
     const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
