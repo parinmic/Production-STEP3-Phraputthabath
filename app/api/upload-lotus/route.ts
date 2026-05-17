@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { rows, filename, round } = await req.json()
+    const { rows, filename, round, append } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
     const cols = Object.keys(rows[0])
@@ -98,12 +98,14 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const deliveryDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
-    if (deliveryDates.length) {
-      await supabase.from('lotus_orders')
-        .delete()
-        .in('delivery_date', deliveryDates)
-        .eq('upload_round', round ?? '0800')
+    if (!append) {
+      const deliveryDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
+      if (deliveryDates.length) {
+        await supabase.from('lotus_orders')
+          .delete()
+          .in('delivery_date', deliveryDates)
+          .eq('upload_round', round ?? '0800')
+      }
     }
 
     const { error } = await supabase.from('lotus_orders').insert(records)
