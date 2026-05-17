@@ -297,7 +297,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const totalRange = chartEnd - chartStart
 
   const ticks: number[] = []
-  for (let m = chartStart; m <= chartEnd; m += 30) ticks.push(m)
+  for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
 
   const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
 
@@ -321,7 +321,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
             <div key={t} className="absolute top-0 h-full flex items-end pb-1.5"
               style={{ left: `${pct(t)}%` }}>
               <span className="text-[10px] font-mono text-gray-400 -translate-x-1/2 select-none">
-                {minsToLabel(t)}
+                {Math.floor(t / 60) % 24}
               </span>
             </div>
           ))}
