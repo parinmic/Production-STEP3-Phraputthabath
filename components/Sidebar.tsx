@@ -22,6 +22,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance Wet Market',  slug: 'mas-variance-wet-market', dot: 'bg-cyan-500' },
   { label: 'Mas LOTUS',                 slug: 'mas-lotus',               dot: 'bg-green-500' },
   { label: 'Mas Channel',               slug: 'mas-channel',             dot: 'bg-orange-500' },
+  { label: 'Mas ตระกร้า',               slug: 'mas-trakra',              dot: 'bg-yellow-500' },
 ]
 
 export default function Sidebar() {
