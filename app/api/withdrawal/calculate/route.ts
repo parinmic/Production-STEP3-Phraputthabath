@@ -54,13 +54,22 @@ export interface LotInfo {
 }
 
 function parseSpecCode(s: string): { factory: string; prod_date: string; sortKey: string } | null {
-  const m = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
-  if (!m) return null
-  return {
-    factory:   m[1],
-    prod_date: `${m[2]}/${m[3]}`,
-    sortKey:   `${m[3]}${m[2]}`,
+  // Format 1: letter(s) followed by 6 digits e.g. "AB030605K" or "03261250K030605"
+  const m1 = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
+  if (m1) return {
+    factory:   m1[1],
+    prod_date: `${m1[2]}/${m1[3]}`,
+    sortKey:   `${m1[3]}${m1[2]}`,
   }
+  // Format 2: all-digit prefix + trailing letter e.g. "03261250K"
+  // factory(2) + year(2) + month(2) + batch(2) + lot_letter(s)
+  const m2 = s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})[A-Z]/)
+  if (m2) return {
+    factory:   m2[1],
+    prod_date: `${m2[3]}/${m2[2]}`,
+    sortKey:   `${m2[2]}${m2[3]}${m2[4]}`,
+  }
+  return null
 }
 
 function allocateFIFO(
@@ -192,41 +201,68 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. ดึง stock
-  const rawSaps = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
-  const stockRows: { material_code: string; spec_code: string; weight_total: number }[] = []
+  const rawSaps  = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
+  const rawNames = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_name).filter(Boolean) as string[]))
+
+  type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
+  const stockRows: StockRow[] = []
+
   if (rawSaps.length > 0) {
     const [res0010, res20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
     ])
-    stockRows.push(...(res0010.data ?? []), ...(res20.data ?? []))
+    stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
   }
 
-  const lotAgg = new Map<string, number>()
+  // Name-based fallback: when BOM raw_sap codes don't match stock material_codes,
+  // try matching by raw_name vs material_name (e.g. "สะโพก-Raw" = "สะโพก-Raw")
+  if (stockRows.length === 0 && rawNames.length > 0) {
+    const [res0010n, res20n] = await Promise.all([
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', rawNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', rawNames).gt('weight_total', 0),
+    ])
+    stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+  }
+
+  type LotEntry = { spec_code: string; weight: number; factory: string; prod_date: string; sortKey: string }
+  const lotAggCode = new Map<string, number>()
+  const matCodeToName = new Map<string, string>()  // material_code → material_name
   for (const row of stockRows) {
     if (!row.material_code || !row.spec_code) continue
     const k = `${row.material_code}|||${row.spec_code}`
-    lotAgg.set(k, (lotAgg.get(k) ?? 0) + Number(row.weight_total))
+    lotAggCode.set(k, (lotAggCode.get(k) ?? 0) + Number(row.weight_total))
+    if (row.material_name) matCodeToName.set(row.material_code, row.material_name)
   }
 
-  const stockByMat = new Map<string, { spec_code: string; weight: number; factory: string; prod_date: string; sortKey: string }[]>()
-  for (const [k, weight] of Array.from(lotAgg.entries())) {
+  const stockByMat  = new Map<string, LotEntry[]>()  // by material_code
+  const stockByName = new Map<string, LotEntry[]>()  // by normalized material_name (fallback)
+  for (const [k, weight] of Array.from(lotAggCode.entries())) {
     const [matCode, spec_code] = k.split('|||')
     const parsed = parseSpecCode(spec_code)
-    const lot = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
-    const list = stockByMat.get(matCode) ?? []
-    list.push(lot)
-    stockByMat.set(matCode, list)
+    const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
+
+    const codeList = stockByMat.get(matCode) ?? []
+    codeList.push(lot)
+    stockByMat.set(matCode, codeList)
+
+    const matName = matCodeToName.get(matCode)
+    if (matName) {
+      const nameKey = matName.trim().toLowerCase()
+      const nameList = stockByName.get(nameKey) ?? []
+      nameList.push(lot)
+      stockByName.set(nameKey, nameList)
+    }
   }
-  for (const list of Array.from(stockByMat.values())) {
-    list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-  }
+  for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+  for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
   // 6. สร้าง output items พร้อม withdrawal_round
   const rawItems = Array.from(rawMap.values()).map(({ station, raw_sap, raw_name, qty, roundMins }) => {
-    const needed = Math.round(qty * 100) / 100
-    const lots   = stockByMat.get(raw_sap)
-    const rawKey = `${station}|||${raw_sap}|||${roundMins}`
+    const needed  = Math.round(qty * 100) / 100
+    const nameKey = (raw_name ?? '').trim().toLowerCase()
+    const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
+    const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
     return {
       sku:              raw_sap,
       sku_name:         raw_name,
