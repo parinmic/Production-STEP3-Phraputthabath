@@ -25,6 +25,12 @@ interface ProductivityRow {
   rate: number  // กก./ชม./คน
 }
 
+function minsToTimeStr(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = Math.floor(mins % 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`
+}
+
 // ========== Break config ==========
 
 const BREAKS: [number, number][] = [
@@ -269,7 +275,7 @@ function assignWorkers(
       target_quantity: Math.round(qty),
       unit:            'กก.',
       period,
-      deadline_time:   deadline,
+      deadline_time:   minsToTimeStr(e.freeAt),
       status:          'รอดำเนินการ',
       channel,
     })

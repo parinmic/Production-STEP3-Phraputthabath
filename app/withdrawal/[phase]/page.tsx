@@ -40,6 +40,7 @@ interface CalcItem {
   note: string | null
   lots?: LotInfo[]
   for_products?: ForProduct[]
+  withdrawal_round?: string  // "08:00"
 }
 
 type RowItem = CalcItem
@@ -51,34 +52,15 @@ const PHASE_CONFIG = {
 } as const
 
 const PHASE_ROUNDS: Record<string, string[]> = {
-  '1': ['08:00', '10:00', '12:00'],
-  '2': ['13:00', '15:00', '17:00'],
-  '3': ['18:00', '20:00'],
+  '1': ['08:00', '10:00', '13:00'],
+  '2': ['14:00'],
+  '3': ['16:00', '18:00', '20:00'],
 }
 
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
-}
-
-function splitQuantity(total: number, roundIdx: number, numRounds: number): number {
-  const base = Math.floor(total / numRounds)
-  const rem  = total % numRounds
-  return roundIdx === numRounds - 1 ? base + rem : base
-}
-
-function getItemForRound(item: RowItem, roundIdx: number, numRounds: number): RowItem {
-  const qty = splitQuantity(item.quantity, roundIdx, numRounds)
-  if (!item.lots?.length) return { ...item, quantity: qty }
-  return {
-    ...item,
-    quantity: qty,
-    lots: item.lots.map(lot => ({
-      ...lot,
-      to_withdraw: splitQuantity(lot.to_withdraw, roundIdx, numRounds),
-    })),
-  }
 }
 
 export default function WithdrawalPage() {
@@ -232,12 +214,11 @@ export default function WithdrawalPage() {
     })
   }
 
-  function renderStationTable(stationItems: RowItem[], roundIdx: number, station: string) {
-    const roundItems = stationItems.map(item => getItemForRound(item, roundIdx, rounds.length))
+  function renderStationTable(roundItems: RowItem[], roundTime: string, station: string) {
     const stationTotal = roundItems.reduce((s, i) => s + i.quantity, 0)
 
     return (
-      <div key={`${station}-${roundIdx}`} className="card mb-4">
+      <div key={`${station}-${roundTime}`} className="card mb-4">
         <div className="flex items-center gap-3 mb-4">
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
             {station}
@@ -260,7 +241,7 @@ export default function WithdrawalPage() {
           </thead>
           <tbody>
             {roundItems.map((item, idx) => {
-              const rowKey = `${station}|||${item.sku}|||${roundIdx}|||${idx}`
+              const rowKey = `${station}|||${item.sku}|||${roundTime}|||${idx}`
               const isExpanded = expandedKey === rowKey
               const hasProducts = (item.for_products?.length ?? 0) > 0
               return (
@@ -486,10 +467,14 @@ export default function WithdrawalPage() {
               {/* Rounds */}
               {rounds.map((roundTime, roundIdx) => {
                 const isCollapsed = collapsedRounds.has(roundTime)
-                const roundDisplayItems = displayItems.map(item => getItemForRound(item, roundIdx, rounds.length))
+                // preview: filter by withdrawal_round; saved items (no round): put all in first round
+                const roundDisplayItems = displayItems.filter(item => {
+                  const r = (item as CalcItem).withdrawal_round
+                  return r ? r === roundTime : roundIdx === 0
+                })
                 const roundTotal = roundDisplayItems.reduce((s, i) => s + i.quantity, 0)
 
-                const grouped = displayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
+                const grouped = roundDisplayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
                   const key = item.work_station ?? 'ไม่ระบุ Station'
                   if (!acc[key]) acc[key] = []
                   acc[key].push(item)
@@ -524,7 +509,7 @@ export default function WithdrawalPage() {
                     {!isCollapsed && (
                       <div className="p-4 space-y-0">
                         {Object.entries(grouped).map(([station, stationItems]) =>
-                          renderStationTable(stationItems, roundIdx, station)
+                          renderStationTable(stationItems, roundTime, station)
                         )}
                         <div className={`rounded-lg px-5 py-3 flex items-center justify-between text-white ${roundHeaderCls} opacity-90`}>
                           <span className="font-medium text-sm">รวมรอบ {roundTime} น.</span>
