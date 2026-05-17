@@ -93,11 +93,34 @@ export default function ProductionPlanPage() {
     setExp(true)
     try {
       const { toPng } = await import('html-to-image')
-      const dataUrl = await toPng(captureRef.current, {
+      const el = captureRef.current
+
+      // Build an off-screen clone so we're not limited by the scrollable layout container
+      const wrapper = document.createElement('div')
+      wrapper.style.cssText = [
+        'position:fixed',
+        'top:-99999px',
+        'left:-99999px',
+        `width:${el.offsetWidth}px`,
+        'background:#f9fafb',
+        'padding:32px',
+        'box-sizing:border-box',
+      ].join(';')
+
+      const clone = el.cloneNode(true) as HTMLElement
+      clone.style.cssText += ';height:auto!important;overflow:visible!important;'
+      wrapper.appendChild(clone)
+      document.body.appendChild(wrapper)
+
+      const dataUrl = await toPng(wrapper, {
         backgroundColor: '#f9fafb',
         pixelRatio: 2,
-        style: { padding: '24px' },
+        width:  wrapper.offsetWidth,
+        height: wrapper.scrollHeight,
       })
+
+      document.body.removeChild(wrapper)
+
       const a = document.createElement('a')
       a.href = dataUrl
       a.download = `แผนผลิต_${date}.png`
