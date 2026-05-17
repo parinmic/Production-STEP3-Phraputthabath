@@ -95,31 +95,23 @@ export default function ProductionPlanPage() {
       const { toPng } = await import('html-to-image')
       const el = captureRef.current
 
-      // Build an off-screen clone so we're not limited by the scrollable layout container
-      const wrapper = document.createElement('div')
-      wrapper.style.cssText = [
-        'position:fixed',
-        'top:-99999px',
-        'left:-99999px',
-        `width:${el.offsetWidth}px`,
-        'background:#f9fafb',
-        'padding:32px',
-        'box-sizing:border-box',
-      ].join(';')
+      // scrollHeight = full content height regardless of parent clipping
+      const fullW = el.offsetWidth
+      const fullH = el.scrollHeight
 
-      const clone = el.cloneNode(true) as HTMLElement
-      clone.style.cssText += ';height:auto!important;overflow:visible!important;'
-      wrapper.appendChild(clone)
-      document.body.appendChild(wrapper)
-
-      const dataUrl = await toPng(wrapper, {
+      const dataUrl = await toPng(el, {
         backgroundColor: '#f9fafb',
         pixelRatio: 2,
-        width:  wrapper.offsetWidth,
-        height: wrapper.scrollHeight,
+        width:  fullW,
+        height: fullH,
+        // Override the cloned element's style so it isn't constrained by the
+        // page's scrollable layout container
+        style: {
+          height:    `${fullH}px`,
+          overflow:  'visible',
+          maxHeight: 'none',
+        },
       })
-
-      document.body.removeChild(wrapper)
 
       const a = document.createElement('a')
       a.href = dataUrl
