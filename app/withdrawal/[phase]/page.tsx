@@ -195,13 +195,6 @@ export default function WithdrawalPage() {
   const displayItems: RowItem[] = preview ?? groupSaved(items)
   const totalQty = displayItems.reduce((s, i) => s + i.quantity, 0)
 
-  const borderCls = cfg.color === 'blue'   ? 'border-blue-500'
-                  : cfg.color === 'orange' ? 'border-orange-500'
-                  :                          'border-purple-500'
-  const badgeCls  = cfg.color === 'blue'   ? 'bg-blue-100 text-blue-700'
-                  : cfg.color === 'orange' ? 'bg-orange-100 text-orange-700'
-                  :                          'bg-purple-100 text-purple-700'
-
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
                        : cfg.color === 'orange' ? 'bg-orange-500'
                        :                          'bg-purple-600'
@@ -348,8 +341,8 @@ export default function WithdrawalPage() {
           </button>
         </div>
 
-        {/* Phase tabs */}
-        <div className="no-print flex gap-2">
+        {/* Phase tabs + date + calculate */}
+        <div className="no-print flex items-center gap-2 flex-wrap">
           {(['1','2','3'] as const).map((ph) => {
             const c = PHASE_CONFIG[ph]
             const active = ph === phase
@@ -364,25 +357,15 @@ export default function WithdrawalPage() {
               </Link>
             )
           })}
-        </div>
-
-        {/* Filter + action bar */}
-        <div className={`no-print card border-l-4 ${borderCls} flex items-center gap-3 flex-wrap`}>
-          <Calendar size={18} className="text-gray-400 shrink-0" />
-          <label className="font-medium text-gray-700 whitespace-nowrap">วันที่</label>
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+          <Calendar size={16} className="text-gray-400 shrink-0" />
           <input type="date" value={date} onChange={e => { setDate(e.target.value); setPreview(null) }}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={load} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> โหลดใหม่
-          </button>
           <button onClick={calculate} disabled={calculating}
-            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg transition-colors">
+            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg transition-colors">
             <Zap size={14} className={calculating ? 'animate-pulse' : ''} />
             {calculating ? 'กำลังคำนวณ...' : 'คำนวณอัตโนมัติ'}
           </button>
-          <span className={`ml-auto px-3 py-1 rounded-full text-sm font-semibold ${badgeCls}`}>
-            {cfg.label} · {cfg.time}
-          </span>
         </div>
 
         {calcMsg && (
