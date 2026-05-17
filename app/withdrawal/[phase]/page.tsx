@@ -63,6 +63,12 @@ const STATION_COLORS: Record<string, string> = {
   'ไหล่':    'bg-green-100 text-green-700',
 }
 
+const STATION_DISPLAY: Record<string, string> = {
+  'สามชั้น': 'สามชั้นพิเศษ',
+  'สะโพก':   'สะโพกพิเศษ',
+  'ไหล่':    'ไหล่พิเศษ',
+}
+
 export default function WithdrawalPage() {
   const { phase } = useParams() as { phase: string }
   const today = new Date().toISOString().split('T')[0]
@@ -214,7 +220,7 @@ export default function WithdrawalPage() {
       <div key={`${station}-${roundTime}`} className="card mb-4">
         <div className="flex items-center gap-3 mb-4">
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
-            {station}
+            {STATION_DISPLAY[station] ?? station}
           </span>
           <span className="text-sm text-gray-500">
             {roundItems.length} รายการ · รวม {stationTotal.toLocaleString()} กก.
@@ -229,7 +235,6 @@ export default function WithdrawalPage() {
               <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
-              <th className="px-3 py-2.5 text-center text-gray-600 font-medium no-print">เบิกแล้ว ✓</th>
             </tr>
           </thead>
           <tbody>
@@ -257,14 +262,11 @@ export default function WithdrawalPage() {
                     <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
                     <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
-                    <td className="px-3 py-2.5 text-center no-print">
-                      {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" onClick={e => e.stopPropagation()} />}
-                    </td>
                   </tr>
                   {isExpanded && hasProducts && (
                     <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
                       <td />
-                      <td colSpan={6} className="px-3 py-2.5 pl-7">
+                      <td colSpan={5} className="px-3 py-2.5 pl-7">
                         <p className="text-xs font-semibold text-indigo-700 mb-1.5">ใช้ผลิต</p>
                         <div className="flex flex-wrap gap-2">
                           {item.for_products!.map((p, pi) => (
@@ -296,9 +298,6 @@ export default function WithdrawalPage() {
                       <td className="px-3 py-1.5 text-gray-400">
                         {lot.insufficient ? '⚠ สต็อกไม่เพียงพอ' : ''}
                       </td>
-                      <td className="px-3 py-1.5 text-center no-print">
-                        {!lot.insufficient && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
-                      </td>
                     </tr>
                   ))}
                 </>
@@ -307,7 +306,7 @@ export default function WithdrawalPage() {
             <tr className="bg-gray-50 font-semibold">
               <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
               <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
-              <td colSpan={3} />
+              <td colSpan={2} />
             </tr>
           </tbody>
         </table>
