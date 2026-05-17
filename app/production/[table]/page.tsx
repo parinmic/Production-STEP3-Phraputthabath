@@ -605,8 +605,25 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           return (
             <div key={sku}
               className={`grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-              <div className="flex items-center min-w-0 pr-1">
-                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight">{stat.name ?? sku}</p>
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight shrink-0">{stat.name ?? sku}</p>
+                {/* Overlapping bullet bars — desktop only, only when plan bags known */}
+                {bags !== null && bags > 0 && (
+                  <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
+                    {/* Plan — 100% reference (gray background) */}
+                    <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
+                    {/* รับผลได้ bar — green, slightly shorter */}
+                    {yieldBags !== null && yieldBags > 0 && (
+                      <div className="absolute top-0.5 bottom-0.5 left-0 rounded transition-all duration-500"
+                        style={{ width: `${Math.min(100, (yieldBags / bags) * 100)}%`, backgroundColor: '#4ade80' }} />
+                    )}
+                    {/* ผลิต bar — blue, thinnest (foreground) */}
+                    {hasData && (
+                      <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
+                        style={{ width: `${Math.min(100, (total / bags) * 100)}%`, backgroundColor: '#3b82f6' }} />
+                    )}
+                  </div>
+                )}
               </div>
               <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
                 {bags !== null ? bags.toLocaleString() : '—'}
