@@ -146,7 +146,6 @@ export async function downloadWithdrawalPDF(params: {
           item.sku_name ?? '-',
           fmt(item.quantity),
           item.unit,
-          item.note ?? '',
         ])
         if (item.lots?.length) {
           for (const { date: ld, qty, insufficient } of groupLots(item.lots)) {
@@ -165,7 +164,6 @@ export async function downloadWithdrawalPDF(params: {
                 content: 'กก.',
                 styles: { fillColor: insufficient ? [254, 242, 242] : [239, 246, 255] },
               },
-              { content: '', styles: { fillColor: insufficient ? [254, 242, 242] : [239, 246, 255] } },
             ])
           }
         }
@@ -176,13 +174,12 @@ export async function downloadWithdrawalPDF(params: {
         '', '', { content: 'รวม', styles: { halign: 'right', fontStyle: 'bold', fillColor: [243, 244, 246] } },
         { content: fmt(stTotal), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
         { content: 'กก.', styles: { fillColor: [243, 244, 246] } },
-        { content: '', styles: { fillColor: [243, 244, 246] } },
       ])
 
       autoTable(doc, {
         startY: y,
         margin: { left: margin, right: margin },
-        head: [['#', 'รหัส', 'ชื่อสินค้า / วัตถุดิบ', 'จำนวน', 'หน่วย', 'หมายเหตุ']],
+        head: [['#', 'รหัส', 'ชื่อสินค้า / วัตถุดิบ', 'จำนวน', 'หน่วย']],
         body: bodyRows,
         theme: 'plain',
         styles: { font: 'Sarabun', fontSize: 8.5, cellPadding: 2, overflow: 'linebreak' },
@@ -194,7 +191,6 @@ export async function downloadWithdrawalPDF(params: {
           2: { cellWidth: 'auto' },
           3: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
           4: { cellWidth: 12, textColor: [107, 114, 128] },
-          5: { cellWidth: 32, textColor: [156, 163, 175] },
         },
         didParseCell: (data) => {
           if (data.section === 'body') {
@@ -214,16 +210,16 @@ export async function downloadWithdrawalPDF(params: {
 
   // ─── Signatures ────────────────────────────────────────────────────────────
   const sigY = Math.min(y + 8, doc.internal.pageSize.getHeight() - 40)
-  const sigW = (pageW - margin * 2) / 3
   doc.setDrawColor(156, 163, 175)
   doc.setLineWidth(0.3)
   doc.line(margin, sigY, pageW - margin, sigY)
 
-  const roles = ['ผู้เบิก', 'ผู้จ่ายของ', 'ผู้อนุมัติ']
+  const roles = ['ผู้เบิก', 'ผู้จ่ายของ']
+  const sigW = (pageW - margin * 2) / 2
   roles.forEach((role, i) => {
     const cx = margin + sigW * i + sigW / 2
     const lineY = sigY + 22
-    doc.line(margin + sigW * i + 6, lineY, margin + sigW * (i + 1) - 6, lineY)
+    doc.line(margin + sigW * i + 10, lineY, margin + sigW * (i + 1) - 10, lineY)
     doc.setFont('Sarabun', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(107, 114, 128)
