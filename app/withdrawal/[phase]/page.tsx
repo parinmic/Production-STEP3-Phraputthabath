@@ -280,26 +280,32 @@ export default function WithdrawalPage() {
                       </td>
                     </tr>
                   )}
-                  {item.lots?.map((lot, li) => (
-                    <tr key={`${item.sku}-lot-${li}`}
-                      className={`border-b text-xs ${lot.insufficient ? 'bg-red-50' : 'bg-indigo-50/50'}`}>
-                      <td />
-                      <td className="px-3 py-1.5 pl-7 font-mono text-gray-500">└ {lot.spec_code}</td>
-                      <td className="px-3 py-1.5 text-gray-500">
-                        รร.{lot.factory} · ผลิต {lot.prod_date}
-                        {!lot.insufficient && (
-                          <span className="ml-2 text-gray-400">มี {lot.available.toLocaleString()} กก.</span>
-                        )}
-                      </td>
-                      <td className={`px-3 py-1.5 text-right font-bold ${lot.insufficient ? 'text-red-600' : 'text-indigo-700'}`}>
-                        {lot.to_withdraw.toLocaleString()}
-                      </td>
-                      <td className="px-3 py-1.5 text-gray-500">กก.</td>
-                      <td className="px-3 py-1.5 text-gray-400">
-                        {lot.insufficient ? '⚠ สต็อกไม่เพียงพอ' : ''}
-                      </td>
-                    </tr>
-                  ))}
+                  {item.lots && item.lots.length > 0 && (() => {
+                    // Group by prod_date, sum to_withdraw
+                    const byDate = new Map<string, { qty: number; insufficient: boolean }>()
+                    for (const lot of item.lots!) {
+                      const key = lot.insufficient ? '⚠ ไม่เพียงพอ' : lot.prod_date
+                      const cur = byDate.get(key) ?? { qty: 0, insufficient: lot.insufficient ?? false }
+                      cur.qty += lot.to_withdraw
+                      byDate.set(key, cur)
+                    }
+                    return Array.from(byDate.entries()).map(([date, { qty, insufficient }]) => (
+                      <tr key={`${item.sku}-date-${date}`}
+                        className={`border-b text-xs ${insufficient ? 'bg-red-50' : 'bg-blue-50/40'}`}>
+                        <td />
+                        <td colSpan={2} className="px-3 py-1.5 pl-8 text-gray-600">
+                          {insufficient
+                            ? <span className="text-red-500 font-medium">⚠ สต็อกไม่เพียงพอ</span>
+                            : <span>└ ผลิต <span className="font-medium">{date}</span></span>}
+                        </td>
+                        <td className={`px-3 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
+                          {qty.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-1.5 text-gray-500">กก.</td>
+                        <td />
+                      </tr>
+                    ))
+                  })()}
                 </>
               )
             })}
