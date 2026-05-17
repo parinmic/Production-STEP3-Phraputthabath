@@ -1,21 +1,21 @@
 import { supabase } from '@/lib/supabase'
-import { Users, ShoppingCart } from 'lucide-react'
+import { Users, ClipboardList } from 'lucide-react'
 import Link from 'next/link'
 
 async function getStats() {
   const today = new Date().toISOString().split('T')[0]
-  const [w, m] = await Promise.all([
+  const [w, p] = await Promise.all([
     supabase.from('daily_workforce').select('id', { count: 'exact' }).eq('work_date', today),
-    supabase.from('makro_orders').select('id', { count: 'exact' }),
+    supabase.from('production_assignments').select('sku', { count: 'exact' }).eq('production_date', today),
   ])
-  return { workforce: w.count ?? 0, makro: m.count ?? 0 }
+  return { workforce: w.count ?? 0, plan: p.count ?? 0 }
 }
 
 export default async function DashboardPage() {
   const stats = await getStats()
   const cards = [
-    { label: 'พนักงานวันนี้',   value: stats.workforce, unit: 'คน',     icon: Users,       color: 'bg-blue-500',   href: '/workforce' },
-    { label: 'คำสั่งซื้อ Makro', value: stats.makro,    unit: 'รายการ', icon: ShoppingCart, color: 'bg-orange-500', href: '/makro' },
+    { label: 'พนักงานวันนี้', value: stats.workforce, unit: 'คน',      icon: Users,         color: 'bg-blue-500',  href: '/workforce' },
+    { label: 'แผนผลิต',      value: stats.plan,      unit: 'รายการ',  icon: ClipboardList, color: 'bg-orange-500', href: '/production-plan' },
   ]
   return (
     <div>
