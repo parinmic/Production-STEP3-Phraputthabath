@@ -4,6 +4,10 @@ import Sidebar from '@/components/Sidebar'
 
 export const metadata: Metadata = {
   title: 'PPTB Production',
+  icons: {
+    icon: '/icon.png',
+    apple: '/icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
