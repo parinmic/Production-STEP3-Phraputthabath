@@ -583,12 +583,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header row */}
-      <div className="grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+      <div className="grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
-        <span className="text-xs font-semibold text-gray-500 text-right">แผน(ถุง)</span>
-        <span className="text-xs font-semibold text-gray-500 text-right">ผลิต(ถุง)</span>
-        <span className="text-xs font-semibold text-gray-500 text-right">รับผลได้(ถุง)</span>
-        <span className="text-xs font-semibold text-gray-500 text-right">ผลิตได้(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">รับผล<br className="sm:hidden" />ได้(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />ได้(ถุง)</span>
       </div>
 
       {/* SKU rows */}
@@ -604,19 +604,19 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
           return (
             <div key={sku}
-              className={`grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-              <div className="flex items-center min-w-0">
-                <p className="text-sm font-medium text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
+              className={`grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+              <div className="flex items-center min-w-0 pr-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight">{stat.name ?? sku}</p>
               </div>
-              <p className="text-sm font-semibold text-gray-600 text-right">
+              <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
                 {bags !== null ? bags.toLocaleString() : '—'}
               </p>
               <button
                 onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
-                className={`text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
+                className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
                 {hasData ? total.toLocaleString() : '—'}
               </button>
-              <p className="text-sm font-semibold text-right text-green-600">
+              <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
                 {yieldBags !== null ? yieldBags.toLocaleString() : '—'}
               </p>
               <div className="flex justify-end">
@@ -632,7 +632,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                   onKeyDown={e => { if (e.key === 'Enter') confirm(sku, (e.target as HTMLInputElement).value) }}
                   onBlur={e => confirm(sku, e.currentTarget.value)}
                   placeholder="—"
-                  className="w-20 text-sm font-semibold text-right border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                  className="w-16 sm:w-20 text-xs sm:text-sm font-semibold text-right border border-gray-300 rounded-lg px-1.5 sm:px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
                 />
               </div>
             </div>
@@ -641,11 +641,11 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       </div>
 
       {/* Footer totals */}
-      <div className="grid grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm font-bold text-gray-700">รวมทั้งหมด</span>
-        <span className="text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
-        <span className="text-sm font-bold text-right text-blue-600">{totalProduced > 0 ? totalProduced.toLocaleString() : '—'}</span>
-        <span className="text-sm font-bold text-right text-green-600">
+      <div className="grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-3 border-t border-gray-200 bg-gray-50">
+        <span className="text-xs sm:text-sm font-bold text-gray-700">รวมทั้งหมด</span>
+        <span className="text-xs sm:text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
+        <span className="text-xs sm:text-sm font-bold text-right text-blue-600">{totalProduced > 0 ? totalProduced.toLocaleString() : '—'}</span>
+        <span className="text-xs sm:text-sm font-bold text-right text-green-600">
           {(() => { const t = sortedSkus.reduce((s, sku) => s + (yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0), 0); return t > 0 ? t.toLocaleString() : '—' })()}
         </span>
         <span />
@@ -1200,7 +1200,7 @@ export default function TablePage() {
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
             {/* View toggle */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
               {([
                 { mode: 'sku',     icon: BarChart2,    label: 'ภาพรวม' },
                 { mode: 'gantt',   icon: LayoutList,   label: 'รายพนักงาน' },
@@ -1209,7 +1209,7 @@ export default function TablePage() {
               ] as const).map(({ mode, icon: Icon, label }) => (
                 <button key={mode}
                   onClick={() => setViewMode(mode)}
-                  className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex-1 sm:flex-none justify-center sm:justify-start ${viewMode === mode
+                  className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors w-full sm:w-auto sm:flex-none ${viewMode === mode
                     ? 'bg-gray-900 text-white'
                     : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
                   <Icon size={14} />{label}
