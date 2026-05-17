@@ -81,11 +81,10 @@ export default function WithdrawalPage() {
   const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set())
-  const [printModal, setPrintModal]   = useState(false)
-  const [printDate, setPrintDate]     = useState(today)
+  const [printModal, setPrintModal]       = useState(false)
+  const [printDate, setPrintDate]         = useState(today)
   const [printRoundSel, setPrintRoundSel] = useState<Set<string>>(new Set())
-  const [printRoundFilter, setPrintRoundFilter] = useState<Set<string> | null>(null)
-  const [printPending, setPrintPending] = useState(false)
+  const [downloading, setDownloading]     = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -104,25 +103,46 @@ export default function WithdrawalPage() {
 
   useEffect(() => { load(); setPreview(null); setCalcMsg(null) }, [load])
 
-  useEffect(() => {
-    if (printPending && !loading) {
-      window.print()
-      setPrintPending(false)
-      setPrintRoundFilter(null)
-    }
-  }, [printPending, loading])
-
   const openPrintModal = () => {
     setPrintDate(date)
     setPrintRoundSel(new Set(rounds))
     setPrintModal(true)
   }
 
-  const confirmPrint = () => {
+  const confirmPrint = async () => {
     setPrintModal(false)
-    setPrintRoundFilter(new Set(printRoundSel))
-    if (printDate !== date) setDate(printDate)
-    setPrintPending(true)
+    setDownloading(true)
+    try {
+      const filteredItems = displayItems.filter(item => {
+        const r = (item as CalcItem).withdrawal_round
+        return r ? printRoundSel.has(r) : true
+      })
+      const res = await fetch('/api/withdrawal/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: printDate,
+          phase,
+          rounds: Array.from(printRoundSel),
+          items: filteredItems,
+          cfg: { label: cfg.label, time: cfg.time, color: cfg.color },
+        }),
+      })
+      if (!res.ok) { alert('สร้าง PDF ไม่สำเร็จ'); return }
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `ใบเบิก-Phase${phase}-${printDate}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('เกิดข้อผิดพลาดในการสร้าง PDF')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   const calculate = async () => {
@@ -475,9 +495,8 @@ export default function WithdrawalPage() {
                   return acc
                 }, {})
 
-                const hiddenForPrint = printRoundFilter !== null && !printRoundFilter.has(roundTime)
                 return (
-                  <div key={roundTime} className={`round-section border border-gray-200 rounded-xl overflow-hidden${hiddenForPrint ? ' no-print' : ''}`}>
+                  <div key={roundTime} className="round-section border border-gray-200 rounded-xl overflow-hidden">
                     {/* Round header */}
                     <button
                       onClick={() => toggleRound(roundTime)}
@@ -578,9 +597,11 @@ export default function WithdrawalPage() {
                 className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
                 ยกเลิก
               </button>
-              <button onClick={confirmPrint} disabled={printRoundSel.size === 0}
+              <button onClick={confirmPrint} disabled={printRoundSel.size === 0 || downloading}
                 className="px-4 py-2 text-sm rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium flex items-center gap-2 transition-colors disabled:opacity-40">
-                <Printer size={14} /> พิมพ์ PDF
+                {downloading
+                  ? <><RefreshCw size={14} className="animate-spin" /> กำลังสร้าง PDF...</>
+                  : <><Printer size={14} /> สร้าง PDF</>}
               </button>
             </div>
           </div>
