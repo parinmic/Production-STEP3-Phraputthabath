@@ -1,29 +1,10 @@
 'use client'
 import FileUpload from '@/components/FileUpload'
 import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
-
-const CHUNK = 400
+import { uploadWetMarketOrders } from '@/lib/upload-orders'
 
 function makeUpload(round: string) {
-  return async (rows: ParsedRow[], filename: string) => {
-    const chunks: ParsedRow[][] = []
-    for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK))
-
-    let last = { success: false, message: '' }
-    for (let i = 0; i < chunks.length; i++) {
-      const res = await fetch(`/api/upload-wet-market?round=${round}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: chunks[i], filename, round, append: i > 0 }),
-      })
-      if (!res.ok && !res.headers.get('content-type')?.includes('json')) {
-        return { success: false, message: `ไฟล์ใหญ่เกินไป (${rows.length} รายการ) — กรุณาตรวจสอบ` }
-      }
-      last = await res.json()
-      if (!last.success) return last
-    }
-    return { ...last, message: `บันทึกสำเร็จ ${rows.length} รายการ` }
-  }
+  return (rows: ParsedRow[], filename: string) => uploadWetMarketOrders(rows, filename, round)
 }
 
 export default function WetMarketPage() {
