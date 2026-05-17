@@ -20,16 +20,7 @@ export default function LotusPage() {
         <h1 className="text-2xl font-bold text-gray-900">อัพโหลดคำสั่งซื้อ LOTUS</h1>
         <p className="text-gray-500 mt-1">อัพโหลดไฟล์ CSV คำสั่งซื้อจากช่องทาง LOTUS</p>
       </div>
-      <div className="grid grid-cols-3 gap-6">
-        <div className="border-t-4 border-blue-500 pt-4 rounded-t-sm">
-          <FileUpload
-            title="รอบ 8.00 น."
-            description="อัพโหลดคำสั่งซื้อรอบเช้า"
-            historyEndpoint="/api/upload-lotus?round=0800"
-            onUpload={makeUpload('0800')}
-            parseFileFn={parseLotusWetMarketFile}
-          />
-        </div>
+      <div className="grid grid-cols-2 gap-6">
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
           <FileUpload
             title="รอบ 14.00 น."
