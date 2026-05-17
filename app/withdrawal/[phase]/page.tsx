@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { downloadWithdrawalPDF } from '@/lib/withdrawal-pdf'
 
 interface WithdrawalItem {
   id: string
@@ -117,27 +118,13 @@ export default function WithdrawalPage() {
         const r = (item as CalcItem).withdrawal_round
         return r ? printRoundSel.has(r) : true
       })
-      const res = await fetch('/api/withdrawal/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: printDate,
-          phase,
-          rounds: Array.from(printRoundSel),
-          items: filteredItems,
-          cfg: { label: cfg.label, time: cfg.time, color: cfg.color },
-        }),
+      await downloadWithdrawalPDF({
+        date: printDate,
+        phase,
+        rounds: Array.from(printRoundSel),
+        items: filteredItems,
+        cfg: { label: cfg.label, time: cfg.time, color: cfg.color },
       })
-      if (!res.ok) { alert('สร้าง PDF ไม่สำเร็จ'); return }
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = `ใบเบิก-Phase${phase}-${printDate}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
     } catch {
       alert('เกิดข้อผิดพลาดในการสร้าง PDF')
     } finally {
