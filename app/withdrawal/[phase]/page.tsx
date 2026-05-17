@@ -81,6 +81,11 @@ export default function WithdrawalPage() {
   const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set())
+  const [printModal, setPrintModal]   = useState(false)
+  const [printDate, setPrintDate]     = useState(today)
+  const [printRoundSel, setPrintRoundSel] = useState<Set<string>>(new Set())
+  const [printRoundFilter, setPrintRoundFilter] = useState<Set<string> | null>(null)
+  const [printPending, setPrintPending] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -98,6 +103,27 @@ export default function WithdrawalPage() {
   }, [date, phase])
 
   useEffect(() => { load(); setPreview(null); setCalcMsg(null) }, [load])
+
+  useEffect(() => {
+    if (printPending && !loading) {
+      window.print()
+      setPrintPending(false)
+      setPrintRoundFilter(null)
+    }
+  }, [printPending, loading])
+
+  const openPrintModal = () => {
+    setPrintDate(date)
+    setPrintRoundSel(new Set(rounds))
+    setPrintModal(true)
+  }
+
+  const confirmPrint = () => {
+    setPrintModal(false)
+    setPrintRoundFilter(new Set(printRoundSel))
+    if (printDate !== date) setDate(printDate)
+    setPrintPending(true)
+  }
 
   const calculate = async () => {
     setCalc(true); setCalcMsg(null)
@@ -341,7 +367,7 @@ export default function WithdrawalPage() {
             <h1 className="text-2xl font-bold text-gray-900">รายการเบิกสินค้า</h1>
             <p className="text-gray-500 mt-1">คำนวณจากคำสั่งผลิต + BOM หรือดูรายการที่บันทึกไว้</p>
           </div>
-          <button onClick={() => window.print()}
+          <button onClick={openPrintModal}
             className="no-print flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors text-sm">
             <Printer size={16} /> ดาวน์โหลด / พิมพ์ PDF
           </button>
@@ -447,8 +473,9 @@ export default function WithdrawalPage() {
                   return acc
                 }, {})
 
+                const hiddenForPrint = printRoundFilter !== null && !printRoundFilter.has(roundTime)
                 return (
-                  <div key={roundTime} className="round-section border border-gray-200 rounded-xl overflow-hidden">
+                  <div key={roundTime} className={`round-section border border-gray-200 rounded-xl overflow-hidden${hiddenForPrint ? ' no-print' : ''}`}>
                     {/* Round header */}
                     <button
                       onClick={() => toggleRound(roundTime)}
@@ -507,6 +534,56 @@ export default function WithdrawalPage() {
           )}
         </div>
       </div>
+
+      {/* Print modal */}
+      {printModal && (
+        <div className="no-print fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-80">
+            <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Printer size={16} /> ตั้งค่าก่อนพิมพ์
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่ผลิต</label>
+                <input type="date" value={printDate}
+                  onChange={e => setPrintDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">รอบเวลา</label>
+                <div className="space-y-2">
+                  {rounds.map(r => (
+                    <label key={r} className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
+                      <input type="checkbox"
+                        checked={printRoundSel.has(r)}
+                        onChange={e => {
+                          const next = new Set(printRoundSel)
+                          if (e.target.checked) next.add(r); else next.delete(r)
+                          setPrintRoundSel(next)
+                        }}
+                        className="w-4 h-4 rounded" />
+                      รอบ {r} น.
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setPrintModal(false)}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmPrint} disabled={printRoundSel.size === 0}
+                className="px-4 py-2 text-sm rounded-lg bg-gray-800 hover:bg-gray-700 text-white font-medium flex items-center gap-2 transition-colors disabled:opacity-40">
+                <Printer size={14} /> พิมพ์ PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
