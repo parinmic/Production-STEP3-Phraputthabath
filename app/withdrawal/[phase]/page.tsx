@@ -356,8 +356,10 @@ export default function WithdrawalPage() {
           #print-area { position: absolute; left: 0; top: 0; width: 100%; }
           .no-print { display: none !important; }
           .round-section { page-break-inside: avoid; }
-          @page { size: A4; margin: 15mm; }
+          @page { size: A4; margin: 15mm; margin-top: 5mm; margin-bottom: 5mm; }
         }
+        /* suppress browser-injected header/footer (date, title, URL) */
+        @page { margin-top: 5mm; margin-bottom: 5mm; }
       `}</style>
 
       <div className="space-y-6">
@@ -515,7 +517,7 @@ export default function WithdrawalPage() {
               })}
 
               {/* Grand total */}
-              <div className="card bg-gray-900 text-white flex items-center justify-between px-6 py-4">
+              <div className="no-print card bg-gray-900 text-white flex items-center justify-between px-6 py-4">
                 <span className="font-semibold">รวมทั้งหมด — {cfg.label} ({rounds.length} รอบ)</span>
                 <span className="text-2xl font-bold">{totalQty.toLocaleString()} กก.</span>
               </div>
