@@ -424,28 +424,6 @@ export default function WithdrawalPage() {
 
           {!loading && displayItems.length > 0 && (
             <div className="space-y-4">
-              {/* Summary */}
-              <div className="grid grid-cols-4 gap-4 no-print">
-                <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">{displayItems.length}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">รายการ</p>
-                </div>
-                <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">
-                    {Object.keys(displayItems.reduce<Record<string, boolean>>((a, i) => { a[i.work_station ?? '-'] = true; return a }, {})).length}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-0.5">Station</p>
-                </div>
-                <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">{rounds.length}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">รอบเบิก</p>
-                </div>
-                <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">{totalQty.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">รวม กก.</p>
-                </div>
-              </div>
-
               {/* Rounds */}
               {rounds.map((roundTime, roundIdx) => {
                 const isCollapsed = collapsedRounds.has(roundTime)
