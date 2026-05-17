@@ -2,10 +2,20 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 export async function GET() {
+  // ดึง source_files ที่อัปโหลดเป็น mas-trakra จาก upload_log
+  const { data: logs } = await supabase
+    .from('upload_log')
+    .select('source_file')
+    .eq('table_name', 'master_logic_calc_mas_trakra')
+
+  if (!logs?.length) return NextResponse.json([])
+
+  const sourceFiles = logs.map(l => l.source_file)
+
   const { data } = await supabase
     .from('master_logic_calculation')
     .select('row_data')
-    .eq('calculation_type', 'Mas ตระกร้า')
+    .in('source_file', sourceFiles)
 
   if (!data?.length) return NextResponse.json([])
 
