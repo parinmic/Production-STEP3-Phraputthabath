@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 
@@ -1049,7 +1049,7 @@ export default function TablePage() {
   const tableSlug = params.table as string
   const cfg       = CFG[tableSlug]
 
-  const [date]                      = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate]             = useState(new Date().toISOString().split('T')[0])
   const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
@@ -1151,6 +1151,12 @@ export default function TablePage() {
         </button>
 
         <div className="hidden sm:flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-sm text-gray-700">
+            <Calendar size={14} className="text-gray-400" />
+            <input type="date" value={date}
+              onChange={e => { setDate(e.target.value); setGenResult(null) }}
+              className="outline-none bg-transparent text-sm" />
+          </div>
           {selectedPhase !== 'all' && (
             <button onClick={generate} disabled={generating}
               className="btn-primary flex items-center gap-2 text-sm">
