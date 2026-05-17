@@ -220,6 +220,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Name-based fallback: for any raw_sap that returned no stock rows, re-query by material_name
+  // ขยาย names ให้ครอบทั้ง "สันนอก-Raw" และ "สันนอก - Raw" (stock ใช้ UNIX code ไม่ใช่ SAP)
   const foundCodes = new Set(stockRows.map(r => r.material_code))
   const missingNames = Array.from(new Set(
     Array.from(rawMap.values())
@@ -228,9 +229,14 @@ export async function POST(req: NextRequest) {
       .filter(Boolean) as string[]
   ))
   if (missingNames.length > 0) {
+    const expandedNames = Array.from(new Set(missingNames.flatMap(n => [
+      n,
+      n.replace(/\s*-\s*/g, '-'),     // "สันนอก - Raw" → "สันนอก-Raw"
+      n.replace(/\s*-\s*/g, ' - '),   // "สันนอก-Raw"   → "สันนอก - Raw"
+    ])))
     const [res0010n, res20n] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', missingNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', missingNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
     ])
     stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
   }
