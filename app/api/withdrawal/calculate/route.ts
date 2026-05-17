@@ -3,11 +3,10 @@ import { supabase } from '@/lib/supabase'
 
 const PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
-// Round config per phase (minutes from midnight)
 const PHASE_ROUND_MINS: Record<string, number[]> = {
-  '1': [480, 600, 780],   // 08:00, 10:00, 13:00
-  '2': [840],             // 14:00
-  '3': [960, 1080, 1200], // 16:00, 18:00, 20:00
+  '1': [480, 600, 780],
+  '2': [840],
+  '3': [960, 1080, 1200],
 }
 
 const DEFAULT_START_MINS: Record<string, number> = {
@@ -25,14 +24,24 @@ function timeStrToMins(t: string): number {
   return parseInt(parts[0] ?? '0') * 60 + parseInt(parts[1] ?? '0')
 }
 
-function getWithdrawalRound(startMins: number, phaseStr: string): number {
-  const rounds = PHASE_ROUND_MINS[phaseStr] ?? PHASE_ROUND_MINS['1']
-  let round = rounds[0]
-  for (const r of rounds) {
+function getRoundMins(startMins: number, roundMins: number[]): number {
+  let round = roundMins[0]
+  for (const r of roundMins) {
     if (startMins >= r) round = r
     else break
   }
   return round
+}
+
+/** Parse "rounds:480=575;600=575" → Map<roundMins, qty> */
+function parseRoundNote(note: string | null): Map<number, number> {
+  const result = new Map<number, number>()
+  if (!note?.startsWith('rounds:')) return result
+  for (const part of note.replace('rounds:', '').split(';')) {
+    const [rStr, qStr] = part.split('=')
+    if (rStr && qStr) result.set(parseInt(rStr), parseFloat(qStr))
+  }
+  return result
 }
 
 export interface LotInfo {
@@ -92,10 +101,12 @@ export async function POST(req: NextRequest) {
   const period = PERIOD[phaseStr]
   if (!date || !period) return NextResponse.json({ error: 'missing params' }, { status: 400 })
 
-  // 1. ดึง production_assignments พร้อม deadline_time (= actual start time)
+  const roundMins = PHASE_ROUND_MINS[phaseStr] ?? PHASE_ROUND_MINS['1']
+
+  // 1. ดึง production_assignments พร้อม note (round breakdown) และ deadline_time (fallback)
   const { data: assignments, error: e1 } = await supabase
     .from('production_assignments')
-    .select('table_name, sku, sku_name, target_quantity, deadline_time')
+    .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
     .eq('production_date', date)
     .eq('period', period)
     .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
@@ -105,33 +116,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ items: [], message: `ไม่พบคำสั่งผลิต Phase ${phase} วันที่ ${date}` })
   }
 
-  // 2. Build startTimeMap: (table_name, sku) -> min start_mins (from deadline_time = actual start)
-  const startTimeMap = new Map<string, number>()
-  for (const a of assignments) {
-    const key = `${a.table_name}|||${a.sku}`
-    const mins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : DEFAULT_START_MINS[phaseStr]
-    const existing = startTimeMap.get(key)
-    if (existing === undefined || mins < existing) startTimeMap.set(key, mins)
-  }
+  // 2. Build finRoundMap: (station|||sku) → Map<roundMins, qty>
+  //    ใช้ข้อมูล per-round จาก note (ถ้ามี) หรือ fallback จาก deadline_time
+  const finRoundMap = new Map<string, Map<number, number>>()
+  const finNameMap  = new Map<string, string | null>()
+  const skuSet      = new Set<string>()
 
-  // 3. รวม target_quantity ต่อ (station, finished_sku) พร้อม start_time
-  interface FinEntry { station: string; sku: string; sku_name: string | null; qty: number; startMins: number }
-  const finMap = new Map<string, FinEntry>()
-  const skuSet = new Set<string>()
   for (const a of assignments) {
     const key = `${a.table_name}|||${a.sku}`
-    const cur = finMap.get(key)
-    const startMins = startTimeMap.get(key) ?? DEFAULT_START_MINS[phaseStr]
-    if (cur) {
-      cur.qty += Number(a.target_quantity)
-      if (startMins < cur.startMins) cur.startMins = startMins
-    } else {
-      finMap.set(key, { station: a.table_name, sku: a.sku, sku_name: a.sku_name ?? null, qty: Number(a.target_quantity), startMins })
-    }
+    if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
+    finNameMap.set(key, a.sku_name ?? null)
     skuSet.add(a.sku)
+
+    const roundQtys = finRoundMap.get(key)!
+    const noteRounds = parseRoundNote(a.note)
+
+    if (noteRounds.size > 0) {
+      // มีข้อมูล per-round จาก generate → ใช้ได้เลย
+      for (const [rm, q] of Array.from(noteRounds.entries())) {
+        roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + q)
+      }
+    } else {
+      // fallback: ถ้าไม่มี round breakdown ใช้ deadline_time เป็น start time
+      const startMins = a.deadline_time
+        ? timeStrToMins(String(a.deadline_time))
+        : DEFAULT_START_MINS[phaseStr]
+      const rm = getRoundMins(startMins, roundMins)
+      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + Number(a.target_quantity))
+    }
   }
 
-  // 4. ดึง BOM
+  // 3. ดึง BOM
   const skus = Array.from(skuSet)
   const { data: bomRows, error: e2 } = await supabase
     .from('bom_items')
@@ -147,31 +162,36 @@ export async function POST(req: NextRequest) {
     bomMap.set(b.product_sap, list)
   }
 
-  // 5. คำนวณ raw material ต่อ (station, raw_sap, round)
+  // 4. คำนวณ raw material ต่อ (station, raw_sap, roundMins)
   interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
   const rawMap = new Map<string, RawEntry>()
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number }[]>()
-  const noBom: { station: string; sku: string; sku_name: string | null; qty: number; startMins: number }[] = []
+  const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
 
-  for (const { station, sku, sku_name, qty, startMins } of Array.from(finMap.values())) {
+  for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
+    const [station, sku] = finKey.split('|||')
+    const sku_name = finNameMap.get(finKey) ?? null
     const boms = bomMap.get(sku)
-    if (!boms?.length) { noBom.push({ station, sku, sku_name, qty, startMins }); continue }
 
-    const roundMins = getWithdrawalRound(startMins, phaseStr)
-
-    for (const b of boms) {
-      const rawQty = b.yield_pct > 0 ? qty / b.yield_pct : qty
-      const key = `${station}|||${b.raw_sap}|||${roundMins}`
-      const cur = rawMap.get(key)
-      if (cur) { cur.qty += rawQty }
-      else { rawMap.set(key, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins }) }
-      const prodList = rawToProducts.get(key) ?? []
-      prodList.push({ sku, sku_name: sku_name ?? null, qty })
-      rawToProducts.set(key, prodList)
+    for (const [rm, finQty] of Array.from(roundQtys.entries())) {
+      if (!boms?.length) {
+        noBom.push({ station, sku, sku_name, qty: finQty, roundMins: rm })
+        continue
+      }
+      for (const b of boms) {
+        const rawQty = b.yield_pct > 0 ? finQty / b.yield_pct : finQty
+        const rawKey = `${station}|||${b.raw_sap}|||${rm}`
+        const cur = rawMap.get(rawKey)
+        if (cur) { cur.qty += rawQty }
+        else { rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm }) }
+        const prodList = rawToProducts.get(rawKey) ?? []
+        prodList.push({ sku, sku_name, qty: finQty })
+        rawToProducts.set(rawKey, prodList)
+      }
     }
   }
 
-  // 6. ดึง stock
+  // 5. ดึง stock
   const rawSaps = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
   const stockRows: { material_code: string; spec_code: string; weight_total: number }[] = []
   if (rawSaps.length > 0) {
@@ -202,11 +222,11 @@ export async function POST(req: NextRequest) {
     list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
   }
 
-  // 7. สร้าง output items พร้อม withdrawal_round
+  // 6. สร้าง output items พร้อม withdrawal_round
   const rawItems = Array.from(rawMap.values()).map(({ station, raw_sap, raw_name, qty, roundMins }) => {
     const needed = Math.round(qty * 100) / 100
     const lots   = stockByMat.get(raw_sap)
-    const key    = `${station}|||${raw_sap}|||${roundMins}`
+    const rawKey = `${station}|||${raw_sap}|||${roundMins}`
     return {
       sku:              raw_sap,
       sku_name:         raw_name,
@@ -215,12 +235,12 @@ export async function POST(req: NextRequest) {
       work_station:     station,
       note:             'คำนวณจาก BOM',
       lots:             lots ? allocateFIFO(lots, needed) : [],
-      for_products:     rawToProducts.get(key) ?? [],
+      for_products:     rawToProducts.get(rawKey) ?? [],
       withdrawal_round: minsToTime(roundMins),
     }
   })
 
-  const noBomItems = noBom.map(({ station, sku, sku_name, qty, startMins }) => ({
+  const noBomItems = noBom.map(({ station, sku, sku_name, qty, roundMins }) => ({
     sku,
     sku_name,
     quantity:         Math.round(qty * 100) / 100,
@@ -228,7 +248,7 @@ export async function POST(req: NextRequest) {
     work_station:     station,
     note:             'ไม่พบ BOM — ใช้ปริมาณผลิตโดยตรง',
     lots:             [] as LotInfo[],
-    withdrawal_round: minsToTime(getWithdrawalRound(startMins, phaseStr)),
+    withdrawal_round: minsToTime(roundMins),
   }))
 
   const items = [...rawItems, ...noBomItems].sort((a, b) =>

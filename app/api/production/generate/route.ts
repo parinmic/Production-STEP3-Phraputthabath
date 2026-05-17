@@ -71,6 +71,22 @@ const PHASE_CONFIG = [
   { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 24, startH: 16, endH: 24 },
 ]
 
+// round boundaries per phase (minutes from midnight)
+const PHASE_ROUND_MINS: Record<number, number[]> = {
+  1: [480, 600, 780],   // 08:00, 10:00, 13:00
+  2: [840],             // 14:00
+  3: [960, 1080, 1200], // 16:00, 18:00, 20:00
+}
+
+function getRoundMins(t: number, roundMins: number[]): number {
+  let round = roundMins[0]
+  for (const r of roundMins) {
+    if (t >= r) round = r
+    else break
+  }
+  return round
+}
+
 // ========== Station mapping ==========
 
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
@@ -193,11 +209,12 @@ function assignWorkers(
     period: string
     deadline: string | null
     channel: string
+    phaseRoundMins: number[]
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
-    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, deadline, channel,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, channel, phaseRoundMins,
   } = params
 
   const entries = eligibleWorkers
@@ -205,54 +222,58 @@ function assignWorkers(
       const nameKey = normName(w.name)
       const freeAt          = workerFreeAtMins.get(nameKey) ?? 0
       const remainingHours  = workerHours.get(nameKey) ?? 0
-      // cap to actual work time remaining in phase (excluding break)
       const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, phaseEndMins)))
       const exhaustAt       = wallClockFinish(freeAt, availWorkMins)
       return { worker: w, nameKey, freeAt, exhaustAt, remainingHours }
     })
-    .filter(e => e.exhaustAt > e.freeAt + 0.1)  // must have usable capacity
+    .filter(e => e.exhaustAt > e.freeAt + 0.1)
     .sort((a, b) => a.freeAt - b.freeAt)
 
   if (!entries.length) return []
 
-  // Build sorted event timeline: join/exhaust times + break boundaries
+  // Include round boundaries so segments never straddle a round
   const eventTimes = Array.from(
-    new Set([...entries.flatMap(e => [e.freeAt, e.exhaustAt]), ...BREAKS.flat()])
+    new Set([...entries.flatMap(e => [e.freeAt, e.exhaustAt]), ...BREAKS.flat(), ...phaseRoundMins])
   ).sort((a, b) => a - b)
 
   let pool = targetQty
   const workerQty      = new Map<string, number>()
   const workerFinishAt = new Map<string, number>()
+  // per-worker per-round qty: workerRoundQty[nameKey][roundMins] = qty
+  const workerRoundQty = new Map<string, Map<number, number>>()
 
   for (let i = 0; i < eventTimes.length - 1 && pool > 0.01; i++) {
     const t0 = eventTimes[i]
     const t1 = eventTimes[i + 1]
 
-    // Skip break periods (12:00–13:00, 17:00–18:00)
     if (BREAKS.some(([bs, be]) => t0 >= bs && t1 <= be)) continue
 
-    // Active in this segment: joined (freeAt ≤ t0) and not yet exhausted (exhaustAt > t0)
     const active = entries.filter(e => e.freeAt <= t0 && e.exhaustAt > t0)
     if (!active.length) continue
 
     const totalRate  = active.length * rate
     const maxConsume = totalRate * (t1 - t0) / 60
+    const segRound   = getRoundMins(t0, phaseRoundMins)
 
     if (maxConsume >= pool) {
-      // Pool exhausted within this segment — each active worker gets equal share
       const perWorkerQty = pool / active.length
       const finishAt     = t0 + (pool / totalRate) * 60
       for (const a of active) {
         workerQty.set(a.nameKey, (workerQty.get(a.nameKey) ?? 0) + perWorkerQty)
         workerFinishAt.set(a.nameKey, finishAt)
+        const rq = workerRoundQty.get(a.nameKey) ?? new Map<number, number>()
+        rq.set(segRound, (rq.get(segRound) ?? 0) + perWorkerQty)
+        workerRoundQty.set(a.nameKey, rq)
       }
       pool = 0
     } else {
-      // Full segment: each active worker contributes equally
       const perWorkerQty = rate * (t1 - t0) / 60
       for (const a of active) {
         workerQty.set(a.nameKey, (workerQty.get(a.nameKey) ?? 0) + perWorkerQty)
         workerFinishAt.set(a.nameKey, t1)
+        const rq = workerRoundQty.get(a.nameKey) ?? new Map<number, number>()
+        rq.set(segRound, (rq.get(segRound) ?? 0) + perWorkerQty)
+        workerRoundQty.set(a.nameKey, rq)
       }
       pool -= maxConsume
     }
@@ -265,6 +286,13 @@ function assignWorkers(
     const finishAt = workerFinishAt.get(e.nameKey) ?? e.freeAt
     workerHours.set(e.nameKey, e.remainingHours - qty / rate)
     workerFreeAtMins.set(e.nameKey, finishAt)
+
+    // encode per-round breakdown into note: "rounds:480=575;600=575"
+    const rq = workerRoundQty.get(e.nameKey) ?? new Map<number, number>()
+    const roundsNote = 'rounds:' + Array.from(rq.entries())
+      .map(([rm, q]) => `${rm}=${Math.round(q * 100) / 100}`)
+      .join(';')
+
     result.push({
       production_date: productionDate,
       table_name:      tableName,
@@ -276,6 +304,7 @@ function assignWorkers(
       unit:            'กก.',
       period,
       deadline_time:   minsToTimeStr(e.freeAt),
+      note:            roundsNote,
       status:          'รอดำเนินการ',
       channel,
     })
@@ -706,6 +735,7 @@ export async function POST(req: NextRequest) {
         period: phaseCfg.period,
         deadline: phaseCfg.deadline,
         channel,
+        phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
       })
 
       assignments.push(...newAssignments)
