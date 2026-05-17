@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { Calendar, RefreshCw } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Calendar, RefreshCw, ImageDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 const STATION_DISPLAY: Record<string, string> = {
@@ -27,10 +27,12 @@ interface PlanRow {
 
 export default function ProductionPlanPage() {
   const today = new Date().toISOString().split('T')[0]
-  const [date, setDate]       = useState(today)
-  const [rows, setRows]       = useState<PlanRow[]>([])
-  const [bagMap, setBagMap]   = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(false)
+  const [date, setDate]         = useState(today)
+  const [rows, setRows]         = useState<PlanRow[]>([])
+  const [bagMap, setBagMap]     = useState<Record<string, number>>({})
+  const [loading, setLoading]   = useState(false)
+  const [exporting, setExp]     = useState(false)
+  const captureRef              = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch('/api/master/picking-unit')
@@ -48,7 +50,6 @@ export default function ProductionPlanPage() {
         .eq('production_date', date)
         .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
 
-      // group by (station, sku) — sum across all periods/phases
       const map = new Map<string, { sku_name: string | null; qty: number }>()
       for (const r of data ?? []) {
         const key = `${r.table_name}|||${r.sku}`
@@ -87,6 +88,29 @@ export default function ProductionPlanPage() {
   const totalQty  = rows.reduce((s, r) => s + r.totalQty, 0)
   const totalBags = rows.reduce((s, r) => s + (r.bags ?? 0), 0)
 
+  const exportImage = async () => {
+    if (!captureRef.current) return
+    setExp(true)
+    try {
+      const { toPng } = await import('html-to-image')
+      const dataUrl = await toPng(captureRef.current, {
+        backgroundColor: '#f9fafb',
+        pixelRatio: 2,
+        style: { padding: '24px' },
+      })
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `แผนผลิต_${date}.png`
+      a.click()
+    } finally {
+      setExp(false)
+    }
+  }
+
+  const dateDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
+
   return (
     <div className="space-y-6">
       <div>
@@ -109,10 +133,19 @@ export default function ProductionPlanPage() {
           รีโหลด
         </button>
         {rows.length > 0 && (
-          <span className="text-sm text-gray-500 ml-auto">
-            {rows.length} รายการ · {totalQty.toLocaleString()} กก.
-            {totalBags > 0 && ` · ${totalBags.toLocaleString()} ถุง`}
-          </span>
+          <>
+            <span className="text-sm text-gray-500 sm:ml-auto">
+              {rows.length} รายการ · {totalQty.toLocaleString()} กก.
+              {totalBags > 0 && ` · ${totalBags.toLocaleString()} ถุง`}
+            </span>
+            <button
+              onClick={exportImage}
+              disabled={exporting}
+              className="hidden sm:flex items-center gap-2 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <ImageDown size={15} />
+              {exporting ? 'กำลังส่งออก...' : 'Export รูปภาพ'}
+            </button>
+          </>
         )}
       </div>
 
@@ -130,40 +163,48 @@ export default function ProductionPlanPage() {
       )}
 
       {!loading && rows.length > 0 && (
-        <div className="card overflow-hidden p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อ SKU</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (กก.)</th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (ถุง)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((r, i) => (
-                <tr key={`${r.station}-${r.sku}-${i}`} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.station] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {STATION_DISPLAY[r.station] ?? r.station}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-800 font-medium">{r.sku_name ?? r.sku}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{r.totalQty.toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-blue-700">
-                    {r.bags != null ? r.bags.toLocaleString() : <span className="text-gray-300">—</span>}
-                  </td>
+        <div ref={captureRef} className="rounded-2xl overflow-hidden">
+          {/* Header shown inside the captured image */}
+          <div className="bg-white px-6 pt-5 pb-3 border border-b-0 border-gray-200 rounded-t-2xl">
+            <p className="text-base font-bold text-gray-900">แผนผลิต</p>
+            <p className="text-sm text-gray-500 mt-0.5">วันที่ผลิต: {dateDisplay} · รวมทุก Station · รวมทุก Phase</p>
+          </div>
+
+          <div className="border border-gray-200 rounded-b-2xl overflow-hidden">
+            <table className="w-full text-sm bg-white">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อ SKU</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (กก.)</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (ถุง)</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 border-t border-gray-200">
-              <tr>
-                <td colSpan={2} className="px-4 py-3 font-semibold text-gray-700 text-right">รวม</td>
-                <td className="px-4 py-3 text-right font-bold text-gray-900">{totalQty.toLocaleString()}</td>
-                <td className="px-4 py-3 text-right font-bold text-blue-700">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((r, i) => (
+                  <tr key={`${r.station}-${r.sku}-${i}`} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.station] ?? 'bg-gray-100 text-gray-700'}`}>
+                        {STATION_DISPLAY[r.station] ?? r.station}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-800 font-medium">{r.sku_name ?? r.sku}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{r.totalQty.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-blue-700">
+                      {r.bags != null ? r.bags.toLocaleString() : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 border-t border-gray-200">
+                <tr>
+                  <td colSpan={2} className="px-4 py-3 font-semibold text-gray-700 text-right">รวม</td>
+                  <td className="px-4 py-3 text-right font-bold text-gray-900">{totalQty.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-bold text-blue-700">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
     </div>
