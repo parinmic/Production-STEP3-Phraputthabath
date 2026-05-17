@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet, Font, renderToBuffer } from '@react-pdf/renderer'
-import path from 'path'
 
 export const runtime = 'nodejs'
+export const maxDuration = 30
 
 Font.register({
   family: 'Sarabun',
   fonts: [
-    { src: path.join(process.cwd(), 'public/fonts/Sarabun-Regular.ttf'), fontWeight: 400 },
-    { src: path.join(process.cwd(), 'public/fonts/Sarabun-Bold.ttf'),    fontWeight: 700 },
+    { src: 'https://fonts.gstatic.com/s/sarabun/v17/DtVmJx26TKEr37c9YK5sulw.ttf', fontWeight: 400 },
+    { src: 'https://fonts.gstatic.com/s/sarabun/v17/DtVjJx26TKEr37c9WBI.ttf',    fontWeight: 700 },
   ],
 })
 
