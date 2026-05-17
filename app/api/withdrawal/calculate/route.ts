@@ -19,6 +19,10 @@ function minsToTime(mins: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+// normalize material name สำหรับ fallback matching
+// ทำให้ "สันนอก-Raw" และ "สันนอก - Raw" ตรงกัน
+const normMatName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+
 function timeStrToMins(t: string): number {
   const parts = String(t ?? '').split(':')
   return parseInt(parts[0] ?? '0') * 60 + parseInt(parts[1] ?? '0')
@@ -254,7 +258,7 @@ export async function POST(req: NextRequest) {
 
     const matName = matCodeToName.get(matCode)
     if (matName) {
-      const nameKey = matName.trim().toLowerCase()
+      const nameKey = normMatName(matName)
       const nameList = stockByName.get(nameKey) ?? []
       nameList.push(lot)
       stockByName.set(nameKey, nameList)
@@ -266,7 +270,7 @@ export async function POST(req: NextRequest) {
   // 6. สร้าง output items พร้อม withdrawal_round
   const rawItems = Array.from(rawMap.values()).map(({ station, raw_sap, raw_name, qty, roundMins }) => {
     const needed  = Math.round(qty * 100) / 100
-    const nameKey = (raw_name ?? '').trim().toLowerCase()
+    const nameKey = normMatName(raw_name ?? '')
     const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
     const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
     return {
