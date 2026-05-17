@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
 
 interface WithdrawalItem {
   id: string
@@ -50,10 +50,35 @@ const PHASE_CONFIG = {
   '3': { label: 'Phase 3 — แผน 100%', color: 'purple', time: '18:00 น.' },
 } as const
 
+const PHASE_ROUNDS: Record<string, string[]> = {
+  '1': ['08:00', '10:00', '12:00'],
+  '2': ['13:00', '15:00', '17:00'],
+  '3': ['18:00', '20:00'],
+}
+
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
+}
+
+function splitQuantity(total: number, roundIdx: number, numRounds: number): number {
+  const base = Math.floor(total / numRounds)
+  const rem  = total % numRounds
+  return roundIdx === numRounds - 1 ? base + rem : base
+}
+
+function getItemForRound(item: RowItem, roundIdx: number, numRounds: number): RowItem {
+  const qty = splitQuantity(item.quantity, roundIdx, numRounds)
+  if (!item.lots?.length) return { ...item, quantity: qty }
+  return {
+    ...item,
+    quantity: qty,
+    lots: item.lots.map(lot => ({
+      ...lot,
+      to_withdraw: splitQuantity(lot.to_withdraw, roundIdx, numRounds),
+    })),
+  }
 }
 
 export default function WithdrawalPage() {
@@ -67,9 +92,11 @@ export default function WithdrawalPage() {
   const [preview, setPreview]     = useState<CalcItem[] | null>(null)
   const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set())
   const printRef = useRef<HTMLDivElement>(null)
 
-  const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
+  const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
+  const rounds = PHASE_ROUNDS[phase] ?? PHASE_ROUNDS['1']
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -107,7 +134,6 @@ export default function WithdrawalPage() {
     if (!preview) return
     setSaving(true); setCalcMsg(null)
     try {
-      // flatten lots into individual rows (one row per lot)
       const flatItems = preview.flatMap(item => {
         if (!item.lots?.length) return [item]
         return item.lots.map(lot => ({
@@ -140,7 +166,6 @@ export default function WithdrawalPage() {
     }
   }
 
-  // Parse lot info from saved note: "Lot: [spec] | รร.[factory] | ผลิต [date]"
   function parseLotNote(note: string | null): { spec_code: string; factory: string; prod_date: string } | null {
     if (!note?.startsWith('Lot:')) return null
     const parts = note.split(' | ')
@@ -151,7 +176,6 @@ export default function WithdrawalPage() {
     }
   }
 
-  // Group saved items by (station, sku) and reconstruct lot sub-rows from notes
   function groupSaved(raw: WithdrawalItem[]): RowItem[] {
     const map = new Map<string, WithdrawalItem[]>()
     for (const item of raw) {
@@ -173,14 +197,13 @@ export default function WithdrawalPage() {
         note:         'คำนวณจาก BOM',
         lots: group.map(item => {
           const p = parseLotNote(item.note)
-          const isInsufficient = item.note?.includes('ไม่เพียงพอ') ?? false
           return {
             spec_code:    p?.spec_code ?? item.note ?? '-',
             factory:      p?.factory   ?? '-',
             prod_date:    p?.prod_date ?? '-',
             available:    0,
             to_withdraw:  item.quantity,
-            insufficient: isInsufficient,
+            insufficient: item.note?.includes('ไม่เพียงพอ') ?? false,
           } satisfies LotInfo
         }),
       } as RowItem
@@ -188,14 +211,6 @@ export default function WithdrawalPage() {
   }
 
   const displayItems: RowItem[] = preview ?? groupSaved(items)
-
-  const grouped = displayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
-    const key = item.work_station ?? 'ไม่ระบุ Station'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(item)
-    return acc
-  }, {})
-
   const totalQty = displayItems.reduce((s, i) => s + i.quantity, 0)
 
   const borderCls = cfg.color === 'blue'   ? 'border-blue-500'
@@ -205,6 +220,127 @@ export default function WithdrawalPage() {
                   : cfg.color === 'orange' ? 'bg-orange-100 text-orange-700'
                   :                          'bg-purple-100 text-purple-700'
 
+  const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
+                       : cfg.color === 'orange' ? 'bg-orange-500'
+                       :                          'bg-purple-600'
+
+  function toggleRound(r: string) {
+    setCollapsedRounds(prev => {
+      const next = new Set(prev)
+      next.has(r) ? next.delete(r) : next.add(r)
+      return next
+    })
+  }
+
+  function renderStationTable(stationItems: RowItem[], roundIdx: number, station: string) {
+    const roundItems = stationItems.map(item => getItemForRound(item, roundIdx, rounds.length))
+    const stationTotal = roundItems.reduce((s, i) => s + i.quantity, 0)
+
+    return (
+      <div key={`${station}-${roundIdx}`} className="card mb-4">
+        <div className="flex items-center gap-3 mb-4">
+          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
+            {station}
+          </span>
+          <span className="text-sm text-gray-500">
+            {roundItems.length} รายการ · รวม {stationTotal.toLocaleString()} กก.
+          </span>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b">
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า / วัตถุดิบ</th>
+              <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
+              <th className="px-3 py-2.5 text-center text-gray-600 font-medium no-print">เบิกแล้ว ✓</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roundItems.map((item, idx) => {
+              const rowKey = `${station}|||${item.sku}|||${roundIdx}|||${idx}`
+              const isExpanded = expandedKey === rowKey
+              const hasProducts = (item.for_products?.length ?? 0) > 0
+              return (
+                <>
+                  <tr key={`${item.sku}-${idx}`}
+                    className={`border-b hover:bg-gray-50 ${hasProducts ? 'cursor-pointer' : ''}`}
+                    onClick={() => hasProducts && setExpandedKey(isExpanded ? null : rowKey)}>
+                    <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
+                    <td className="px-3 py-2.5 text-gray-800">
+                      <div className="flex items-center gap-1.5">
+                        {hasProducts && (
+                          isExpanded
+                            ? <ChevronDown size={14} className="text-indigo-500 shrink-0" />
+                            : <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                        )}
+                        {item.sku_name ?? '-'}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
+                    <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
+                    <td className="px-3 py-2.5 text-center no-print">
+                      {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" onClick={e => e.stopPropagation()} />}
+                    </td>
+                  </tr>
+                  {isExpanded && hasProducts && (
+                    <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
+                      <td />
+                      <td colSpan={6} className="px-3 py-2.5 pl-7">
+                        <p className="text-xs font-semibold text-indigo-700 mb-1.5">ใช้ผลิต</p>
+                        <div className="flex flex-wrap gap-2">
+                          {item.for_products!.map((p, pi) => (
+                            <div key={pi} className="flex items-center gap-1.5 bg-white border border-indigo-200 rounded-lg px-2.5 py-1">
+                              <span className="text-xs font-mono text-gray-500">{p.sku}</span>
+                              <span className="text-xs text-gray-700 font-medium">{p.sku_name ?? p.sku}</span>
+                              <span className="text-xs font-bold text-indigo-600">{p.qty.toLocaleString()} กก.</span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {item.lots?.map((lot, li) => (
+                    <tr key={`${item.sku}-lot-${li}`}
+                      className={`border-b text-xs ${lot.insufficient ? 'bg-red-50' : 'bg-indigo-50/50'}`}>
+                      <td />
+                      <td className="px-3 py-1.5 pl-7 font-mono text-gray-500">└ {lot.spec_code}</td>
+                      <td className="px-3 py-1.5 text-gray-500">
+                        รร.{lot.factory} · ผลิต {lot.prod_date}
+                        {!lot.insufficient && (
+                          <span className="ml-2 text-gray-400">มี {lot.available.toLocaleString()} กก.</span>
+                        )}
+                      </td>
+                      <td className={`px-3 py-1.5 text-right font-bold ${lot.insufficient ? 'text-red-600' : 'text-indigo-700'}`}>
+                        {lot.to_withdraw.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-1.5 text-gray-500">กก.</td>
+                      <td className="px-3 py-1.5 text-gray-400">
+                        {lot.insufficient ? '⚠ สต็อกไม่เพียงพอ' : ''}
+                      </td>
+                      <td className="px-3 py-1.5 text-center no-print">
+                        {!lot.insufficient && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )
+            })}
+            <tr className="bg-gray-50 font-semibold">
+              <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
+              <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
+              <td colSpan={3} />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <>
       <style>{`
@@ -213,6 +349,7 @@ export default function WithdrawalPage() {
           #print-area, #print-area * { visibility: visible; }
           #print-area { position: absolute; left: 0; top: 0; width: 100%; }
           .no-print { display: none !important; }
+          .round-section { page-break-inside: avoid; }
           @page { size: A4; margin: 15mm; }
         }
       `}</style>
@@ -257,27 +394,22 @@ export default function WithdrawalPage() {
           <button onClick={load} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> โหลดใหม่
           </button>
-
-          {/* Calculate button */}
           <button onClick={calculate} disabled={calculating}
             className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg transition-colors">
             <Zap size={14} className={calculating ? 'animate-pulse' : ''} />
             {calculating ? 'กำลังคำนวณ...' : 'คำนวณอัตโนมัติ'}
           </button>
-
           <span className={`ml-auto px-3 py-1 rounded-full text-sm font-semibold ${badgeCls}`}>
             {cfg.label} · {cfg.time}
           </span>
         </div>
 
-        {/* Calc error message */}
         {calcMsg && (
           <div className="no-print bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
             <span className="font-medium">⚠</span> {calcMsg}
           </div>
         )}
 
-        {/* Preview banner */}
         {preview && (
           <div className="no-print bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -328,16 +460,22 @@ export default function WithdrawalPage() {
           )}
 
           {!loading && displayItems.length > 0 && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4 no-print">
+              <div className="grid grid-cols-4 gap-4 no-print">
                 <div className="card text-center">
                   <p className="text-2xl font-bold text-gray-900">{displayItems.length}</p>
                   <p className="text-sm text-gray-500 mt-0.5">รายการ</p>
                 </div>
                 <div className="card text-center">
-                  <p className="text-2xl font-bold text-gray-900">{Object.keys(grouped).length}</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {Object.keys(displayItems.reduce<Record<string, boolean>>((a, i) => { a[i.work_station ?? '-'] = true; return a }, {})).length}
+                  </p>
                   <p className="text-sm text-gray-500 mt-0.5">Station</p>
+                </div>
+                <div className="card text-center">
+                  <p className="text-2xl font-bold text-gray-900">{rounds.length}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">รอบเบิก</p>
                 </div>
                 <div className="card text-center">
                   <p className="text-2xl font-bold text-gray-900">{totalQty.toLocaleString()}</p>
@@ -345,118 +483,62 @@ export default function WithdrawalPage() {
                 </div>
               </div>
 
-              {/* Tables by station */}
-              {Object.entries(grouped).map(([station, stationItems]) => (
-                <div key={station} className="card">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {station}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      {stationItems.length} รายการ · รวม {stationItems.reduce((s, i) => s + i.quantity, 0).toLocaleString()} กก.
-                    </span>
+              {/* Rounds */}
+              {rounds.map((roundTime, roundIdx) => {
+                const isCollapsed = collapsedRounds.has(roundTime)
+                const roundDisplayItems = displayItems.map(item => getItemForRound(item, roundIdx, rounds.length))
+                const roundTotal = roundDisplayItems.reduce((s, i) => s + i.quantity, 0)
+
+                const grouped = displayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
+                  const key = item.work_station ?? 'ไม่ระบุ Station'
+                  if (!acc[key]) acc[key] = []
+                  acc[key].push(item)
+                  return acc
+                }, {})
+
+                return (
+                  <div key={roundTime} className="round-section border border-gray-200 rounded-xl overflow-hidden">
+                    {/* Round header */}
+                    <button
+                      onClick={() => toggleRound(roundTime)}
+                      className={`no-print w-full flex items-center justify-between px-5 py-3.5 ${roundHeaderCls} text-white`}>
+                      <div className="flex items-center gap-3">
+                        <Clock size={18} />
+                        <span className="font-bold text-lg">รอบ {roundTime} น.</span>
+                        <span className="text-sm opacity-80">
+                          ({roundIdx + 1}/{rounds.length}) · {roundTotal.toLocaleString()} กก.
+                        </span>
+                      </div>
+                      {isCollapsed
+                        ? <ChevronRight size={20} className="opacity-80" />
+                        : <ChevronDown size={20} className="opacity-80" />}
+                    </button>
+
+                    {/* Print-only round header */}
+                    <div className={`hidden print:flex items-center gap-3 px-5 py-3 ${roundHeaderCls} text-white`}>
+                      <Clock size={16} />
+                      <span className="font-bold">รอบ {roundTime} น.</span>
+                      <span className="text-sm opacity-80">· {roundTotal.toLocaleString()} กก.</span>
+                    </div>
+
+                    {!isCollapsed && (
+                      <div className="p-4 space-y-0">
+                        {Object.entries(grouped).map(([station, stationItems]) =>
+                          renderStationTable(stationItems, roundIdx, station)
+                        )}
+                        <div className={`rounded-lg px-5 py-3 flex items-center justify-between text-white ${roundHeaderCls} opacity-90`}>
+                          <span className="font-medium text-sm">รวมรอบ {roundTime} น.</span>
+                          <span className="font-bold">{roundTotal.toLocaleString()} กก.</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า / วัตถุดิบ</th>
-                        <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
-                        <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
-                        <th className="px-3 py-2.5 text-center text-gray-600 font-medium no-print">เบิกแล้ว ✓</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stationItems.map((item, idx) => {
-                        const rowKey = `${station}|||${item.sku}|||${idx}`
-                        const isExpanded = expandedKey === rowKey
-                        const hasProducts = (item.for_products?.length ?? 0) > 0
-                        return (
-                        <>
-                          <tr key={`${item.sku}-${idx}`}
-                            className={`border-b hover:bg-gray-50 ${hasProducts ? 'cursor-pointer' : ''}`}
-                            onClick={() => hasProducts && setExpandedKey(isExpanded ? null : rowKey)}>
-                            <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                            <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
-                            <td className="px-3 py-2.5 text-gray-800">
-                              <div className="flex items-center gap-1.5">
-                                {hasProducts && (
-                                  isExpanded
-                                    ? <ChevronDown size={14} className="text-indigo-500 shrink-0" />
-                                    : <ChevronRight size={14} className="text-gray-400 shrink-0" />
-                                )}
-                                {item.sku_name ?? '-'}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
-                            <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
-                            <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
-                            <td className="px-3 py-2.5 text-center no-print">
-                              {!item.lots?.length && <input type="checkbox" className="w-4 h-4 cursor-pointer" onClick={e => e.stopPropagation()} />}
-                            </td>
-                          </tr>
-                          {isExpanded && hasProducts && (
-                            <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
-                              <td />
-                              <td colSpan={6} className="px-3 py-2.5 pl-7">
-                                <p className="text-xs font-semibold text-indigo-700 mb-1.5">ใช้ผลิต</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {item.for_products!.map((p, pi) => (
-                                    <div key={pi} className="flex items-center gap-1.5 bg-white border border-indigo-200 rounded-lg px-2.5 py-1">
-                                      <span className="text-xs font-mono text-gray-500">{p.sku}</span>
-                                      <span className="text-xs text-gray-700 font-medium">{p.sku_name ?? p.sku}</span>
-                                      <span className="text-xs font-bold text-indigo-600">{p.qty.toLocaleString()} กก.</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                          {item.lots?.map((lot, li) => (
-                            <tr key={`${item.sku}-lot-${li}`}
-                              className={`border-b text-xs ${lot.insufficient ? 'bg-red-50' : 'bg-indigo-50/50'}`}>
-                              <td />
-                              <td className="px-3 py-1.5 pl-7 font-mono text-gray-500">
-                                └ {lot.spec_code}
-                              </td>
-                              <td className="px-3 py-1.5 text-gray-500">
-                                รร.{lot.factory} · ผลิต {lot.prod_date}
-                                {!lot.insufficient && (
-                                  <span className="ml-2 text-gray-400">มี {lot.available.toLocaleString()} กก.</span>
-                                )}
-                              </td>
-                              <td className={`px-3 py-1.5 text-right font-bold ${lot.insufficient ? 'text-red-600' : 'text-indigo-700'}`}>
-                                {lot.to_withdraw.toLocaleString()}
-                              </td>
-                              <td className="px-3 py-1.5 text-gray-500">กก.</td>
-                              <td className="px-3 py-1.5 text-gray-400">
-                                {lot.insufficient ? '⚠ สต็อกไม่เพียงพอ' : ''}
-                              </td>
-                              <td className="px-3 py-1.5 text-center no-print">
-                                {!lot.insufficient && <input type="checkbox" className="w-4 h-4 cursor-pointer" />}
-                              </td>
-                            </tr>
-                          ))}
-                        </>
-                        )
-                      })}
-                      <tr className="bg-gray-50 font-semibold">
-                        <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
-                        <td className="px-3 py-2.5 text-right text-gray-900">
-                          {stationItems.reduce((s, i) => s + i.quantity, 0).toLocaleString()}
-                        </td>
-                        <td colSpan={3} />
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Grand total */}
               <div className="card bg-gray-900 text-white flex items-center justify-between px-6 py-4">
-                <span className="font-semibold">รวมทั้งหมด — {cfg.label}</span>
+                <span className="font-semibold">รวมทั้งหมด — {cfg.label} ({rounds.length} รอบ)</span>
                 <span className="text-2xl font-bold">{totalQty.toLocaleString()} กก.</span>
               </div>
 
