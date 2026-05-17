@@ -86,6 +86,7 @@ export default function WithdrawalPage() {
   const [printDate, setPrintDate]         = useState(today)
   const [printRoundSel, setPrintRoundSel] = useState<Set<string>>(new Set())
   const [downloading, setDownloading]     = useState(false)
+  const [basketMap, setBasketMap]         = useState<Map<string, number>>(new Map())
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -103,6 +104,17 @@ export default function WithdrawalPage() {
   }, [date, phase])
 
   useEffect(() => { load(); setPreview(null); setCalcMsg(null) }, [load])
+
+  useEffect(() => {
+    fetch('/api/master-trakra')
+      .then(r => r.json())
+      .then((data: { sku: string; rate: number }[]) => {
+        const map = new Map<string, number>()
+        for (const d of data) map.set(d.sku, d.rate)
+        setBasketMap(map)
+      })
+      .catch(() => {/* silent — ถ้าไม่มีข้อมูลก็ไม่แสดงตะกร้า */})
+  }, [])
 
   const openPrintModal = () => {
     setPrintDate(date)
@@ -197,6 +209,12 @@ export default function WithdrawalPage() {
     }
   }
 
+  function getBaskets(sku: string, qty: number): number | null {
+    const rate = basketMap.get(String(sku).replace(/^0+/, '').trim())
+    if (!rate || rate <= 0) return null
+    return Math.ceil(qty / rate)
+  }
+
   function groupSaved(raw: WithdrawalItem[]): RowItem[] {
     const map = new Map<string, WithdrawalItem[]>()
     for (const item of raw) {
@@ -267,6 +285,7 @@ export default function WithdrawalPage() {
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า / วัตถุดิบ</th>
               <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
+              <th className="px-3 py-2.5 text-right text-gray-600 font-medium">ตะกร้า</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
             </tr>
           </thead>
@@ -294,6 +313,11 @@ export default function WithdrawalPage() {
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
+                    <td className="px-3 py-2.5 text-right text-orange-600 font-medium">
+                      {getBaskets(item.sku, item.quantity) != null
+                        ? `${getBaskets(item.sku, item.quantity)} ตะกร้า`
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
                   </tr>
                   {isExpanded && hasProducts && (

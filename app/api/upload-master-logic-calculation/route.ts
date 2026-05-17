@@ -7,6 +7,7 @@ const VALID_TYPES = [
   'mas-variance-wet-market',
   'mas-lotus',
   'mas-channel',
+  'mas-trakra',
 ]
 
 const TYPE_LABEL: Record<string, string> = {
@@ -15,6 +16,7 @@ const TYPE_LABEL: Record<string, string> = {
   'mas-variance-wet-market': 'Mas %Variance Wet Market',
   'mas-lotus':               'Mas LOTUS',
   'mas-channel':             'Mas Channel',
+  'mas-trakra':              'Mas ตระกร้า',
 }
 
 export async function GET(req: NextRequest) {
