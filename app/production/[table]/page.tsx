@@ -1122,9 +1122,10 @@ export default function TablePage() {
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
   const [nameMap, setNameMap]       = useState<Record<string, string>>({})
   const [bagMap, setBagMap]         = useState<Record<string, number>>({})
-  const [loading, setLoading]       = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [genResult, setGenResult]   = useState<{ success: boolean; message: string } | null>(null)
+  const [loading, setLoading]         = useState(false)
+  const [generating, setGenerating]   = useState(false)
+  const [genResult, setGenResult]     = useState<{ success: boolean; message: string } | null>(null)
+  const [showGenModal, setShowGenModal] = useState(false)
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
 
   const loadData = (d: string, silent = false) => {
@@ -1167,19 +1168,25 @@ export default function TablePage() {
     return () => clearInterval(id)
   }, [date, cfg?.label])
 
-  const generate = async () => {
+  const generate = async (deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
     if (selectedPhase === 'all') return
-    setGenerating(true); setGenResult(null)
+    setGenerating(true); setGenResult(null); setShowGenModal(false)
     try {
       const res    = await fetch('/api/production/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: selectedPhase }),
+        body: JSON.stringify({ date, phase: selectedPhase, deductMode }),
       })
       const result = await res.json()
       setGenResult(result)
       if (result.success) loadData(date)
     } catch { setGenResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
     setGenerating(false)
+  }
+
+  const handleGenerateClick = () => {
+    if (selectedPhase === 'all') return
+    if (selectedPhase === 1) { generate('plan'); return }
+    setShowGenModal(true)
   }
 
   if (!cfg) return <p className="text-red-500">ไม่พบ Station</p>
@@ -1190,7 +1197,44 @@ export default function TablePage() {
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 
+  const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
+    { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',        desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
+    { mode: 'actual', label: 'ยอดผลิต Phase ก่อนหน้า',    desc: 'หักลบเฉพาะงานที่เสร็จแล้ว (สถานะ: เสร็จแล้ว)' },
+    { mode: 'yield',  label: 'ยอดรับผลได้ล่าสุด',          desc: 'หักลบจากข้อมูลที่อัพโหลดในเมนู รับผลได้' },
+  ]
+
   return (
+    <>
+    {showGenModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+           onClick={() => setShowGenModal(false)}>
+        <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm"
+             onClick={e => e.stopPropagation()}>
+          <h2 className="text-base font-semibold text-gray-900">
+            สร้าง Phase {selectedPhase}
+          </h2>
+          <p className="text-sm text-gray-500 mt-1 mb-5">
+            เลือกยอดที่ใช้หักลบจากเป้าหมาย
+          </p>
+          <div className="space-y-2.5">
+            {DEDUCT_OPTIONS.map(opt => (
+              <button
+                key={opt.mode}
+                onClick={() => generate(opt.mode)}
+                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                <div className="font-medium text-gray-900 text-sm">{opt.label}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowGenModal(false)}
+            className="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors">
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    )}
     <div className="space-y-3 sm:space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1233,7 +1277,7 @@ export default function TablePage() {
               className="outline-none bg-transparent text-sm" />
           </div>
           {selectedPhase !== 'all' && (
-            <button onClick={generate} disabled={generating}
+            <button onClick={handleGenerateClick} disabled={generating}
               className="btn-primary flex items-center gap-2 text-sm">
               <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
             </button>
@@ -1347,5 +1391,6 @@ export default function TablePage() {
         </div>
       )}
     </div>
+    </>
   )
 }

@@ -341,9 +341,11 @@ async function fetchAll<T = Record<string, unknown>>(
 
 export async function POST(req: NextRequest) {
   try {
-    const { date, phase: phaseParam } = await req.json()
+    const { date, phase: phaseParam, deductMode: rawDeductMode } = await req.json()
     const productionDate: string = date ?? new Date().toISOString().split('T')[0]
     const selectedPhase: number = phaseParam ? Number(phaseParam) : 1
+    const deductMode: 'plan' | 'actual' | 'yield' =
+      rawDeductMode === 'actual' || rawDeductMode === 'yield' ? rawDeductMode : 'plan'
     const isPhase2 = selectedPhase === 2
     const isPhase3 = selectedPhase === 3
 
@@ -374,6 +376,7 @@ export async function POST(req: NextRequest) {
       { data: masterChannelRaw },
       { data: jobAssignRaw },
       prevAssignedRaw,
+      yieldBagsRaw,
       { data: plan100Raw },
       { data: pickingUnitRaw },
     ] = await Promise.all([
@@ -421,14 +424,22 @@ export async function POST(req: NextRequest) {
         .order('uploaded_at', { ascending: false }),
       supabase.from('master_logic_manpower')
         .select('row_data'),
-      // Phase 2/3: load previously-assigned quantities to deduct
-      (isPhase2 || isPhase3)
+      // Phase 2/3: load previously-assigned quantities (plan / actual mode)
+      (isPhase2 || isPhase3) && deductMode !== 'yield'
         ? fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
             'production_assignments', 'sku, target_quantity, channel', [
               { col: 'production_date', op: 'eq', val: productionDate },
               { col: 'period', op: 'in', val: isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'] },
+              ...(deductMode === 'actual' ? [{ col: 'status', op: 'eq' as const, val: 'เสร็จแล้ว' }] : []),
             ])
         : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),
+      // Phase 2/3: load yield bags (yield mode)
+      (isPhase2 || isPhase3) && deductMode === 'yield'
+        ? fetchAll<{ sap_code: string; bags: number }>(
+            'yield_bags', 'sap_code, bags', [
+              { col: 'work_date', op: 'eq', val: productionDate },
+            ])
+        : Promise.resolve([] as { sap_code: string; bags: number }[]),
       // Phase 3: load 100% production plan
       isPhase3
         ? supabase.from('production_plan_100')
@@ -560,19 +571,34 @@ export async function POST(req: NextRequest) {
     const avgLotus = buildAvgMap(lotusHist)
     const avgMakro = buildAvgMap(makroHist)
 
-    // ------ Phase 1 produced qty per SKU ------
-    // combined: used by Phase 3 (deduct all previous phases)
-    // perChannel: used by Phase 2 (deduct only same-channel Phase 1)
-    const phase1Assigned   = new Map<string, number>()
-    const phase1ByChannel  = new Map<string, Map<string, number>>()
-    for (const a of (prevAssignedRaw ?? []) as { sku: string; target_quantity: number; channel: string | null }[]) {
-      const sku = a.sku.replace(/^0+/, '')
-      const qty = Number(a.target_quantity)
-      phase1Assigned.set(sku, (phase1Assigned.get(sku) ?? 0) + qty)
-      if (a.channel) {
-        if (!phase1ByChannel.has(a.channel)) phase1ByChannel.set(a.channel, new Map())
-        const m = phase1ByChannel.get(a.channel)!
-        m.set(sku, (m.get(sku) ?? 0) + qty)
+    // ------ Deduction qty per SKU (based on deductMode) ------
+    // phase1Assigned: total across channels — used by Phase 3
+    // phase1ByChannel: per channel — used by Phase 2 (plan/actual modes only)
+    // useChannelDeduct: false for yield mode (no channel breakdown in yield_bags)
+    const phase1Assigned  = new Map<string, number>()
+    const phase1ByChannel = new Map<string, Map<string, number>>()
+    const useChannelDeduct = deductMode !== 'yield'
+
+    if (deductMode === 'yield') {
+      const wpbMap = new Map<string, number>()
+      for (const r of (pickingUnitRaw ?? [])) {
+        wpbMap.set(r.sap.replace(/^0+/, ''), r.weight_per_bag ?? 0)
+      }
+      for (const y of (yieldBagsRaw as { sap_code: string; bags: number }[])) {
+        const sku = y.sap_code.replace(/^0+/, '')
+        const kg  = y.bags * (wpbMap.get(sku) ?? 0)
+        phase1Assigned.set(sku, (phase1Assigned.get(sku) ?? 0) + kg)
+      }
+    } else {
+      for (const a of (prevAssignedRaw as { sku: string; target_quantity: number; channel: string | null }[])) {
+        const sku = a.sku.replace(/^0+/, '')
+        const qty = Number(a.target_quantity)
+        phase1Assigned.set(sku, (phase1Assigned.get(sku) ?? 0) + qty)
+        if (a.channel) {
+          if (!phase1ByChannel.has(a.channel)) phase1ByChannel.set(a.channel, new Map())
+          const m = phase1ByChannel.get(a.channel)!
+          m.set(sku, (m.get(sku) ?? 0) + qty)
+        }
       }
     }
 
@@ -600,8 +626,8 @@ export async function POST(req: NextRequest) {
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
       if (isPhase2) {
-        // Phase 2: min(avg BL3, order) − Phase 1 WM assigned (per channel)
-        const p1 = phase1ByChannel.get(ch) ?? new Map()
+        // Phase 2: min(avg BL3, order) − deduction (per channel or total depending on mode)
+        const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
         return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgWM.get(sku) ?? 0
           const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
@@ -625,8 +651,8 @@ export async function POST(req: NextRequest) {
     const buildMakroTargets = (): SkuTarget[] => {
       const ch = 'Makro'
       if (isPhase2) {
-        // Phase 2: 1300 order − Phase 1 Makro assigned (per channel, no variance)
-        const p1 = phase1ByChannel.get(ch) ?? new Map()
+        // Phase 2: 1300 order − deduction (per channel or total depending on mode)
+        const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
         return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
           const targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
           return { sku, skuName: name, targetQty, channel: ch }
@@ -645,8 +671,8 @@ export async function POST(req: NextRequest) {
     const buildLotusTargets = (): SkuTarget[] => {
       const ch = 'LOTUS'
       if (isPhase2) {
-        // Phase 2: min(avg BL3, order) − Phase 1 LOTUS assigned (per channel)
-        const p1 = phase1ByChannel.get(ch) ?? new Map()
+        // Phase 2: min(avg BL3, order) − deduction (per channel or total depending on mode)
+        const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
         return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
           const avg = avgLotus.get(sku) ?? 0
           const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
