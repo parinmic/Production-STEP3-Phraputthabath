@@ -750,7 +750,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
               <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
                 {hist.map((entry, idx) => {
-                  const isEdited = !!entry.updated_at && entry.updated_at !== entry.created_at
+                  const isEdited = entry.updated_at !== null
                   const ts = isEdited ? entry.updated_at! : entry.created_at
                   const timeLabel = ts
                     ? new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })
