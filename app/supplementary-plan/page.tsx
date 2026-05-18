@@ -131,11 +131,6 @@ function SlotUploader({ slot, color }: { slot: number; color: typeof SLOT_COLORS
             </select>
             <span className="text-xs text-gray-400">น.</span>
           </div>
-          {loadingTime && (
-            <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded px-2 py-1">
-              <Clock size={11} />เสร็จก่อน <strong>{deadlineTime}</strong> น.
-            </span>
-          )}
         </div>
       </div>
 
