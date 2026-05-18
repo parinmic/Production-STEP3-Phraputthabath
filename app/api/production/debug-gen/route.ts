@@ -154,9 +154,9 @@ export async function GET(req: NextRequest) {
 
   // Raw SKU values found in BL3 tables (to detect leading-zero mismatch)
   const skusFoundInBL3 = {
-    wet_market: [...new Set(allWmHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
-    lotus:      [...new Set(allLotusHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
-    makro:      [...new Set(allMakroHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
+    wet_market: Array.from(new Set(allWmHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
+    lotus:      Array.from(new Set(allLotusHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
+    makro:      Array.from(new Set(allMakroHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
   }
 
   // ── 6. makroSkuSet check ────────────────────────────────────────────
