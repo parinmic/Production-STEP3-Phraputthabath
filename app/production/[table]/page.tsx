@@ -1270,14 +1270,6 @@ export default function TablePage() {
 
       {/* Phase tabs + generate */}
       <div className="flex items-center gap-2">
-        {PHASES.map(p => (
-          <button key={p.phase}
-            onClick={() => { setPhase(p.phase); setGenResult(null) }}
-            className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
-            <span className="block">{p.label}</span>
-            <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
-          </button>
-        ))}
         <button
           onClick={() => { setPhase('all'); setGenResult(null) }}
           className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors border ${selectedPhase === 'all'
@@ -1286,6 +1278,14 @@ export default function TablePage() {
           <span className="block">ทั้งหมด</span>
           <span className="block text-[10px] sm:text-xs font-normal opacity-80">3 Phase</span>
         </button>
+        {PHASES.map(p => (
+          <button key={p.phase}
+            onClick={() => { setPhase(p.phase); setGenResult(null) }}
+            className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
+            <span className="block">{p.label}</span>
+            <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
+          </button>
+        ))}
 
         <div className="hidden sm:flex items-center gap-3 ml-auto">
           <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-sm text-gray-700">
