@@ -390,9 +390,10 @@ export async function POST(req: NextRequest) {
             .eq('work_date', productionDate)
             .eq('upload_round', '1300')
         : Promise.resolve({ data: [] as WorkforceRow[], error: null }),
+      // WM/LOTUS upload today's orders at '1400' only (no '0800' round)
       fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date', [
         { col: 'delivery_date', op: 'eq', val: productionDate },
-        { col: 'upload_round', op: 'eq', val: orderRound },
+        { col: 'upload_round', op: 'eq', val: '1400' },
       ]),
       fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date', [
         { col: 'delivery_date', op: 'in', val: histDates },
@@ -400,7 +401,7 @@ export async function POST(req: NextRequest) {
       ]),
       fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date', [
         { col: 'delivery_date', op: 'eq', val: productionDate },
-        { col: 'upload_round', op: 'eq', val: orderRound },
+        { col: 'upload_round', op: 'eq', val: '1400' },
       ]),
       fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date', [
         { col: 'delivery_date', op: 'in', val: histDates },
@@ -680,13 +681,20 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 (ข้าม SKU ที่มี Makro order วันนี้)
+      // Phase 1: BL3 avg; fallback to today's '1400' order if no BL3 history
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
-      return Array.from(avgLotus.entries())
-        .filter(([sku]) => !makroSkuSet.has(sku))
-        .map(([sku, avg]) => ({
-          sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
-        })).filter(s => s.targetQty > 0)
+      const allLotusSkus = Array.from(new Set([
+        ...Array.from(avgLotus.keys()),
+        ...Object.keys(lotusMap),
+      ]))
+      return allLotusSkus
+        .filter(sku => !makroSkuSet.has(sku))
+        .map(sku => {
+          const avg      = avgLotus.get(sku) ?? 0
+          const orderQty = lotusMap[sku]?.qty ?? 0
+          const targetQty = avg > 0 ? avg : orderQty
+          return { sku, skuName: lotusHistNames.get(sku) ?? lotusMap[sku]?.name ?? null, targetQty, channel: ch }
+        }).filter(s => s.targetQty > 0)
     }
 
     const channelTargets: Record<string, SkuTarget[]> = {
