@@ -108,7 +108,8 @@ export async function GET(req: NextRequest) {
   const wfMatchProd = prodMatches.length
     ? wfDedup.filter(w => {
         const station = w.work_station?.replace(/[()]/g, '').trim() ?? ''
-        const mapped  = { 'สามชั้นพิเศษ': 'สามชั้น', 'ไหล่พิเศษ': 'ไหล่', 'สะโพกพิเศษ': 'สะโพก' }[station] ?? station
+        const stationMap: Record<string, string> = { 'สามชั้นพิเศษ': 'สามชั้น', 'ไหล่พิเศษ': 'ไหล่', 'สะโพกพิเศษ': 'สะโพก' }
+        const mapped  = stationMap[station] ?? station
         return prodMatches.some(p => {
           const ps = String(p['จุดงาน'] ?? '').trim()
           return ps === mapped || ps === station
