@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     wmToday, wmHist,
     lotusToday, lotusHist,
     makroToday, makroHist,
-    prevAssigned,
+    { data: prevAssigned },
     { data: plan100 },
     { data: pickingUnit },
   ] = await Promise.all([
