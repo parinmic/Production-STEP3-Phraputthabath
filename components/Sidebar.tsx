@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -283,6 +283,16 @@ export default function Sidebar() {
               </Link>
             </div>
           )}
+
+          <p className={sectionCls}>Admin</p>
+          <div className={dividerCls} />
+          <Link href="/admin/production-plan"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/admin/production-plan')}`}
+            title="จัดการแผนผลิต">
+            <ShieldAlert size={18} className="shrink-0" />
+            <span className={labelCls}>จัดการแผนผลิต</span>
+          </Link>
+
         </nav>
 
         <div className={`px-6 py-4 border-t border-gray-700 text-gray-500 text-xs ${collapsed ? 'md:hidden' : ''}`}>

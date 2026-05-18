@@ -1,0 +1,424 @@
+'use client'
+import { useState, useEffect, useCallback } from 'react'
+import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle } from 'lucide-react'
+
+const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
+const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
+const STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่']
+const CHANNELS = ['Makro', 'Wet Market', 'LOTUS']
+
+const PERIOD_COLOR: Record<string, string> = {
+  เช้า: 'bg-blue-100 text-blue-700',
+  บ่าย: 'bg-orange-100 text-orange-700',
+  ค่ำ:  'bg-purple-100 text-purple-700',
+}
+const STATION_COLOR: Record<string, string> = {
+  สามชั้น: 'bg-blue-50 text-blue-700',
+  สะโพก:   'bg-orange-50 text-orange-700',
+  ไหล่:    'bg-green-50 text-green-700',
+}
+
+interface Row {
+  id: string
+  production_date: string
+  table_name: string
+  worker_code: string
+  worker_name: string
+  sku: string
+  sku_name: string | null
+  target_quantity: number
+  unit: string
+  period: string
+  deadline_time: string | null
+  status: string
+  channel: string | null
+  seq: number | null
+}
+
+const EMPTY_FORM = {
+  production_date: '',
+  table_name: 'สามชั้น',
+  worker_code: '',
+  worker_name: '',
+  sku: '',
+  sku_name: '',
+  target_quantity: '',
+  unit: 'กก.',
+  period: 'เช้า',
+  channel: 'Makro',
+  status: 'รอดำเนินการ',
+  deadline_time: '',
+}
+
+export default function AdminProductionPlanPage() {
+  const today = new Date().toISOString().split('T')[0]
+  const [date, setDate]           = useState(today)
+  const [filterPeriod, setFilter] = useState<string>('all')
+  const [rows, setRows]           = useState<Row[]>([])
+  const [loading, setLoading]     = useState(false)
+  const [selected, setSelected]   = useState<Set<string>>(new Set())
+  const [showAdd, setShowAdd]     = useState(false)
+  const [form, setForm]           = useState({ ...EMPTY_FORM, production_date: today })
+  const [saving, setSaving]       = useState(false)
+  const [msg, setMsg]             = useState<{ ok: boolean; text: string } | null>(null)
+  const [confirmBulk, setConfirmBulk] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setSelected(new Set())
+    try {
+      const qs = new URLSearchParams({ date })
+      if (filterPeriod !== 'all') qs.set('period', filterPeriod)
+      const r = await fetch(`/api/admin/production-plan?${qs}`)
+      const j = await r.json()
+      setRows(j.data ?? [])
+    } finally {
+      setLoading(false)
+    }
+  }, [date, filterPeriod])
+
+  useEffect(() => { load() }, [load])
+
+  const flash = (ok: boolean, text: string) => {
+    setMsg({ ok, text })
+    setTimeout(() => setMsg(null), 4000)
+  }
+
+  const deleteIds = async (ids: string[]) => {
+    const r = await fetch('/api/admin/production-plan', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    const j = await r.json()
+    if (j.error) { flash(false, j.error); return }
+    flash(true, `ลบ ${j.deleted} รายการแล้ว`)
+    load()
+  }
+
+  const deletePeriod = async (period: string) => {
+    const r = await fetch('/api/admin/production-plan', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, period }),
+    })
+    const j = await r.json()
+    if (j.error) { flash(false, j.error); return }
+    flash(true, `ลบ ${PERIOD_PHASE[period]} (${period}) ทั้งหมด ${j.deleted} รายการแล้ว`)
+    setConfirmBulk(null)
+    load()
+  }
+
+  const handleAdd = async () => {
+    setSaving(true)
+    try {
+      const r = await fetch('/api/admin/production-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          target_quantity: Number(form.target_quantity),
+          deadline_time: form.deadline_time || null,
+          sku_name: form.sku_name || null,
+          worker_code: form.worker_code || '-',
+          worker_name: form.worker_name || '-',
+        }),
+      })
+      const j = await r.json()
+      if (j.error) { flash(false, j.error); return }
+      flash(true, 'เพิ่มรายการสำเร็จ')
+      setShowAdd(false)
+      setForm({ ...EMPTY_FORM, production_date: date })
+      load()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selected.size === rows.length) setSelected(new Set())
+    else setSelected(new Set(rows.map(r => r.id)))
+  }
+
+  const displayed = rows
+  const byPeriod = PERIODS.reduce((acc, p) => {
+    acc[p] = rows.filter(r => r.period === p)
+    return acc
+  }, {} as Record<string, Row[]>)
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Admin — แผนผลิต</h1>
+        <p className="text-gray-500 mt-1">เพิ่ม / ลบ รายการใน production_assignments</p>
+      </div>
+
+      {msg && (
+        <div className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium border ${msg.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+          {msg.ok ? '✓' : '✗'} {msg.text}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="card flex flex-wrap items-center gap-3">
+        <Calendar size={18} className="text-blue-500 shrink-0" />
+        <label className="text-sm font-medium text-gray-700">วันที่</label>
+        <input type="date" value={date} onChange={e => { setDate(e.target.value); setForm(f => ({ ...f, production_date: e.target.value })) }}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
+          {(['all', ...PERIODS] as string[]).map(p => (
+            <button key={p} onClick={() => setFilter(p)}
+              className={`px-3 py-2 font-medium transition-colors ${filterPeriod === p ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              {p === 'all' ? 'ทั้งหมด' : `${p} (${PERIOD_PHASE[p]})`}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={load} disabled={loading}
+          className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีโหลด
+        </button>
+
+        <button onClick={() => { setForm({ ...EMPTY_FORM, production_date: date }); setShowAdd(true) }}
+          className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <Plus size={16} />เพิ่มรายการ
+        </button>
+      </div>
+
+      {/* Bulk delete by period */}
+      {filterPeriod === 'all' && (
+        <div className="flex flex-wrap gap-3">
+          {PERIODS.filter(p => byPeriod[p]?.length > 0).map(p => (
+            <button key={p} onClick={() => setConfirmBulk(p)}
+              className="flex items-center gap-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-sm font-medium">
+              <Trash2 size={14} />ลบ {PERIOD_PHASE[p]} ({byPeriod[p].length} rows)
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Selected delete bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm">
+          <span className="font-medium text-yellow-800">เลือก {selected.size} รายการ</span>
+          <button onClick={() => deleteIds(Array.from(selected))}
+            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium">
+            <Trash2 size={14} />ลบที่เลือก
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-gray-500 hover:text-gray-700 ml-auto">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="card text-center py-12 text-gray-400">
+          <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
+          <p>กำลังโหลด...</p>
+        </div>
+      ) : displayed.length === 0 ? (
+        <div className="card text-center py-12 text-gray-400">ไม่พบรายการ</div>
+      ) : (
+        <div className="card overflow-x-auto p-0">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-3 py-3 w-8">
+                  <input type="checkbox" checked={selected.size === rows.length && rows.length > 0}
+                    onChange={toggleAll} className="rounded" />
+                </th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Phase</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Station</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">SKU</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">ชื่อสินค้า</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Channel</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">พนักงาน</th>
+                <th className="px-3 py-3 text-right font-semibold text-gray-700">เป้า (กก.)</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">สถานะ</th>
+                <th className="px-3 py-3 w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {displayed.map(r => (
+                <tr key={r.id} className={`hover:bg-gray-50 ${selected.has(r.id) ? 'bg-yellow-50' : ''}`}>
+                  <td className="px-3 py-2.5 text-center">
+                    <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} className="rounded" />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${PERIOD_COLOR[r.period] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {r.period}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLOR[r.table_name] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {r.table_name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs text-gray-600">{r.sku}</td>
+                  <td className="px-3 py-2.5 text-gray-800">{r.sku_name ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-600 text-xs">{r.channel ?? '—'}</td>
+                  <td className="px-3 py-2.5 text-gray-700">{r.worker_name}</td>
+                  <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                    {Number(r.target_quantity).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${r.status === 'เสร็จแล้ว' ? 'bg-green-100 text-green-700' : r.status === 'กำลังผลิต' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    <button onClick={() => deleteIds([r.id])}
+                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t border-gray-200">
+              <tr>
+                <td colSpan={7} className="px-3 py-3 text-right text-sm font-semibold text-gray-600">รวม {displayed.length} รายการ</td>
+                <td className="px-3 py-3 text-right font-bold text-gray-900">
+                  {displayed.reduce((s, r) => s + Number(r.target_quantity), 0).toLocaleString()}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {/* Confirm bulk delete modal */}
+      {confirmBulk && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3 text-red-600">
+              <AlertTriangle size={24} />
+              <h2 className="text-lg font-bold">ยืนยันการลบ?</h2>
+            </div>
+            <p className="text-gray-600 text-sm">
+              ลบแผนผลิต <strong>{PERIOD_PHASE[confirmBulk]} ({confirmBulk})</strong> วันที่ {date} ทั้งหมด {byPeriod[confirmBulk]?.length} รายการ
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmBulk(null)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+              <button onClick={() => deletePeriod(confirmBulk)}
+                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+                ลบทั้งหมด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add modal */}
+      {showAdd && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">เพิ่มรายการแผนผลิต</h2>
+              <button onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">วันที่ผลิต</label>
+                <input type="date" value={form.production_date}
+                  onChange={e => setForm(f => ({ ...f, production_date: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Phase (รอบ)</label>
+                <select value={form.period} onChange={e => setForm(f => ({ ...f, period: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {PERIODS.map(p => <option key={p} value={p}>{p} ({PERIOD_PHASE[p]})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Station</label>
+                <select value={form.table_name} onChange={e => setForm(f => ({ ...f, table_name: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">SKU</label>
+                <input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
+                  placeholder="23086965" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Channel</label>
+                <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="col-span-2">
+                <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อสินค้า (ไม่บังคับ)</label>
+                <input value={form.sku_name} onChange={e => setForm(f => ({ ...f, sku_name: e.target.value }))}
+                  placeholder="สะโพกแต่งตัดชิ้น SIS กก.ละ" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">เป้าหมาย (กก.)</label>
+                <input type="number" min="0" value={form.target_quantity}
+                  onChange={e => setForm(f => ({ ...f, target_quantity: e.target.value }))}
+                  placeholder="500" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">สถานะ</label>
+                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option>รอดำเนินการ</option>
+                  <option>กำลังผลิต</option>
+                  <option>เสร็จแล้ว</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">ชื่อพนักงาน (ไม่บังคับ)</label>
+                <input value={form.worker_name} onChange={e => setForm(f => ({ ...f, worker_name: e.target.value }))}
+                  placeholder="สมชาย ใจดี" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">รหัสพนักงาน (ไม่บังคับ)</label>
+                <input value={form.worker_code} onChange={e => setForm(f => ({ ...f, worker_code: e.target.value }))}
+                  placeholder="EMP001" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button onClick={() => setShowAdd(false)}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+              <button onClick={handleAdd} disabled={saving || !form.sku || !form.target_quantity}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">
+                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
