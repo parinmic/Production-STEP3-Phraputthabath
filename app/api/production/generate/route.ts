@@ -375,6 +375,7 @@ export async function POST(req: NextRequest) {
       { data: jobAssignRaw },
       prevAssignedRaw,
       { data: plan100Raw },
+      { data: pickingUnitRaw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
         .select('emp_id, name, work_station, shift')
@@ -434,6 +435,7 @@ export async function POST(req: NextRequest) {
             .select('sap, product_name, weight_total')
             .eq('plan_date', productionDate)
         : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
+      supabase.from('picking_unit_master').select('sap, weight_per_bag'),
     ])
 
     // Merge workforce: Phase 2/3 = 1300 overrides 0800
@@ -474,6 +476,24 @@ export async function POST(req: NextRequest) {
           success: false,
           message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
         }, { status: 400 })
+    }
+
+    // ------ Bag size map ------
+    const bagSizeMap = new Map<string, number>()
+    for (const r of (pickingUnitRaw ?? []) as { sap: string; weight_per_bag: number }[]) {
+      const sap = String(r.sap ?? '').trim()
+      const wpb = Number(r.weight_per_bag ?? 0)
+      if (sap && wpb > 0) {
+        bagSizeMap.set(sap, wpb)
+        bagSizeMap.set(sap.replace(/^0+/, ''), wpb)
+      }
+    }
+
+    // Round qty up to the nearest whole bag; returns qty unchanged if no bag size defined
+    const roundUpToBag = (sku: string, qty: number): number => {
+      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
+      if (!wpb || wpb <= 0) return qty
+      return Math.ceil(qty / wpb) * wpb
     }
 
     // ------ Parse master data ------
@@ -704,7 +724,8 @@ export async function POST(req: NextRequest) {
     // ------ Assign workers ------
     const assignments: Record<string, unknown>[] = []
 
-    for (const { sku, skuName, targetQty, channel } of assignList) {
+    for (const { sku, skuName, targetQty: rawQty, channel } of assignList) {
+      const targetQty = roundUpToBag(sku, rawQty)
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
 

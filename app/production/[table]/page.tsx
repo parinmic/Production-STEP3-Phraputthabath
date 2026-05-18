@@ -137,7 +137,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
-  const bags = Math.round(qty / wpb)
+  const bags = Math.ceil(qty / wpb)
   return bags > 0 ? `${bags} ถุง · ` : ''
 }
 
