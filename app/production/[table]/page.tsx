@@ -750,19 +750,15 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
               <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
                 {hist.map((entry, idx) => {
-                  const isEdited = entry.updated_at !== null
-                  const ts = isEdited ? entry.updated_at! : entry.created_at
-                  const timeLabel = ts
-                    ? new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })
+                  const timeLabel = entry.created_at
+                    ? new Date(entry.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })
                     : null
                   return (
                   <div key={entry.id} className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
                       {timeLabel && (
-                        <span className="text-[10px] text-gray-300">
-                          {isEdited ? `แก้ไข ${timeLabel}` : timeLabel}
-                        </span>
+                        <span className="text-[10px] text-gray-300">{timeLabel}</span>
                       )}
                     </div>
                     {editMode ? (
