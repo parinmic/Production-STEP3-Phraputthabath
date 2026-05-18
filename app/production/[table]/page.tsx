@@ -577,7 +577,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number> }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -586,8 +586,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     for (const task of tasks) {
       const dur = taskDurMins(task)
       cur = wallClockFinish(cur, dur)
-      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0 }
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {} }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
+      skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
     }
   }
 
@@ -600,7 +601,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-    return s + (wpb && wpb > 0 ? Math.ceil(skuStats[sku].totalQty / wpb) : 0)
+    if (!wpb || wpb <= 0) return s
+    // คำนวณถุงแยกตาม period แล้วบวกกัน ให้ตรงกับที่แสดงทีละ Phase
+    return s + Object.values(skuStats[sku].qtyByPeriod)
+      .reduce((sum, qty) => sum + Math.ceil(qty / wpb), 0)
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
@@ -648,7 +652,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         {sortedSkus.map((sku, i) => {
           const stat    = skuStats[sku]
           const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags    = wpb && wpb > 0 ? Math.ceil(stat.totalQty / wpb) : null
+          const bags    = wpb && wpb > 0
+            ? Object.values(stat.qtyByPeriod).reduce((s, q) => s + Math.ceil(q / wpb), 0)
+            : null
           const total   = skuTotal(sku)
           const hasData = total > 0
 
