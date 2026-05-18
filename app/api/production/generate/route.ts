@@ -574,6 +574,9 @@ export async function POST(req: NextRequest) {
 
     interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
 
+    // SKU ที่มี Makro order วันนี้ → ไม่นับ BL3 จาก Wet Market / LOTUS
+    const makroSkuSet = new Set(Object.keys(makroMap))
+
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
       if (isPhase2) {
@@ -586,15 +589,17 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 × %Variance
+      // Phase 1: Avg BL3 × %Variance (ข้าม SKU ที่มี Makro order วันนี้)
       const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
-      return Array.from(avgWM.entries()).map(([sku, avg]) => {
-        const isShared = lotusHistSkus.has(sku)
-        const lotusBL3 = avgLotus.get(sku) ?? 0
-        const variance = getWetMarketVariance(isShared, avg, avg, lotusBL3)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
-      }).filter(s => s.targetQty > 0)
+      return Array.from(avgWM.entries())
+        .filter(([sku]) => !makroSkuSet.has(sku))
+        .map(([sku, avg]) => {
+          const isShared = lotusHistSkus.has(sku)
+          const lotusBL3 = avgLotus.get(sku) ?? 0
+          const variance = getWetMarketVariance(isShared, avg, avg, lotusBL3)
+          return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
+        }).filter(s => s.targetQty > 0)
     }
 
     const buildMakroTargets = (): SkuTarget[] => {
@@ -629,11 +634,13 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3
+      // Phase 1: Avg BL3 (ข้าม SKU ที่มี Makro order วันนี้)
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
-      return Array.from(avgLotus.entries()).map(([sku, avg]) => ({
-        sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
-      })).filter(s => s.targetQty > 0)
+      return Array.from(avgLotus.entries())
+        .filter(([sku]) => !makroSkuSet.has(sku))
+        .map(([sku, avg]) => ({
+          sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
+        })).filter(s => s.targetQty > 0)
     }
 
     const channelTargets: Record<string, SkuTarget[]> = {
