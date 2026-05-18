@@ -1145,6 +1145,8 @@ export default function TablePage() {
   const [genResult, setGenResult]     = useState<{ success: boolean; message: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
+  const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
+  const [genSupResult, setGenSupResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1205,6 +1207,20 @@ export default function TablePage() {
     if (selectedPhase === 'all') return
     if (selectedPhase === 1) { generate('plan'); return }
     setShowGenModal(true)
+  }
+
+  const generateSupplementary = async (slot: number) => {
+    setGenSupSlot(slot); setGenSupResult(null)
+    try {
+      const res = await fetch('/api/production/generate-supplementary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, slot }),
+      })
+      const result = await res.json()
+      setGenSupResult(result)
+      if (result.success) loadData(date)
+    } catch { setGenSupResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
+    setGenSupSlot(null)
   }
 
   if (!cfg) return <p className="text-red-500">ไม่พบ Station</p>
@@ -1321,6 +1337,28 @@ export default function TablePage() {
         </div>
       </div>
 
+
+      {/* Supplementary plan generate */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">แผนเสริม</span>
+        {[1, 2, 3].map(slot => (
+          <button key={slot}
+            onClick={() => generateSupplementary(slot)}
+            disabled={genSupSlot !== null}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors disabled:opacity-50">
+            <Zap size={12} />
+            {genSupSlot === slot ? 'กำลังสร้าง...' : `สร้างเสริม ${slot}`}
+          </button>
+        ))}
+        {genSupResult && (
+          <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs border ${genSupResult.success
+            ? 'bg-green-50 text-green-700 border-green-200'
+            : 'bg-red-50 text-red-700 border-red-200'}`}>
+            {genSupResult.success ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+            {genSupResult.message}
+          </div>
+        )}
+      </div>
 
       {/* Empty / loading */}
       {loading && (
