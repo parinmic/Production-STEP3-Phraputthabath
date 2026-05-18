@@ -361,7 +361,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
       </div>
 
       {/* Chart body */}
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-gray-50 relative">
         
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
@@ -418,23 +418,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                         opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }} />
                   )
                 })}
-                {BREAKS.map(([bs, be]) => {
-                  if (bs >= chartEnd || be <= chartStart) return null
-                  return (
-                    <div key={bs} className="absolute top-0 bottom-0 z-10 pointer-events-none"
-                      style={{
-                        left: `${Math.max(pct(bs), 0)}%`,
-                        width: `${Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0)}%`,
-                        backgroundColor: 'rgba(229,231,235,0.92)',
-                        borderLeft: '1px dashed #d1d5db',
-                        borderRight: '1px dashed #d1d5db',
-                      }} />
-                  )
-                })}
-                {nowMins >= chartStart && nowMins <= chartEnd && (
-                  <div className="absolute top-0 bottom-0 w-px bg-red-400 z-20 pointer-events-none"
-                    style={{ left: `${pct(nowMins)}%` }} />
-                )}
               </div>
 
               {/* Countdown */}
@@ -451,6 +434,29 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
             </div>
           )
         })}
+
+        {/* Break bands — full-height, above rows (z-20 > row z-10), semi-transparent */}
+        {BREAKS.flatMap(([bs, be]) => {
+          if (bs >= chartEnd || be <= chartStart) return []
+          const l = pct(Math.max(bs, chartStart)) / 100
+          const w = Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0) / 100
+          return [
+            <div key={`${bs}-m`} className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-20"
+              style={{ left: `calc(7rem + (100% - 13rem) * ${l})`, width: `calc((100% - 13rem) * ${w})`,
+                backgroundColor: 'rgba(209,213,219,0.75)', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
+            <div key={`${bs}-d`} className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
+              style={{ left: `calc(11rem + (100% - 19rem) * ${l})`, width: `calc((100% - 19rem) * ${w})`,
+                backgroundColor: 'rgba(209,213,219,0.75)', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
+          ]
+        })}
+
+        {/* Current time line — full-height, highest z-index */}
+        {nowMins >= chartStart && nowMins <= chartEnd && <>
+          <div className="sm:hidden absolute top-0 bottom-0 w-px bg-red-400 pointer-events-none z-30"
+            style={{ left: `calc(7rem + (100% - 13rem) * ${pct(nowMins) / 100})` }} />
+          <div className="hidden sm:block absolute top-0 bottom-0 w-px bg-red-400 pointer-events-none z-30"
+            style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})` }} />
+        </>}
       </div>
     </div>
   )
