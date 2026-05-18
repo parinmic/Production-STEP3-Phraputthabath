@@ -107,12 +107,30 @@ export default function SupplementaryPlanPage() {
             <Truck size={18} className="text-blue-500 shrink-0" />
             <span className="text-sm font-semibold">เวลาโหลดจ่าย</span>
           </div>
-          <input
-            type="time"
-            value={loadingTime}
-            onChange={e => setLoadingTime(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
-          />
+          <div className="flex items-center gap-1">
+            <select
+              value={loadingTime ? loadingTime.split(':')[0] : ''}
+              onChange={e => setLoadingTime(e.target.value ? `${e.target.value}:${loadingTime ? loadingTime.split(':')[1] : '00'}` : '')}
+              className="border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-20"
+            >
+              <option value="">ชม.</option>
+              {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+            <span className="text-gray-500 font-semibold">:</span>
+            <select
+              value={loadingTime ? loadingTime.split(':')[1] : ''}
+              onChange={e => setLoadingTime(loadingTime ? `${loadingTime.split(':')[0]}:${e.target.value}` : '')}
+              disabled={!loadingTime || !loadingTime.split(':')[0]}
+              className="border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-20 disabled:opacity-50"
+            >
+              {['00', '15', '30', '45'].map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <span className="text-xs text-gray-400 ml-1">น.</span>
+          </div>
           {loadingTime && (
             <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm">
               <Clock size={15} className="text-orange-500 shrink-0" />
