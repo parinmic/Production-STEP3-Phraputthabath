@@ -443,10 +443,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
           return [
             <div key={`${bs}-m`} className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-20"
               style={{ left: `calc(7rem + (100% - 13rem) * ${l})`, width: `calc((100% - 13rem) * ${w})`,
-                backgroundColor: 'rgba(209,213,219,0.75)', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
+                backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
             <div key={`${bs}-d`} className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
               style={{ left: `calc(11rem + (100% - 19rem) * ${l})`, width: `calc((100% - 19rem) * ${w})`,
-                backgroundColor: 'rgba(209,213,219,0.75)', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
+                backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
           ]
         })}
 
