@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
     sku_name: string | null; total_qty: number
   }>()
   for (const r of data ?? []) {
-    const key = `${r.period}||${r.table_name}||${r.sku}`
+    const normSku = r.sku.replace(/^0+/, '') || r.sku
+    const key = `${r.period}||${r.table_name}||${normSku}`
     const cur = map.get(key)
     if (cur) {
       cur.total_qty += Number(r.target_quantity)
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
       map.set(key, {
         period:     r.period,
         table_name: r.table_name,
-        sku:        r.sku,
+        sku:        normSku,
         sku_name:   r.sku_name ?? null,
         total_qty:  Number(r.target_quantity),
       })
@@ -58,13 +59,14 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'ต้องระบุ date, period, table_name, sku, new_qty' }, { status: 400 })
 
   // Fetch existing rows for this SKU + station + channel
+  const normSku = String(sku).replace(/^0+/, '') || sku
   const { data: rows, error: fetchErr } = await supabase
     .from('production_assignments')
     .select('id, target_quantity')
     .eq('production_date', date)
     .eq('period', period)
     .eq('table_name', table_name)
-    .eq('sku', sku)
+    .or(`sku.eq.${normSku},sku.like.%${normSku}`)
 
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
   if (!rows?.length) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
