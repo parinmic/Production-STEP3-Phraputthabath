@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -186,6 +186,7 @@ export default function Sidebar() {
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
             { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
             { href: '/quota',              icon: BarChart3,      label: 'Quota ช่องทางขาย' },
+            { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้' },
           ].map((m) => (

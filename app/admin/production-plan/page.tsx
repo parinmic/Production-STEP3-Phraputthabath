@@ -7,11 +7,6 @@ const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่�
 const STATIONS  = ['สามชั้น', 'สะโพก', 'ไหล่']
 const CHANNELS  = ['Makro', 'Wet Market', 'LOTUS']
 
-const PERIOD_COLOR: Record<string, string> = {
-  เช้า: 'bg-blue-100 text-blue-700',
-  บ่าย: 'bg-orange-100 text-orange-700',
-  ค่ำ:  'bg-purple-100 text-purple-700',
-}
 const STATION_COLOR: Record<string, string> = {
   สามชั้น: 'bg-blue-50 text-blue-700',
   สะโพก:   'bg-orange-50 text-orange-700',
@@ -19,7 +14,6 @@ const STATION_COLOR: Record<string, string> = {
 }
 
 interface SkuRow {
-  period: string
   table_name: string
   sku: string
   sku_name: string | null
@@ -39,7 +33,6 @@ const EMPTY_FORM = {
 export default function AdminProductionPlanPage() {
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate]           = useState(today)
-  const [filterPeriod, setFilter] = useState<string>('all')
   const [rows, setRows]           = useState<SkuRow[]>([])
   const [loading, setLoading]     = useState(false)
   const [showAdd, setShowAdd]     = useState(false)
@@ -47,25 +40,22 @@ export default function AdminProductionPlanPage() {
   const [saving, setSaving]       = useState(false)
   const [msg, setMsg]             = useState<{ ok: boolean; text: string } | null>(null)
   const [confirmBulk, setConfirmBulk] = useState<string | null>(null)
-  // inline edit state: key = `period||table_name||sku||channel`
   const [editKey, setEditKey]     = useState<string | null>(null)
   const [editVal, setEditVal]     = useState<string>('')
 
-  const rowKey = (r: SkuRow) => `${r.period}||${r.table_name}||${r.sku}`
+  const rowKey = (r: SkuRow) => `${r.table_name}||${r.sku}`
 
   const load = useCallback(async () => {
     setLoading(true)
     setEditKey(null)
     try {
-      const qs = new URLSearchParams({ date })
-      if (filterPeriod !== 'all') qs.set('period', filterPeriod)
-      const r = await fetch(`/api/admin/production-plan?${qs}`)
+      const r = await fetch(`/api/admin/production-plan?date=${date}`)
       const j = await r.json()
       setRows(j.data ?? [])
     } finally {
       setLoading(false)
     }
-  }, [date, filterPeriod])
+  }, [date])
 
   useEffect(() => { load() }, [load])
 
@@ -85,7 +75,7 @@ export default function AdminProductionPlanPage() {
     const res = await fetch('/api/admin/production-plan', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, period: r.period, table_name: r.table_name, sku: r.sku, new_qty }),
+      body: JSON.stringify({ date, table_name: r.table_name, sku: r.sku, new_qty }),
     })
     const j = await res.json()
     if (j.error) { flash(false, j.error); return }
@@ -130,12 +120,6 @@ export default function AdminProductionPlanPage() {
     }
   }
 
-  const displayed = rows
-  const byPeriod  = PERIODS.reduce((acc, p) => {
-    acc[p] = rows.filter(r => r.period === p)
-    return acc
-  }, {} as Record<string, SkuRow[]>)
-
   return (
     <div className="space-y-6">
       <div>
@@ -157,15 +141,6 @@ export default function AdminProductionPlanPage() {
           onChange={e => { setDate(e.target.value); setForm(f => ({ ...f, production_date: e.target.value })) }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
 
-        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
-          {(['all', ...PERIODS] as string[]).map(p => (
-            <button key={p} onClick={() => setFilter(p)}
-              className={`px-3 py-2 font-medium transition-colors ${filterPeriod === p ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-              {p === 'all' ? 'ทั้งหมด' : `${p} (${PERIOD_PHASE[p]})`}
-            </button>
-          ))}
-        </div>
-
         <button onClick={load} disabled={loading}
           className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีโหลด
@@ -178,16 +153,14 @@ export default function AdminProductionPlanPage() {
       </div>
 
       {/* Delete phase buttons */}
-      {filterPeriod === 'all' && (
-        <div className="flex flex-wrap gap-3">
-          {PERIODS.filter(p => byPeriod[p]?.length > 0).map(p => (
-            <button key={p} onClick={() => setConfirmBulk(p)}
-              className="flex items-center gap-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-sm font-medium">
-              <Trash2 size={14} />ลบ {PERIOD_PHASE[p]} ทั้งหมด
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-3">
+        {PERIODS.map(p => (
+          <button key={p} onClick={() => setConfirmBulk(p)}
+            className="flex items-center gap-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-sm font-medium">
+            <Trash2 size={14} />ลบ {PERIOD_PHASE[p]} ทั้งหมด
+          </button>
+        ))}
+      </div>
 
       {/* Table */}
       {loading ? (
@@ -195,14 +168,13 @@ export default function AdminProductionPlanPage() {
           <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
           <p>กำลังโหลด...</p>
         </div>
-      ) : displayed.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="card text-center py-12 text-gray-400">ไม่พบรายการ</div>
       ) : (
         <div className="card overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Phase</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">SKU</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อสินค้า</th>
@@ -211,16 +183,11 @@ export default function AdminProductionPlanPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {displayed.map(r => {
+              {rows.map(r => {
                 const k = rowKey(r)
                 const isEditing = editKey === k
                 return (
                   <tr key={k} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${PERIOD_COLOR[r.period] ?? 'bg-gray-100 text-gray-700'}`}>
-                        {r.period}
-                      </span>
-                    </td>
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLOR[r.table_name] ?? 'bg-gray-100 text-gray-700'}`}>
                         {r.table_name}
@@ -270,11 +237,11 @@ export default function AdminProductionPlanPage() {
             </tbody>
             <tfoot className="bg-gray-50 border-t border-gray-200">
               <tr>
-                <td colSpan={4} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                  รวม {displayed.length} SKU
+                <td colSpan={3} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                  รวม {rows.length} SKU
                 </td>
                 <td className="px-4 py-3 text-right font-bold text-gray-900">
-                  {Math.round(displayed.reduce((s, r) => s + r.total_qty, 0)).toLocaleString()}
+                  {Math.round(rows.reduce((s, r) => s + r.total_qty, 0)).toLocaleString()}
                 </td>
                 <td />
               </tr>
@@ -292,7 +259,7 @@ export default function AdminProductionPlanPage() {
               <h2 className="text-lg font-bold">ยืนยันการลบ?</h2>
             </div>
             <p className="text-gray-600 text-sm">
-              ลบแผนผลิต <strong>{PERIOD_PHASE[confirmBulk]} ({confirmBulk})</strong> วันที่ {date} ทั้งหมด {byPeriod[confirmBulk]?.length} SKU
+              ลบแผนผลิต <strong>{PERIOD_PHASE[confirmBulk]} ({confirmBulk})</strong> วันที่ {date} ทั้งหมด
             </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmBulk(null)}

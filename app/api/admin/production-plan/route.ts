@@ -21,20 +21,19 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Aggregate by period + table_name + sku (รวม channel)
+  // Aggregate by table_name + sku (รวมทุก phase และ channel)
   const map = new Map<string, {
-    period: string; table_name: string; sku: string
+    table_name: string; sku: string
     sku_name: string | null; total_qty: number
   }>()
   for (const r of data ?? []) {
     const normSku = r.sku.replace(/^0+/, '') || r.sku
-    const key = `${r.period}||${r.table_name}||${normSku}`
+    const key = `${r.table_name}||${normSku}`
     const cur = map.get(key)
     if (cur) {
       cur.total_qty += Number(r.target_quantity)
     } else {
       map.set(key, {
-        period:     r.period,
         table_name: r.table_name,
         sku:        normSku,
         sku_name:   r.sku_name ?? null,
@@ -43,28 +42,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const sorted = Array.from(map.values()).sort((a, b) => {
-    const si = STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
-    if (si !== 0) return si
-    return PERIODS.indexOf(a.period) - PERIODS.indexOf(b.period)
-  })
+  const sorted = Array.from(map.values()).sort((a, b) =>
+    STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
+  )
   return NextResponse.json({ data: sorted })
 }
 
 // PATCH /api/admin/production-plan
-// body: { date, period, table_name, sku, channel, new_qty }
+// body: { date, table_name, sku, new_qty }
 export async function PATCH(req: NextRequest) {
-  const { date, period, table_name, sku, channel, new_qty } = await req.json()
-  if (!date || !period || !table_name || !sku || new_qty == null)
-    return NextResponse.json({ error: 'ต้องระบุ date, period, table_name, sku, new_qty' }, { status: 400 })
+  const { date, table_name, sku, new_qty } = await req.json()
+  if (!date || !table_name || !sku || new_qty == null)
+    return NextResponse.json({ error: 'ต้องระบุ date, table_name, sku, new_qty' }, { status: 400 })
 
-  // Fetch existing rows for this SKU + station + channel
+  // Fetch all rows for this SKU + station (all phases + channels)
   const normSku = String(sku).replace(/^0+/, '') || sku
   const { data: rows, error: fetchErr } = await supabase
     .from('production_assignments')
     .select('id, target_quantity')
     .eq('production_date', date)
-    .eq('period', period)
     .eq('table_name', table_name)
     .or(`sku.eq.${normSku},sku.like.%${normSku}`)
 
