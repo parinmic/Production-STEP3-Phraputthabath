@@ -22,11 +22,14 @@ function toISODate(val: unknown): string | null {
   return null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const slot = req.nextUrl.searchParams.get('slot') ?? '1'
+  const tableName = `production_plan_supplementary_${slot}`
+
   const { data: logs } = await supabase
     .from('upload_log')
     .select('source_file, record_count, uploaded_at')
-    .eq('table_name', 'production_plan_supplementary')
+    .eq('table_name', tableName)
     .order('uploaded_at', { ascending: false })
     .limit(20)
 
@@ -35,6 +38,7 @@ export async function GET() {
       .from('production_plan_supplementary')
       .select('loading_time, deadline_time')
       .eq('source_file', r.source_file)
+      .eq('slot', slot)
       .limit(1)
       .maybeSingle()
     return {
@@ -51,7 +55,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { rows, filename, loading_time, deadline_time } = await req.json()
+    const { rows, filename, loading_time, deadline_time, slot = 1 } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
     if (!loading_time) return NextResponse.json({ success: false, message: 'กรุณาระบุเวลาโหลดจ่าย' }, { status: 400 })
 
@@ -88,7 +92,7 @@ export async function POST(req: NextRequest) {
           delivery_date = toISODate(r['วันที่ส่ง'] ?? r['delivery_date'])
         }
 
-        return { sku, sku_name, quantity, order_date, delivery_date, loading_time, deadline_time, source_file: filename ?? 'unknown' }
+        return { slot: String(slot), sku, sku_name, quantity, order_date, delivery_date, loading_time, deadline_time, source_file: filename ?? 'unknown' }
       })
       .filter((r: { sku: string; quantity: number }) => r.sku && r.quantity > 0)
 
@@ -99,14 +103,18 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Delete existing records with same source_file before re-inserting
-    await supabase.from('production_plan_supplementary').delete().eq('source_file', filename ?? 'unknown')
+    await supabase
+      .from('production_plan_supplementary')
+      .delete()
+      .eq('source_file', filename ?? 'unknown')
+      .eq('slot', String(slot))
 
     const { error } = await supabase.from('production_plan_supplementary').insert(records)
     if (error) throw error
 
+    const tableName = `production_plan_supplementary_${slot}`
     await supabase.from('upload_log').insert({
-      table_name:   'production_plan_supplementary',
+      table_name:   tableName,
       source_file:  filename ?? 'unknown',
       record_count: records.length,
     })
@@ -124,9 +132,11 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const sourceFile = req.nextUrl.searchParams.get('file')
+    const slot       = req.nextUrl.searchParams.get('slot') ?? '1'
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
-    await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
-    await supabase.from('upload_log').delete().eq('table_name', 'production_plan_supplementary').eq('source_file', sourceFile)
+    const tableName = `production_plan_supplementary_${slot}`
+    await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile).eq('slot', slot)
+    await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })

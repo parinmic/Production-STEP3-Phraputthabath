@@ -19,7 +19,13 @@ function addMinutes(time: string, delta: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
-export default function SupplementaryPlanPage() {
+const SLOT_COLORS = [
+  { border: 'border-teal-400',   badge: 'bg-teal-50 text-teal-700',   label: 'text-teal-700' },
+  { border: 'border-orange-400', badge: 'bg-orange-50 text-orange-700', label: 'text-orange-700' },
+  { border: 'border-purple-400', badge: 'bg-purple-50 text-purple-700', label: 'text-purple-700' },
+]
+
+function SlotUploader({ slot, color }: { slot: number; color: typeof SLOT_COLORS[number] }) {
   const [loadingTime, setLoadingTime] = useState('')
   const [status, setStatus]           = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
   const [message, setMessage]         = useState('')
@@ -31,16 +37,17 @@ export default function SupplementaryPlanPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const deadlineTime = loadingTime ? addMinutes(loadingTime, -30) : ''
+  const apiBase = `/api/upload-supplementary-plan?slot=${slot}`
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/upload-supplementary-plan')
+      const res = await fetch(apiBase)
       const data = await res.json()
       setHistory(data.uploads ?? [])
     } catch { /* silent */ }
   }
 
-  useEffect(() => { fetchHistory() }, [])
+  useEffect(() => { fetchHistory() }, [slot])
 
   const handleFile = async (file: File) => {
     setStatus('parsing'); setMessage(''); setPreview([]); setFilename(file.name); setCurrentFile(file)
@@ -62,7 +69,7 @@ export default function SupplementaryPlanPage() {
       const res = await fetch('/api/upload-supplementary-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, filename: currentFile.name, loading_time: loadingTime, deadline_time: deadlineTime }),
+        body: JSON.stringify({ rows, filename: currentFile.name, loading_time: loadingTime, deadline_time: deadlineTime, slot }),
       })
       const result = await res.json()
       setStatus(result.success ? 'success' : 'error')
@@ -81,7 +88,7 @@ export default function SupplementaryPlanPage() {
     if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
     setDeleting(sourceFile)
     try {
-      const res = await fetch(`/api/upload-supplementary-plan?file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
+      const res = await fetch(`/api/upload-supplementary-plan?slot=${slot}&file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.success) fetchHistory()
       else alert(data.message ?? 'ลบไม่สำเร็จ')
@@ -92,111 +99,96 @@ export default function SupplementaryPlanPage() {
   const cols = preview.length ? Object.keys(preview[0]) : []
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">แผนรอบเสริม</h1>
-        <p className="text-gray-500 mt-1 text-sm sm:text-base">
-          อัพโหลดแผนผลิตที่แทรกเข้ามา — ระบุเวลาโหลดจ่ายเพื่อคำนวณ deadline ผลิต (ก่อนโหลด 30 นาที)
-        </p>
-      </div>
+    <div className={`border-t-4 ${color.border} pt-1 space-y-4`}>
+      <h2 className={`text-base font-bold ${color.label} pt-3`}>แผนเสริม {slot}</h2>
 
-      {/* Loading time selector */}
-      <div className="card">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2 text-gray-700">
-            <Truck size={18} className="text-blue-500 shrink-0" />
-            <span className="text-sm font-semibold">เวลาโหลดจ่าย</span>
-          </div>
+      {/* Time selector */}
+      <div className="card py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Truck size={15} className="text-gray-500 shrink-0" />
+          <span className="text-xs font-semibold text-gray-600">เวลาโหลดจ่าย</span>
           <div className="flex items-center gap-1">
             <select
               value={loadingTime ? loadingTime.split(':')[0] : ''}
               onChange={e => setLoadingTime(e.target.value ? `${e.target.value}:${loadingTime ? loadingTime.split(':')[1] : '00'}` : '')}
-              className="border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-20"
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-16"
             >
-              <option value="">ชม.</option>
+              <option value="">--</option>
               {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
                 <option key={h} value={h}>{h}</option>
               ))}
             </select>
-            <span className="text-gray-500 font-semibold">:</span>
+            <span className="text-gray-400 font-semibold text-sm">:</span>
             <select
               value={loadingTime ? loadingTime.split(':')[1] : ''}
               onChange={e => setLoadingTime(loadingTime ? `${loadingTime.split(':')[0]}:${e.target.value}` : '')}
               disabled={!loadingTime || !loadingTime.split(':')[0]}
-              className="border border-gray-300 rounded-lg px-2 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-20 disabled:opacity-50"
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 w-16 disabled:opacity-50"
             >
               {['00', '15', '30', '45'].map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
-            <span className="text-xs text-gray-400 ml-1">น.</span>
+            <span className="text-xs text-gray-400">น.</span>
           </div>
           {loadingTime && (
-            <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm">
-              <Clock size={15} className="text-orange-500 shrink-0" />
-              <span className="text-orange-700">
-                ต้องผลิตเสร็จก่อน <strong>{deadlineTime} น.</strong>
-                <span className="text-orange-400 ml-1">(30 นาทีก่อนโหลด)</span>
-              </span>
-            </div>
-          )}
-          {!loadingTime && (
-            <p className="text-xs text-gray-400">* ต้องระบุก่อนอัพโหลดไฟล์</p>
+            <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded px-2 py-1">
+              <Clock size={11} />เสร็จก่อน <strong>{deadlineTime}</strong> น.
+            </span>
           )}
         </div>
       </div>
 
       {/* Drop zone */}
       <div
-        className="card border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors cursor-pointer text-center"
+        className="card border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors cursor-pointer text-center py-6"
         onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
         onDragOver={e => e.preventDefault()}
         onClick={() => inputRef.current?.click()}
       >
-        <Upload className="mx-auto text-gray-400 mb-3" size={40} />
-        <p className="font-medium text-gray-700">{filename || 'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
-        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv — รูปแบบเดียวกับไฟล์คำสั่งซื้อตลาดสด</p>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
+        <Upload className="mx-auto text-gray-400 mb-2" size={32} />
+        <p className="text-sm font-medium text-gray-700">{filename || 'ลากหรือคลิกเพื่อเลือกไฟล์'}</p>
+        <p className="text-xs text-gray-400 mt-1">.xlsx / .xls / .csv</p>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
           onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
       </div>
 
       {status === 'error' && (
-        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
-          <AlertCircle size={20} />{message}
+        <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-red-700 text-sm">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />{message}
         </div>
       )}
       {status === 'success' && (
-        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-green-700">
-          <CheckCircle2 size={20} />{message}
+        <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5 text-green-700 text-sm">
+          <CheckCircle2 size={16} className="shrink-0 mt-0.5" />{message}
         </div>
       )}
 
       {/* Preview + submit */}
       {preview.length > 0 && (
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <p className="font-semibold text-gray-800">ตัวอย่างข้อมูล (5 แถวแรก)</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-800">ตัวอย่างข้อมูล (5 แถวแรก)</p>
             <button onClick={() => { setPreview([]); setFilename(''); setCurrentFile(null); if (inputRef.current) inputRef.current.value = '' }}
-              className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50">
-                  {cols.map(c => <th key={c} className="px-3 py-2 text-left text-gray-600 font-medium border-b whitespace-nowrap">{c}</th>)}
+                  {cols.map(c => <th key={c} className="px-2 py-1.5 text-left text-gray-600 font-medium border-b whitespace-nowrap">{c}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {preview.map((row, i) => (
                   <tr key={i} className="border-b hover:bg-gray-50">
-                    {cols.map(c => <td key={c} className="px-3 py-2 text-gray-700 whitespace-nowrap">{String(row[c] ?? '-')}</td>)}
+                    {cols.map(c => <td key={c} className="px-2 py-1.5 text-gray-700 whitespace-nowrap">{String(row[c] ?? '-')}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <button onClick={handleSubmit} disabled={status === 'uploading'}
-            className="btn-primary mt-4">
+          <button onClick={handleSubmit} disabled={status === 'uploading'} className="btn-primary mt-3 text-sm">
             {status === 'uploading' ? 'กำลังบันทึก...' : 'ยืนยันอัพโหลด'}
           </button>
         </div>
@@ -205,43 +197,55 @@ export default function SupplementaryPlanPage() {
       {/* History */}
       {history.length > 0 && (
         <div className="card">
-          <p className="font-semibold text-gray-800 mb-3">ประวัติการอัพโหลด</p>
-          <div className="space-y-0 divide-y divide-gray-100">
+          <p className="text-sm font-semibold text-gray-800 mb-2">ประวัติการอัพโหลด</p>
+          <div className="divide-y divide-gray-100">
             {history.map((h, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 hover:bg-gray-50 -mx-1 px-1 rounded-lg">
+              <div key={i} className="flex items-center gap-2 py-2 hover:bg-gray-50 -mx-1 px-1 rounded-lg">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-mono text-gray-700 truncate">{h.source_file}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <p className="text-xs text-gray-400">
-                      {h.record_count.toLocaleString()} รายการ
-                      <span className="mx-1.5">·</span>
-                      {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
-                    </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-400">
+                      {h.record_count.toLocaleString()} รายการ · {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
                     {h.loading_time && (
                       <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded px-1.5 py-0.5 flex items-center gap-1">
-                        <Truck size={10} />โหลด {h.loading_time} น.
+                        <Truck size={9} />โหลด {h.loading_time}
                       </span>
                     )}
                     {h.deadline_time && (
                       <span className="text-xs bg-red-50 text-red-600 border border-red-200 rounded px-1.5 py-0.5 flex items-center gap-1">
-                        <Clock size={10} />deadline {h.deadline_time} น.
+                        <Clock size={9} />deadline {h.deadline_time}
                       </span>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(h.source_file)}
-                  disabled={deleting === h.source_file}
-                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
-                  title="ลบ"
-                >
-                  <X size={14} />
+                <button onClick={() => handleDelete(h.source_file)} disabled={deleting === h.source_file}
+                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1" title="ลบ">
+                  <X size={13} />
                 </button>
               </div>
             ))}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+export default function SupplementaryPlanPage() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">แผนรอบเสริม</h1>
+        <p className="text-gray-500 mt-1 text-sm sm:text-base">
+          อัพโหลดแผนผลิตที่แทรกเข้ามา — ระบุเวลาโหลดจ่ายเพื่อคำนวณ deadline ผลิต (ก่อนโหลด 30 นาที)
+        </p>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {SLOT_COLORS.map((color, i) => (
+          <SlotUploader key={i + 1} slot={i + 1} color={color} />
+        ))}
+      </div>
     </div>
   )
 }
