@@ -444,9 +444,9 @@ export async function POST(req: NextRequest) {
       // Phase 3: load 100% production plan
       isPhase3
         ? supabase.from('production_plan_100')
-            .select('sap, product_name, weight_total')
+            .select('sap, product_name, qty_bags, weight_per_bag, weight_total')
             .eq('plan_date', productionDate)
-        : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
+        : Promise.resolve({ data: [] as { sap: string; product_name: string | null; qty_bags: number; weight_per_bag: number; weight_total: number }[], error: null }),
       supabase.from('picking_unit_master').select('sap, weight_per_bag'),
     ])
 
@@ -702,28 +702,30 @@ export async function POST(req: NextRequest) {
     // ------ Build assignment list ------
     let assignList: SkuTarget[]
     if (isPhase3) {
-      // Phase 3: plan_100 − Ph1 − Ph2
-      const plan100 = (plan100Raw ?? []) as { sap: string; product_name: string | null; weight_total: number }[]
-      const planMap = new Map<string, { name: string | null; qty: number }>()
+      // Phase 3: plan_100 (ถุง) − Ph1+Ph2 (แปลงเป็นถุง) → คงเหลือ × weight_per_bag = กก.
+      const plan100 = (plan100Raw ?? []) as { sap: string; product_name: string | null; qty_bags: number; weight_per_bag: number; weight_total: number }[]
+      const planMap = new Map<string, { name: string | null; bags: number; wpb: number }>()
       for (const r of plan100) {
         const sap = r.sap.replace(/^0+/, '')
-        const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
-        cur.qty += Number(r.weight_total)
+        const cur = planMap.get(sap) ?? { name: r.product_name ?? null, bags: 0, wpb: Number(r.weight_per_bag) || 0 }
+        cur.bags += Number(r.qty_bags)
+        if (!cur.wpb) cur.wpb = Number(r.weight_per_bag) || 0
         planMap.set(sap, cur)
       }
-      
+
       const allPhase3Targets = Array.from(planMap.entries())
-        .map(([sku, { name, qty }]) => {
-          // Find which channel this SKU belongs to based on Phase 1 assignments, or default to plan100
+        .map(([sku, { name, bags, wpb }]) => {
+          // แปลง Ph1+Ph2 (กก.) → ถุง แล้วหักออกจาก qty_bags
+          const ph12Kg   = phase1Assigned.get(sku) ?? 0
+          const ph12Bags = wpb > 0 ? ph12Kg / wpb : 0
+          const remainBags = Math.max(0, bags - ph12Bags)
+          const targetQty  = wpb > 0 ? remainBags * wpb : Math.max(0, bags - ph12Kg)
+
           let channel = 'plan100'
           for (const [ch, m] of Array.from(phase1ByChannel.entries())) {
             if (m.has(sku)) { channel = ch; break; }
           }
-          return {
-            sku, skuName: name,
-            targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)),
-            channel,
-          }
+          return { sku, skuName: name, targetQty, channel }
         })
         .filter(t => t.targetQty > 0)
 
