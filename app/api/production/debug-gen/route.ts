@@ -43,18 +43,20 @@ export async function GET(req: NextRequest) {
     supabase.from('master_logic_manpower').select('row_data'),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', date).eq('upload_round', '0800'),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', date).eq('upload_round', '1300'),
+    // Order today (filtered by SKU — format usually consistent for today)
     supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
-    supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date')
-      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1600'),
+    // BL3: fetch ALL orders for histDates (no SKU filter) — normalize in memory like generate route
+    supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
+      .in('delivery_date', histDates).eq('upload_round', '1600'),
     supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
-    supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date')
-      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1600'),
+    supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
+      .in('delivery_date', histDates).eq('upload_round', '1600'),
     supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
-    supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date')
-      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1400'),
+    supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
+      .in('delivery_date', histDates).eq('upload_round', '1400'),
     supabase.from('production_assignments').select('sku, target_quantity, channel, period, worker_name')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`)
       .eq('production_date', date)
@@ -123,19 +125,39 @@ export async function GET(req: NextRequest) {
   // ── 5. Orders & BL3 averages ────────────────────────────────────────
   const sumQty = (rows: { quantity: number }[]) => rows.reduce((s, r) => s + r.quantity, 0)
 
-  const avgBL3 = (rows: { quantity: number; delivery_date: string }[]) => {
+  // Filter broad BL3 rows in memory using normalized SKU (mirrors generate route)
+  type OrderRow = { sku: string; sku_name: string | null; quantity: number; delivery_date: string; upload_round?: string }
+  const filterBySku = (rows: OrderRow[]) =>
+    rows.filter(r => r.sku.replace(/^0+/, '') === sku)
+
+  const avgBL3 = (rows: OrderRow[]) => {
     const byDate: Record<string, number> = {}
     for (const r of rows) byDate[r.delivery_date] = (byDate[r.delivery_date] ?? 0) + r.quantity
     const vals = Object.values(byDate)
     return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
   }
 
-  const wmOrderQty    = sumQty(wmToday?.data ?? [])
-  const wmAvgBL3      = avgBL3(wmHist?.data ?? [])
-  const lotusOrderQty = sumQty(lotusToday?.data ?? [])
-  const lotusAvgBL3   = avgBL3(lotusHist?.data ?? [])
-  const makroOrderQty = sumQty(makroToday?.data ?? [])
-  const makroAvgBL3   = avgBL3(makroHist?.data ?? [])
+  const allWmHist    = (wmHist?.data    ?? []) as OrderRow[]
+  const allLotusHist = (lotusHist?.data ?? []) as OrderRow[]
+  const allMakroHist = (makroHist?.data ?? []) as OrderRow[]
+
+  const wmHistForSku    = filterBySku(allWmHist)
+  const lotusHistForSku = filterBySku(allLotusHist)
+  const makroHistForSku = filterBySku(allMakroHist)
+
+  const wmOrderQty    = sumQty((wmToday?.data    ?? []) as OrderRow[])
+  const wmAvgBL3      = avgBL3(wmHistForSku)
+  const lotusOrderQty = sumQty((lotusToday?.data ?? []) as OrderRow[])
+  const lotusAvgBL3   = avgBL3(lotusHistForSku)
+  const makroOrderQty = sumQty((makroToday?.data ?? []) as OrderRow[])
+  const makroAvgBL3   = avgBL3(makroHistForSku)
+
+  // Raw SKU values found in BL3 tables (to detect leading-zero mismatch)
+  const skusFoundInBL3 = {
+    wet_market: [...new Set(allWmHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
+    lotus:      [...new Set(allLotusHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
+    makro:      [...new Set(allMakroHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))],
+  }
 
   // ── 6. makroSkuSet check ────────────────────────────────────────────
   // All SKUs in Makro orders today (globally) — affects WM+LOTUS Phase 1 exclusion
@@ -225,10 +247,26 @@ export async function GET(req: NextRequest) {
         note: activeChannels.length === 0 ? 'ไม่มี channel master สำหรับ phase นี้ — ใช้ default [WM, Makro, LOTUS]' : '',
       },
       '3_orders_and_bl3': {
-        wet_market:  { order_today: wmOrderQty,    bl3_avg: Math.round(wmAvgBL3),    bl3_days: (wmHist?.data ?? []).map(r => r.delivery_date) },
-        lotus:       { order_today: lotusOrderQty,  bl3_avg: Math.round(lotusAvgBL3), bl3_days: (lotusHist?.data ?? []).map(r => r.delivery_date) },
-        makro:       { order_today: makroOrderQty,  bl3_avg: Math.round(makroAvgBL3), bl3_days: (makroHist?.data ?? []).map(r => r.delivery_date) },
+        wet_market:  {
+          order_today: wmOrderQty,
+          bl3_avg: Math.round(wmAvgBL3),
+          bl3_rows: wmHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+        },
+        lotus: {
+          order_today: lotusOrderQty,
+          bl3_avg: Math.round(lotusAvgBL3),
+          bl3_rows: lotusHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+        },
+        makro: {
+          order_today: makroOrderQty,
+          bl3_avg: Math.round(makroAvgBL3),
+          bl3_rows: makroHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+        },
+        skus_found_in_bl3_tables: skusFoundInBL3,
         excluded_from_wm_lotus_because_in_makro: excludedByMakroSet,
+        note: (wmAvgBL3 === 0 && lotusAvgBL3 === 0 && makroAvgBL3 === 0)
+          ? `ไม่พบ BL3 ใน 3 วัน (${histDates.join(', ')}) ทั้ง WM+LOTUS+Makro — ตรวจสอบว่ามีการ upload round 1600 วันเหล่านั้นหรือไม่`
+          : '',
       },
       '4_target_per_channel': targets,
       '5_prev_assignments': {
