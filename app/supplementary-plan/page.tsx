@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { Upload, AlertCircle, CheckCircle2, X, Truck, Clock } from 'lucide-react'
-import { ParsedRow, parsePlan100 } from '@/lib/parser'
+import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
 
 interface UploadRecord {
   source_file: string
@@ -45,7 +45,7 @@ export default function SupplementaryPlanPage() {
   const handleFile = async (file: File) => {
     setStatus('parsing'); setMessage(''); setPreview([]); setFilename(file.name); setCurrentFile(file)
     try {
-      const rows = await parsePlan100(file)
+      const rows = await parseLotusWetMarketFile(file)
       if (!rows.length) throw new Error('ไฟล์ไม่มีข้อมูล')
       setPreview(rows.slice(0, 5)); setStatus('idle')
     } catch (e: unknown) {
@@ -58,7 +58,7 @@ export default function SupplementaryPlanPage() {
     if (!loadingTime) { setStatus('error'); setMessage('กรุณาระบุเวลาโหลดจ่ายก่อนอัพโหลด'); return }
     setStatus('uploading')
     try {
-      const rows = await parsePlan100(currentFile)
+      const rows = await parseLotusWetMarketFile(currentFile)
       const res = await fetch('/api/upload-supplementary-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,7 +155,7 @@ export default function SupplementaryPlanPage() {
       >
         <Upload className="mx-auto text-gray-400 mb-3" size={40} />
         <p className="font-medium text-gray-700">{filename || 'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
-        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls — ชีท &quot;แผน 100%&quot;</p>
+        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv — รูปแบบเดียวกับไฟล์คำสั่งซื้อตลาดสด</p>
         <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
           onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
       </div>
