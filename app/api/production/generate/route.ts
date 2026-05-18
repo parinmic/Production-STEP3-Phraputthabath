@@ -548,13 +548,15 @@ export async function POST(req: NextRequest) {
     // Each worker starts with available phase hours, capped by their shift end
     const phaseStartMins = phaseCfg.startH * 60
     const phaseEndMins   = phaseCfg.endH   * 60
+    // Phase 3 OT: ถ้าไม่มีอัพ 13:00 = ไม่มีคนกะบ่าย → คนกะ 1 ทำ OT ต่อจนจบ Phase 3
+    const hasAfternoonCrew = (workforceRaw1300?.length ?? 0) > 0
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     for (const w of workforce) {
       // Determine end time of shift in minutes
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
-        shiftEndMins = 17 * 60 // กะ 1 เลิก 17:00
+        shiftEndMins = (isPhase3 && !hasAfternoonCrew) ? phaseEndMins : 17 * 60
       } else if (w.shift === 'กะ 2' || w.shift === 'กะ 3') {
         shiftEndMins = 24 * 60 // กะ 2/3 อยู่จนจบ Phase 3
       }
