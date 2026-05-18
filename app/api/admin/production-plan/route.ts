@@ -52,31 +52,40 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/admin/production-plan
-// body: { date, period, sku, new_qty } — update all worker rows proportionally
+// body: { date, period, table_name, sku, channel, new_qty }
 export async function PATCH(req: NextRequest) {
-  const { date, period, sku, new_qty } = await req.json()
-  if (!date || !period || !sku || new_qty == null)
-    return NextResponse.json({ error: 'ต้องระบุ date, period, sku, new_qty' }, { status: 400 })
+  const { date, period, table_name, sku, channel, new_qty } = await req.json()
+  if (!date || !period || !table_name || !sku || new_qty == null)
+    return NextResponse.json({ error: 'ต้องระบุ date, period, table_name, sku, new_qty' }, { status: 400 })
 
-  // Fetch existing rows for this SKU
-  const { data: rows, error: fetchErr } = await supabase
+  // Fetch existing rows for this SKU + station + channel
+  let q = supabase
     .from('production_assignments')
     .select('id, target_quantity')
     .eq('production_date', date)
     .eq('period', period)
+    .eq('table_name', table_name)
     .eq('sku', sku)
+  if (channel) q = q.eq('channel', channel)
 
+  const { data: rows, error: fetchErr } = await q
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
   if (!rows?.length) return NextResponse.json({ error: 'ไม่พบรายการ' }, { status: 404 })
 
-  const oldTotal = rows.reduce((s, r) => s + Number(r.target_quantity), 0)
-  const ratio = oldTotal > 0 ? Number(new_qty) / oldTotal : 0
+  const newTotal  = Number(new_qty)
+  const oldTotal  = rows.reduce((s, r) => s + Number(r.target_quantity), 0)
 
-  // Update each worker row proportionally
-  const updates = rows.map(r => ({
-    id:              r.id,
-    target_quantity: Math.round(Number(r.target_quantity) * ratio),
-  }))
+  // Distribute proportionally; if oldTotal=0 spread equally across workers
+  const updates = rows.map((r, i) => {
+    let qty: number
+    if (oldTotal > 0) {
+      qty = Math.round(Number(r.target_quantity) / oldTotal * newTotal)
+    } else {
+      // spread equally, remainder to first worker
+      qty = Math.floor(newTotal / rows.length) + (i === 0 ? newTotal % rows.length : 0)
+    }
+    return { id: r.id, target_quantity: qty }
+  })
 
   for (const u of updates) {
     const { error } = await supabase

@@ -86,7 +86,7 @@ export default function AdminProductionPlanPage() {
     const res = await fetch('/api/admin/production-plan', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, period: r.period, sku: r.sku, new_qty }),
+      body: JSON.stringify({ date, period: r.period, table_name: r.table_name, sku: r.sku, channel: r.channel, new_qty }),
     })
     const j = await res.json()
     if (j.error) { flash(false, j.error); return }
