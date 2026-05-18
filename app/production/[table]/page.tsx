@@ -134,6 +134,12 @@ function wallClockFinish(fromMins: number, workMins: number): number {
   return pos + remaining
 }
 
+function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>): number {
+  const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+  if (!wpb || wpb <= 0) return qty
+  return Math.ceil(qty / wpb) * wpb
+}
+
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
@@ -176,7 +182,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
           const tasks = mergeTasks(byWorker[name])
-          const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
+          const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), 0)
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
@@ -192,7 +198,8 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
             const durMins   = h !== null ? Math.round(h * 60) : 0
             const endMins   = wallClockFinish(curMins, durMins)
             curMins = endMins
-            return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h }
+            const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap)
+            return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h, displayQty }
           })
           const totalFinish = minsToLabel(curMins)
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
@@ -217,7 +224,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
                         {task.sku_name ?? task.sku}
                       </span>
                       <span className="text-xs font-bold" style={{ color: col.fg }}>
-                        {bagLabel(task.sku, Number(task.target_quantity), bagMap)}{Number(task.target_quantity).toLocaleString()} กก.
+                        {bagLabel(task.sku, task.displayQty, bagMap)}{task.displayQty.toLocaleString()} กก.
                       </span>
                       <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
                         {timeRangeLabel(task.startMins, task.endMins)}
