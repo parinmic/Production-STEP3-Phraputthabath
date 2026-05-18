@@ -751,9 +751,76 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ------ Fetch supplementary plan (must finish before deadline) ------
+    interface SuppSlot { deadlineMins: number; skus: { sku: string; name: string | null; qty: number }[] }
+    const suppSlotResults = await Promise.all([1, 2, 3].map(async slot => {
+      const { data: log } = await supabase
+        .from('upload_log').select('source_file')
+        .eq('table_name', `production_plan_supplementary_${slot}`)
+        .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
+      if (!log) return null
+      const { data } = await supabase
+        .from('production_plan_supplementary')
+        .select('sku, sku_name, quantity, deadline_time')
+        .eq('source_file', log.source_file).eq('slot', String(slot))
+      if (!data?.length) return null
+      const deadlineStr = data[0].deadline_time as string | null
+      if (!deadlineStr) return null
+      const [dh, dm] = deadlineStr.split(':').map(Number)
+      const deadlineMins = dh * 60 + dm
+      // Only include if deadline falls within this phase window
+      if (deadlineMins <= phaseStartMins || deadlineMins > phaseEndMins) return null
+      return {
+        deadlineMins,
+        skus: data
+          .map(r => ({ sku: String(r.sku ?? '').replace(/^0+/, ''), name: r.sku_name as string | null, qty: Number(r.quantity) }))
+          .filter(s => s.qty > 0),
+      } as SuppSlot
+    }))
+    // Sort slots by deadline (earliest first → must finish sooner gets workers first)
+    const activeSuppSlots = (suppSlotResults.filter(Boolean) as SuppSlot[])
+      .sort((a, b) => a.deadlineMins - b.deadlineMins)
+
     // ------ Assign workers ------
     const assignments: Record<string, unknown>[] = []
 
+    // Pass 1 — supplementary SKUs (phaseEndMins capped at each slot's deadline)
+    for (const suppSlot of activeSuppSlots) {
+      for (const { sku, name: skuName, qty: rawQty } of suppSlot.skus.sort((a, b) => b.qty - a.qty)) {
+        const targetQty = roundUpToBag(sku, rawQty)
+        const prod = skuMap.get(sku) ?? skuMap.get(String(Number(sku) || sku))
+        if (!prod) continue
+        const station   = normalizeStation(prod.station)
+        const tableName = STATION_TABLE[station] ?? station
+        const skuGroup  = prod.product_group
+        const allAtStation = workersByStation[station] ?? []
+        const eligibleWorkers = allAtStation
+          .filter(w => {
+            const jobInfo = jobAssignMap.get(normName(w.name))
+            if (!jobInfo || jobInfo.groups.size === 0) return true
+            return skuGroup ? jobInfo.groups.has(skuGroup) : true
+          })
+          .sort((a, b) => {
+            const lvA = jobAssignMap.get(normName(a.name))?.groups.get(skuGroup) ?? 99
+            const lvB = jobAssignMap.get(normName(b.name))?.groups.get(skuGroup) ?? 99
+            if (lvA !== lvB) return lvA - lvB
+            return (workerHours.get(normName(b.name)) ?? 0) - (workerHours.get(normName(a.name)) ?? 0)
+          })
+        if (!eligibleWorkers.length) continue
+        assignments.push(...assignWorkers({
+          productionDate, tableName, sku: String(sku),
+          skuName: prod.sku_name || skuName || null,
+          targetQty, eligibleWorkers: eligibleWorkers.slice(0, maxWorkersForQty(targetQty)),
+          rate: prod.rate, workerHours, workerFreeAtMins,
+          phaseEndMins: suppSlot.deadlineMins,   // ← finish before loading deadline
+          period: phaseCfg.period, deadline: phaseCfg.deadline,
+          channel: 'เสริม',
+          phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+        }))
+      }
+    }
+
+    // Pass 2 — normal assignList (workers continue from wherever they left off)
     for (const { sku, skuName, targetQty: rawQty, channel } of assignList) {
       const targetQty = roundUpToBag(sku, rawQty)
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
@@ -780,24 +847,14 @@ export async function POST(req: NextRequest) {
 
       const cappedWorkers = eligibleWorkers.slice(0, maxWorkersForQty(targetQty))
 
-      const newAssignments = assignWorkers({
-        productionDate,
-        tableName,
-        sku: String(sku),
+      assignments.push(...assignWorkers({
+        productionDate, tableName, sku: String(sku),
         skuName: prod.sku_name || skuName || null,
-        targetQty,
-        eligibleWorkers: cappedWorkers,
-        rate: prod.rate,
-        workerHours,
-        workerFreeAtMins,
-        phaseEndMins,
-        period: phaseCfg.period,
-        deadline: phaseCfg.deadline,
-        channel,
+        targetQty, eligibleWorkers: cappedWorkers, rate: prod.rate,
+        workerHours, workerFreeAtMins, phaseEndMins,
+        period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
-      })
-
-      assignments.push(...newAssignments)
+      }))
     }
 
     // Tag each assignment with its position so the frontend can sort tasks per worker in generation order
