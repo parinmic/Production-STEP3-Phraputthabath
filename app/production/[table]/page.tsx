@@ -405,7 +405,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {bagLabel(sku, stat.totalQty, bagMap)}{stat.totalQty.toLocaleString()} กก.
+                      {bagLabel(sku, roundedDisplayQty(sku, stat.totalQty, bagMap), bagMap)}{roundedDisplayQty(sku, stat.totalQty, bagMap).toLocaleString()} กก.
                       <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                     </p>
                   </div>
@@ -830,7 +830,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
-        const workerTotal = tasks.reduce((s, t) => s + Number(t.target_quantity), 0)
+        const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), 0)
         const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
         const anyActive   = tasks.some(t => t.status === 'กำลังผลิต')
 
@@ -1146,7 +1146,7 @@ export default function TablePage() {
       .then(data => setRateMap(data.rateMap ?? {}))
     fetch('/api/master/picking-unit')
       .then(r => r.json())
-      .then(data => { console.log('[bagMap]', data.bagMap); setBagMap(data.bagMap ?? {}) })
+      .then(data => setBagMap(data.bagMap ?? {}))
     fetch('/api/master/job-assign')
       .then(r => r.json())
       .then(data => {
