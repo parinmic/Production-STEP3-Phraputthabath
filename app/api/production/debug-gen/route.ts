@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
     if (isWeigher) continue  // ชั่งน้ำหนัก ไม่นับเป็น production worker
     for (const grp of skuProductGroups) {
       const key = Object.keys(r).find(k => k.replace(/_\d+$/, '') === grp)
-      if (key && (r[key] === 1 || r[key] === 2)) { eligibleWorkers.push(name); break }
+      if (key && (Number(r[key]) === 1 || Number(r[key]) === 2)) { eligibleWorkers.push(name); break }
     }
   }
 
@@ -284,6 +284,25 @@ export async function GET(req: NextRequest) {
         station_workers:      wfMatchProd.map(w => ({ name: w.name, station: w.work_station, shift: w.shift })),
         eligible_workers:     wfEligible.map(w => w.name),
         product_groups_needed: skuProductGroups,
+        mas_manpower_for_station_workers: wfMatchProd.map(w => {
+          const normW = w.name.replace(/\s+/g, ' ').trim()
+          const row = (jobAssign ?? []).find(r => {
+            const n = String((r.row_data as Record<string, unknown>)['รายชื่อพนักงาน'] ?? '').replace(/\s+/g, ' ').trim()
+            return n === normW
+          })
+          if (!row) return { name: w.name, found_in_manpower: false }
+          const r = row.row_data as Record<string, unknown>
+          const groups: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(r)) {
+            if (k.startsWith('กลุ่ม')) groups[k] = v
+          }
+          return {
+            name: w.name,
+            found_in_manpower: true,
+            is_weigher: r['ชั่งน้ำหนัก'],
+            groups,
+          }
+        }),
       },
     },
   })
