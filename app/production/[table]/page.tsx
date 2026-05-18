@@ -48,7 +48,10 @@ interface Assignment {
   deadline_time: string | null
   status: string
   seq: number | null
+  channel: string | null
 }
+
+const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
 
 function shortName(full: string) {
   return full.trim().split(/\s+/)[0] ?? full
@@ -159,8 +162,9 @@ interface WorkerTableProps {
 
 function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTableProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -289,8 +293,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const nowMins = nowSecs / 60
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const phaseStartMins = phaseStart * 60
 
@@ -828,8 +833,9 @@ interface WorkerCardViewProps {
 
 function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerCardViewProps) {
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -947,8 +953,9 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
   const nowMins = realNowMins
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
+  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
   const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = BAR_COLORS[i % BAR_COLORS.length] })
+  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
