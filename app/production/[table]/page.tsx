@@ -754,7 +754,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                     : null
                   return (
                   <div key={entry.id} className="flex items-center justify-between gap-3">
-                    <div className="flex flex-col leading-tight">
+                    <div className="flex items-center gap-1.5">
                       <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
                       {timeLabel && (
                         <span className="text-[10px] text-gray-300">{timeLabel}</span>
