@@ -598,7 +598,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-    return s + (wpb && wpb > 0 ? Math.round(skuStats[sku].totalQty / wpb) : 0)
+    return s + (wpb && wpb > 0 ? Math.ceil(skuStats[sku].totalQty / wpb) : 0)
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
@@ -646,7 +646,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         {sortedSkus.map((sku, i) => {
           const stat    = skuStats[sku]
           const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags    = wpb && wpb > 0 ? Math.round(stat.totalQty / wpb) : null
+          const bags    = wpb && wpb > 0 ? Math.ceil(stat.totalQty / wpb) : null
           const total   = skuTotal(sku)
           const hasData = total > 0
 
@@ -888,7 +888,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono text-gray-400">{timeRangeLabel(t.startMin, t.endMin)}</span>
                         <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
-                          {bagLabel(t.sku, Number(t.target_quantity), bagMap)}{Number(t.target_quantity).toLocaleString()} กก.
+                          {bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), bagMap)}{roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap).toLocaleString()} กก.
                         </span>
                       </div>
                     </div>
@@ -1015,7 +1015,7 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono text-gray-500">{timeRangeLabel(card.startMin, card.endMin)}</span>
                     <span className="text-xs font-bold" style={{ color: col.fg }}>
-                      {bagLabel(card.sku, Number(card.target_quantity), bagMap)}{Number(card.target_quantity).toLocaleString()} กก.
+                      {bagLabel(card.sku, roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap), bagMap)}{roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap).toLocaleString()} กก.
                     </span>
                   </div>
                   {currentTask && isLive && (
