@@ -87,9 +87,11 @@ export async function GET(req: NextRequest) {
       supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
         .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
       supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
-        .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
+        .or(`sku.eq.${skuFilter},sku.eq.0${skuFilter},sku.eq.00${skuFilter}`)
+        .order('delivery_date', { ascending: false }).limit(30),
       supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
-        .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
+        .or(`sku.eq.${skuFilter},sku.eq.0${skuFilter},sku.eq.00${skuFilter}`)
+        .order('delivery_date', { ascending: false }).limit(30),
       supabase.from('production_assignments')
         .select('sku, sku_name, target_quantity, channel, period, worker_name, production_date')
         .eq('sku', skuFilter).eq('production_date', date)
