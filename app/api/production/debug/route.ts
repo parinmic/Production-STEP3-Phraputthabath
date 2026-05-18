@@ -80,19 +80,25 @@ export async function GET(req: NextRequest) {
     return Object.entries(m).map(([sku, v]) => ({ sku, ...v }))
   }
 
-  // SKU filter: show per-channel detail across all dates
+  // SKU filter: show per-channel detail + current assignments
   let skuDetail: unknown = null
   if (skuFilter) {
-    const [{ data: mk }, { data: wm }, { data: lo }] = await Promise.all([
+    const [{ data: mk }, { data: wm }, { data: lo }, { data: assigns }] = await Promise.all([
       supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
         .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
       supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
         .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
       supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
         .eq('sku', skuFilter).order('delivery_date', { ascending: false }).limit(30),
+      supabase.from('production_assignments')
+        .select('sku, sku_name, target_quantity, channel, period, worker_name, production_date')
+        .eq('sku', skuFilter).eq('production_date', date)
+        .order('period').limit(50),
     ])
+    const totalAssigned = (assigns ?? []).reduce((s: number, r: { target_quantity: number }) => s + (r.target_quantity ?? 0), 0)
     skuDetail = {
       sku: skuFilter,
+      assignments: { total_qty: totalAssigned, rows: assigns ?? [] },
       makro:      mk ?? [],
       wet_market: wm ?? [],
       lotus:      lo ?? [],
