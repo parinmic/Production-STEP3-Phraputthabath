@@ -1146,7 +1146,7 @@ export default function TablePage() {
       .then(data => setRateMap(data.rateMap ?? {}))
     fetch('/api/master/picking-unit')
       .then(r => r.json())
-      .then(data => setBagMap(data.bagMap ?? {}))
+      .then(data => { console.log('[bagMap]', data.bagMap); setBagMap(data.bagMap ?? {}) })
     fetch('/api/master/job-assign')
       .then(r => r.json())
       .then(data => {
