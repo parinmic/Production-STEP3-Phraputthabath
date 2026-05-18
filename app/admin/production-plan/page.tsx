@@ -23,7 +23,6 @@ interface SkuRow {
   table_name: string
   sku: string
   sku_name: string | null
-  channel: string | null
   total_qty: number
 }
 
@@ -52,7 +51,7 @@ export default function AdminProductionPlanPage() {
   const [editKey, setEditKey]     = useState<string | null>(null)
   const [editVal, setEditVal]     = useState<string>('')
 
-  const rowKey = (r: SkuRow) => `${r.period}||${r.table_name}||${r.sku}||${r.channel ?? ''}`
+  const rowKey = (r: SkuRow) => `${r.period}||${r.table_name}||${r.sku}`
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -86,7 +85,7 @@ export default function AdminProductionPlanPage() {
     const res = await fetch('/api/admin/production-plan', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, period: r.period, table_name: r.table_name, sku: r.sku, channel: r.channel, new_qty }),
+      body: JSON.stringify({ date, period: r.period, table_name: r.table_name, sku: r.sku, new_qty }),
     })
     const j = await res.json()
     if (j.error) { flash(false, j.error); return }
@@ -207,7 +206,6 @@ export default function AdminProductionPlanPage() {
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">SKU</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อสินค้า</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Channel</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">ยอดผลิต (กก.)</th>
                 <th className="px-4 py-3 w-16"></th>
               </tr>
@@ -230,7 +228,6 @@ export default function AdminProductionPlanPage() {
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{r.sku}</td>
                     <td className="px-4 py-2.5 text-gray-800">{r.sku_name ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-500 text-xs">{r.channel ?? '—'}</td>
                     <td className="px-4 py-2.5 text-right">
                       {isEditing ? (
                         <input
@@ -273,7 +270,7 @@ export default function AdminProductionPlanPage() {
             </tbody>
             <tfoot className="bg-gray-50 border-t border-gray-200">
               <tr>
-                <td colSpan={5} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                <td colSpan={4} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
                   รวม {displayed.length} SKU
                 </td>
                 <td className="px-4 py-3 text-right font-bold text-gray-900">
