@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+const PERIODS       = ['เช้า', 'บ่าย', 'ค่ำ']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
+
 // GET /api/admin/production-plan?date=2026-05-18&period=เช้า
 // Returns data aggregated by SKU
 export async function GET(req: NextRequest) {
@@ -40,7 +43,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: Array.from(map.values()) })
+  const sorted = Array.from(map.values()).sort((a, b) => {
+    const si = STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
+    if (si !== 0) return si
+    return PERIODS.indexOf(a.period) - PERIODS.indexOf(b.period)
+  })
+  return NextResponse.json({ data: sorted })
 }
 
 // PATCH /api/admin/production-plan
