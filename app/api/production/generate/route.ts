@@ -66,14 +66,14 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 // ========== Phase config ==========
 
 const PHASE_CONFIG = [
-  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 6, startH: 8,  endH: 14 },
+  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 5.5, startH: 8.5,  endH: 14 },
   { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
   { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 24, startH: 16, endH: 24 },
 ]
 
 // round boundaries per phase (minutes from midnight)
 const PHASE_ROUND_MINS: Record<number, number[]> = {
-  1: [480, 600, 780],   // 08:00, 10:00, 13:00
+  1: [510, 600, 780],   // 08:30, 10:00, 13:00
   2: [840],             // 14:00
   3: [960, 1080, 1200], // 16:00, 18:00, 20:00
 }
