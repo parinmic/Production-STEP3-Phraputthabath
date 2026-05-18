@@ -408,6 +408,7 @@ export async function POST(req: NextRequest) {
       ]),
       fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date', [
         { col: 'delivery_date', op: 'in', val: histDates },
+        { col: 'upload_round', op: 'eq', val: '1400' },
       ]),
       supabase.from('master_logic_calculation')
         .select('row_data')
