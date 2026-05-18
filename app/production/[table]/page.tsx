@@ -12,7 +12,7 @@ const CFG: Record<string, { label: string; accent: string; light: string }> = {
 }
 
 const PHASES = [
-  { phase: 1, label: 'Phase 1', sub: '8:00-14:00',       period: 'เช้า', startH: 8,  endH: 14,
+  { phase: 1, label: 'Phase 1', sub: '8:30-14:00',       period: 'เช้า', startH: 8.5,  endH: 14,
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
   { phase: 2, label: 'Phase 2', sub: '14:00-16:00',      period: 'บ่าย', startH: 14, endH: 16,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
@@ -57,14 +57,21 @@ function shortName(full: string) {
 function mergeTasks(tasks: Assignment[]): Assignment[] {
   const map = new Map<string, Assignment>()
   for (const t of tasks) {
-    const existing = map.get(t.sku)
+    const key = `${t.sku}_${t.period}`
+    const existing = map.get(key)
     if (existing) {
       existing.target_quantity = Number(existing.target_quantity) + Number(t.target_quantity)
     } else {
-      map.set(t.sku, { ...t })
+      map.set(key, { ...t })
     }
   }
-  return Array.from(map.values()).sort((a, b) => Number(b.target_quantity) - Number(a.target_quantity))
+  return Array.from(map.values()).sort((a, b) => {
+    const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
+    const pA = periodOrder[a.period] ?? 99
+    const pB = periodOrder[b.period] ?? 99
+    if (pA !== pB) return pA - pB
+    return Number(b.target_quantity) - Number(a.target_quantity)
+  })
 }
 
 function statusIcon(s: string) {
@@ -89,6 +96,13 @@ const BREAKS: [number, number][] = [
   [720, 780],   // 12:00–13:00
   [1020, 1080], // 17:00–18:00
 ]
+
+function getPhaseStart(period: string) {
+  if (period === 'เช้า') return 8 * 60 + 30
+  if (period === 'บ่าย') return 14 * 60
+  if (period === 'ค่ำ') return 16 * 60
+  return 8 * 60
+}
 
 /** Return time label like "10:55 → 12:00 │ 13:00 → 13:15" when task spans a break */
 function timeRangeLabel(startMins: number, endMins: number): string {
@@ -166,8 +180,13 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
-          let curMins = phaseStart * 60
+          let curMins = 0
+          let lastPeriod = ''
           const taskInfo = tasks.map(t => {
+            if (t.period !== lastPeriod) {
+              curMins = Math.max(curMins, getPhaseStart(t.period))
+              lastPeriod = t.period
+            }
             const h         = taskHours(t)
             const startMins = curMins
             const durMins   = h !== null ? Math.round(h * 60) : 0
@@ -264,25 +283,31 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[] }
+  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[] }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
     const tasks = mergeTasks(rawTasks)
-    let cur = phaseStartMins
+    let cur = 0
+    let lastPeriod = ''
     for (const task of tasks) {
+      if (task.period !== lastPeriod) {
+        cur = Math.max(cur, getPhaseStart(task.period))
+        lastPeriod = task.period
+      }
       const dur      = taskDurMins(task)
       const startMin = cur
       const endMin   = wallClockFinish(cur, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [] }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [], segments: [] }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
       s.minStart  = Math.min(s.minStart, startMin)
       s.maxEnd    = Math.max(s.maxEnd, endMin)
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
+      s.segments.push({ start: startMin, end: endMin })
     }
   }
 
@@ -301,20 +326,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
   const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
 
-  const countdown = (endMins: number) => {
-    const diffSecs = endMins * 60 - nowSecs
-    if (diffSecs <= 0) return { text: 'เสร็จแล้ว', done: true }
-    const h = Math.floor(diffSecs / 3600)
-    const m = Math.floor((diffSecs % 3600) / 60)
-    const s = diffSecs % 60
-    const parts = h > 0 ? `${h}ชม. ${m}น. ${s}` : m > 0 ? `${m}น. ${s}` : `${s}`
-    return { text: parts, done: false }
-  }
-
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* X-axis header — hidden on mobile */}
-      <div className="hidden sm:flex border-b border-gray-100">
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      {/* Chart header (time axis) */}
+      <div className="flex border-b border-gray-100 bg-gray-50/50 sticky top-0 z-20 h-8 sm:h-10">
         <div className="w-28 sm:w-44 shrink-0 border-r border-gray-100" />
         <div className="flex-1 relative h-8">
           {ticks.map(t => (
@@ -325,11 +340,15 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
               </span>
             </div>
           ))}
+          {/* Current time line */}
+          {nowMins >= chartStart && nowMins <= chartEnd && (
+            <div className="absolute top-0 bottom-0 w-px bg-red-400 z-30 pointer-events-none" style={{ left: `${pct(nowMins)}%` }} />
+          )}
         </div>
         <div className="w-24 sm:w-32 shrink-0 border-l border-gray-100" />
       </div>
 
-      {/* SKU rows */}
+      {/* Chart body */}
       <div className="divide-y divide-gray-50 relative">
         {/* Single continuous break bands spanning all rows */}
         {BREAKS.flatMap(([bs, be]) => {
@@ -345,26 +364,28 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
         })}
         {/* Single continuous now-line spanning all rows */}
         {nowMins >= chartStart && nowMins <= chartEnd && (
-          <>
-            {/* mobile: left col w-28 (7rem) + right col w-24 (6rem) */}
-            <div className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-20"
-              style={{ left: `calc(7rem + (100% - 13rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#a91b1b' }} />
-            {/* desktop: left col w-44 (11rem) + right col w-32 (8rem) */}
-            <div className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
-              style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})`, width: '1px', backgroundColor: '#a91b1b' }} />
-          </>
+          <div className="absolute top-0 bottom-0 w-px bg-red-400/50 z-0 pointer-events-none" style={{ left: `calc(112px + ${pct(nowMins)} * (100% - 112px - 96px) / 100)` }} />
         )}
-
+        
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
           const col       = skuColor[sku]
-          const cd        = countdown(stat.maxEnd)
-          const barLeft   = pct(stat.minStart)
-          const barWidth  = Math.max(pct(stat.maxEnd) - pct(stat.minStart), 0.5)
-          const isActive  = !cd.done && nowMins >= stat.minStart && nowMins < stat.maxEnd
-          const isPending = !cd.done && nowMins < stat.minStart
+          
+          const diffSecs = stat.maxEnd * 60 - nowSecs
+          const isDone = diffSecs <= 0
+          
+          let cdText = ''
+          if (!isDone) {
+            const h = Math.floor(diffSecs / 3600)
+            const m = Math.floor((diffSecs % 3600) / 60)
+            const s = diffSecs % 60
+            cdText = h > 0 ? `${h}ชม. ${m}น. ${s}` : m > 0 ? `${m}น. ${s}` : `${s}`
+          }
 
-          const countdownCls = cd.done
+          const isActive  = !isDone && nowMins >= stat.minStart
+          const isPending = !isDone && nowMins < stat.minStart
+
+          const countdownCls = isDone
             ? 'text-[10px] sm:text-xs text-green-500 font-semibold'
             : isActive
               ? 'text-xs sm:text-sm font-bold text-red-500'
@@ -373,9 +394,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                 : 'text-xs sm:text-sm font-bold text-gray-800'
 
           return (
-            <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px]">
+            <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px] relative z-10 bg-white">
               {/* Y-axis: SKU name */}
-              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100">
+              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100 bg-white">
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
                   <div className="min-w-0">
@@ -390,22 +411,30 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
               {/* Bar area */}
               <div className="flex-1 relative h-10 sm:h-14">
-                {/* Bar */}
-                <div className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5"
-                  style={{
-                    left: `${barLeft}%`,
-                    width: `${barWidth}%`,
-                    backgroundColor: col.bg,
-                    opacity: cd.done ? 0.45 : isPending ? 0.35 : 1,
-                  }} />
+                {/* Segments */}
+                {stat.segments.map((seg, idx) => {
+                  const barLeft   = Math.max(pct(seg.start), 0)
+                  const barWidth  = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                  const segDone   = nowMins >= seg.end
+                  const segPending = nowMins < seg.start
+                  return (
+                    <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm"
+                      style={{
+                        left: `${barLeft}%`,
+                        width: `${barWidth}%`,
+                        backgroundColor: col.bg,
+                        opacity: segDone ? 0.45 : segPending ? 0.35 : 1,
+                      }} />
+                  )
+                })}
               </div>
 
               {/* Countdown */}
               <div className="w-24 sm:w-32 shrink-0 px-2 sm:px-3 border-l border-gray-100 text-right">
-                {cd.done ? (
+                {isDone ? (
                   <span className={countdownCls}>✓ เสร็จแล้ว</span>
                 ) : (
-                  <span className={countdownCls}>{cd.text}</span>
+                  <span className={countdownCls}>{cdText}</span>
                 )}
                 <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
                   เสร็จ {minsToLabel(stat.maxEnd)}
