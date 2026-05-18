@@ -480,7 +480,7 @@ interface ProductionSummaryViewProps {
   tableName: string
 }
 
-type ActualEntry = { id: string; quantity: number }
+type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
 function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
@@ -493,14 +493,14 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const fetchActual = useCallback(async () => {
     const { data } = await supabase
       .from('production_actual')
-      .select('id, sku, quantity')
+      .select('id, sku, quantity, created_at, updated_at')
       .eq('production_date', date)
       .eq('table_name', tableName)
       .order('created_at')
     const grouped: Record<string, ActualEntry[]> = {}
     for (const row of (data ?? [])) {
       grouped[row.sku] ??= []
-      grouped[row.sku].push({ id: row.id, quantity: row.quantity })
+      grouped[row.sku].push({ id: row.id, quantity: row.quantity, created_at: row.created_at ?? null, updated_at: row.updated_at ?? null })
     }
     setHistory(grouped)
   }, [date, tableName])
@@ -518,7 +518,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     fetchYield()
     const poll = setInterval(() => { fetchActual(); fetchYield() }, 3000)
 
-    type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string }
+    type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string; created_at?: string; updated_at?: string }
 
     const channel = supabase
       .channel(`production_actual:${date}:${tableName}`)
@@ -530,13 +530,14 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           setHistory(prev => {
             const entries = prev[row.sku] ?? []
             if (entries.some(e => e.id === row.id)) return prev          // ซ้ำ
+            const entry: ActualEntry = { id: row.id, quantity: row.quantity, created_at: row.created_at ?? null, updated_at: row.updated_at ?? null }
             const tempIdx = entries.findIndex(e => e.id.startsWith('temp_'))
             if (tempIdx >= 0) {
               const next = [...entries]
-              next[tempIdx] = { id: row.id, quantity: row.quantity }     // แทน temp
+              next[tempIdx] = entry                                        // แทน temp
               return { ...prev, [row.sku]: next }
             }
-            return { ...prev, [row.sku]: [...entries, { id: row.id, quantity: row.quantity }] }
+            return { ...prev, [row.sku]: [...entries, entry] }
           })
         }
       )
@@ -550,7 +551,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
               const idx = entries.findIndex(e => e.id === row.id)
               if (idx >= 0) {
                 const next = [...entries]
-                next[idx] = { id: row.id, quantity: row.quantity }
+                next[idx] = { id: row.id, quantity: row.quantity, created_at: row.created_at ?? null, updated_at: row.updated_at ?? null }
                 return { ...prev, [sku]: next }
               }
             }
@@ -607,7 +608,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     if (isNaN(val) || val <= 0) return
     // Optimistic update — แสดงทันที ไม่รอ Supabase
     const tempId = `temp_${Date.now()}`
-    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), { id: tempId, quantity: val }] }))
+    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), { id: tempId, quantity: val, created_at: new Date().toISOString(), updated_at: null }] }))
     setInputVals(prev => ({ ...prev, [sku]: '' }))
     await supabase.from('production_actual').insert({ production_date: date, table_name: tableName, sku, quantity: val })
     fetchActual() // แทน tempId ด้วย id จริงจาก DB โดยเร็ว
@@ -747,9 +748,22 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
               </p>
 
               <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
-                {hist.map((entry, idx) => (
+                {hist.map((entry, idx) => {
+                  const ts = entry.updated_at ?? entry.created_at
+                  const timeLabel = ts
+                    ? new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false })
+                    : null
+                  const isEdited = !!entry.updated_at && entry.updated_at !== entry.created_at
+                  return (
                   <div key={entry.id} className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-xs text-gray-400">ครั้งที่ {idx + 1}</span>
+                      {timeLabel && (
+                        <span className="text-[10px] text-gray-300">
+                          {isEdited ? `แก้ไข ${timeLabel}` : timeLabel}
+                        </span>
+                      )}
+                    </div>
                     {editMode ? (
                       <input
                         type="text"
@@ -766,7 +780,8 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                       <span className="text-sm font-bold text-blue-600">{entry.quantity.toLocaleString()}</span>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="flex gap-2">
