@@ -317,13 +317,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
   if (!sortedSkus.length) return null
 
-  const chartStart = phaseStartMins
+  const chartStart = Math.floor(phaseStartMins / 60) * 60
   const chartEnd   = Math.max(phaseEnd * 60, ...sortedSkus.map(s => skuStats[s].maxEnd))
   const totalRange = chartEnd - chartStart
 
-  const ticks: number[] = []
-  if (chartStart % 60 !== 0) ticks.push(chartStart)
-  const firstWhole = Math.ceil(chartStart / 60) * 60
+  const ticks: number[] = [chartStart]
+  if (phaseStartMins % 60 !== 0) ticks.push(phaseStartMins)
+  const firstWhole = Math.ceil(phaseStartMins / 60) * 60
   for (let m = firstWhole; m <= chartEnd; m += 60) ticks.push(m)
 
   const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
