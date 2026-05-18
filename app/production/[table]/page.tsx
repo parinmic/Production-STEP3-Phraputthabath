@@ -245,6 +245,18 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
   )
 }
 
+function mergeSegments(segs: { start: number; end: number }[]) {
+  if (!segs.length) return segs
+  const sorted = [...segs].sort((a, b) => a.start - b.start)
+  const merged = [{ ...sorted[0] }]
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1]
+    if (sorted[i].start <= last.end) last.end = Math.max(last.end, sorted[i].end)
+    else merged.push({ ...sorted[i] })
+  }
+  return merged
+}
+
 // ─── SKU Schedule view (ภาพรวม) ──────────────────────────────────────────────
 
 interface SkuScheduleViewProps {
@@ -349,23 +361,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
       </div>
 
       {/* Chart body */}
-      <div className="divide-y divide-gray-50 relative">
-        {/* Single continuous break bands spanning all rows */}
-        {BREAKS.flatMap(([bs, be]) => {
-          if (bs >= chartEnd || be <= chartStart) return []
-          const l = pct(Math.max(bs, chartStart)) / 100
-          const w = Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0) / 100
-          return [
-            <div key={`${bs}-m`} className="sm:hidden absolute top-0 bottom-0 pointer-events-none z-10"
-              style={{ left: `calc(7rem + (100% - 13rem) * ${l})`, width: `calc((100% - 13rem) * ${w})`, backgroundColor: '#e5e7eb' }} />,
-            <div key={`${bs}-d`} className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-10"
-              style={{ left: `calc(11rem + (100% - 19rem) * ${l})`, width: `calc((100% - 19rem) * ${w})`, backgroundColor: '#e5e7eb' }} />,
-          ]
-        })}
-        {/* Single continuous now-line spanning all rows */}
-        {nowMins >= chartStart && nowMins <= chartEnd && (
-          <div className="absolute top-0 bottom-0 w-px bg-red-400/50 z-0 pointer-events-none" style={{ left: `calc(112px + ${pct(nowMins)} * (100% - 112px - 96px) / 100)` }} />
-        )}
+      <div className="divide-y divide-gray-50">
         
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
@@ -411,22 +407,34 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
               {/* Bar area */}
               <div className="flex-1 relative h-10 sm:h-14">
-                {/* Segments */}
-                {stat.segments.map((seg, idx) => {
-                  const barLeft   = Math.max(pct(seg.start), 0)
-                  const barWidth  = Math.max(pct(seg.end) - pct(seg.start), 0.5)
-                  const segDone   = nowMins >= seg.end
-                  const segPending = nowMins < seg.start
+                {mergeSegments(stat.segments).map((seg, idx) => {
+                  const barLeft  = Math.max(pct(seg.start), 0)
+                  const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                  const segDone  = nowMins >= seg.end
+                  const segPend  = nowMins < seg.start
                   return (
                     <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm"
+                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
+                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }} />
+                  )
+                })}
+                {BREAKS.map(([bs, be]) => {
+                  if (bs >= chartEnd || be <= chartStart) return null
+                  return (
+                    <div key={bs} className="absolute top-0 bottom-0 z-10 pointer-events-none"
                       style={{
-                        left: `${barLeft}%`,
-                        width: `${barWidth}%`,
-                        backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPending ? 0.35 : 1,
+                        left: `${Math.max(pct(bs), 0)}%`,
+                        width: `${Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0)}%`,
+                        backgroundColor: 'rgba(229,231,235,0.92)',
+                        borderLeft: '1px dashed #d1d5db',
+                        borderRight: '1px dashed #d1d5db',
                       }} />
                   )
                 })}
+                {nowMins >= chartStart && nowMins <= chartEnd && (
+                  <div className="absolute top-0 bottom-0 w-px bg-red-400 z-20 pointer-events-none"
+                    style={{ left: `${pct(nowMins)}%` }} />
+                )}
               </div>
 
               {/* Countdown */}
