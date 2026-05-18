@@ -627,12 +627,10 @@ export async function POST(req: NextRequest) {
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
       if (isPhase2) {
-        // Phase 2: min(avg BL3, order) − deduction (per channel or total depending on mode)
+        // Phase 2: order_1400 − phase1 deduction (ใช้ order จริงไม่ cap ด้วย BL3)
         const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
         return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
-          const avg = avgWM.get(sku) ?? 0
-          const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
-          const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
+          const targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
@@ -672,12 +670,10 @@ export async function POST(req: NextRequest) {
     const buildLotusTargets = (): SkuTarget[] => {
       const ch = 'LOTUS'
       if (isPhase2) {
-        // Phase 2: min(avg BL3, order) − deduction (per channel or total depending on mode)
+        // Phase 2: order_1400 − phase1 deduction (ใช้ order จริงไม่ cap ด้วย BL3)
         const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
         return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
-          const avg = avgLotus.get(sku) ?? 0
-          const base = avg > 0 ? Math.min(avg, orderQty) : orderQty
-          const targetQty = Math.max(0, base - (p1.get(sku) ?? 0))
+          const targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
