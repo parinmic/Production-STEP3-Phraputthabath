@@ -749,7 +749,7 @@ export async function POST(req: NextRequest) {
         (p3ChannelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
     } else {
-      // Phase 1/2: channel priority order, sorted by qty desc within each channel
+      // Phase 1 & 2: Mas Channel priority order, sorted by qty desc within each channel
       assignList = activeChannels.flatMap(ch =>
         (channelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
