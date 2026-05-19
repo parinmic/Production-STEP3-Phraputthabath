@@ -210,11 +210,12 @@ function assignWorkers(
     deadline: string | null
     channel: string
     phaseRoundMins: number[]
+    wpb?: number
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
-    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, channel, phaseRoundMins,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, channel, phaseRoundMins, wpb,
   } = params
 
   const entries = eligibleWorkers
@@ -284,36 +285,79 @@ function assignWorkers(
   if (!activeEntries.length) return []
 
   const totalAssignedFloat = targetQty - pool
-  const totalAssignedTarget = Math.round(totalAssignedFloat)
+  let workerDiffs: { nameKey: string; entry: typeof entries[0]; rawVal: number; rounded: number; error: number }[]
 
-  const workerDiffs = activeEntries.map(e => {
-    const rawVal = workerQty.get(e.nameKey) ?? 0
-    const rounded = Math.round(rawVal)
-    const error = rawVal - rounded
-    return {
-      nameKey: e.nameKey,
-      entry: e,
-      rawVal,
-      rounded,
-      error
+  if (wpb && wpb > 0) {
+    const totalAssignedBagsFloat = totalAssignedFloat / wpb
+    const totalAssignedBagsTarget = Math.round(totalAssignedBagsFloat)
+
+    const bagDiffs = activeEntries.map(e => {
+      const rawVal = workerQty.get(e.nameKey) ?? 0
+      const rawBags = rawVal / wpb
+      const roundedBags = Math.round(rawBags)
+      const error = rawBags - roundedBags
+      return {
+        nameKey: e.nameKey,
+        entry: e,
+        rawVal,
+        roundedBags,
+        error
+      }
+    })
+
+    let roundedBagsSum = bagDiffs.reduce((sum, item) => sum + item.roundedBags, 0)
+    let diffBags = totalAssignedBagsTarget - roundedBagsSum
+
+    if (diffBags > 0) {
+      bagDiffs.sort((a, b) => b.error - a.error)
+      for (let i = 0; i < diffBags && i < bagDiffs.length; i++) {
+        bagDiffs[i].roundedBags += 1
+      }
+    } else if (diffBags < 0) {
+      bagDiffs.sort((a, b) => a.error - b.error)
+      const absDiff = Math.abs(diffBags)
+      for (let i = 0; i < absDiff && i < bagDiffs.length; i++) {
+        bagDiffs[i].roundedBags = Math.max(0, bagDiffs[i].roundedBags - 1)
+      }
     }
-  })
 
-  let roundedSum = workerDiffs.reduce((sum, item) => sum + item.rounded, 0)
-  let diff = totalAssignedTarget - roundedSum
+    workerDiffs = bagDiffs.map(b => ({
+      nameKey: b.nameKey,
+      entry: b.entry,
+      rawVal: b.rawVal,
+      rounded: b.roundedBags * wpb,
+      error: b.error
+    }))
+  } else {
+    const totalAssignedTarget = Math.round(totalAssignedFloat)
 
-  if (diff > 0) {
-    // Sort by error descending (most rounded down first)
-    workerDiffs.sort((a, b) => b.error - a.error)
-    for (let i = 0; i < diff && i < workerDiffs.length; i++) {
-      workerDiffs[i].rounded += 1
-    }
-  } else if (diff < 0) {
-    // Sort by error ascending (most rounded up first)
-    workerDiffs.sort((a, b) => a.error - b.error)
-    const absDiff = Math.abs(diff)
-    for (let i = 0; i < absDiff && i < workerDiffs.length; i++) {
-      workerDiffs[i].rounded = Math.max(0, workerDiffs[i].rounded - 1)
+    workerDiffs = activeEntries.map(e => {
+      const rawVal = workerQty.get(e.nameKey) ?? 0
+      const rounded = Math.round(rawVal)
+      const error = rawVal - rounded
+      return {
+        nameKey: e.nameKey,
+        entry: e,
+        rawVal,
+        rounded,
+        error
+      }
+    })
+
+    let roundedSum = workerDiffs.reduce((sum, item) => sum + item.rounded, 0)
+    let diff = totalAssignedTarget - roundedSum
+
+    if (diff > 0) {
+      workerDiffs.sort((a, b) => b.error - a.error)
+      for (let i = 0; i < diff && i < workerDiffs.length; i++) {
+        workerDiffs[i].rounded += 1
+      }
+    } else if (diff < 0) {
+      workerDiffs.sort((a, b) => a.error - b.error)
+      const absDiff = Math.abs(diff)
+      for (let i = 0; i < absDiff && i < workerDiffs.length; i++) {
+        workerDiffs[i].rounded = Math.max(0, workerDiffs[i].rounded - 1)
+      }
     }
   }
 
@@ -619,11 +663,12 @@ export async function POST(req: NextRequest) {
     const phase1ByChannel = new Map<string, Map<string, number>>()
     const useChannelDeduct = deductMode !== 'yield'
 
+    const wpbMap = new Map<string, number>()
+    for (const r of (pickingUnitRaw ?? [])) {
+      wpbMap.set(r.sap.replace(/^0+/, ''), r.weight_per_bag ?? 0)
+    }
+
     if (deductMode === 'yield') {
-      const wpbMap = new Map<string, number>()
-      for (const r of (pickingUnitRaw ?? [])) {
-        wpbMap.set(r.sap.replace(/^0+/, ''), r.weight_per_bag ?? 0)
-      }
       for (const y of (yieldBagsRaw as { sap_code: string; bags: number }[])) {
         const sku = y.sap_code.replace(/^0+/, '')
         const kg  = y.bags * (wpbMap.get(sku) ?? 0)
@@ -841,6 +886,7 @@ export async function POST(req: NextRequest) {
           period: phaseCfg.period, deadline: phaseCfg.deadline,
           channel: 'เสริม',
           phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+          wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
         }))
       }
     }
@@ -895,6 +941,7 @@ export async function POST(req: NextRequest) {
         workerHours, workerFreeAtMins, phaseEndMins,
         period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+        wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
       }))
     }
 
