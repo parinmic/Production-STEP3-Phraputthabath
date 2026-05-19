@@ -835,7 +835,8 @@ export async function POST(req: NextRequest) {
 
     // Pass 2 — normal assignList (workers continue from wherever they left off)
     for (const { sku, skuName, targetQty: rawQty, channel } of assignList) {
-      const targetQty = roundUpToBag(sku, rawQty)
+      // Makro uses exact order quantities — do not round up to bag size (would over-produce)
+      const targetQty = channel === 'Makro' ? Math.round(rawQty) : roundUpToBag(sku, rawQty)
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
 
