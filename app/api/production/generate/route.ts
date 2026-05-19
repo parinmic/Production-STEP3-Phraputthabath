@@ -635,16 +635,6 @@ export async function POST(req: NextRequest) {
 
     interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
 
-    // SKU ที่มี Makro order วันนี้ → ไม่นับ BL3 จาก Wet Market / LOTUS
-    // กรองด้วย SKU code เป็นหลัก + sku_name เป็น fallback (กรณี LOTUS/WM ใช้ code ต่างจาก Makro)
-    const makroSkuSet   = new Set(Object.keys(makroMap))
-    const normProdName  = (s: string | null) => (s ?? '').replace(/[\s()（）\-\/]/g, '').toLowerCase()
-    const makroNameSet  = new Set(
-      Object.values(makroMap).map(v => normProdName(v.name)).filter(n => n.length > 4)
-    )
-    const isExcludedByMakro = (sku: string, name: string | null) =>
-      makroSkuSet.has(sku) || (normProdName(name).length > 4 && makroNameSet.has(normProdName(name)))
-
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
       if (isPhase2) {
@@ -655,11 +645,10 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 × %Variance (ข้าม SKU ที่มี Makro order วันนี้)
+      // Phase 1: Avg BL3 × %Variance
       const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
       return Array.from(avgWM.entries())
-        .filter(([sku]) => !isExcludedByMakro(sku, wmHistNames.get(sku) ?? null))
         .map(([sku, avg]) => {
           const isShared = lotusHistSkus.has(sku)
           const lotusBL3 = avgLotus.get(sku) ?? 0
@@ -705,7 +694,6 @@ export async function POST(req: NextRequest) {
         ...Object.keys(lotusMap),
       ]))
       return allLotusSkus
-        .filter(sku => !isExcludedByMakro(sku, lotusHistNames.get(sku) ?? lotusMap[sku]?.name ?? null))
         .map(sku => {
           const avg      = avgLotus.get(sku) ?? 0
           const orderQty = lotusMap[sku]?.qty ?? 0
@@ -932,14 +920,6 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
       count: assignments.length,
-      debug: {
-        makroSkuCount:  makroSkuSet.size,
-        makroNameCount: makroNameSet.size,
-        makroNames:     Array.from(makroNameSet).slice(0, 5),
-        lotusTargets:   channelTargets['LOTUS']?.length ?? 0,
-        wmTargets:      channelTargets['Wet Market']?.length ?? 0,
-        makroTargets:   channelTargets['Makro']?.length ?? 0,
-      },
     })
   } catch (e: unknown) {
     return NextResponse.json(
