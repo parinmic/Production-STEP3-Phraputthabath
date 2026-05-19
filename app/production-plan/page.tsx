@@ -23,6 +23,8 @@ interface PlanRow {
   sku_name:  string | null
   totalQty:  number
   bags:      number | null
+  channel:   string | null
+  minSeq:    number
 }
 
 export default function ProductionPlanPage() {
@@ -46,20 +48,21 @@ export default function ProductionPlanPage() {
     try {
       const { data } = await supabase
         .from('production_assignments')
-        .select('table_name, sku, sku_name, target_quantity')
+        .select('table_name, sku, sku_name, target_quantity, channel, seq')
         .eq('production_date', date)
         .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
 
-      const map = new Map<string, { sku_name: string | null; qty: number }>()
+      const map = new Map<string, { sku_name: string | null; qty: number; channel: string | null; minSeq: number }>()
       for (const r of data ?? []) {
         const key = `${r.table_name}|||${r.sku}`
-        const cur = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0 }
+        const cur = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, channel: r.channel ?? null, minSeq: r.seq ?? Infinity }
         cur.qty += Number(r.target_quantity ?? 0)
+        if ((r.seq ?? Infinity) < cur.minSeq) cur.minSeq = r.seq ?? Infinity
         map.set(key, cur)
       }
 
       const result: PlanRow[] = Array.from(map.entries())
-        .map(([key, { sku_name, qty }]) => {
+        .map(([key, { sku_name, qty, channel, minSeq }]) => {
           const [station, sku] = key.split('|||')
           const normSku = sku.replace(/^0+/, '')
           const wpb = bagMap[sku] ?? bagMap[normSku]
@@ -69,11 +72,15 @@ export default function ProductionPlanPage() {
             sku_name,
             totalQty: Math.round(qty * 100) / 100,
             bags:     wpb && wpb > 0 ? Math.round(qty / wpb) : null,
+            channel,
+            minSeq,
           }
         })
         .sort((a, b) => {
           const si = STATION_ORDER.indexOf(a.station) - STATION_ORDER.indexOf(b.station)
           if (si !== 0) return si
+          // sort by generation order (seq reflects channel priority — Makro first, WM next, LOTUS last)
+          if (a.minSeq !== b.minSeq) return a.minSeq - b.minSeq
           return b.totalQty - a.totalQty
         })
 
