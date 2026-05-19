@@ -932,6 +932,14 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
       count: assignments.length,
+      debug: {
+        makroSkuCount:  makroSkuSet.size,
+        makroNameCount: makroNameSet.size,
+        makroNames:     Array.from(makroNameSet).slice(0, 5),
+        lotusTargets:   channelTargets['LOTUS']?.length ?? 0,
+        wmTargets:      channelTargets['Wet Market']?.length ?? 0,
+        makroTargets:   channelTargets['Makro']?.length ?? 0,
+      },
     })
   } catch (e: unknown) {
     return NextResponse.json(
