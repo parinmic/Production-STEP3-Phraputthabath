@@ -552,37 +552,20 @@ export async function POST(req: NextRequest) {
     const phaseStartMins = phaseCfg.startH * 60
     const phaseEndMins   = phaseCfg.endH   * 60
 
-    // Mid-phase regen: freeze existing assignments up to the next 30-min boundary
-    // If current time is outside the phase window, treat as fresh generate (no freeze)
-    const nowUTC2   = new Date()
-    const nowTH2    = new Date(nowUTC2.getTime() + 7 * 3600 * 1000)
-    const nowMins2  = nowTH2.getUTCHours() * 60 + nowTH2.getUTCMinutes()
-    const freezeRaw = nowMins2 % 30 === 0 ? nowMins2 + 30 : Math.ceil(nowMins2 / 30) * 30
-    const isInsidePhase = nowMins2 > phaseStartMins && nowMins2 < phaseEndMins
-    const freezePoint = isInsidePhase
-      ? Math.max(phaseStartMins, Math.min(freezeRaw, phaseEndMins))
-      : phaseStartMins
-    const isMidPhase  = freezePoint > phaseStartMins
-    const freezeTimeStr = minsToTimeStr(freezePoint)
-
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     for (const w of workforce) {
-      // Determine end time of shift in minutes
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
-        // Phase 3: กะ 1 OT ต่อจนจบ Phase 3 (ชม. เท่ากับกะ 2/3)
         shiftEndMins = isPhase3 ? phaseEndMins : 17 * 60
       } else if (w.shift === 'กะ 2') {
         shiftEndMins = 24 * 60
       }
-
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
-      const actualHours = Math.max(0, actualEndMins - freezePoint) / 60
-
+      const actualHours   = Math.max(0, actualEndMins - phaseStartMins) / 60
       const nameKey = normName(w.name)
       workerHours.set(nameKey, actualHours)
-      workerFreeAtMins.set(nameKey, freezePoint)
+      workerFreeAtMins.set(nameKey, phaseStartMins)
     }
 
     // ------ Historical averages ------
@@ -872,35 +855,13 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Mid-phase regen: keep assignments that already started (deadline_time < freeze point)
-    // Fresh generate: delete all assignments for this period
-    let seqOffset = 0
-    if (isMidPhase) {
-      const { data: lastKept } = await supabase
-        .from('production_assignments')
-        .select('seq')
-        .eq('production_date', productionDate)
-        .eq('period', phaseCfg.period)
-        .lt('deadline_time', freezeTimeStr)
-        .order('seq', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      seqOffset = (lastKept?.seq ?? -1) + 1
-      await supabase
-        .from('production_assignments')
-        .delete()
-        .eq('production_date', productionDate)
-        .eq('period', phaseCfg.period)
-        .gte('deadline_time', freezeTimeStr)
-    } else {
-      await supabase
-        .from('production_assignments')
-        .delete()
-        .eq('production_date', productionDate)
-        .eq('period', phaseCfg.period)
-    }
+    await supabase
+      .from('production_assignments')
+      .delete()
+      .eq('production_date', productionDate)
+      .eq('period', phaseCfg.period)
 
-    assignments.forEach((a, i) => { a['seq'] = seqOffset + i })
+    assignments.forEach((a, i) => { a['seq'] = i })
 
     const { error } = await supabase.from('production_assignments').insert(assignments)
     if (error) throw error
