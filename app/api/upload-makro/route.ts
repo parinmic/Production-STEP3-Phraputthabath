@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-function shiftDate(iso: string | null, days: number): string | null {
-  if (!iso) return null
-  const d = new Date(iso + 'T00:00:00Z')
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().split('T')[0]
-}
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -66,14 +60,13 @@ export async function POST(req: NextRequest) {
           }
         }
         if (isMakroNative) {
-          const cols = Object.keys(r)
-          const dlvRaw = cols.includes('rRDate1') ? r['rRDate1'] : r['rReq_date']
+          const date = toISODate(r['rRDate2'])
           return {
-            order_date:    toISODate(r['rDoc_date']),
-            delivery_date: shiftDate(toISODate(dlvRaw), -1),
+            order_date:    date,
+            delivery_date: date,
             sku:           String(r['rProduct_code'] ?? '').trim(),
             sku_name:      String(r['rProduct_name'] ?? '').trim(),
-            quantity:      parseFloat(String(r['rStock_wgt'] ?? r['rPlan_qty'] ?? r['rPlan_wgt'] ?? '0')) || 0,
+            quantity:      parseFloat(String(r['rStock_wgt'] ?? '0')) || 0,
             period:        String(r['rShip_name'] ?? '').trim() || null,
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',

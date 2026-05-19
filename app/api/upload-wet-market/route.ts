@@ -46,25 +46,13 @@ export async function POST(req: NextRequest) {
     const records = rows
       .map((r: Record<string, unknown>) => {
         if (hasNativeFormat) {
-          const skuCol  = cols.includes('rProduct_code') ? 'rProduct_code'
-                        : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? '')
-          const nameCol = cols.includes('rProduct_name') ? 'rProduct_name'
-                        : (cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('name')) ?? '')
-          const qtyCol  = cols.includes('rStock_wgt') ? 'rStock_wgt'
-                        : cols.includes('rPlan_wgt') ? 'rPlan_wgt'
-                        : (cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('quantity') || c.toLowerCase().includes('wgt')) ?? '')
-          const dateCol = cols.includes('rDoc_date') ? 'rDoc_date'
-                        : (cols.find(c => c.toLowerCase().includes('doc') && c.toLowerCase().includes('date'))
-                           ?? cols.find(c => c.toLowerCase().includes('date') && !c.toLowerCase().startsWith('rr')) ?? '')
-          const dlvCol  = cols.includes('rRDate1') ? 'rRDate1'
-                        : cols.includes('rReq_date') ? 'rReq_date'
-                        : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? '')
+          const date = toISODate(r['rRDate2'])
           return {
-            order_date:    toISODate(r[dateCol]),
-            delivery_date: toISODate(r[dlvCol]),
-            sku:           String(r[skuCol] ?? '').trim(),
-            sku_name:      String(r[nameCol] ?? '').trim(),
-            quantity:      parseFloat(String(r[qtyCol] || '0')) || 0,
+            order_date:    date,
+            delivery_date: date,
+            sku:           String(r['rProduct_code'] ?? '').trim(),
+            sku_name:      String(r['rProduct_name'] ?? '').trim(),
+            quantity:      parseFloat(String(r['rStock_wgt'] ?? '0')) || 0,
             period:        null,
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',
