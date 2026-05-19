@@ -859,11 +859,14 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    if (!assignments.length)
+    if (!assignments.length) {
+      const prodMatchCount = assignList.filter(t => skuMap.has(t.sku) || skuMap.has(t.sku.replace(/^0+/, ''))).length
+      const totalWorkerHours = Array.from(workerHours.values()).reduce((s, h) => s + h, 0)
       return NextResponse.json({
         success: false,
-        message: 'ไม่สามารถสร้างคำสั่ง — SKU ใน Order ไม่ตรงกับ SAP ใน Mas Productivity หรือ work_station ไม่ตรงกับ จุดงาน',
+        message: `ไม่สามารถสร้างคำสั่ง — targets: WM ${channelTargets['Wet Market']?.length ?? 0} / Makro ${channelTargets['Makro']?.length ?? 0} / LOTUS ${channelTargets['LOTUS']?.length ?? 0} | prodMatch: ${prodMatchCount}/${assignList.length} | workerHrs: ${totalWorkerHours.toFixed(1)}`,
       }, { status: 400 })
+    }
 
     // Mid-phase regen: keep assignments that already started (deadline_time < freeze point)
     // Fresh generate: delete all assignments for this period
