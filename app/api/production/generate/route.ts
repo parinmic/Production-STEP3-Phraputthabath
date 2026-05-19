@@ -548,6 +548,16 @@ export async function POST(req: NextRequest) {
     // Each worker starts with available phase hours, capped by their shift end
     const phaseStartMins = phaseCfg.startH * 60
     const phaseEndMins   = phaseCfg.endH   * 60
+
+    // Mid-phase regen: freeze existing assignments up to the next 30-min boundary
+    const nowUTC2   = new Date()
+    const nowTH2    = new Date(nowUTC2.getTime() + 7 * 3600 * 1000)
+    const nowMins2  = nowTH2.getUTCHours() * 60 + nowTH2.getUTCMinutes()
+    const freezeRaw = Math.ceil(nowMins2 / 30) * 30
+    const freezePoint = Math.max(phaseStartMins, Math.min(freezeRaw, phaseEndMins))
+    const isMidPhase  = freezePoint > phaseStartMins
+    const freezeTimeStr = minsToTimeStr(freezePoint)
+
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     for (const w of workforce) {
@@ -559,13 +569,13 @@ export async function POST(req: NextRequest) {
       } else if (w.shift === 'กะ 2' || w.shift === 'กะ 3') {
         shiftEndMins = 24 * 60
       }
-      
+
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
-      const actualHours = Math.max(0, actualEndMins - phaseStartMins) / 60
+      const actualHours = Math.max(0, actualEndMins - freezePoint) / 60
 
       const nameKey = normName(w.name)
       workerHours.set(nameKey, actualHours)
-      workerFreeAtMins.set(nameKey, phaseStartMins)
+      workerFreeAtMins.set(nameKey, freezePoint)
     }
 
     // ------ Historical averages ------
@@ -768,8 +778,8 @@ export async function POST(req: NextRequest) {
       if (!deadlineStr) return null
       const [dh, dm] = deadlineStr.split(':').map(Number)
       const deadlineMins = dh * 60 + dm
-      // Only include if deadline falls within this phase window
-      if (deadlineMins <= phaseStartMins || deadlineMins > phaseEndMins) return null
+      // Only include if deadline falls within remaining phase window (after freeze point)
+      if (deadlineMins <= freezePoint || deadlineMins > phaseEndMins) return null
       return {
         deadlineMins,
         skus: data
@@ -857,21 +867,41 @@ export async function POST(req: NextRequest) {
       }))
     }
 
-    // Tag each assignment with its position so the frontend can sort tasks per worker in generation order
-    assignments.forEach((a, i) => { a['seq'] = i })
-
     if (!assignments.length)
       return NextResponse.json({
         success: false,
         message: 'ไม่สามารถสร้างคำสั่ง — SKU ใน Order ไม่ตรงกับ SAP ใน Mas Productivity หรือ work_station ไม่ตรงกับ จุดงาน',
       }, { status: 400 })
 
-    // Replace existing assignments for this period only
-    await supabase
-      .from('production_assignments')
-      .delete()
-      .eq('production_date', productionDate)
-      .eq('period', phaseCfg.period)
+    // Mid-phase regen: keep assignments that already started (deadline_time < freeze point)
+    // Fresh generate: delete all assignments for this period
+    let seqOffset = 0
+    if (isMidPhase) {
+      const { data: lastKept } = await supabase
+        .from('production_assignments')
+        .select('seq')
+        .eq('production_date', productionDate)
+        .eq('period', phaseCfg.period)
+        .lt('deadline_time', freezeTimeStr)
+        .order('seq', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      seqOffset = (lastKept?.seq ?? -1) + 1
+      await supabase
+        .from('production_assignments')
+        .delete()
+        .eq('production_date', productionDate)
+        .eq('period', phaseCfg.period)
+        .gte('deadline_time', freezeTimeStr)
+    } else {
+      await supabase
+        .from('production_assignments')
+        .delete()
+        .eq('production_date', productionDate)
+        .eq('period', phaseCfg.period)
+    }
+
+    assignments.forEach((a, i) => { a['seq'] = seqOffset + i })
 
     const { error } = await supabase.from('production_assignments').insert(assignments)
     if (error) throw error
