@@ -687,19 +687,12 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: BL3 avg; fallback to today's '1400' order if no BL3 history
+      // Phase 1: BL3 avg only — ถ้าไม่มี BL3 ไม่ผลิต
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
-      const allLotusSkus = Array.from(new Set([
-        ...Array.from(avgLotus.keys()),
-        ...Object.keys(lotusMap),
-      ]))
-      return allLotusSkus
-        .map(sku => {
-          const avg      = avgLotus.get(sku) ?? 0
-          const orderQty = lotusMap[sku]?.qty ?? 0
-          const targetQty = avg > 0 ? avg : orderQty
-          return { sku, skuName: lotusHistNames.get(sku) ?? lotusMap[sku]?.name ?? null, targetQty, channel: ch }
-        }).filter(s => s.targetQty > 0)
+      return Array.from(avgLotus.entries())
+        .map(([sku, avg]) => ({
+          sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
+        })).filter(s => s.targetQty > 0)
     }
 
     const channelTargets: Record<string, SkuTarget[]> = {
