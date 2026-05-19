@@ -553,7 +553,7 @@ export async function POST(req: NextRequest) {
     const nowUTC2   = new Date()
     const nowTH2    = new Date(nowUTC2.getTime() + 7 * 3600 * 1000)
     const nowMins2  = nowTH2.getUTCHours() * 60 + nowTH2.getUTCMinutes()
-    const freezeRaw = Math.ceil(nowMins2 / 30) * 30
+    const freezeRaw = nowMins2 % 30 === 0 ? nowMins2 + 30 : Math.ceil(nowMins2 / 30) * 30
     const freezePoint = Math.max(phaseStartMins, Math.min(freezeRaw, phaseEndMins))
     const isMidPhase  = freezePoint > phaseStartMins
     const freezeTimeStr = minsToTimeStr(freezePoint)
