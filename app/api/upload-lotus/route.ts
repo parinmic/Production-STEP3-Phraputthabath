@@ -50,7 +50,20 @@ export async function POST(req: NextRequest) {
     const sample = rows[0]
 
     const hasNativeFormat = cols.some(c => c.startsWith('r') && c.length > 2)
+    const getRowValue = (r: Record<string, unknown>, targetKey: string): string | null => {
+      const key = Object.keys(r).find(k => k.toLowerCase() === targetKey.toLowerCase())
+      if (key === undefined || r[key] === null || r[key] === undefined) return null
+      return String(r[key]).trim()
+    }
+
     const records = rows
+      .filter((r: Record<string, unknown>) => {
+        const bst = getRowValue(r, 'rBst_code')
+        if (bst !== null && bst !== '923') return false
+        const oper = getRowValue(r, 'rOper_code')
+        if (oper !== null && oper !== '489') return false
+        return true
+      })
       .map((r: Record<string, unknown>) => {
         if (hasNativeFormat) {
           const date = shiftDate(toISODate(r['rRDate2']), -1)

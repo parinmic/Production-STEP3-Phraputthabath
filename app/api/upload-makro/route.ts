@@ -50,7 +50,20 @@ export async function POST(req: NextRequest) {
     const isPlanMapped  = 'sku' in rows[0] && 'delivery_date' in rows[0]
     const isMakroNative = !isPlanMapped && 'rProduct_code' in rows[0]
 
+    const getRowValue = (r: Record<string, unknown>, targetKey: string): string | null => {
+      const key = Object.keys(r).find(k => k.toLowerCase() === targetKey.toLowerCase())
+      if (key === undefined || r[key] === null || r[key] === undefined) return null
+      return String(r[key]).trim()
+    }
+
     const records = rows
+      .filter((r: Record<string, unknown>) => {
+        const bst = getRowValue(r, 'rBst_code')
+        if (bst !== null && bst !== '923') return false
+        const oper = getRowValue(r, 'rOper_code')
+        if (oper !== null && oper !== '489M') return false
+        return true
+      })
       .map((r: Record<string, unknown>) => {
         if (isPlanMapped) {
           const today = new Date().toISOString().split('T')[0]
