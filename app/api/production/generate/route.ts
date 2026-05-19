@@ -279,15 +279,53 @@ function assignWorkers(
     }
   }
 
+  // Get all active entries
+  const activeEntries = entries.filter(e => (workerQty.get(e.nameKey) ?? 0) >= 0.5)
+  if (!activeEntries.length) return []
+
+  const totalAssignedFloat = targetQty - pool
+  const totalAssignedTarget = Math.round(totalAssignedFloat)
+
+  const workerDiffs = activeEntries.map(e => {
+    const rawVal = workerQty.get(e.nameKey) ?? 0
+    const rounded = Math.round(rawVal)
+    const error = rawVal - rounded
+    return {
+      nameKey: e.nameKey,
+      entry: e,
+      rawVal,
+      rounded,
+      error
+    }
+  })
+
+  let roundedSum = workerDiffs.reduce((sum, item) => sum + item.rounded, 0)
+  let diff = totalAssignedTarget - roundedSum
+
+  if (diff > 0) {
+    // Sort by error descending (most rounded down first)
+    workerDiffs.sort((a, b) => b.error - a.error)
+    for (let i = 0; i < diff && i < workerDiffs.length; i++) {
+      workerDiffs[i].rounded += 1
+    }
+  } else if (diff < 0) {
+    // Sort by error ascending (most rounded up first)
+    workerDiffs.sort((a, b) => a.error - b.error)
+    const absDiff = Math.abs(diff)
+    for (let i = 0; i < absDiff && i < workerDiffs.length; i++) {
+      workerDiffs[i].rounded = Math.max(0, workerDiffs[i].rounded - 1)
+    }
+  }
+
   const result: Record<string, unknown>[] = []
-  for (const e of entries) {
-    const qty = workerQty.get(e.nameKey) ?? 0
+  for (const item of workerDiffs) {
+    const e = item.entry
+    const qty = item.rounded
     if (qty < 0.5) continue
     const finishAt = workerFinishAt.get(e.nameKey) ?? e.freeAt
     workerHours.set(e.nameKey, e.remainingHours - qty / rate)
     workerFreeAtMins.set(e.nameKey, finishAt)
 
-    // encode per-round breakdown into note: "rounds:480=575;600=575"
     const rq = workerRoundQty.get(e.nameKey) ?? new Map<number, number>()
     const roundsNote = 'rounds:' + Array.from(rq.entries())
       .map(([rm, q]) => `${rm}=${Math.round(q * 100) / 100}`)
@@ -300,7 +338,7 @@ function assignWorkers(
       worker_name:     e.worker.name,
       sku,
       sku_name:        skuName,
-      target_quantity: Math.round(qty),
+      target_quantity: qty,
       unit:            'กก.',
       period,
       deadline_time:   minsToTimeStr(e.freeAt),
@@ -690,10 +728,10 @@ export async function POST(req: NextRequest) {
 
     // ------ Build assignment list ------
     let assignList: SkuTarget[]
+    const planMap = new Map<string, { name: string | null; qty: number }>()
     if (isPhase3) {
       // Phase 3: weight_total จาก plan_100 − Ph1+Ph2 (กก.)
       const plan100 = (plan100Raw ?? []) as { sap: string; product_name: string | null; weight_total: number }[]
-      const planMap = new Map<string, { name: string | null; qty: number }>()
       for (const r of plan100) {
         const sap = r.sap.replace(/^0+/, '')
         const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
@@ -810,7 +848,22 @@ export async function POST(req: NextRequest) {
     // Pass 2 — normal assignList (workers continue from wherever they left off)
     for (const { sku, skuName, targetQty: rawQty, channel } of assignList) {
       // Makro uses exact order quantities — do not round up to bag size (would over-produce)
-      const targetQty = channel === 'Makro' ? Math.round(rawQty) : roundUpToBag(sku, rawQty)
+      let targetQty = channel === 'Makro' ? Math.round(rawQty) : roundUpToBag(sku, rawQty)
+
+      // Cap targetQty at remaining plan 100% quantity if in Phase 3 to prevent overproduction
+      if (isPhase3) {
+        const planSku = sku.replace(/^0+/, '')
+        const planItem = planMap.get(planSku)
+        if (planItem) {
+          const prevAssigned = phase1Assigned.get(planSku) ?? 0
+          const remaining = Math.max(0, planItem.qty - prevAssigned)
+          if (targetQty > remaining) {
+            targetQty = remaining
+          }
+        }
+      }
+      if (targetQty <= 0) continue
+
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
 
