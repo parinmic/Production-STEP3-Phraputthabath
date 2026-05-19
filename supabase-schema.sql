@@ -302,6 +302,11 @@ ALTER TABLE makro_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT
 ALTER TABLE wet_market_orders ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 ALTER TABLE lotus_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 
+-- Migration: เพิ่ม source_file เพื่อ track ว่าข้อมูลมาจากไฟล์ไหน (ใช้ filter ใน download และ delete)
+ALTER TABLE makro_orders      ADD COLUMN IF NOT EXISTS source_file text;
+ALTER TABLE wet_market_orders ADD COLUMN IF NOT EXISTS source_file text;
+ALTER TABLE lotus_orders      ADD COLUMN IF NOT EXISTS source_file text;
+
 -- 15. แผนผลิต 100% (Production Plan 100%)
 CREATE TABLE IF NOT EXISTS production_plan_100 (
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

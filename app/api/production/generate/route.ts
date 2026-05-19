@@ -537,7 +537,7 @@ export async function POST(req: NextRequest) {
     const channelOrder = Object.entries(channelPriority)
       .sort((a, b) => a[1] - b[1])
       .map(([ch]) => ch)
-    const activeChannels = channelOrder.length ? channelOrder : ['Wet Market', 'Makro', 'LOTUS']
+    const activeChannels = channelOrder.length ? channelOrder : ['Makro', 'Wet Market', 'LOTUS']
 
     // ------ Workers grouped by station ------
     const workersByStation: Record<string, WorkforceRow[]> = {}
