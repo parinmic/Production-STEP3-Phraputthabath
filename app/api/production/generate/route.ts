@@ -756,8 +756,7 @@ export async function POST(req: NextRequest) {
       if (!deadlineStr) return null
       const [dh, dm] = deadlineStr.split(':').map(Number)
       const deadlineMins = dh * 60 + dm
-      // Only include if deadline falls within remaining phase window (after freeze point)
-      if (deadlineMins <= freezePoint || deadlineMins > phaseEndMins) return null
+      if (deadlineMins <= phaseStartMins || deadlineMins > phaseEndMins) return null
       return {
         deadlineMins,
         skus: data
