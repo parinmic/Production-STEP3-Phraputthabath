@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+function shiftDate(iso: string | null, days: number): string | null {
+  if (!iso) return null
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest) {
     const records = rows
       .map((r: Record<string, unknown>) => {
         if (hasNativeFormat) {
-          const date = toISODate(r['rRDate2'])
+          const date = shiftDate(toISODate(r['rRDate2']), -1)
           return {
             order_date:    date,
             delivery_date: date,
