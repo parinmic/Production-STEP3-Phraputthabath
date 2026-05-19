@@ -64,6 +64,12 @@ function mergeTasks(tasks: Assignment[]): Assignment[] {
     const existing = map.get(key)
     if (existing) {
       existing.target_quantity = Number(existing.target_quantity) + Number(t.target_quantity)
+      if (t.seq !== null && (existing.seq === null || t.seq < existing.seq)) {
+        existing.seq = t.seq
+      }
+      if (t.deadline_time && (!existing.deadline_time || t.deadline_time < existing.deadline_time)) {
+        existing.deadline_time = t.deadline_time
+      }
     } else {
       map.set(key, { ...t })
     }
@@ -73,7 +79,9 @@ function mergeTasks(tasks: Assignment[]): Assignment[] {
     const pA = periodOrder[a.period] ?? 99
     const pB = periodOrder[b.period] ?? 99
     if (pA !== pB) return pA - pB
-    return Number(b.target_quantity) - Number(a.target_quantity)
+    const seqA = a.seq ?? 999999
+    const seqB = b.seq ?? 999999
+    return seqA - seqB
   })
 }
 
@@ -307,7 +315,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[] }
+  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[], minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -324,12 +332,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
       const endMin   = wallClockFinish(cur, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [], segments: [] }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
       s.minStart  = Math.min(s.minStart, startMin)
       s.maxEnd    = Math.max(s.maxEnd, endMin)
+      s.minSeq    = Math.min(s.minSeq, task.seq ?? 999999)
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
       s.segments.push({ start: startMin, end: endMin })
     }
@@ -337,7 +346,12 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
 
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
-    .sort((a, b) => skuStats[b].totalQty - skuStats[a].totalQty)
+    .sort((a, b) => {
+      const seqA = skuStats[a].minSeq
+      const seqB = skuStats[b].minSeq
+      if (seqA !== seqB) return seqA - seqB
+      return skuStats[b].totalQty - skuStats[a].totalQty
+    })
 
   if (!sortedSkus.length) return null
 
@@ -582,7 +596,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number> }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>, minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -591,15 +605,21 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     for (const task of tasks) {
       const dur = taskDurMins(task)
       cur = wallClockFinish(cur, dur)
-      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {} }
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minSeq: task.seq ?? 999999 }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
+      skuStats[task.sku].minSeq = Math.min(skuStats[task.sku].minSeq, task.seq ?? 999999)
     }
   }
 
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
-    .sort((a, b) => skuStats[b].totalQty - skuStats[a].totalQty)
+    .sort((a, b) => {
+      const seqA = skuStats[a].minSeq
+      const seqB = skuStats[b].minSeq
+      if (seqA !== seqB) return seqA - seqB
+      return skuStats[b].totalQty - skuStats[a].totalQty
+    })
 
   if (!sortedSkus.length) return null
 
