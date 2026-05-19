@@ -566,7 +566,7 @@ export async function POST(req: NextRequest) {
       if (w.shift === 'กะ 1') {
         // Phase 3: กะ 1 OT ต่อจนจบ Phase 3 (ชม. เท่ากับกะ 2/3)
         shiftEndMins = isPhase3 ? phaseEndMins : 17 * 60
-      } else if (w.shift === 'กะ 2' || w.shift === 'กะ 3') {
+      } else if (w.shift === 'กะ 2') {
         shiftEndMins = 24 * 60
       }
 
