@@ -523,12 +523,15 @@ export async function POST(req: NextRequest) {
       (jobAssignRaw ?? []) as { row_data: Record<string, unknown> }[]
     )
 
-    // Channel priority for this phase
+    // Channel priority for this phase (newest upload wins — skip if already set)
     const channelPriority: Record<string, number> = {}
     for (const row of (masterChannelRaw ?? [])) {
       const r = row.row_data as Record<string, unknown>
       if (Number(r['Phase']) === selectedPhase) {
-        channelPriority[String(r['Channel'])] = Number(r['Priority'])
+        const ch = String(r['Channel'])
+        if (!(ch in channelPriority)) {
+          channelPriority[ch] = Number(r['Priority'])
+        }
       }
     }
     const channelOrder = Object.entries(channelPriority)
