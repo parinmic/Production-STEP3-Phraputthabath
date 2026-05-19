@@ -22,6 +22,7 @@ export default function LotusPage() {
             historyEndpoint="/api/upload-lotus?round=1400"
             onUpload={makeUpload('1400')}
             parseFileFn={parseLotusWetMarketFile}
+            downloadTable="lotus_orders"
           />
         </div>
         <div className="border-t-4 border-green-500 pt-4 rounded-t-sm">
@@ -31,6 +32,7 @@ export default function LotusPage() {
             historyEndpoint="/api/upload-lotus?round=1600"
             onUpload={makeUpload('1600')}
             parseFileFn={parseLotusWetMarketFile}
+            downloadTable="lotus_orders"
           />
         </div>
       </div>

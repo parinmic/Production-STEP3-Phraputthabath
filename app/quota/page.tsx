@@ -19,6 +19,7 @@ export default function QuotaPage() {
       historyEndpoint="/api/upload-quota"
       onUpload={upload}
       parseFileFn={parseQuotaForecast}
+      downloadTable="channel_quotas"
     />
   )
 }

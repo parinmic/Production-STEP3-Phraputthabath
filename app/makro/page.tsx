@@ -29,6 +29,7 @@ export default function MakroPage() {
             historyEndpoint="/api/upload-makro?round=0800"
             onUpload={makeUpload('0800')}
             parseFileFn={parseLotusWetMarketFile}
+            downloadTable="makro_orders"
           />
         </div>
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
@@ -38,6 +39,7 @@ export default function MakroPage() {
             historyEndpoint="/api/upload-makro?round=1400"
             onUpload={makeUpload('1400')}
             parseFileFn={parseMakroAuto}
+            downloadTable="makro_orders"
           />
         </div>
       </div>

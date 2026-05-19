@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Upload, AlertCircle, CheckCircle2, X, Truck, Clock } from 'lucide-react'
+import { Upload, AlertCircle, CheckCircle2, X, Truck, Clock, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
 
 interface UploadRecord {
@@ -94,6 +95,20 @@ function SlotUploader({ slot, color }: { slot: number; color: typeof SLOT_COLORS
       else alert(data.message ?? 'ลบไม่สำเร็จ')
     } catch { alert('เกิดข้อผิดพลาด') }
     finally { setDeleting(null) }
+  }
+
+  const handleDownload = async (sourceFile: string) => {
+    try {
+      const res  = await fetch(`/api/download-upload?table=production_plan_supplementary&file=${encodeURIComponent(sourceFile)}&slot=${slot}`)
+      const json = await res.json()
+      if (!json.data?.length) { alert('ไม่มีข้อมูล'); return }
+      const headers: Record<string, string> = json.headers
+      const keys = Object.keys(headers)
+      const ws = XLSX.utils.aoa_to_sheet([keys.map(k => headers[k]), ...(json.data as Record<string, unknown>[]).map(row => keys.map(k => row[k] ?? ''))])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, `แผนเสริม ${slot}`)
+      XLSX.writeFile(wb, `${sourceFile.replace(/\.[^.]+$/, '')}_export.xlsx`)
+    } catch { alert('ดาวน์โหลดไม่สำเร็จ') }
   }
 
   const cols = preview.length ? Object.keys(preview[0]) : []
@@ -214,6 +229,10 @@ function SlotUploader({ slot, color }: { slot: number; color: typeof SLOT_COLORS
                     )}
                   </div>
                 </div>
+                <button onClick={() => handleDownload(h.source_file)}
+                  className="shrink-0 text-gray-300 hover:text-blue-500 transition-colors p-1" title="ดาวน์โหลด Excel">
+                  <Download size={13} />
+                </button>
                 <button onClick={() => handleDelete(h.source_file)} disabled={deleting === h.source_file}
                   className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1" title="ลบ">
                   <X size={13} />

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Upload, AlertCircle, CheckCircle2, X, Calendar } from 'lucide-react'
+import { Upload, AlertCircle, CheckCircle2, X, Calendar, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { parseFile, ParsedRow } from '@/lib/parser'
 
 interface UploadRecord {
@@ -47,6 +48,20 @@ function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
       else alert(data.message ?? 'ลบไม่สำเร็จ')
     } catch { alert('เกิดข้อผิดพลาด') }
     finally { setDeleting(null) }
+  }
+
+  const handleDownload = async (sourceFile: string) => {
+    try {
+      const res  = await fetch(`/api/download-upload?table=daily_workforce&file=${encodeURIComponent(sourceFile)}`)
+      const json = await res.json()
+      if (!json.data?.length) { alert('ไม่มีข้อมูล'); return }
+      const headers: Record<string, string> = json.headers
+      const keys = Object.keys(headers)
+      const ws = XLSX.utils.aoa_to_sheet([keys.map(k => headers[k]), ...(json.data as Record<string, unknown>[]).map(row => keys.map(k => row[k] ?? ''))])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'กำลังคน')
+      XLSX.writeFile(wb, `${sourceFile.replace(/\.[^.]+$/, '')}_export.xlsx`)
+    } catch { alert('ดาวน์โหลดไม่สำเร็จ') }
   }
 
   const handleFile = async (file: File) => {
@@ -163,6 +178,13 @@ function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
                     {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
                   </p>
                 </div>
+                <button
+                  onClick={() => handleDownload(h.source_file)}
+                  className="shrink-0 text-gray-300 hover:text-blue-500 transition-colors p-1"
+                  title="ดาวน์โหลด Excel"
+                >
+                  <Download size={14} />
+                </button>
                 <button
                   onClick={() => handleDelete(h.source_file)}
                   disabled={deleting === h.source_file}

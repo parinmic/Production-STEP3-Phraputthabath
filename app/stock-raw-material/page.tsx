@@ -40,6 +40,7 @@ export default function StockRawMaterialPage() {
             historyEndpoint="/api/upload-stock-0010"
             onUpload={uploadStock0010}
             parseFileFn={parseStockRawMaterial}
+            downloadTable="stock_0010"
           />
         </div>
 
@@ -54,6 +55,7 @@ export default function StockRawMaterialPage() {
             historyEndpoint="/api/upload-stock-20"
             onUpload={uploadStock20}
             parseFileFn={parseStockRawMaterial}
+            downloadTable="stock_20"
           />
         </div>
       </div>

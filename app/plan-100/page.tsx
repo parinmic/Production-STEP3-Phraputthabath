@@ -19,6 +19,7 @@ export default function Plan100Page() {
       historyEndpoint="/api/upload-plan100"
       onUpload={uploadPlan100}
       parseFileFn={parsePlan100}
+      downloadTable="production_plan_100"
     />
   )
 }
