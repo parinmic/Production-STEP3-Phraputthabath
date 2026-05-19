@@ -315,7 +315,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[], minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[], minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -332,10 +332,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
       const endMin   = wallClockFinish(cur, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
+      s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
       s.minStart  = Math.min(s.minStart, startMin)
       s.maxEnd    = Math.max(s.maxEnd, endMin)
       s.minSeq    = Math.min(s.minSeq, task.seq ?? 999999)
@@ -424,7 +425,17 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {bagLabel(sku, roundedDisplayQty(sku, stat.totalQty, bagMap), bagMap)}{roundedDisplayQty(sku, stat.totalQty, bagMap).toLocaleString()} กก.
+                      {(() => {
+                        const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+                        const bags = wpb && wpb > 0
+                          ? Object.values(stat.qtyByPeriod).reduce((sum, q) => sum + Math.ceil(q / wpb), 0)
+                          : 0
+                        const displayQty = wpb && wpb > 0
+                          ? bags * wpb
+                          : stat.totalQty
+                        const bagsLabel = bags > 0 ? `${bags} ถุง · ` : ''
+                        return `${bagsLabel}${displayQty.toLocaleString()} กก.`
+                      })()}
                       <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                     </p>
                   </div>
