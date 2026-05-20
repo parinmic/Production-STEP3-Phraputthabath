@@ -206,9 +206,15 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTabl
               lastPeriod = t.period
             }
             const h         = taskHours(t)
-            const startMins = curMins
+            let startMins = curMins
+            if (t.deadline_time) {
+              const [dh, dm] = t.deadline_time.split(':').map(Number)
+              if (!isNaN(dh) && !isNaN(dm)) {
+                startMins = Math.max(startMins, dh * 60 + dm)
+              }
+            }
             const durMins   = h !== null ? Math.round(h * 60) : 0
-            const endMins   = wallClockFinish(curMins, durMins)
+            const endMins   = wallClockFinish(startMins, durMins)
             curMins = endMins
             const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap)
             return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h, displayQty }
@@ -328,8 +334,14 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
         lastPeriod = task.period
       }
       const dur      = taskDurMins(task)
-      const startMin = cur
-      const endMin   = wallClockFinish(cur, dur)
+      let startMin = cur
+      if (task.deadline_time) {
+        const [dh, dm] = task.deadline_time.split(':').map(Number)
+        if (!isNaN(dh) && !isNaN(dm)) {
+          startMin = Math.max(startMin, dh * 60 + dm)
+        }
+      }
+      const endMin   = wallClockFinish(startMin, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
         skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
@@ -615,7 +627,14 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     let cur = phaseStartMins
     for (const task of tasks) {
       const dur = taskDurMins(task)
-      cur = wallClockFinish(cur, dur)
+      let startMin = cur
+      if (task.deadline_time) {
+        const [dh, dm] = task.deadline_time.split(':').map(Number)
+        if (!isNaN(dh) && !isNaN(dm)) {
+          startMin = Math.max(startMin, dh * 60 + dm)
+        }
+      }
+      cur = wallClockFinish(startMin, dur)
       if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minSeq: task.seq ?? 999999 }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
@@ -892,8 +911,14 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerC
         let curMins = phaseStartMins
         const taskInfo = tasks.map(t => {
           const dur      = taskDurMins(t)
-          const startMin = curMins
-          const endMin   = wallClockFinish(curMins, dur)
+          let startMin = curMins
+          if (t.deadline_time) {
+            const [dh, dm] = t.deadline_time.split(':').map(Number)
+            if (!isNaN(dh) && !isNaN(dm)) {
+              startMin = Math.max(startMin, dh * 60 + dm)
+            }
+          }
+          const endMin   = wallClockFinish(startMin, dur)
           curMins = endMin
           return { ...t, startMin, endMin, dur,
             startLabel: minsToLabel(startMin),
@@ -1014,8 +1039,14 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
         let curMins2 = phaseStartMins
         const taskInfo = tasks.map(t => {
           const dur      = taskDurMins(t)
-          const startMin = curMins2
-          const endMin   = wallClockFinish(curMins2, dur)
+          let startMin = curMins2
+          if (t.deadline_time) {
+            const [dh, dm] = t.deadline_time.split(':').map(Number)
+            if (!isNaN(dh) && !isNaN(dm)) {
+              startMin = Math.max(startMin, dh * 60 + dm)
+            }
+          }
+          const endMin   = wallClockFinish(startMin, dur)
           curMins2 = endMin
           return { ...t, startMin, endMin, dur,
             startLabel: minsToLabel(startMin),
@@ -1118,8 +1149,14 @@ function exportExcel(
       for (const task of tasks) {
         const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
         const dur    = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-        const startMin = curMins
-        const endMin   = wallClockFinish(curMins, dur)
+        let startMin = curMins
+        if (task.deadline_time) {
+          const [dh, dm] = task.deadline_time.split(':').map(Number)
+          if (!isNaN(dh) && !isNaN(dm)) {
+            startMin = Math.max(startMin, dh * 60 + dm)
+          }
+        }
+        const endMin   = wallClockFinish(startMin, dur)
         curMins = endMin
         rows.push([
           seq++,

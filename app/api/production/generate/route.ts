@@ -194,6 +194,43 @@ function maxWorkersForQty(qty: number): number {
  *   Segment [09:00–...]:   A+B split 30 → done at 09:15
  *   C never joins (pool exhausted)
  */
+function getWorkerFreeAt(
+  nameKey: string,
+  workerFreeAtMins: Map<string, number>,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  phaseStartMins: number
+): number {
+  let freeAt = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+  const segments = workerBusySegments.get(nameKey) ?? []
+  const sorted = [...segments].sort((a, b) => a.start - b.start)
+  let advanced = true
+  while (advanced) {
+    advanced = false
+    for (const seg of sorted) {
+      if (freeAt >= seg.start - 0.01 && freeAt < seg.end) {
+        freeAt = seg.end
+        advanced = true
+      }
+    }
+  }
+  return freeAt
+}
+
+function getNextBusyStart(
+  nameKey: string,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  afterMins: number
+): number {
+  const segments = workerBusySegments.get(nameKey) ?? []
+  let nextStart = Infinity
+  for (const seg of segments) {
+    if (seg.start >= afterMins - 0.01) {
+      nextStart = Math.min(nextStart, seg.start)
+    }
+  }
+  return nextStart
+}
+
 function assignWorkers(
   params: {
     productionDate: string
@@ -205,6 +242,7 @@ function assignWorkers(
     rate: number
     workerHours: Map<string, number>
     workerFreeAtMins: Map<string, number>
+    workerBusySegments?: Map<string, { start: number; end: number }[]>
     phaseEndMins: number
     period: string
     deadline: string | null
@@ -217,22 +255,30 @@ function assignWorkers(
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
-    eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, channel, phaseRoundMins, wpb,
+    eligibleWorkers, rate, workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins, period, channel, phaseRoundMins, wpb,
     specialStartMins, specialStopMins,
   } = params
 
   const entries = eligibleWorkers
     .map(w => {
       const nameKey = normName(w.name)
-      const rawFreeAt = workerFreeAtMins.get(nameKey) ?? 0
+      const phaseStartMins = phaseRoundMins[0] ?? 510
+      const currentFree = (workerBusySegments && workerFreeAtMins)
+        ? getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+        : (workerFreeAtMins.get(nameKey) ?? 0)
+
       const freeAt = specialStartMins !== null && specialStartMins !== undefined
-        ? Math.max(rawFreeAt, specialStartMins)
-        : rawFreeAt
+        ? Math.max(currentFree, specialStartMins)
+        : currentFree
+
+      const limitEnd = (workerBusySegments)
+        ? Math.min(phaseEndMins, getNextBusyStart(nameKey, workerBusySegments, freeAt))
+        : phaseEndMins
 
       const remainingHours  = workerHours.get(nameKey) ?? 0
       const targetEndMins = specialStopMins !== null && specialStopMins !== undefined
-        ? Math.min(phaseEndMins, specialStopMins)
-        : phaseEndMins
+        ? Math.min(limitEnd, specialStopMins)
+        : limitEnd
 
       const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, targetEndMins)))
       const exhaustAt       = wallClockFinish(freeAt, availWorkMins)
@@ -379,7 +425,24 @@ function assignWorkers(
     if (qty < 0.5) continue
     const finishAt = workerFinishAt.get(e.nameKey) ?? e.freeAt
     workerHours.set(e.nameKey, e.remainingHours - qty / rate)
-    workerFreeAtMins.set(e.nameKey, finishAt)
+
+    if (workerBusySegments && workerFreeAtMins) {
+      const start = e.freeAt
+      const end = finishAt
+      const segs = workerBusySegments.get(e.nameKey) ?? []
+      segs.push({ start, end })
+      workerBusySegments.set(e.nameKey, segs)
+
+      const currentFree = workerFreeAtMins.get(e.nameKey) ?? (phaseRoundMins[0] ?? 510)
+      if (start <= currentFree + 0.01) {
+        workerFreeAtMins.set(e.nameKey, end)
+      }
+      const phaseStartMins = phaseRoundMins[0] ?? 510
+      const resolvedFree = getWorkerFreeAt(e.nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+      workerFreeAtMins.set(e.nameKey, resolvedFree)
+    } else {
+      workerFreeAtMins.set(e.nameKey, finishAt)
+    }
 
     const rq = workerRoundQty.get(e.nameKey) ?? new Map<number, number>()
     const roundsNote = 'rounds:' + Array.from(rq.entries())
@@ -700,6 +763,7 @@ export async function POST(req: NextRequest) {
 
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
+    const workerBusySegments = new Map<string, { start: number; end: number }[]>()
     for (const w of workforce) {
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
@@ -712,6 +776,7 @@ export async function POST(req: NextRequest) {
       const nameKey = normName(w.name)
       workerHours.set(nameKey, actualHours)
       workerFreeAtMins.set(nameKey, phaseStartMins)
+      workerBusySegments.set(nameKey, [])
     }
 
     // ------ Historical averages ------
@@ -968,7 +1033,7 @@ export async function POST(req: NextRequest) {
           productionDate, tableName, sku: String(sku),
           skuName: prod.sku_name || skuName || null,
           targetQty, eligibleWorkers: eligibleWorkers.slice(0, maxWorkersForQty(targetQty)),
-          rate: prod.rate, workerHours, workerFreeAtMins,
+          rate: prod.rate, workerHours, workerFreeAtMins, workerBusySegments,
           phaseEndMins: suppSlot.deadlineMins,   // ← finish before loading deadline
           period: phaseCfg.period, deadline: phaseCfg.deadline,
           channel: 'เสริม',
@@ -1027,7 +1092,7 @@ export async function POST(req: NextRequest) {
         productionDate, tableName, sku: String(sku),
         skuName: prod.sku_name || skuName || null,
         targetQty, eligibleWorkers: cappedWorkers, rate: prod.rate,
-        workerHours, workerFreeAtMins, phaseEndMins,
+        workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins,
         period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
         wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,

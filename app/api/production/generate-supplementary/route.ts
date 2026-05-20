@@ -69,29 +69,75 @@ function maxWorkersForQty(qty: number): number {
   if (qty <= 15) return 1; if (qty <= 30) return 2; if (qty <= 45) return 3; return Infinity
 }
 
+function getWorkerFreeAt(
+  nameKey: string,
+  workerFreeAtMins: Map<string, number>,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  phaseStartMins: number
+): number {
+  let freeAt = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+  const segments = workerBusySegments.get(nameKey) ?? []
+  const sorted = [...segments].sort((a, b) => a.start - b.start)
+  let advanced = true
+  while (advanced) {
+    advanced = false
+    for (const seg of sorted) {
+      if (freeAt >= seg.start - 0.01 && freeAt < seg.end) {
+        freeAt = seg.end
+        advanced = true
+      }
+    }
+  }
+  return freeAt
+}
+
+function getNextBusyStart(
+  nameKey: string,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  afterMins: number
+): number {
+  const segments = workerBusySegments.get(nameKey) ?? []
+  let nextStart = Infinity
+  for (const seg of segments) {
+    if (seg.start >= afterMins - 0.01) {
+      nextStart = Math.min(nextStart, seg.start)
+    }
+  }
+  return nextStart
+}
+
 function assignWorkers(params: {
   productionDate: string; tableName: string; sku: string; skuName: string | null
   targetQty: number; eligibleWorkers: WorkforceRow[]; rate: number
   workerHours: Map<string, number>; workerFreeAtMins: Map<string, number>
+  workerBusySegments?: Map<string, { start: number; end: number }[]>
   phaseEndMins: number; period: string; channel: string
   specialStartMins?: number | null
   specialStopMins?: number | null
 }): Record<string, unknown>[] {
   const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate,
-          workerHours, workerFreeAtMins, phaseEndMins, period, channel,
+          workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins, period, channel,
           specialStartMins, specialStopMins } = params
 
   const entries = eligibleWorkers.map(w => {
     const nameKey = normName(w.name)
-    const rawFreeAt = workerFreeAtMins.get(nameKey) ?? 0
+    const phaseStartMins = 510
+    const currentFree = (workerBusySegments && workerFreeAtMins)
+      ? getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+      : (workerFreeAtMins.get(nameKey) ?? 0)
+
     const freeAt = specialStartMins !== null && specialStartMins !== undefined
-      ? Math.max(rawFreeAt, specialStartMins)
-      : rawFreeAt
+      ? Math.max(currentFree, specialStartMins)
+      : currentFree
+
+    const limitEnd = (workerBusySegments)
+      ? Math.min(phaseEndMins, getNextBusyStart(nameKey, workerBusySegments, freeAt))
+      : phaseEndMins
 
     const remH   = workerHours.get(nameKey) ?? 0
     const targetEndMins = specialStopMins !== null && specialStopMins !== undefined
-      ? Math.min(phaseEndMins, specialStopMins)
-      : phaseEndMins
+      ? Math.min(limitEnd, specialStopMins)
+      : limitEnd
 
     const avail  = Math.min(remH * 60, Math.max(0, availableWorkMins(freeAt, targetEndMins)))
     return { worker: w, nameKey, freeAt, exhaustAt: wallClockFinish(freeAt, avail), remainingHours: remH }
@@ -132,7 +178,25 @@ function assignWorkers(params: {
     if (qty < 0.5) continue
     const finishAt = workerFinishAt.get(e.nameKey) ?? e.freeAt
     workerHours.set(e.nameKey, e.remainingHours - qty / rate)
-    workerFreeAtMins.set(e.nameKey, finishAt)
+
+    if (workerBusySegments && workerFreeAtMins) {
+      const start = e.freeAt
+      const end = finishAt
+      const segs = workerBusySegments.get(e.nameKey) ?? []
+      segs.push({ start, end })
+      workerBusySegments.set(e.nameKey, segs)
+
+      const currentFree = workerFreeAtMins.get(e.nameKey) ?? 510
+      if (start <= currentFree + 0.01) {
+        workerFreeAtMins.set(e.nameKey, end)
+      }
+      const phaseStartMins = 510
+      const resolvedFree = getWorkerFreeAt(e.nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+      workerFreeAtMins.set(e.nameKey, resolvedFree)
+    } else {
+      workerFreeAtMins.set(e.nameKey, finishAt)
+    }
+
     result.push({
       production_date: productionDate, table_name: tableName,
       worker_code: e.worker.emp_id, worker_name: e.worker.name,
@@ -293,11 +357,13 @@ export async function POST(req: NextRequest) {
     // Worker time: all workers start at phaseStartMins, available until phaseEndMins
     const workerHours      = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
+    const workerBusySegments = new Map<string, { start: number; end: number }[]>()
     for (const w of workforce) {
       const nameKey = normName(w.name)
       const avail   = availableWorkMins(phaseStartMins, phaseEndMins) / 60
       workerHours.set(nameKey, avail)
       workerFreeAtMins.set(nameKey, phaseStartMins)
+      workerBusySegments.set(nameKey, [])
     }
 
     // Build assignment list — use quantity directly
@@ -360,7 +426,7 @@ export async function POST(req: NextRequest) {
         productionDate, tableName, sku: String(sku),
         skuName: prod.sku_name || skuName || null,
         targetQty, eligibleWorkers: capped, rate: prod.rate,
-        workerHours, workerFreeAtMins, phaseEndMins, period, channel: 'เสริม',
+        workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins, period, channel: 'เสริม',
         specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
         specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
       }))
