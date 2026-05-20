@@ -545,6 +545,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           onClick={() => setBarPopup(null)}>
           <div className="bg-white rounded-2xl shadow-xl p-5 w-72 max-w-[90vw]"
+            style={{ fontFamily: "'Sarabun New', 'Sarabun', sans-serif" }}
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: barPopup.color }} />
@@ -555,11 +556,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             <div className="flex flex-col gap-2 mb-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">เริ่ม</span>
-                <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.start)}</span>
+                <span className="text-sm font-bold text-gray-900">{minsToLabel(barPopup.start)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">เสร็จ</span>
-                <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.end)}</span>
+                <span className="text-sm font-bold text-gray-900">{minsToLabel(barPopup.end)}</span>
               </div>
             </div>
             <div className="border-t border-gray-100 mb-3" />
