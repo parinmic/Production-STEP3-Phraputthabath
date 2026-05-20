@@ -9,6 +9,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
   'mas-lotus':               { label: 'Mas LOTUS',                desc: 'อัพโหลด Master Calculation — LOTUS', dot: 'border-green-500' },
   'mas-channel':             { label: 'Mas Channel',              desc: 'อัพโหลด Master Calculation — Channel', dot: 'border-orange-500' },
   'mas-trakra':              { label: 'Mas ตระกร้า',              desc: 'อัพโหลด Master Calculation — ตระกร้า', dot: 'border-yellow-500' },
+  'mas-special':             { label: 'Mas Special',              desc: 'อัพโหลด Master Calculation — Special SKUs', dot: 'border-pink-500' },
 }
 
 export default function CalculationTypePage({ params }: { params: { type: string } }) {
