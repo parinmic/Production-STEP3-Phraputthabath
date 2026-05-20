@@ -306,7 +306,7 @@ function mergeSegments(segs: { start: number; end: number }[]) {
 
 // ─── SKU Schedule view (ภาพรวม) ──────────────────────────────────────────────
 
-type BarPopupData = { name: string; start: number; end: number; workers: number; color: string; x: number; y: number }
+type BarPopup = { name: string; start: number; end: number; workers: string[]; color: string } | null
 
 interface SkuScheduleViewProps {
   items: Assignment[]
@@ -315,10 +315,10 @@ interface SkuScheduleViewProps {
   rateMap: Record<string, number>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
-  onBarClick: (data: BarPopupData) => void
+  nameMap: Record<string, string>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, onBarClick }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -331,6 +331,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     return () => clearInterval(id)
   }, [])
   const nowMins = nowSecs / 60
+
+  const [barPopup, setBarPopup] = useState<BarPopup>(null)
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
@@ -492,7 +494,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
                         opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
                       onClick={e => {
-                        onBarClick({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: stat.workers.length, color: col.bg, x: e.clientX, y: e.clientY })
+                        e.stopPropagation()
+                        setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: stat.workers, color: col.bg })
                       }} />
                   )
                 })}
@@ -536,6 +539,42 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})` }} />
         </>}
       </div>
+
+      {/* Bar popup */}
+      {barPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setBarPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-72 max-w-[90vw]"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: barPopup.color }} />
+              <p className="text-sm font-bold text-gray-900 leading-tight flex-1">{barPopup.name}</p>
+              <button onClick={() => setBarPopup(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
+            </div>
+            <div className="border-t border-gray-100 mb-3" />
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">เริ่ม</span>
+                <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.start)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">เสร็จ</span>
+                <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.end)}</span>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 mb-3" />
+            <p className="text-xs font-semibold text-gray-500 mb-2">พนักงาน {barPopup.workers.length} คน</p>
+            <div className="flex flex-col gap-1.5">
+              {barPopup.workers.map(w => (
+                <div key={w} className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: barPopup.color }} />
+                  <span className="text-sm text-gray-700">{nameMap[w.replace(/\s+/g, ' ').trim()] ?? shortName(w)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1248,7 +1287,6 @@ export default function TablePage() {
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
   const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
   const [genSupResult, setGenSupResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [barPopup, setBarPopup] = useState<BarPopupData | null>(null)
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1342,35 +1380,6 @@ export default function TablePage() {
 
   return (
     <>
-    {barPopup && (
-      <>
-        <div className="fixed inset-0 z-[9998]" onClick={() => setBarPopup(null)} />
-        <div className="fixed z-[9999] bg-white border border-gray-100 rounded-2xl shadow-2xl px-5 py-4 min-w-[220px]"
-          style={{ left: Math.min(barPopup.x + 12, window.innerWidth - 248), top: Math.max(barPopup.y - 120, 8) }}>
-          <p className="text-sm font-bold text-gray-900 mb-3 leading-tight">{barPopup.name}</p>
-          <div className="border-t border-gray-100 mb-3" />
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: barPopup.color }} />
-              <span className="text-sm text-gray-500 flex-1">เริ่ม:</span>
-              <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.start)}</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-green-500 text-sm shrink-0">✓</span>
-              <span className="text-sm text-gray-500 flex-1">เสร็จ:</span>
-              <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(barPopup.end)}</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m4-4a4 4 0 100-8 4 4 0 000 8z" />
-              </svg>
-              <span className="text-sm text-gray-500 flex-1">พนักงาน:</span>
-              <span className="text-sm font-bold text-gray-900">{barPopup.workers} คน</span>
-            </div>
-          </div>
-        </div>
-      </>
-    )}
     {showGenModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
            onClick={() => setShowGenModal(false)}>
@@ -1515,7 +1524,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 bagMap={bagMap}
                 skuColor={skuColor}
-                onBarClick={setBarPopup}
+                nameMap={nameMap}
               />
             )}
             {viewMode === 'gantt' && (
