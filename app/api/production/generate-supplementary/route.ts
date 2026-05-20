@@ -74,15 +74,26 @@ function assignWorkers(params: {
   targetQty: number; eligibleWorkers: WorkforceRow[]; rate: number
   workerHours: Map<string, number>; workerFreeAtMins: Map<string, number>
   phaseEndMins: number; period: string; channel: string
+  specialStartMins?: number | null
+  specialStopMins?: number | null
 }): Record<string, unknown>[] {
   const { productionDate, tableName, sku, skuName, targetQty, eligibleWorkers, rate,
-          workerHours, workerFreeAtMins, phaseEndMins, period, channel } = params
+          workerHours, workerFreeAtMins, phaseEndMins, period, channel,
+          specialStartMins, specialStopMins } = params
 
   const entries = eligibleWorkers.map(w => {
     const nameKey = normName(w.name)
-    const freeAt = workerFreeAtMins.get(nameKey) ?? 0
+    const rawFreeAt = workerFreeAtMins.get(nameKey) ?? 0
+    const freeAt = specialStartMins !== null && specialStartMins !== undefined
+      ? Math.max(rawFreeAt, specialStartMins)
+      : rawFreeAt
+
     const remH   = workerHours.get(nameKey) ?? 0
-    const avail  = Math.min(remH * 60, Math.max(0, availableWorkMins(freeAt, phaseEndMins)))
+    const targetEndMins = specialStopMins !== null && specialStopMins !== undefined
+      ? Math.min(phaseEndMins, specialStopMins)
+      : phaseEndMins
+
+    const avail  = Math.min(remH * 60, Math.max(0, availableWorkMins(freeAt, targetEndMins)))
     return { worker: w, nameKey, freeAt, exhaustAt: wallClockFinish(freeAt, avail), remainingHours: remH }
   }).filter(e => e.exhaustAt > e.freeAt + 0.1).sort((a, b) => a.freeAt - b.freeAt)
 
@@ -181,13 +192,14 @@ export async function POST(req: NextRequest) {
     const [
       { data: wf0800 }, { data: wf1300 },
       { data: masterProdRaw }, { data: jobAssignRaw },
-      { data: pickingUnitRaw },
+      { data: pickingUnitRaw }, { data: masterSpecialRaw },
     ] = await Promise.all([
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0800'),
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1300'),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }),
       supabase.from('master_logic_manpower').select('row_data'),
       supabase.from('picking_unit_master').select('sap, weight_per_bag'),
+      supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }),
     ])
 
     // Merge workforce (1300 overrides 0800)
@@ -210,6 +222,31 @@ export async function POST(req: NextRequest) {
     const roundUpToBag = (sku: string, qty: number) => {
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
       return wpb && wpb > 0 ? Math.ceil(qty / wpb) * wpb : qty
+    }
+
+    const parseExcelTime = (val: unknown): number | null => {
+      if (val === null || val === undefined || val === '') return null
+      const num = Number(val)
+      if (isNaN(num)) return null
+      return Math.round(num * 24 * 60)
+    }
+
+    const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
+    if (masterSpecialRaw?.length) {
+      for (const row of masterSpecialRaw) {
+        const r = row.row_data as Record<string, unknown>
+        const sap = String(r['SAP'] ?? '').trim()
+        if (!sap) continue
+        const startVal = r['ช่วงเวลาเริ่มผลิต']
+        const stopVal = r['ช่วงเวลาหยุดผลิต']
+        const startMins = parseExcelTime(startVal)
+        const stopMins = parseExcelTime(stopVal)
+        if (startMins !== null || stopMins !== null) {
+          const entry = { startMins, stopMins }
+          specialTimeMap.set(sap, entry)
+          specialTimeMap.set(sap.replace(/^0+/, ''), entry)
+        }
+      }
     }
 
     // Productivity map
@@ -280,6 +317,8 @@ export async function POST(req: NextRequest) {
         skuName: prod.sku_name || skuName || null,
         targetQty, eligibleWorkers: capped, rate: prod.rate,
         workerHours, workerFreeAtMins, phaseEndMins, period, channel: 'เสริม',
+        specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
+        specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
       }))
     }
 

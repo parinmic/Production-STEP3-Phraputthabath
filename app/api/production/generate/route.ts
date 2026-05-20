@@ -211,19 +211,30 @@ function assignWorkers(
     channel: string
     phaseRoundMins: number[]
     wpb?: number
+    specialStartMins?: number | null
+    specialStopMins?: number | null
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
     eligibleWorkers, rate, workerHours, workerFreeAtMins, phaseEndMins, period, channel, phaseRoundMins, wpb,
+    specialStartMins, specialStopMins,
   } = params
 
   const entries = eligibleWorkers
     .map(w => {
       const nameKey = normName(w.name)
-      const freeAt          = workerFreeAtMins.get(nameKey) ?? 0
+      const rawFreeAt = workerFreeAtMins.get(nameKey) ?? 0
+      const freeAt = specialStartMins !== null && specialStartMins !== undefined
+        ? Math.max(rawFreeAt, specialStartMins)
+        : rawFreeAt
+
       const remainingHours  = workerHours.get(nameKey) ?? 0
-      const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, phaseEndMins)))
+      const targetEndMins = specialStopMins !== null && specialStopMins !== undefined
+        ? Math.min(phaseEndMins, specialStopMins)
+        : phaseEndMins
+
+      const availWorkMins   = Math.min(remainingHours * 60, Math.max(0, availableWorkMins(freeAt, targetEndMins)))
       const exhaustAt       = wallClockFinish(freeAt, availWorkMins)
       return { worker: w, nameKey, freeAt, exhaustAt, remainingHours }
     })
@@ -461,6 +472,7 @@ export async function POST(req: NextRequest) {
       yieldBagsRaw,
       { data: plan100Raw },
       { data: pickingUnitRaw },
+      { data: masterSpecialRaw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
         .select('emp_id, name, work_station, shift')
@@ -530,6 +542,10 @@ export async function POST(req: NextRequest) {
             .eq('plan_date', productionDate)
         : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
       supabase.from('picking_unit_master').select('sap, weight_per_bag'),
+      supabase.from('master_logic_calculation')
+        .select('row_data')
+        .eq('calculation_type', 'Mas Special')
+        .order('uploaded_at', { ascending: false }),
     ])
 
     // Merge workforce: Phase 2/3 = 1300 overrides 0800
@@ -588,6 +604,33 @@ export async function POST(req: NextRequest) {
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
       if (!wpb || wpb <= 0) return qty
       return Math.ceil(qty / wpb) * wpb
+    }
+
+    // Helper to parse Excel time decimal fraction to minutes
+    const parseExcelTime = (val: unknown): number | null => {
+      if (val === null || val === undefined || val === '') return null
+      const num = Number(val)
+      if (isNaN(num)) return null
+      return Math.round(num * 24 * 60)
+    }
+
+    // Map: SKU -> { startMins: number | null, stopMins: number | null }
+    const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
+    if (masterSpecialRaw?.length) {
+      for (const row of masterSpecialRaw) {
+        const r = row.row_data as Record<string, unknown>
+        const sap = String(r['SAP'] ?? '').trim()
+        if (!sap) continue
+        const startVal = r['ช่วงเวลาเริ่มผลิต']
+        const stopVal = r['ช่วงเวลาหยุดผลิต']
+        const startMins = parseExcelTime(startVal)
+        const stopMins = parseExcelTime(stopVal)
+        if (startMins !== null || stopMins !== null) {
+          const entry = { startMins, stopMins }
+          specialTimeMap.set(sap, entry)
+          specialTimeMap.set(sap.replace(/^0+/, ''), entry)
+        }
+      }
     }
 
     // ------ Parse master data ------
@@ -887,6 +930,8 @@ export async function POST(req: NextRequest) {
           channel: 'เสริม',
           phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
           wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
+          specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
+          specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
         }))
       }
     }
@@ -942,6 +987,8 @@ export async function POST(req: NextRequest) {
         period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
         wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
+        specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
+        specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
       }))
     }
 
