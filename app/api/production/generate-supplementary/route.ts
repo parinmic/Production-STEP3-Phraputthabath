@@ -299,7 +299,7 @@ export async function POST(req: NextRequest) {
             // Adjust to Bangkok LMT (UTC +06:42:04) in 1899
             const localMs = d.getTime() + (6 * 3600 + 42 * 60 + 4) * 1000
             const dayMs = 24 * 3600 * 1000
-            const timeOfDayMs = (localMs + 10 * dayMs) % dayMs
+            const timeOfDayMs = ((localMs % dayMs) + dayMs) % dayMs
             return Math.round(timeOfDayMs / 1000 / 60)
           }
         }
