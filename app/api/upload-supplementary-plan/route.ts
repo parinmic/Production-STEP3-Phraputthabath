@@ -23,30 +23,50 @@ function toISODate(val: unknown): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const slot = req.nextUrl.searchParams.get('slot') ?? '1'
-  const tableName = `production_plan_supplementary_${slot}`
-
+  // Fetch all logs for all supplementary slots
   const { data: logs } = await supabase
     .from('upload_log')
-    .select('source_file, record_count, uploaded_at')
-    .eq('table_name', tableName)
+    .select('source_file, record_count, uploaded_at, table_name')
+    .like('table_name', 'production_plan_supplementary_%')
     .order('uploaded_at', { ascending: false })
-    .limit(20)
+    .limit(60)
 
-  const uploads = await Promise.all((logs ?? []).map(async r => {
-    const { data: rec } = await supabase
+  // Group by source_file to consolidate split logs
+  const fileMap = new Map<string, { source_file: string; record_count: number; uploaded_at: string; slots: string[] }>()
+  for (const r of logs ?? []) {
+    const file = r.source_file
+    const slotNum = r.table_name.replace('production_plan_supplementary_', '')
+    if (!fileMap.has(file)) {
+      fileMap.set(file, {
+        source_file: file,
+        record_count: r.record_count,
+        uploaded_at: r.uploaded_at,
+        slots: [slotNum],
+      })
+    } else {
+      const cur = fileMap.get(file)!
+      cur.record_count += r.record_count
+      if (!cur.slots.includes(slotNum)) cur.slots.push(slotNum)
+    }
+  }
+
+  const uploads = await Promise.all(Array.from(fileMap.values()).map(async r => {
+    // Fetch loading info
+    const { data: recs } = await supabase
       .from('production_plan_supplementary')
-      .select('loading_time, deadline_time')
+      .select('loading_time, deadline_time, delivery_date')
       .eq('source_file', r.source_file)
-      .eq('slot', slot)
       .limit(1)
-      .maybeSingle()
+
+    const rec = recs?.[0]
     return {
       source_file:   r.source_file,
       record_count:  r.record_count,
       uploaded_at:   r.uploaded_at,
       loading_time:  rec?.loading_time ?? null,
       deadline_time: rec?.deadline_time ?? null,
+      delivery_date: rec?.delivery_date ?? null,
+      slots:         r.slots,
     }
   }))
 
@@ -55,9 +75,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { rows, filename, loading_time, deadline_time, slot = 1 } = await req.json()
+    const { rows, filename } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
-    if (!loading_time) return NextResponse.json({ success: false, message: 'กรุณาระบุเวลาโหลดจ่าย' }, { status: 400 })
 
     const cols = Object.keys(rows[0])
     const hasNativeFormat = cols.some(c => c.startsWith('r') && c.length > 2)
@@ -65,6 +84,7 @@ export async function POST(req: NextRequest) {
     const records = rows
       .map((r: Record<string, unknown>) => {
         let sku = '', sku_name = '', quantity = 0, delivery_date: string | null = null, order_date: string | null = null
+        let loading_time = '', deadline_time = '', slot = '1'
 
         if (hasNativeFormat) {
           const skuCol  = cols.includes('rProduct_code') ? 'rProduct_code'
@@ -84,15 +104,52 @@ export async function POST(req: NextRequest) {
           quantity      = parseFloat(String(r[qtyCol] || '0')) || 0
           order_date    = toISODate(r[dateCol])
           delivery_date = toISODate(r[dlvCol])
+
+          // Native Excel format doesn't have loading times; default to slot 1, 10:00
+          loading_time  = '10:00'
+          deadline_time = '09:30'
+          slot          = '1'
         } else {
           sku           = String(r['SKU'] ?? r['รหัสสินค้า'] ?? '').trim()
           sku_name      = String(r['ชื่อสินค้า'] ?? r['product_name'] ?? '').trim()
           quantity      = Number(r['ปริมาณ'] ?? r['จำนวน'] ?? r['qty'] ?? 0) || 0
           order_date    = toISODate(r['วันที่สั่ง'] ?? r['order_date'])
           delivery_date = toISODate(r['วันที่ส่ง'] ?? r['delivery_date'])
+          loading_time  = String(r['loading_time'] ?? r['เวลาต้องโหลด'] ?? '10:00').trim()
+          deadline_time = String(r['deadline_time'] ?? '').trim()
+          
+          // Determine slot based on loading time:
+          // Slot 1: loading time <= 14:00
+          // Slot 2: loading time > 14:00 and <= 16:00
+          // Slot 3: loading time > 16:00
+          if (loading_time) {
+            const [hStr, mStr] = loading_time.split(':')
+            const h = parseInt(hStr) || 0
+            const m = parseInt(mStr) || 0
+            const totalMins = h * 60 + m
+            if (totalMins <= 14 * 60) {
+              slot = '1'
+            } else if (totalMins <= 16 * 60) {
+              slot = '2'
+            } else {
+              slot = '3'
+            }
+          } else {
+            slot = '1'
+          }
+
+          if (!deadline_time && loading_time) {
+            const [hStr, mStr] = loading_time.split(':')
+            const h = parseInt(hStr) || 0
+            const m = parseInt(mStr) || 0
+            const total = h * 60 + m - 30
+            const hh = Math.floor(((total % 1440) + 1440) % 1440 / 60)
+            const mm = ((total % 1440) + 1440) % 1440 % 60
+            deadline_time = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+          }
         }
 
-        return { slot: String(slot), sku, sku_name, quantity, order_date, delivery_date, loading_time, deadline_time, source_file: filename ?? 'unknown' }
+        return { slot, sku, sku_name, quantity, order_date, delivery_date, loading_time, deadline_time, source_file: filename ?? 'unknown' }
       })
       .filter((r: { sku: string; quantity: number }) => r.sku && r.quantity > 0)
 
@@ -103,25 +160,39 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
+    // Clean up old records for this filename across all slots
     await supabase
       .from('production_plan_supplementary')
       .delete()
       .eq('source_file', filename ?? 'unknown')
-      .eq('slot', String(slot))
 
+    await supabase
+      .from('upload_log')
+      .delete()
+      .eq('source_file', filename ?? 'unknown')
+
+    // Insert records
     const { error } = await supabase.from('production_plan_supplementary').insert(records)
     if (error) throw error
 
-    const tableName = `production_plan_supplementary_${slot}`
-    await supabase.from('upload_log').insert({
-      table_name:   tableName,
-      source_file:  filename ?? 'unknown',
-      record_count: records.length,
-    })
+    // Group the inserted records by slot to create upload logs
+    const slotGroups: Record<string, number> = {}
+    for (const rec of records) {
+      slotGroups[rec.slot] = (slotGroups[rec.slot] || 0) + 1
+    }
+
+    for (const [s, count] of Object.entries(slotGroups)) {
+      const tableName = `production_plan_supplementary_${s}`
+      await supabase.from('upload_log').insert({
+        table_name:   tableName,
+        source_file:  filename ?? 'unknown',
+        record_count: count,
+      })
+    }
 
     return NextResponse.json({
       success: true,
-      message: `บันทึกสำเร็จ ${records.length} รายการ — โหลดจ่าย ${loading_time} น. (deadline ${deadline_time} น.)`,
+      message: `บันทึกสำเร็จ ${records.length} รายการ`,
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'เกิดข้อผิดพลาด'
@@ -132,11 +203,10 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const sourceFile = req.nextUrl.searchParams.get('file')
-    const slot       = req.nextUrl.searchParams.get('slot') ?? '1'
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
-    const tableName = `production_plan_supplementary_${slot}`
-    await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile).eq('slot', slot)
-    await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+
+    await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
+    await supabase.from('upload_log').delete().eq('source_file', sourceFile)
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
