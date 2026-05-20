@@ -79,6 +79,9 @@ function mergeTasks(tasks: Assignment[]): Assignment[] {
     const pA = periodOrder[a.period] ?? 99
     const pB = periodOrder[b.period] ?? 99
     if (pA !== pB) return pA - pB
+    const timeA = a.deadline_time || ''
+    const timeB = b.deadline_time || ''
+    if (timeA !== timeB) return timeA.localeCompare(timeB)
     const seqA = a.seq ?? 999999
     const seqB = b.seq ?? 999999
     return seqA - seqB
