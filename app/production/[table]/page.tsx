@@ -53,6 +53,14 @@ interface Assignment {
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
 
+function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
+  const allSkus = Array.from(new Set(allItems.map(a => a.sku)))
+  const suppSkus = new Set(allItems.filter(a => a.channel === 'เสริม').map(a => a.sku))
+  const map: Record<string, typeof BAR_COLORS[0]> = {}
+  allSkus.forEach((sku, i) => { map[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+  return map
+}
+
 function shortName(full: string) {
   return full.trim().split(/\s+/)[0] ?? full
 }
@@ -169,13 +177,10 @@ interface WorkerTableProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTableProps) {
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerTableProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -293,9 +298,10 @@ interface SkuScheduleViewProps {
   phaseEnd: number
   rateMap: Record<string, number>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -310,9 +316,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const nowMins = nowSecs / 60
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const phaseStartMins = phaseStart * 60
 
@@ -889,13 +892,10 @@ interface WorkerCardViewProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerCardViewProps) {
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1003,9 +1003,10 @@ interface CurrentTimeViewProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: CurrentTimeViewProps) {
+function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: CurrentTimeViewProps) {
   const [realNowMins, setRealNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
@@ -1017,11 +1018,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
   }, [])
 
   const nowMins = realNowMins
-
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1315,6 +1311,7 @@ export default function TablePage() {
   const viewStartH   = selectedPhase === 'all' ? PHASES[0].startH  : phaseConfig!.startH
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  const skuColor     = buildSkuColorMap(items)
 
   const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
     { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',        desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
@@ -1467,6 +1464,7 @@ export default function TablePage() {
                 phaseEnd={viewEndH}
                 rateMap={rateMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'gantt' && (
@@ -1476,6 +1474,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'worker' && (
@@ -1485,6 +1484,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'time' && (
@@ -1494,6 +1494,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'summary' && (
