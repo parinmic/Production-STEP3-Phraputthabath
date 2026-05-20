@@ -119,7 +119,7 @@ function assignWorkers(params: {
           workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins, period, channel,
           specialStartMins, specialStopMins } = params
 
-  const entries = eligibleWorkers.map(w => {
+  let entries = eligibleWorkers.map(w => {
     const nameKey = normName(w.name)
     const phaseStartMins = 510
     const currentFree = (workerBusySegments && workerFreeAtMins)
@@ -140,10 +140,21 @@ function assignWorkers(params: {
       : limitEnd
 
     const avail  = Math.min(remH * 60, Math.max(0, availableWorkMins(freeAt, targetEndMins)))
-    return { worker: w, nameKey, freeAt, exhaustAt: wallClockFinish(freeAt, avail), remainingHours: remH }
+    const capacity = (avail * rate) / 60
+    return { worker: w, nameKey, freeAt, exhaustAt: wallClockFinish(freeAt, avail), remainingHours: remH, capacity }
   }).filter(e => e.exhaustAt > e.freeAt + 0.1).sort((a, b) => a.freeAt - b.freeAt)
 
   if (!entries.length) return []
+
+  // Approach 3: Greedy Job-Contiguity
+  // Only keep workers whose freeAt is within a 90 minutes window of the earliest worker,
+  // but only if their combined capacity is enough to cover the targetQty.
+  const minFreeAt = entries[0].freeAt
+  const windowEntries = entries.filter(e => e.freeAt <= minFreeAt + 90)
+  const totalWindowCapacity = windowEntries.reduce((sum, e) => sum + e.capacity, 0)
+  if (totalWindowCapacity >= targetQty) {
+    entries = windowEntries
+  }
 
   const eventTimes = Array.from(new Set([
     ...entries.flatMap(e => [e.freeAt, e.exhaustAt]),
