@@ -401,24 +401,32 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
   const pct = (mins: number) => ((mins - chartStart) / totalRange) * 100
 
+  useEffect(() => {
+    if (!popup) return
+    const dismiss = () => setPopup(null)
+    document.addEventListener('click', dismiss)
+    return () => document.removeEventListener('click', dismiss)
+  }, [popup])
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm" onClick={() => setPopup(null)}>
-      {popup && (
-        <div className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-xl px-4 py-3 min-w-[160px] pointer-events-none"
-          style={{ left: popup.x + 12, top: popup.y - 72 }}>
-          <p className="text-xs font-semibold text-gray-700 mb-2 leading-tight">{popup.name}</p>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-xs text-gray-400">เริ่ม</span>
-              <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.start)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-xs text-gray-400">เสร็จ</span>
-              <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.end)}</span>
-            </div>
+    <>
+    {popup && (
+      <div className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-xl px-4 py-3 min-w-[160px] pointer-events-none"
+        style={{ left: Math.min(popup.x + 12, window.innerWidth - 180), top: Math.max(popup.y - 90, 8) }}>
+        <p className="text-xs font-semibold text-gray-700 mb-2 leading-tight">{popup.name}</p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-gray-400">เริ่ม</span>
+            <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.start)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-gray-400">เสร็จ</span>
+            <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.end)}</span>
           </div>
         </div>
-      )}
+      </div>
+    )}
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
       {/* Chart header (time axis) */}
       <div className="flex border-b border-gray-100 bg-gray-50/50 sticky top-0 z-20 h-8 sm:h-10">
         <div className="w-28 sm:w-44 shrink-0 border-r border-gray-100" />
@@ -552,6 +560,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         </>}
       </div>
     </div>
+    </>
   )
 }
 
