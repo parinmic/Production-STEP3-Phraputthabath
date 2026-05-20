@@ -54,10 +54,24 @@ interface Assignment {
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
 
 function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
-  const allSkus = Array.from(new Set(allItems.map(a => a.sku)))
   const suppSkus = new Set(allItems.filter(a => a.channel === 'เสริม').map(a => a.sku))
+  // Key by sku_name so same product name gets the same color even when sku codes differ across phases
+  const nameToColor: Record<string, typeof BAR_COLORS[0]> = {}
+  let colorIdx = 0
   const map: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { map[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+  for (const item of allItems) {
+    if (item.sku in map) continue
+    if (suppSkus.has(item.sku)) {
+      map[item.sku] = GOLD_COLOR
+      continue
+    }
+    const nameKey = item.sku_name ?? item.sku
+    if (!(nameKey in nameToColor)) {
+      nameToColor[nameKey] = BAR_COLORS[colorIdx % BAR_COLORS.length]
+      colorIdx++
+    }
+    map[item.sku] = nameToColor[nameKey]
+  }
   return map
 }
 
