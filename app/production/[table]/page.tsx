@@ -316,7 +316,7 @@ interface SkuScheduleViewProps {
 }
 
 function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor }: SkuScheduleViewProps) {
-  const [popup, setPopup] = useState<{ name: string; start: number; end: number; x: number; y: number } | null>(null)
+  const [popup, setPopup] = useState<{ name: string; start: number; end: number; workers: number; color: string; x: number; y: number } | null>(null)
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -411,17 +411,27 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   return (
     <>
     {popup && (
-      <div className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-xl px-4 py-3 min-w-[160px] pointer-events-none"
-        style={{ left: Math.min(popup.x + 12, window.innerWidth - 180), top: Math.max(popup.y - 90, 8) }}>
-        <p className="text-xs font-semibold text-gray-700 mb-2 leading-tight">{popup.name}</p>
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-gray-400">เริ่ม</span>
-            <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.start)}</span>
+      <div className="fixed z-[9999] bg-white border border-gray-100 rounded-2xl shadow-2xl px-5 py-4 min-w-[220px] pointer-events-none"
+        style={{ left: Math.min(popup.x + 12, window.innerWidth - 240), top: Math.max(popup.y - 110, 8) }}>
+        <p className="text-sm font-bold text-gray-900 mb-3 leading-tight">{popup.name}</p>
+        <div className="border-t border-gray-100 mb-3" />
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: popup.color }} />
+            <span className="text-sm text-gray-500 flex-1">เริ่ม:</span>
+            <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(popup.start)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-gray-400">เสร็จ</span>
-            <span className="text-xs font-mono font-bold text-gray-800">{minsToLabel(popup.end)}</span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-green-500 text-sm shrink-0">✓</span>
+            <span className="text-sm text-gray-500 flex-1">เสร็จ:</span>
+            <span className="text-sm font-bold text-gray-900 font-mono">{minsToLabel(popup.end)}</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m4-4a4 4 0 100-8 4 4 0 000 8z" />
+            </svg>
+            <span className="text-sm text-gray-500 flex-1">พนักงาน:</span>
+            <span className="text-sm font-bold text-gray-900">{popup.workers} คน</span>
           </div>
         </div>
       </div>
@@ -515,7 +525,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                         opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
                       onClick={e => {
                         e.stopPropagation()
-                        setPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, x: e.clientX, y: e.clientY })
+                        setPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: stat.workers.length, color: col.bg, x: e.clientX, y: e.clientY })
                       }} />
                   )
                 })}
