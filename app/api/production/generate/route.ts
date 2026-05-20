@@ -609,6 +609,27 @@ export async function POST(req: NextRequest) {
     // Helper to parse Excel time decimal fraction to minutes
     const parseExcelTime = (val: unknown): number | null => {
       if (val === null || val === undefined || val === '') return null
+      
+      if (typeof val === 'string') {
+        const str = val.trim()
+        if (str.includes('T')) {
+          const d = new Date(str)
+          if (!isNaN(d.getTime())) {
+            // Adjust to Bangkok LMT (UTC +06:42:04) in 1899
+            const localMs = d.getTime() + (6 * 3600 + 42 * 60 + 4) * 1000
+            const dayMs = 24 * 3600 * 1000
+            const timeOfDayMs = (localMs + 10 * dayMs) % dayMs
+            return Math.round(timeOfDayMs / 1000 / 60)
+          }
+        }
+        if (str.includes(':')) {
+          const parts = str.split(':').map(Number)
+          if (parts.length >= 2 && !parts.some(isNaN)) {
+            return parts[0] * 60 + parts[1]
+          }
+        }
+      }
+      
       const num = Number(val)
       if (isNaN(num)) return null
       return Math.round(num * 24 * 60)
@@ -865,11 +886,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Split and prioritize Special SKUs with both start and stop times
+    // Split and prioritize Special SKUs with start or stop times
     const hasSpecialTimes = (sku: string): boolean => {
       const cleanSku = sku.replace(/^0+/, '')
       const timeInfo = specialTimeMap.get(cleanSku)
-      return !!(timeInfo && timeInfo.startMins !== null && timeInfo.stopMins !== null)
+      return !!(timeInfo && (timeInfo.startMins !== null || timeInfo.stopMins !== null))
     }
 
     const specialList = assignList.filter(item => hasSpecialTimes(item.sku))
