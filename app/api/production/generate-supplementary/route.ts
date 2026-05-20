@@ -280,7 +280,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Build assignment list — use quantity directly
-    const assignList = planData
+    let assignList = planData
       .map(r => ({
         sku:       String(r.sku ?? '').replace(/^0+/, '') || String(r.sku ?? ''),
         skuName:   r.sku_name as string | null,
@@ -288,6 +288,29 @@ export async function POST(req: NextRequest) {
       }))
       .filter(t => t.targetQty > 0)
       .sort((a, b) => b.targetQty - a.targetQty)
+
+    // Split and prioritize Special SKUs with both start and stop times
+    const hasSpecialTimes = (sku: string): boolean => {
+      const cleanSku = sku.replace(/^0+/, '')
+      const timeInfo = specialTimeMap.get(cleanSku)
+      return !!(timeInfo && timeInfo.startMins !== null && timeInfo.stopMins !== null)
+    }
+
+    const specialList = assignList.filter(item => hasSpecialTimes(item.sku))
+    const normalList = assignList.filter(item => !hasSpecialTimes(item.sku))
+
+    specialList.sort((a, b) => {
+      const cleanA = a.sku.replace(/^0+/, '')
+      const cleanB = b.sku.replace(/^0+/, '')
+      const startA = specialTimeMap.get(cleanA)?.startMins ?? 0
+      const startB = specialTimeMap.get(cleanB)?.startMins ?? 0
+      if (startA !== startB) {
+        return startA - startB
+      }
+      return b.targetQty - a.targetQty
+    })
+
+    assignList = [...specialList, ...normalList]
 
     const assignments: Record<string, unknown>[] = []
     for (const { sku, skuName, targetQty: rawQty } of assignList) {

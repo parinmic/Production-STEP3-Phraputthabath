@@ -865,6 +865,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Split and prioritize Special SKUs with both start and stop times
+    const hasSpecialTimes = (sku: string): boolean => {
+      const cleanSku = sku.replace(/^0+/, '')
+      const timeInfo = specialTimeMap.get(cleanSku)
+      return !!(timeInfo && timeInfo.startMins !== null && timeInfo.stopMins !== null)
+    }
+
+    const specialList = assignList.filter(item => hasSpecialTimes(item.sku))
+    const normalList = assignList.filter(item => !hasSpecialTimes(item.sku))
+
+    specialList.sort((a, b) => {
+      const cleanA = a.sku.replace(/^0+/, '')
+      const cleanB = b.sku.replace(/^0+/, '')
+      const startA = specialTimeMap.get(cleanA)?.startMins ?? 0
+      const startB = specialTimeMap.get(cleanB)?.startMins ?? 0
+      if (startA !== startB) {
+        return startA - startB
+      }
+      return b.targetQty - a.targetQty
+    })
+
+    assignList = [...specialList, ...normalList]
+
     // ------ Fetch supplementary plan (must finish before deadline) ------
     interface SuppSlot { deadlineMins: number; skus: { sku: string; name: string | null; qty: number }[] }
     const suppSlotResults = await Promise.all([1, 2, 3].map(async slot => {
