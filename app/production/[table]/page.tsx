@@ -363,6 +363,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
     .sort((a, b) => {
+      const startA = skuStats[a].minStart
+      const startB = skuStats[b].minStart
+      if (startA !== startB) return startA - startB
       const seqA = skuStats[a].minSeq
       const seqB = skuStats[b].minSeq
       if (seqA !== seqB) return seqA - seqB
@@ -622,7 +625,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>, minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>, minStart: number, minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -638,9 +641,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         }
       }
       cur = wallClockFinish(startMin, dur)
-      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minSeq: task.seq ?? 999999 }
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999 }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
+      skuStats[task.sku].minStart = Math.min(skuStats[task.sku].minStart, startMin)
       skuStats[task.sku].minSeq = Math.min(skuStats[task.sku].minSeq, task.seq ?? 999999)
     }
   }
@@ -648,6 +652,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
     .sort((a, b) => {
+      const startA = skuStats[a].minStart
+      const startB = skuStats[b].minStart
+      if (startA !== startB) return startA - startB
       const seqA = skuStats[a].minSeq
       const seqB = skuStats[b].minSeq
       if (seqA !== seqB) return seqA - seqB
