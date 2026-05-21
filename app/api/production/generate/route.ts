@@ -571,6 +571,7 @@ export async function POST(req: NextRequest) {
       { data: plan100Raw },
       { data: pickingUnitRaw },
       { data: masterSpecialRaw },
+      { data: masterVarLotusRaw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
         .select('emp_id, name, work_station, shift')
@@ -643,6 +644,10 @@ export async function POST(req: NextRequest) {
       supabase.from('master_logic_calculation')
         .select('row_data')
         .eq('calculation_type', 'Mas Special')
+        .order('uploaded_at', { ascending: false }),
+      supabase.from('master_logic_calculation')
+        .select('row_data')
+        .eq('calculation_type', 'Mas %Variance LOTUS')
         .order('uploaded_at', { ascending: false }),
     ])
 
@@ -761,6 +766,15 @@ export async function POST(req: NextRequest) {
     for (const p of productivity) {
       if (!skuMap.has(p.sku))                    skuMap.set(p.sku, p)
       if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
+    }
+
+    // Map: station → variance factor (0–1) from Mas %Variance LOTUS
+    const lotusVarianceMap = new Map<string, number>()
+    for (const row of (masterVarLotusRaw ?? [])) {
+      const r = row.row_data as Record<string, unknown>
+      const station = normalizeStation(String(r['Station'] ?? '').trim())
+      const pct = Number(r['%Variance'] ?? 0)
+      if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
     }
 
     const jobAssignMap = buildJobAssignMap(
@@ -921,12 +935,15 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: BL3 avg only — ถ้าไม่มี BL3 ไม่ผลิต
+      // Phase 1: BL3 avg × %Variance (จาก Mas %Variance LOTUS ต่อ station, fallback = 1.0)
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       return Array.from(avgLotus.entries())
-        .map(([sku, avg]) => ({
-          sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg, channel: ch,
-        })).filter(s => s.targetQty > 0)
+        .map(([sku, avg]) => {
+          const prod = skuMap.get(sku)
+          const station = prod ? normalizeStation(prod.station) : ''
+          const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
+          return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
+        }).filter(s => s.targetQty > 0)
     }
 
     const channelTargets: Record<string, SkuTarget[]> = {
