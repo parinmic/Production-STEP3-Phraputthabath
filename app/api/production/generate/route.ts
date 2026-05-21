@@ -1076,6 +1076,7 @@ export async function POST(req: NextRequest) {
         const eligibleWorkers = allAtStation
           .filter(w => {
             const jobInfo = jobAssignMap.get(normName(w.name))
+            if (jobInfo?.isWeigher) return false
             if (!jobInfo || jobInfo.groups.size === 0) return true
             return skuGroup ? jobInfo.groups.has(skuGroup) : true
           })
@@ -1132,6 +1133,7 @@ export async function POST(req: NextRequest) {
       const eligibleWorkers = allAtStation
         .filter(w => {
           const jobInfo = jobAssignMap.get(normName(w.name))
+          if (jobInfo?.isWeigher) return false
           if (!jobInfo || jobInfo.groups.size === 0) return true
           return skuGroup ? jobInfo.groups.has(skuGroup) : true
         })
