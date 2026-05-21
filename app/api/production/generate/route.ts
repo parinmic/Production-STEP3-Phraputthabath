@@ -1127,7 +1127,67 @@ export async function POST(req: NextRequest) {
       .eq('production_date', productionDate)
       .eq('period', phaseCfg.period)
 
-    assignments.forEach((a, i) => { a['seq'] = i })
+    // Re-sequence and recalculate start times per worker to guarantee job contiguity
+    const byWorker: Record<string, any[]> = {}
+    for (const a of assignments) {
+      const name = a.worker_name as string
+      byWorker[name] ??= []
+      byWorker[name].push(a)
+    }
+
+    const resequenced: any[] = []
+    const startMinsPhase = phaseCfg.startH * 60
+
+    for (const [workerName, workerTasks] of Object.entries(byWorker)) {
+      // Sort tasks by original sequence and start time
+      workerTasks.sort((a, b) => {
+        const timeA = (a.deadline_time as string) || ''
+        const timeB = (b.deadline_time as string) || ''
+        if (timeA !== timeB) return timeA.localeCompare(timeB)
+        return (a.seq ?? 0) - (b.seq ?? 0)
+      })
+
+      // Group tasks of the same SKU together
+      const skuGroups: Record<string, any[]> = {}
+      const skuOrder: string[] = []
+      for (const t of workerTasks) {
+        const sku = t.sku as string
+        if (!skuGroups[sku]) {
+          skuGroups[sku] = []
+          skuOrder.push(sku)
+        }
+        skuGroups[sku].push(t)
+      }
+
+      // Flatten back in contiguous groups
+      const orderedTasks = skuOrder.flatMap(sku => skuGroups[sku])
+
+      // Recalculate start times (deadline_time) sequentially
+      let curMins = startMinsPhase
+      for (const task of orderedTasks) {
+        const cleanSku = (task.sku as string).replace(/^0+/, '')
+        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku)
+        const rate = prod?.rate ?? 27.0
+        const duration = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+
+        let startMins = curMins
+        const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku)?.startMins ?? null
+        if (specialStart !== null) {
+          startMins = Math.max(startMins, specialStart)
+        }
+
+        const endMins = wallClockFinish(startMins, duration)
+        task.deadline_time = minsToTimeStr(startMins)
+        curMins = endMins
+      }
+
+      resequenced.push(...orderedTasks)
+    }
+
+    // Re-assign global sequence numbers and update assignments array
+    resequenced.forEach((a, i) => { a['seq'] = i })
+    assignments.length = 0
+    assignments.push(...resequenced)
 
     const { error } = await supabase.from('production_assignments').insert(assignments)
     if (error) throw error
