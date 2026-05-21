@@ -893,12 +893,10 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 × %Variance — ข้าม SKU ที่มีใน Makro order วันนี้
-      const makroSkuSet = new Set(Object.keys(makroMap))
+      // Phase 1: Avg BL3 × %Variance
       const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
       return Array.from(avgWM.entries())
-        .filter(([sku]) => !makroSkuSet.has(sku))
         .map(([sku, avg]) => {
           const isShared = lotusHistSkus.has(sku)
           const lotusBL3 = avgLotus.get(sku) ?? 0
@@ -937,10 +935,9 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: BL3 avg × %Variance — ข้าม SKU ที่มีใน Makro order วันนี้
+      // Phase 1: BL3 avg × %Variance
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       return Array.from(avgLotus.entries())
-        .filter(([sku]) => !makroMap[sku])
         .map(([sku, avg]) => {
           const prod = skuMap.get(sku)
           const station = prod ? normalizeStation(prod.station) : ''
@@ -1000,14 +997,8 @@ export async function POST(req: NextRequest) {
         (p3ChannelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
     } else {
-      // Phase 1 & 2: channel master provides priority order; always include all 3 core channels
-      // (Makro, Wet Market, LOTUS) even if missing from master — master is for ordering, not filtering
-      const coreChannels = ['Wet Market', 'Makro', 'LOTUS']
-      const orderedChannels = [
-        ...activeChannels,
-        ...coreChannels.filter(ch => !activeChannels.includes(ch)),
-      ]
-      assignList = orderedChannels.flatMap(ch =>
+      // Phase 1 & 2: Mas Channel priority order, sorted by qty desc within each channel
+      assignList = activeChannels.flatMap(ch =>
         (channelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
     }
