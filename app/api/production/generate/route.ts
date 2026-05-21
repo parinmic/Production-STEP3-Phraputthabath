@@ -1458,8 +1458,13 @@ export async function POST(req: NextRequest) {
         .slice(0, 30),
     })
   } catch (e: unknown) {
+    const msg = e instanceof Error
+      ? e.message
+      : (typeof e === 'object' && e !== null)
+        ? ((e as any).message ?? (e as any).details ?? JSON.stringify(e))
+        : String(e)
     return NextResponse.json(
-      { success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' },
+      { success: false, message: msg },
       { status: 500 }
     )
   }
