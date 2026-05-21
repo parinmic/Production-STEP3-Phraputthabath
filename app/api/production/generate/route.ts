@@ -1242,10 +1242,30 @@ export async function POST(req: NextRequest) {
           .filter(Boolean)
           .join(', ')
 
+    // --- diagnostic: channel breakdown per SKU before merge ---
+    const debugChannelTargets: Record<string, { wm: number; makro: number; lotus: number; merged: number }> = {}
+    for (const [ch, targets] of Object.entries(channelTargets)) {
+      for (const t of targets) {
+        const k = t.sku.replace(/^0+/, '')
+        debugChannelTargets[k] ??= { wm: 0, makro: 0, lotus: 0, merged: 0 }
+        if (ch === 'Wet Market') debugChannelTargets[k].wm += t.targetQty
+        if (ch === 'Makro')      debugChannelTargets[k].makro += t.targetQty
+        if (ch === 'LOTUS')      debugChannelTargets[k].lotus += t.targetQty
+      }
+    }
+    for (const t of assignList) {
+      const k = t.sku.replace(/^0+/, '')
+      if (debugChannelTargets[k]) debugChannelTargets[k].merged = t.targetQty
+    }
+
     return NextResponse.json({
       success: true,
       message: `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
       count: assignments.length,
+      debug_targets: Object.entries(debugChannelTargets)
+        .map(([sku, v]) => ({ sku, ...v }))
+        .sort((a, b) => b.merged - a.merged)
+        .slice(0, 30),
     })
   } catch (e: unknown) {
     return NextResponse.json(
