@@ -262,20 +262,21 @@ export default function WeeklyWorkforcePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <WeeklyUploader
           type="sa-phok-special"
-          label="สะโพกพิเศษ (Special Hip)"
+          label="สะโพกพิเศษ"
           theme={themes['sa-phok-special']}
         />
         <WeeklyUploader
           type="sam-chan-special"
-          label="สามชั้นพิเศษ (Special Belly)"
+          label="สามชั้นพิเศษ"
           theme={themes['sam-chan-special']}
         />
         <WeeklyUploader
           type="lai-special"
-          label="ไหล่พิเศษ (Special Shoulder)"
+          label="ไหล่พิเศษ"
           theme={themes['lai-special']}
         />
       </div>
+
     </div>
   )
 }
