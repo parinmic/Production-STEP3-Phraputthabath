@@ -155,6 +155,19 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
     'lai-special': 'ไหล่พิเศษ'
   }
 
+  // Fetch status overrides for the production date
+  const { data: statusOverrides } = await supabase
+    .from('workforce_daily_status')
+    .select('weekly_type, worker_name, status')
+    .eq('work_date', productionDate)
+
+  const overrideMap = new Map<string, string>()
+  if (statusOverrides) {
+    for (const item of statusOverrides) {
+      overrideMap.set(`${item.weekly_type}_${item.worker_name}`, item.status)
+    }
+  }
+
   for (const type of types) {
     const logTableName = `workforce_weekly_${type.replace(/-/g, '_')}`
     
@@ -181,8 +194,18 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
       const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
       if (!name) continue
       
-      const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
-      if (checkIsDayOff(dayOffStr, productionDate)) {
+      // Determine work status: check override first, then fall back to default day off
+      const overrideStatus = overrideMap.get(`${type}_${name}`)
+      let isWorking = true
+
+      if (overrideStatus) {
+        isWorking = overrideStatus === 'ทำงาน'
+      } else {
+        const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
+        isWorking = !checkIsDayOff(dayOffStr, productionDate)
+      }
+
+      if (!isWorking) {
         continue
       }
 

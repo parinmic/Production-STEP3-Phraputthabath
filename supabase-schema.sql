@@ -405,3 +405,20 @@ CREATE INDEX IF NOT EXISTS idx_workforce_weekly_uploaded ON workforce_weekly(upl
 ALTER TABLE workforce_weekly ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_workforce_weekly" ON workforce_weekly FOR ALL USING (true) WITH CHECK (true);
 
+-- 20. สถานะกำลังคนรายวันทับซ้อน (Daily Workforce Status Overrides)
+CREATE TABLE IF NOT EXISTS workforce_daily_status (
+  id             uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  work_date      text        NOT NULL, -- YYYY-MM-DD
+  weekly_type    text        NOT NULL, -- sa-phok-special | sam-chan-special | lai-special
+  worker_name    text        NOT NULL,
+  status         text        NOT NULL, -- ทำงาน | วันหยุด | ลาป่วย | ลากิจ | ลาพักร้อน | อื่นๆ
+  updated_at     timestamptz DEFAULT now(),
+  CONSTRAINT uq_workforce_daily_status UNIQUE(work_date, weekly_type, worker_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workforce_daily_status_lookup ON workforce_daily_status(work_date, weekly_type);
+
+ALTER TABLE workforce_daily_status ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_workforce_daily_status" ON workforce_daily_status FOR ALL USING (true) WITH CHECK (true);
+
+

@@ -259,11 +259,61 @@ export default function WeeklyWorkforcePage() {
   const [workerStatuses, setWorkerStatuses] = useState<Record<string, string>>({})
   const [selectedShift, setSelectedShift] = useState<'all' | '1' | '2'>('all')
 
-  const handleStatusChange = (workerName: string, newStatus: string) => {
+  // Fetch overrides on date/station change
+  useEffect(() => {
+    let active = true
+    const fetchOverrides = async () => {
+      try {
+        const res = await fetch(`/api/workforce-daily-status?date=${selectedDate}&station=${selectedStation}`)
+        const data = await res.json()
+        if (active && data.success) {
+          const overrides: Record<string, string> = {}
+          if (data.data) {
+            for (const item of data.data) {
+              overrides[`${item.work_date}_${item.weekly_type}_${item.worker_name}`] = item.status
+            }
+          }
+          setWorkerStatuses(prev => ({
+            ...prev,
+            ...overrides
+          }))
+        }
+      } catch (err) {
+        console.error('Error fetching overrides:', err)
+      }
+    }
+    fetchOverrides()
+    return () => { active = false }
+  }, [selectedDate, selectedStation])
+
+  const handleStatusChange = async (workerName: string, newStatus: string) => {
+    // 1. Update local state immediately for visual responsiveness
     setWorkerStatuses(prev => ({
       ...prev,
       [`${selectedDate}_${selectedStation}_${workerName}`]: newStatus
     }))
+
+    // 2. Save to database in the background
+    try {
+      const res = await fetch('/api/workforce-daily-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          station: selectedStation,
+          workerName,
+          status: newStatus
+        })
+      })
+      const data = await res.json()
+      if (!data.success) {
+        console.error('Failed to save status:', data.message)
+        alert('บันทึกสถานะไม่สำเร็จ: ' + (data.message || ''))
+      }
+    } catch (err) {
+      console.error('Error saving status:', err)
+      alert('เกิดข้อผิดพลาดในการบันทึกสถานะพนักงาน')
+    }
   }
 
   const getStatusBadgeClass = (status: string) => {
