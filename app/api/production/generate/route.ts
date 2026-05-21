@@ -893,10 +893,12 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: Avg BL3 × %Variance
+      // Phase 1: Avg BL3 × %Variance — ข้าม SKU ที่มีใน Makro order วันนี้
+      const makroSkuSet = new Set(Object.keys(makroMap))
       const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       const lotusHistSkus = new Set(avgLotus.keys())
       return Array.from(avgWM.entries())
+        .filter(([sku]) => !makroSkuSet.has(sku))
         .map(([sku, avg]) => {
           const isShared = lotusHistSkus.has(sku)
           const lotusBL3 = avgLotus.get(sku) ?? 0
@@ -935,9 +937,10 @@ export async function POST(req: NextRequest) {
           return { sku, skuName: name, targetQty, channel: ch }
         }).filter(s => s.targetQty > 0)
       }
-      // Phase 1: BL3 avg × %Variance (จาก Mas %Variance LOTUS ต่อ station, fallback = 1.0)
+      // Phase 1: BL3 avg × %Variance — ข้าม SKU ที่มีใน Makro order วันนี้
       const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
       return Array.from(avgLotus.entries())
+        .filter(([sku]) => !makroMap[sku])
         .map(([sku, avg]) => {
           const prod = skuMap.get(sku)
           const station = prod ? normalizeStation(prod.station) : ''
