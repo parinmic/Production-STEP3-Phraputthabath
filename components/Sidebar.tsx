@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -32,6 +32,7 @@ export default function Sidebar() {
   const p = usePathname()
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))
+  const [openWorkforce, setOpenWorkforce] = useState(p.startsWith('/workforce'))
   const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
   const [collapsed, setCollapsed]         = useState(false)
@@ -181,8 +182,45 @@ export default function Sidebar() {
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
+          {/* กำลังคนประจำวัน — dropdown */}
+          <button
+            onClick={() => setOpenWorkforce(!openWorkforce)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/workforce') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="กำลังคนประจำวัน"
+          >
+            <Users size={18} className="shrink-0" />
+            <span className={`flex-1 text-left ${labelCls}`}>กำลังคนประจำวัน</span>
+            {!collapsed && (openWorkforce ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {openWorkforce && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              <Link href="/workforce"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
+              </Link>
+              <Link href="/workforce/weekly"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />แผนเข้างานประจำสัปดาห์
+              </Link>
+            </div>
+          )}
+          {openWorkforce && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              <Link href="/workforce"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="อัพโหลดกำลังคนประจำวัน">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              </Link>
+              <Link href="/workforce/weekly"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="แผนเข้างานประจำสัปดาห์">
+                <span className="w-2 h-2 rounded-full bg-purple-500" />
+              </Link>
+            </div>
+          )}
+
           {[
-            { href: '/workforce',          icon: Users,          label: 'กำลังคนประจำวัน' },
             { href: '/makro',              icon: ShoppingCart,   label: 'คำสั่งซื้อ Makro' },
             { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS' },
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
