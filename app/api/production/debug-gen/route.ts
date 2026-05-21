@@ -149,7 +149,8 @@ export async function GET(req: NextRequest) {
   const wmAvgBL3      = avgBL3(wmHistForSku)
   const lotusOrderQty = sumQty((lotusToday?.data ?? []) as OrderRow[])
   const lotusAvgBL3   = avgBL3(lotusHistForSku)
-  const makroOrderQty = sumQty((makroToday?.data ?? []) as OrderRow[])
+  // Initial value from direct query; corrected below via allMakroToday (handles long leading-zero SKU format)
+  let makroOrderQty = sumQty((makroToday?.data ?? []) as OrderRow[])
   const makroAvgBL3   = avgBL3(makroHistForSku)
 
   // Raw SKU values found in BL3 tables (to detect leading-zero mismatch)
@@ -162,9 +163,13 @@ export async function GET(req: NextRequest) {
   // ── 6. makroSkuSet check ────────────────────────────────────────────
   // All SKUs in Makro orders today (globally) — affects WM+LOTUS Phase 1 exclusion
   const { data: allMakroToday } = await supabase.from('makro_orders')
-    .select('sku').eq('delivery_date', date).eq('upload_round', orderRound)
+    .select('sku, quantity').eq('delivery_date', date).eq('upload_round', orderRound)
   const makroSkuSet = new Set((allMakroToday ?? []).map(r => r.sku.replace(/^0+/, '')))
   const excludedByMakroSet = makroSkuSet.has(sku)
+  // Correct makroOrderQty using normalized filter (handles long leading-zero SKU format)
+  makroOrderQty = (allMakroToday ?? [])
+    .filter(r => r.sku.replace(/^0+/, '') === sku)
+    .reduce((s, r) => s + (Number(r.quantity) || 0), 0)
 
   // ── 7. Target calculation ───────────────────────────────────────────
   const prevTotalQty = (prevAssigned ?? []).reduce((s: number, r: { target_quantity: number }) => s + Number(r.target_quantity), 0)
