@@ -49,10 +49,35 @@ function transformRows(
   filename: string,
   round: string,
   deliveryShiftDays = 0,
+  channel?: 'lotus' | 'wet_market',
 ): OrderRecord[] {
   if (!rows.length) return []
   const cols = Object.keys(rows[0])
   const hasNative = cols.some(c => c.startsWith('r') && c.length > 2)
+
+  const getRowValue = (r: ParsedRow, targetKey: string): string | null => {
+    const key = Object.keys(r).find(k => k.toLowerCase() === targetKey.toLowerCase())
+    if (key === undefined || r[key] === null || r[key] === undefined) return null
+    return String(r[key]).trim()
+  }
+
+  // Filter rows based on channel constraints if native columns exist
+  let filteredRows = rows
+  if (channel === 'wet_market') {
+    filteredRows = rows.filter(r => {
+      const bst = getRowValue(r, 'rBst_code')
+      if (bst !== null && bst !== '250') return false
+      return true
+    })
+  } else if (channel === 'lotus') {
+    filteredRows = rows.filter(r => {
+      const bst = getRowValue(r, 'rBst_code')
+      if (bst !== null && bst !== '923') return false
+      const oper = getRowValue(r, 'rOper_code')
+      if (oper !== null && oper !== '489') return false
+      return true
+    })
+  }
 
   const skuCol  = hasNative
     ? (cols.includes('rProduct_code') ? 'rProduct_code' : cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? '')
@@ -70,7 +95,7 @@ function transformRows(
     ? (cols.includes('rRDate2') ? 'rRDate2' : cols.includes('rRDate1') ? 'rRDate1' : cols.includes('rReq_date') ? 'rReq_date' : cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? '')
     : ''
 
-  return rows.map(r => {
+  return filteredRows.map(r => {
     if (hasNative) {
       return {
         order_date:    toISODate(r[dateCol]),
@@ -140,7 +165,7 @@ export async function uploadLotusOrders(
   filename: string,
   round: string,
 ): Promise<{ success: boolean; message: string }> {
-  const records = transformRows(rows, filename, round, -1)  // lotus shifts delivery by -1
+  const records = transformRows(rows, filename, round, -1, 'lotus')  // lotus shifts delivery by -1
   if (!records.length) {
     const cols = rows.length ? Object.keys(rows[0]).join(', ') : '-'
     return { success: false, message: `ไม่พบรายการที่ถูกต้อง — columns ที่พบ: ${cols}` }
@@ -154,7 +179,7 @@ export async function uploadWetMarketOrders(
   filename: string,
   round: string,
 ): Promise<{ success: boolean; message: string }> {
-  const records = transformRows(rows, filename, round, 0)  // wet market no shift
+  const records = transformRows(rows, filename, round, 0, 'wet_market')  // wet market no shift
   if (!records.length) {
     const cols = rows.length ? Object.keys(rows[0]).join(', ') : '-'
     return { success: false, message: `ไม่พบรายการที่ถูกต้อง — columns ที่พบ: ${cols}` }
