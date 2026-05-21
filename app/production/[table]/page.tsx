@@ -53,6 +53,28 @@ interface Assignment {
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
 
+function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
+  const suppSkus = new Set(allItems.filter(a => a.channel === 'เสริม').map(a => a.sku))
+  // Key by sku_name so same product name gets the same color even when sku codes differ across phases
+  const nameToColor: Record<string, typeof BAR_COLORS[0]> = {}
+  let colorIdx = 0
+  const map: Record<string, typeof BAR_COLORS[0]> = {}
+  for (const item of allItems) {
+    if (item.sku in map) continue
+    if (suppSkus.has(item.sku)) {
+      map[item.sku] = GOLD_COLOR
+      continue
+    }
+    const nameKey = item.sku_name ?? item.sku
+    if (!(nameKey in nameToColor)) {
+      nameToColor[nameKey] = BAR_COLORS[colorIdx % BAR_COLORS.length]
+      colorIdx++
+    }
+    map[item.sku] = nameToColor[nameKey]
+  }
+  return map
+}
+
 function shortName(full: string) {
   return full.trim().split(/\s+/)[0] ?? full
 }
@@ -169,13 +191,10 @@ interface WorkerTableProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerTableProps) {
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerTableProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -287,15 +306,19 @@ function mergeSegments(segs: { start: number; end: number }[]) {
 
 // ─── SKU Schedule view (ภาพรวม) ──────────────────────────────────────────────
 
+type BarPopup = { name: string; start: number; end: number; workers: string[]; color: string } | null
+
 interface SkuScheduleViewProps {
   items: Assignment[]
   phaseStart: number
   phaseEnd: number
   rateMap: Record<string, number>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
+  nameMap: Record<string, string>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -309,10 +332,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
   }, [])
   const nowMins = nowSecs / 60
 
+  const [barPopup, setBarPopup] = useState<BarPopup>(null)
+
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const phaseStartMins = phaseStart * 60
 
@@ -468,9 +490,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
                   const segDone  = nowMins >= seg.end
                   const segPend  = nowMins < seg.start
                   return (
-                    <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm"
+                    <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
                       style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }} />
+                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                      onClick={e => {
+                        e.stopPropagation()
+                        setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: stat.workers, color: col.bg })
+                      }} />
                   )
                 })}
               </div>
@@ -513,6 +539,43 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap }: SkuSc
             style={{ left: `calc(11rem + (100% - 19rem) * ${pct(nowMins) / 100})` }} />
         </>}
       </div>
+
+      {/* Bar popup */}
+      {barPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setBarPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-5 w-72 max-w-[90vw]"
+            style={{ fontFamily: "'Sarabun New', 'Sarabun', sans-serif" }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: barPopup.color }} />
+              <p className="text-sm font-bold text-gray-900 leading-tight flex-1">{barPopup.name}</p>
+              <button onClick={() => setBarPopup(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
+            </div>
+            <div className="border-t border-gray-100 mb-3" />
+            <div className="flex flex-col gap-2 mb-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">เริ่ม</span>
+                <span className="text-sm font-bold text-gray-900">{minsToLabel(barPopup.start)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">เสร็จ</span>
+                <span className="text-sm font-bold text-gray-900">{minsToLabel(barPopup.end)}</span>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 mb-3" />
+            <p className="text-xs font-semibold text-gray-500 mb-2">พนักงาน {barPopup.workers.length} คน</p>
+            <div className="flex flex-col gap-1.5">
+              {barPopup.workers.map(w => (
+                <div key={w} className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: barPopup.color }} />
+                  <span className="text-sm text-gray-700">{nameMap[w.replace(/\s+/g, ' ').trim()] ?? shortName(w)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -889,13 +952,10 @@ interface WorkerCardViewProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap }: WorkerCardViewProps) {
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
+function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1003,9 +1063,10 @@ interface CurrentTimeViewProps {
   rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
+  skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: CurrentTimeViewProps) {
+function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: CurrentTimeViewProps) {
   const [realNowMins, setRealNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
@@ -1017,11 +1078,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap }: Curren
   }, [])
 
   const nowMins = realNowMins
-
-  const allSkus = Array.from(new Set(items.map(a => a.sku)))
-  const suppSkus = new Set(items.filter(a => a.channel === 'เสริม').map(a => a.sku))
-  const skuColor: Record<string, typeof BAR_COLORS[0]> = {}
-  allSkus.forEach((sku, i) => { skuColor[sku] = suppSkus.has(sku) ? GOLD_COLOR : BAR_COLORS[i % BAR_COLORS.length] })
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1315,6 +1371,7 @@ export default function TablePage() {
   const viewStartH   = selectedPhase === 'all' ? PHASES[0].startH  : phaseConfig!.startH
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  const skuColor     = buildSkuColorMap(items)
 
   const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
     { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',        desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
@@ -1467,6 +1524,8 @@ export default function TablePage() {
                 phaseEnd={viewEndH}
                 rateMap={rateMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
+                nameMap={nameMap}
               />
             )}
             {viewMode === 'gantt' && (
@@ -1476,6 +1535,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'worker' && (
@@ -1485,6 +1545,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'time' && (
@@ -1494,6 +1555,7 @@ export default function TablePage() {
                 rateMap={rateMap}
                 nameMap={nameMap}
                 bagMap={bagMap}
+                skuColor={skuColor}
               />
             )}
             {viewMode === 'summary' && (
