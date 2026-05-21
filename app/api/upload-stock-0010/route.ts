@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง' }, { status: 400 })
 
+    await supabase.from('stock_0010').delete().neq('spec_code', '')
+
     const { error } = await supabase.from('stock_0010').insert(records)
     if (error) throw error
 
