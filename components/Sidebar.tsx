@@ -21,6 +21,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas Productivity',          slug: 'mas-productivity',        dot: 'bg-purple-500' },
   { label: 'Mas %Variance Makro',       slug: 'mas-variance-makro',      dot: 'bg-blue-500' },
   { label: 'Mas %Variance Wet Market',  slug: 'mas-variance-wet-market', dot: 'bg-cyan-500' },
+  { label: 'Mas %Variance LOTUS',       slug: 'mas-variance-lotus',      dot: 'bg-lime-500' },
   { label: 'Mas LOTUS',                 slug: 'mas-lotus',               dot: 'bg-green-500' },
   { label: 'Mas Channel',               slug: 'mas-channel',             dot: 'bg-orange-500' },
   { label: 'Mas ตระกร้า',               slug: 'mas-trakra',              dot: 'bg-yellow-500' },

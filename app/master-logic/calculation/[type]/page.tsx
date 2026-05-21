@@ -6,6 +6,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
   'mas-productivity':        { label: 'Mas Productivity',         desc: 'อัพโหลด Master Calculation — Productivity', dot: 'border-purple-500' },
   'mas-variance-makro':      { label: 'Mas %Variance Makro',      desc: 'อัพโหลด Master Calculation — %Variance Makro', dot: 'border-blue-500' },
   'mas-variance-wet-market': { label: 'Mas %Variance Wet Market', desc: 'อัพโหลด Master Calculation — %Variance Wet Market', dot: 'border-cyan-500' },
+  'mas-variance-lotus':      { label: 'Mas %Variance LOTUS',      desc: 'อัพโหลด Master Calculation — %Variance LOTUS', dot: 'border-lime-500' },
   'mas-lotus':               { label: 'Mas LOTUS',                desc: 'อัพโหลด Master Calculation — LOTUS', dot: 'border-green-500' },
   'mas-channel':             { label: 'Mas Channel',              desc: 'อัพโหลด Master Calculation — Channel', dot: 'border-orange-500' },
   'mas-trakra':              { label: 'Mas ตระกร้า',              desc: 'อัพโหลด Master Calculation — ตระกร้า', dot: 'border-yellow-500' },
