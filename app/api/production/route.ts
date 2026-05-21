@@ -4,15 +4,12 @@ import { supabase } from '@/lib/supabase'
 export async function GET(req: NextRequest) {
   const date  = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
   const table = req.nextUrl.searchParams.get('table') ?? ''
-  const now   = new Date().toISOString()
 
-  // Step 1: หา effective_from ล่าสุดที่ <= ตอนนี้ (แยกตาม period)
-  // แผน B ที่ effective_from ยังไม่ถึง จะถูกกรองออก → แสดงแผน A แทน
+  // Step 1: หา effective_from ล่าสุดต่อ period (รวม future batch — แผนใหม่แสดงทันทีไม่รอ checkpoint)
   const periodQuery = supabase
     .from('production_assignments')
     .select('period, effective_from')
     .eq('production_date', date)
-    .lte('effective_from', now)
     .order('effective_from', { ascending: false })
 
   if (table) periodQuery.eq('table_name', table)
