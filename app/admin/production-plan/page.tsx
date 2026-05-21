@@ -47,6 +47,7 @@ const EMPTY_FORM = {
 export default function AdminProductionPlanPage() {
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate]           = useState(today)
+  const [period, setPeriod]       = useState<string>('')
   const [rows, setRows]           = useState<SkuRow[]>([])
   const [histDates, setHistDates] = useState<{ d3: string; d2: string; d1: string } | null>(null)
   const [loading, setLoading]     = useState(false)
@@ -64,14 +65,16 @@ export default function AdminProductionPlanPage() {
     setLoading(true)
     setEditKey(null)
     try {
-      const r = await fetch(`/api/admin/production-plan?date=${date}`)
+      let url = `/api/admin/production-plan?date=${date}`
+      if (period) url += `&period=${period}`
+      const r = await fetch(url)
       const j = await r.json()
       setRows(j.data ?? [])
       setHistDates(j.dates ?? null)
     } finally {
       setLoading(false)
     }
-  }, [date])
+  }, [date, period])
 
   useEffect(() => { load() }, [load])
 
@@ -157,12 +160,21 @@ export default function AdminProductionPlanPage() {
           onChange={e => { setDate(e.target.value); setForm(f => ({ ...f, production_date: e.target.value })) }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
 
+        <label className="text-sm font-medium text-gray-700 ml-2">Phase</label>
+        <select value={period} onChange={e => setPeriod(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+          <option value="">ทั้งหมด</option>
+          {PERIODS.map(p => (
+            <option key={p} value={p}>{p} ({PERIOD_PHASE[p]})</option>
+          ))}
+        </select>
+
         <button onClick={load} disabled={loading}
           className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีโหลด
         </button>
 
-        <button onClick={() => { setForm({ ...EMPTY_FORM, production_date: date }); setShowAdd(true) }}
+        <button onClick={() => { setForm({ ...EMPTY_FORM, production_date: date, period: period || 'เช้า' }); setShowAdd(true) }}
           className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
           <Plus size={16} />เพิ่ม SKU
         </button>
