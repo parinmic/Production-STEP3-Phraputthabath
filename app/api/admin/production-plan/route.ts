@@ -103,13 +103,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Populate history quantities
-  for (const r of map.values()) {
+  map.forEach((r) => {
     if (r.channel) {
       r.qty_d3 = orderMap.get(`${r.channel}||${r.sku}||${dateD3}`) || 0
       r.qty_d2 = orderMap.get(`${r.channel}||${r.sku}||${dateD2}`) || 0
       r.qty_d1 = orderMap.get(`${r.channel}||${r.sku}||${dateD1}`) || 0
     }
-  }
+  })
 
   const sorted = Array.from(map.values()).sort((a, b) =>
     STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
