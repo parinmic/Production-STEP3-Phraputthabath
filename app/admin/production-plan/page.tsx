@@ -13,10 +13,24 @@ const STATION_COLOR: Record<string, string> = {
   ไหล่:    'bg-green-50 text-green-700',
 }
 
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+function formatThaiDate(dateStr?: string): string {
+  if (!dateStr) return '—'
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) return dateStr
+  const d = parseInt(parts[2], 10)
+  const m = parseInt(parts[1], 10)
+  return `${d} ${THAI_MONTHS[m - 1]}`
+}
+
 interface SkuRow {
+  channel: string | null
   table_name: string
   sku: string
   sku_name: string | null
+  qty_d3: number
+  qty_d2: number
+  qty_d1: number
   total_qty: number
 }
 
@@ -34,6 +48,7 @@ export default function AdminProductionPlanPage() {
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate]           = useState(today)
   const [rows, setRows]           = useState<SkuRow[]>([])
+  const [histDates, setHistDates] = useState<{ d3: string; d2: string; d1: string } | null>(null)
   const [loading, setLoading]     = useState(false)
   const [showAdd, setShowAdd]     = useState(false)
   const [form, setForm]           = useState({ ...EMPTY_FORM, production_date: today })
@@ -43,7 +58,7 @@ export default function AdminProductionPlanPage() {
   const [editKey, setEditKey]     = useState<string | null>(null)
   const [editVal, setEditVal]     = useState<string>('')
 
-  const rowKey = (r: SkuRow) => `${r.table_name}||${r.sku}`
+  const rowKey = (r: SkuRow) => `${r.channel ?? ''}||${r.table_name}||${r.sku}`
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -52,6 +67,7 @@ export default function AdminProductionPlanPage() {
       const r = await fetch(`/api/admin/production-plan?date=${date}`)
       const j = await r.json()
       setRows(j.data ?? [])
+      setHistDates(j.dates ?? null)
     } finally {
       setLoading(false)
     }
@@ -75,11 +91,11 @@ export default function AdminProductionPlanPage() {
     const res = await fetch('/api/admin/production-plan', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, table_name: r.table_name, sku: r.sku, new_qty }),
+      body: JSON.stringify({ date, table_name: r.table_name, sku: r.sku, channel: r.channel, new_qty }),
     })
     const j = await res.json()
     if (j.error) { flash(false, j.error); return }
-    flash(true, `อัพเดท ${r.sku_name ?? r.sku} → ${new_qty.toLocaleString()} กก.`)
+    flash(true, `อัพเดท ${r.sku_name ?? r.sku} (${r.channel ?? '—'}) → ${new_qty.toLocaleString()} กก.`)
     setEditKey(null)
     load()
   }
@@ -175,9 +191,13 @@ export default function AdminProductionPlanPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700">Channel</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">SKU</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อสินค้า</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-500">{formatThaiDate(histDates?.d3)}</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-500">{formatThaiDate(histDates?.d2)}</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-500">{formatThaiDate(histDates?.d1)}</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-700">ยอดผลิต (กก.)</th>
                 <th className="px-4 py-3 w-16"></th>
               </tr>
@@ -188,6 +208,7 @@ export default function AdminProductionPlanPage() {
                 const isEditing = editKey === k
                 return (
                   <tr key={k} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-gray-700 font-medium">{r.channel ?? '—'}</td>
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLOR[r.table_name] ?? 'bg-gray-100 text-gray-700'}`}>
                         {r.table_name}
@@ -195,6 +216,15 @@ export default function AdminProductionPlanPage() {
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{r.sku}</td>
                     <td className="px-4 py-2.5 text-gray-800">{r.sku_name ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 font-normal">
+                      {r.qty_d3 > 0 ? Math.round(r.qty_d3).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 font-normal">
+                      {r.qty_d2 > 0 ? Math.round(r.qty_d2).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-gray-400 font-normal">
+                      {r.qty_d1 > 0 ? Math.round(r.qty_d1).toLocaleString() : '—'}
+                    </td>
                     <td className="px-4 py-2.5 text-right">
                       {isEditing ? (
                         <input
@@ -237,7 +267,7 @@ export default function AdminProductionPlanPage() {
             </tbody>
             <tfoot className="bg-gray-50 border-t border-gray-200">
               <tr>
-                <td colSpan={3} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
+                <td colSpan={7} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
                   รวม {rows.length} SKU
                 </td>
                 <td className="px-4 py-3 text-right font-bold text-gray-900">
