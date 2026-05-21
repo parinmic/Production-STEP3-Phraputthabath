@@ -25,6 +25,8 @@ interface ProductivityRow {
   rate: number  // กก./ชม./คน
 }
 
+interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
+
 function minsToTimeStr(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = Math.floor(mins % 60)
@@ -480,6 +482,28 @@ function assignWorkers(
   return result
 }
 
+/**
+ * Merge same-SKU entries in the regular assign list (Pass 2) by summing their quantities.
+ * Preserves the first occurrence's channel and metadata.
+ * Special-timed SKUs retain their order relative to normal SKUs.
+ * NOTE: Supplementary-order entries (Pass 1) are NOT included here — they run first
+ * with their own deadline cap and must never be merged into regular quantities.
+ */
+function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
+  const merged = new Map<string, SkuTarget>()
+  const order: string[] = []
+  for (const item of list) {
+    const key = item.sku.replace(/^0+/, '')
+    if (merged.has(key)) {
+      merged.get(key)!.targetQty += item.targetQty
+    } else {
+      merged.set(key, { ...item })
+      order.push(key)
+    }
+  }
+  return order.map(k => merged.get(k)!)
+}
+
 // ========== Main ==========
 
 // Paginate Supabase queries to bypass the 1000-row hard limit
@@ -843,7 +867,7 @@ export async function POST(req: NextRequest) {
 
     // ------ Build SKU targets per channel ------
 
-    interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
+
 
     const buildWetMarketTargets = (): SkuTarget[] => {
       const ch = 'Wet Market'
@@ -984,6 +1008,11 @@ export async function POST(req: NextRequest) {
     })
 
     assignList = [...specialList, ...normalList]
+
+    // Pre-merge same-SKU quantities so each worker is assigned one contiguous block per SKU.
+    // This runs ONLY on the regular assignList (Pass 2); supplementary orders (Pass 1) handle
+    // their own deadline-capped assignment separately and are never merged here.
+    assignList = mergeAssignList(assignList)
 
     // ------ Fetch supplementary plan (must finish before deadline) ------
     interface SuppSlot { deadlineMins: number; skus: { sku: string; name: string | null; qty: number }[] }
@@ -1127,64 +1156,50 @@ export async function POST(req: NextRequest) {
       .eq('production_date', productionDate)
       .eq('period', phaseCfg.period)
 
-    // Re-sequence and recalculate start times per worker to guarantee job contiguity
-    const byWorker: Record<string, any[]> = {}
+    // Recalculate deadline_time and seq sequentially per worker.
+    // Because assignList was pre-merged (same SKU = one contiguous block), each worker's
+    // tasks are already contiguous by SKU. We only need to recompute wall-clock start times.
+    // Supplementary tasks (from Pass 1) land first in the timeline because workers were
+    // already advanced past their finish time before Pass 2 ran.
+    const byWorkerPost: Record<string, any[]> = {}
     for (const a of assignments) {
       const name = a.worker_name as string
-      byWorker[name] ??= []
-      byWorker[name].push(a)
+      byWorkerPost[name] ??= []
+      byWorkerPost[name].push(a)
     }
 
     const resequenced: any[] = []
     const startMinsPhase = phaseCfg.startH * 60
 
-    for (const [workerName, workerTasks] of Object.entries(byWorker)) {
-      // Sort tasks by original sequence and start time
-      workerTasks.sort((a, b) => {
-        const timeA = (a.deadline_time as string) || ''
-        const timeB = (b.deadline_time as string) || ''
-        if (timeA !== timeB) return timeA.localeCompare(timeB)
-        return (a.seq ?? 0) - (b.seq ?? 0)
-      })
+    for (const workerTasks of Object.values(byWorkerPost)) {
+      // Sort by the deadline_time that assignWorkers() recorded (= wall-clock start the
+      // worker became free for that task). This preserves supp-before-regular order.
+      workerTasks.sort((a, b) =>
+        ((a.deadline_time as string) || '').localeCompare((b.deadline_time as string) || '')
+      )
 
-      // Group tasks of the same SKU together
-      const skuGroups: Record<string, any[]> = {}
-      const skuOrder: string[] = []
-      for (const t of workerTasks) {
-        const sku = t.sku as string
-        if (!skuGroups[sku]) {
-          skuGroups[sku] = []
-          skuOrder.push(sku)
-        }
-        skuGroups[sku].push(t)
-      }
-
-      // Flatten back in contiguous groups
-      const orderedTasks = skuOrder.flatMap(sku => skuGroups[sku])
-
-      // Recalculate start times (deadline_time) sequentially
+      // Recalculate wall-clock start times so they chain exactly with no gaps.
       let curMins = startMinsPhase
-      for (const task of orderedTasks) {
+      for (const task of workerTasks) {
         const cleanSku = (task.sku as string).replace(/^0+/, '')
-        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku)
+        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
         const rate = prod?.rate ?? 27.0
-        const duration = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
 
         let startMins = curMins
-        const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku)?.startMins ?? null
-        if (specialStart !== null) {
-          startMins = Math.max(startMins, specialStart)
-        }
+        const specialStart =
+          specialTimeMap.get(cleanSku)?.startMins ??
+          specialTimeMap.get(task.sku as string)?.startMins ??
+          null
+        if (specialStart !== null) startMins = Math.max(startMins, specialStart)
 
-        const endMins = wallClockFinish(startMins, duration)
         task.deadline_time = minsToTimeStr(startMins)
-        curMins = endMins
+        curMins = wallClockFinish(startMins, duration)
       }
 
-      resequenced.push(...orderedTasks)
+      resequenced.push(...workerTasks)
     }
 
-    // Re-assign global sequence numbers and update assignments array
     resequenced.forEach((a, i) => { a['seq'] = i })
     assignments.length = 0
     assignments.push(...resequenced)
