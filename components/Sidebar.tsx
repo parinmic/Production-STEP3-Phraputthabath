@@ -201,7 +201,7 @@ export default function Sidebar() {
               </Link>
               <Link href="/workforce/weekly"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />แผนเข้างานประจำสัปดาห์
+                <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />แผนเข้างานประจำวัน
               </Link>
             </div>
           )}
@@ -214,7 +214,7 @@ export default function Sidebar() {
               </Link>
               <Link href="/workforce/weekly"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำสัปดาห์">
+                title="แผนเข้างานประจำวัน">
                 <span className="w-2 h-2 rounded-full bg-purple-500" />
               </Link>
             </div>

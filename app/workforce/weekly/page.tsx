@@ -491,7 +491,7 @@ export default function WeeklyWorkforcePage() {
     <div className="space-y-6 md:space-y-8">
       {/* Title */}
       <div>
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900">แผนเข้างานประจำสัปดาห์</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">แผนเข้างานประจำวัน</h1>
         <p className="text-xs md:text-sm text-gray-500 mt-1">ตรวจสอบสถานะการทำงานรายวัน และ จัดการอัปโหลดตารางเข้างานของคนงาน</p>
       </div>
 
@@ -653,7 +653,7 @@ export default function WeeklyWorkforcePage() {
         ) : workforceRows.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50/30">
             <CalendarDays className="mx-auto text-gray-300 mb-3" size={44} />
-            <h3 className="font-semibold text-gray-700 text-sm">ไม่พบแผนเข้างานประจำสัปดาห์</h3>
+            <h3 className="font-semibold text-gray-700 text-sm">ไม่พบแผนเข้างานประจำวัน</h3>
             <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto px-4">
               ยังไม่มีการอัพโหลดแผนเข้างานสำหรับกลุ่มงานนี้ หรือคุณอาจลบแผนงานก่อนหน้านี้ไปแล้ว กรุณาอัพโหลดแผนเข้างานด้านล่าง (เข้าชมด้วยคอมพิวเตอร์เพื่อทำรายการอัปโหลด)
             </p>

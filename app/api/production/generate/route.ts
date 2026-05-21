@@ -103,6 +103,108 @@ const STATION_TABLE: Record<string, string> = {
 
 const normName = (s: string) => s.replace(/\s+/g, ' ').trim()
 
+async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
+  const workforce: WorkforceRow[] = []
+
+  const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+  const DAY_ALIASES: Record<string, string[]> = {
+    'อาทิตย์': ['อาทิตย์', 'อา.'],
+    'จันทร์': ['จันทร์', 'จ.'],
+    'อังคาร': ['อังคาร', 'อ.'],
+    'พุธ': ['พุธ', 'พ.'],
+    'พฤหัสบดี': ['พฤหัสบดี', 'พฤหัส', 'พฤ.'],
+    'ศุกร์': ['ศุกร์', 'ศ.'],
+    'เสาร์': ['เสาร์', 'ส.']
+  }
+
+  const checkIsDayOff = (dayOffVal: string, dateStr: string) => {
+    if (!dayOffVal || !dateStr) return false
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) return false
+    const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+    const dayIndex = dateObj.getDay()
+    const dayName = THAI_DAYS[dayIndex]
+    
+    const normalizedVal = dayOffVal.trim().toLowerCase()
+    const aliases = DAY_ALIASES[dayName] || [dayName]
+    
+    return aliases.some(alias => normalizedVal.includes(alias.toLowerCase()))
+  }
+
+  const getFieldValue = (rowData: Record<string, any>, prefixes: string[]): string => {
+    if (!rowData) return ''
+    for (const prefix of prefixes) {
+      if (rowData[prefix] !== undefined && rowData[prefix] !== null) {
+        return String(rowData[prefix]).trim()
+      }
+    }
+    const keys = Object.keys(rowData)
+    for (const prefix of prefixes) {
+      const foundKey = keys.find(k => k.toLowerCase().includes(prefix.toLowerCase()))
+      if (foundKey && rowData[foundKey] !== undefined && rowData[foundKey] !== null) {
+        return String(rowData[foundKey]).trim()
+      }
+    }
+    return ''
+  }
+
+  const stationMap: Record<string, string> = {
+    'sa-phok-special': 'สะโพกพิเศษ',
+    'sam-chan-special': 'สามชั้นพิเศษ',
+    'lai-special': 'ไหล่พิเศษ'
+  }
+
+  for (const type of types) {
+    const logTableName = `workforce_weekly_${type.replace(/-/g, '_')}`
+    
+    const { data: latestLog } = await supabase
+      .from('upload_log')
+      .select('source_file')
+      .eq('table_name', logTableName)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!latestLog) continue
+
+    const { data: weeklyData } = await supabase
+      .from('workforce_weekly')
+      .select('row_data')
+      .eq('weekly_type', type)
+      .eq('source_file', latestLog.source_file)
+
+    if (!weeklyData) continue
+
+    for (const row of weeklyData) {
+      const rowData = (row.row_data ?? {}) as Record<string, any>
+      const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
+      if (!name) continue
+      
+      const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
+      if (checkIsDayOff(dayOffStr, productionDate)) {
+        continue
+      }
+
+      const shiftStr = getFieldValue(rowData, ['กะทำงาน', 'กะ', 'กะงาน', 'shift'])
+      let shift = 'กะ 1'
+      const normalizedShift = shiftStr.trim()
+      if (normalizedShift === '2' || normalizedShift.includes('2')) {
+        shift = 'กะ 2'
+      }
+
+      workforce.push({
+        emp_id: name,
+        name: name,
+        work_station: stationMap[type] ?? type,
+        shift: shift
+      })
+    }
+  }
+
+  return workforce
+}
+
 function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
   return rows
     .map(r => ({
@@ -653,12 +755,16 @@ export async function POST(req: NextRequest) {
 
     // Merge workforce: Phase 2/3 = 1300 overrides 0800
     const seenNames = new Set<string>()
-    const workforce: WorkforceRow[] = []
+    let workforce: WorkforceRow[] = []
     for (const w of [...(workforceRaw1300 ?? []), ...(workforceRaw0800 ?? [])] as WorkforceRow[]) {
       const nameKey = normName(w.name)
       if (seenNames.has(nameKey)) continue
       seenNames.add(nameKey)
       workforce.push(w)
+    }
+
+    if (workforce.length === 0) {
+      workforce = await fetchWeeklyWorkforce(productionDate)
     }
 
     if (!workforce.length)
