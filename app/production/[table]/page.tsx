@@ -80,24 +80,10 @@ function shortName(full: string) {
 }
 
 function mergeTasks(tasks: Assignment[]): Assignment[] {
-  const map = new Map<string, Assignment>()
-  for (const t of tasks) {
-    const key = `${t.sku}_${t.period}`
-    const existing = map.get(key)
-    if (existing) {
-      existing.target_quantity = Number(existing.target_quantity) + Number(t.target_quantity)
-      if (t.seq !== null && (existing.seq === null || t.seq < existing.seq)) {
-        existing.seq = t.seq
-      }
-      if (t.deadline_time && (!existing.deadline_time || t.deadline_time < existing.deadline_time)) {
-        existing.deadline_time = t.deadline_time
-      }
-    } else {
-      map.set(key, { ...t })
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => {
-    const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
+  if (!tasks || tasks.length === 0) return []
+
+  const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
+  const sorted = [...tasks].sort((a, b) => {
     const pA = periodOrder[a.period] ?? 99
     const pB = periodOrder[b.period] ?? 99
     if (pA !== pB) return pA - pB
@@ -108,6 +94,27 @@ function mergeTasks(tasks: Assignment[]): Assignment[] {
     const seqB = b.seq ?? 999999
     return seqA - seqB
   })
+
+  const merged: Assignment[] = []
+  for (const t of sorted) {
+    if (merged.length === 0) {
+      merged.push({ ...t })
+      continue
+    }
+    const last = merged[merged.length - 1]
+    if (last.sku === t.sku && last.period === t.period) {
+      last.target_quantity = Number(last.target_quantity) + Number(t.target_quantity)
+      if (t.seq !== null && (last.seq === null || t.seq < last.seq)) {
+        last.seq = t.seq
+      }
+      if (t.deadline_time && (!last.deadline_time || t.deadline_time < last.deadline_time)) {
+        last.deadline_time = t.deadline_time
+      }
+    } else {
+      merged.push({ ...t })
+    }
+  }
+  return merged
 }
 
 function statusIcon(s: string) {
