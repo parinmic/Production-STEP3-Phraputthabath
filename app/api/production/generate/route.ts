@@ -655,6 +655,31 @@ async function fetchAll<T = Record<string, unknown>>(
   return all
 }
 
+// ========== Checkpoint Scheduling ==========
+
+/**
+ * Returns the next 30-min checkpoint boundary from a given time.
+ * :00–:19 → XX:30   (same hour)
+ * :20–:49 → (XX+1):00
+ * :50–:59 → (XX+1):30
+ */
+function getNextCheckpoint(t: Date): Date {
+  const result = new Date(t)
+  result.setSeconds(0)
+  result.setMilliseconds(0)
+  const m = t.getMinutes()
+  if (m < 20) {
+    result.setMinutes(30)
+  } else if (m < 50) {
+    result.setMinutes(0)
+    result.setHours(result.getHours() + 1)
+  } else {
+    result.setMinutes(30)
+    result.setHours(result.getHours() + 1)
+  }
+  return result
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { date, phase: phaseParam, deductMode: rawDeductMode } = await req.json()
@@ -668,7 +693,27 @@ export async function POST(req: NextRequest) {
     const phaseCfg = PHASE_CONFIG.find(p => p.phase === selectedPhase)
     if (!phaseCfg) return NextResponse.json({ success: false, message: 'Phase ไม่ถูกต้อง' }, { status: 400 })
 
-    // 3 historical days before productionDate
+    // ── Checkpoint scheduling: ถ้ามีแผนเดิมอยู่ แผนใหม่จะมีผลตั้งแต่ checkpoint ถัดไป ──
+    const now = new Date()
+    const { data: latestAssign } = await supabase
+      .from('production_assignments')
+      .select('effective_from')
+      .eq('production_date', productionDate)
+      .eq('period', phaseCfg.period)
+      .lte('effective_from', now.toISOString())
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    // effective_from: ถ้ามีแผนเดิม → แผนใหม่เริ่มมีผลที่ checkpoint ถัดไป | ถ้าไม่มี → มีผลทันที
+    const effectiveFrom: Date = latestAssign?.effective_from
+      ? getNextCheckpoint(now)
+      : now
+    const effectiveFromISO = effectiveFrom.toISOString()
+    const effectiveTimeStr = `${String(effectiveFrom.getHours()).padStart(2, '0')}:${String(effectiveFrom.getMinutes()).padStart(2, '0')}`
+    const isScheduled = effectiveFrom > now
+
+
     const d = new Date(productionDate)
     const histDates = [1, 2, 3].map(n => {
       const h = new Date(d); h.setDate(d.getDate() - n)
@@ -1303,11 +1348,23 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    await supabase
-      .from('production_assignments')
-      .delete()
-      .eq('production_date', productionDate)
-      .eq('period', phaseCfg.period)
+    // ── Delete only the old batch being superseded (same effective_from as the current active plan) ──
+    // ถ้ามีแผนเดิมที่ยัง effective อยู่ ให้ลบเฉพาะชุดนั้น (batch เดิมที่ถูก supersede)
+    if (latestAssign?.effective_from) {
+      await supabase
+        .from('production_assignments')
+        .delete()
+        .eq('production_date', productionDate)
+        .eq('period', phaseCfg.period)
+        .eq('effective_from', latestAssign.effective_from)
+    } else {
+      // ไม่มีแผนเดิม → ลบทั้งหมด (safety)
+      await supabase
+        .from('production_assignments')
+        .delete()
+        .eq('production_date', productionDate)
+        .eq('period', phaseCfg.period)
+    }
 
     // Recalculate deadline_time and seq sequentially per worker.
     // Because assignList was pre-merged (same SKU = one contiguous block), each worker's
@@ -1353,7 +1410,7 @@ export async function POST(req: NextRequest) {
       resequenced.push(...workerTasks)
     }
 
-    resequenced.forEach((a, i) => { a['seq'] = i })
+    resequenced.forEach((a, i) => { a['seq'] = i; a['effective_from'] = effectiveFromISO })
     assignments.length = 0
     assignments.push(...resequenced)
 
@@ -1389,7 +1446,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
+      isScheduled,
+      effectiveFrom: effectiveTimeStr,
+      message: isScheduled
+        ? `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — มีผลตั้งแต่ ${effectiveTimeStr} น. (${channelSummary})`
+        : `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
       count: assignments.length,
       debug_targets: Object.entries(debugChannelTargets)
         .map(([sku, v]) => ({ sku, ...v }))

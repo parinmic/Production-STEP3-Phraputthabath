@@ -1290,7 +1290,7 @@ export default function TablePage() {
   const [bagMap, setBagMap]         = useState<Record<string, number>>({})
   const [loading, setLoading]         = useState(false)
   const [generating, setGenerating]   = useState(false)
-  const [genResult, setGenResult]     = useState<{ success: boolean; message: string } | null>(null)
+  const [genResult, setGenResult]     = useState<{ success: boolean; message: string; isScheduled?: boolean; effectiveFrom?: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
   const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
@@ -1467,13 +1467,21 @@ export default function TablePage() {
           )}
           {genResult && (
             <div className="flex items-center gap-2">
-              <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${genResult.success
-                ? 'bg-green-50 text-green-700 border-green-200'
-                : 'bg-red-50 text-red-700 border-red-200'}`}>
-                {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${
+                genResult.isScheduled
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : genResult.success
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : 'bg-red-50 text-red-700 border-red-200'
+              }`}>
+                {genResult.isScheduled
+                  ? <span style={{ fontSize: 15 }}>⏳</span>
+                  : genResult.success
+                    ? <CheckCircle2 size={16} />
+                    : <AlertCircle size={16} />}
                 {genResult.message}
               </div>
-              {genResult.success && (
+              {genResult.success && !genResult.isScheduled && (
                 <button
                   onClick={() => exportExcel(cfg.label, date, items, rateMap, nameMap)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
