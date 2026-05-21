@@ -10,7 +10,30 @@ export async function GET(req: NextRequest) {
   }
 
   const sourceFile = req.nextUrl.searchParams.get('file')
+  const latest = req.nextUrl.searchParams.get('latest') === 'true'
   const logTableName = `workforce_weekly_${type.replace(/-/g, '_')}`
+
+  // latest mode: find the most recent file upload and return its rows
+  if (latest) {
+    const { data: latestLog, error: logError } = await supabase
+      .from('upload_log')
+      .select('source_file')
+      .eq('table_name', logTableName)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (logError) return NextResponse.json({ error: logError.message }, { status: 500 })
+    if (!latestLog) return NextResponse.json({ data: [] })
+
+    const { data, error } = await supabase
+      .from('workforce_weekly')
+      .select('row_data')
+      .eq('weekly_type', type)
+      .eq('source_file', latestLog.source_file)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ data: data ?? [] })
+  }
 
   // download mode: return full row_data for a specific file and type
   if (sourceFile) {
@@ -22,6 +45,7 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ data: data ?? [] })
   }
+
 
   const { data } = await supabase
     .from('upload_log')
