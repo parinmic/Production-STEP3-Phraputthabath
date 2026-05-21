@@ -411,30 +411,30 @@ export default function WeeklyWorkforcePage() {
   const selectedTheme = themes[selectedStation as keyof typeof themes] ?? themes['sa-phok-special']
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Title */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">แผนเข้างานประจำสัปดาห์</h1>
-        <p className="text-gray-500 mt-1">ตรวจสอบสถานะการทำงานรายวัน และ จัดการอัปโหลดตารางเข้างานของคนงาน</p>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">แผนเข้างานประจำสัปดาห์</h1>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">ตรวจสอบสถานะการทำงานรายวัน และ จัดการอัปโหลดตารางเข้างานของคนงาน</p>
       </div>
 
       {/* 1. Daily Status Panel & Table (TOP) */}
-      <div className="card space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+      <div className="card space-y-5 md:space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4 md:pb-5">
           <div className="space-y-1">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <CalendarDays className="text-blue-500 shrink-0" size={22} />
+            <h2 className="text-base md:text-lg font-bold text-gray-900 flex items-center gap-2">
+              <CalendarDays className="text-blue-500 shrink-0" size={20} />
               ตรวจสอบสถานะกำลังคนประจำวัน
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-[11px] md:text-xs text-gray-500">
               สถานะการทำงานของพนักงานประเมินจาก วันหยุดประจำสัปดาห์ ในแผนงานล่าสุด
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             {/* Date Input */}
-            <div className="flex flex-col min-w-[150px]">
-              <span className="text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">วันที่เข้างาน</span>
+            <div className="flex flex-col flex-1 sm:flex-initial sm:min-w-[150px]">
+              <span className="text-[10px] md:text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">วันที่เข้างาน</span>
               <input
                 type="date"
                 value={selectedDate}
@@ -444,8 +444,8 @@ export default function WeeklyWorkforcePage() {
             </div>
 
             {/* Station Dropdown */}
-            <div className="flex flex-col min-w-[160px]">
-              <span className="text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">กลุ่มงาน / Station</span>
+            <div className="flex flex-col flex-1 sm:flex-initial sm:min-w-[160px]">
+              <span className="text-[10px] md:text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">กลุ่มงาน / Station</span>
               <select
                 value={selectedStation}
                 onChange={e => {
@@ -464,26 +464,26 @@ export default function WeeklyWorkforcePage() {
 
         {/* Stats Row */}
         {workforceRows.length > 0 && !loading && (
-          <div className="grid grid-cols-3 gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-gray-50/50 p-3 sm:p-4 rounded-2xl border border-gray-100">
             <div className="text-center py-1">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">คนงานทั้งหมด</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1 flex items-center justify-center gap-1.5">
-                <User size={18} className="text-gray-400" />
-                {totalCount} <span className="text-xs font-normal text-gray-500">คน</span>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-gray-400 uppercase tracking-wider">คนงานทั้งหมด</p>
+              <p className="text-lg sm:text-2xl font-bold text-gray-800 mt-1 flex items-center justify-center gap-1">
+                <User size={16} className="text-gray-400 shrink-0" />
+                {totalCount} <span className="text-[10px] sm:text-xs font-normal text-gray-500">คน</span>
               </p>
             </div>
             <div className="text-center py-1 border-x border-gray-200">
-              <p className="text-[11px] font-semibold text-green-600 uppercase tracking-wider">มาทำงาน</p>
-              <p className="text-2xl font-bold text-green-600 mt-1 flex items-center justify-center gap-1.5">
-                <UserCheck size={18} className="text-green-500" />
-                {workingCount} <span className="text-xs font-normal text-green-500/80">คน</span>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-green-600 uppercase tracking-wider">มาทำงาน</p>
+              <p className="text-lg sm:text-2xl font-bold text-green-600 mt-1 flex items-center justify-center gap-1">
+                <UserCheck size={16} className="text-green-500 shrink-0" />
+                {workingCount} <span className="text-[10px] sm:text-xs font-normal text-green-500/80">คน</span>
               </p>
             </div>
             <div className="text-center py-1">
-              <p className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider">วันหยุด ({getThaiDayLabel()})</p>
-              <p className="text-2xl font-bold text-amber-600 mt-1 flex items-center justify-center gap-1.5">
-                <UserMinus size={18} className="text-amber-500" />
-                {dayOffCount} <span className="text-xs font-normal text-amber-500/80">คน</span>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-amber-600 uppercase tracking-wider">วันหยุด ({getThaiDayLabel()})</p>
+              <p className="text-lg sm:text-2xl font-bold text-amber-600 mt-1 flex items-center justify-center gap-1">
+                <UserMinus size={16} className="text-amber-500 shrink-0" />
+                {dayOffCount} <span className="text-[10px] sm:text-xs font-normal text-amber-500/80">คน</span>
               </p>
             </div>
           </div>
@@ -496,7 +496,7 @@ export default function WeeklyWorkforcePage() {
             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
               <button
                 onClick={() => setStatusTab('all')}
-                className={`flex-1 sm:flex-none text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                className={`flex-1 sm:flex-none text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all ${
                   statusTab === 'all' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -504,7 +504,7 @@ export default function WeeklyWorkforcePage() {
               </button>
               <button
                 onClick={() => setStatusTab('work')}
-                className={`flex-1 sm:flex-none text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                className={`flex-1 sm:flex-none text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all ${
                   statusTab === 'work' ? 'bg-green-600 text-white shadow-sm' : 'text-green-600 hover:bg-green-50'
                 }`}
               >
@@ -512,7 +512,7 @@ export default function WeeklyWorkforcePage() {
               </button>
               <button
                 onClick={() => setStatusTab('off')}
-                className={`flex-1 sm:flex-none text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                className={`flex-1 sm:flex-none text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all ${
                   statusTab === 'off' ? 'bg-amber-600 text-white shadow-sm' : 'text-amber-600 hover:bg-amber-50'
                 }`}
               >
@@ -562,7 +562,7 @@ export default function WeeklyWorkforcePage() {
             <CalendarDays className="mx-auto text-gray-300 mb-3" size={44} />
             <h3 className="font-semibold text-gray-700 text-sm">ไม่พบแผนเข้างานประจำสัปดาห์</h3>
             <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto px-4">
-              ยังไม่มีการอัพโหลดแผนเข้างานสำหรับกลุ่มงานนี้ หรือคุณอาจลบแผนงานก่อนหน้านี้ไปแล้ว กรุณาอัพโหลดไฟล์แผนงานประจำสัปดาห์ได้ในกล่องอัพโหลดด้านล่าง
+              ยังไม่มีการอัพโหลดแผนเข้างานสำหรับกลุ่มงานนี้ หรือคุณอาจลบแผนงานก่อนหน้านี้ไปแล้ว กรุณาอัพโหลดแผนเข้างานด้านล่าง (เข้าชมด้วยคอมพิวเตอร์เพื่อทำรายการอัปโหลด)
             </p>
           </div>
         ) : processedWorkers.length === 0 ? (
@@ -574,27 +574,27 @@ export default function WeeklyWorkforcePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-xs">
-                    <th className="px-5 py-3 w-16 text-center">ลำดับ</th>
-                    <th className="px-5 py-3">ชื่อจริง</th>
-                    <th className="px-5 py-3">ชื่อเล่น</th>
-                    <th className="px-5 py-3 w-40 text-center">สถานะการทำงาน</th>
+                  <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] sm:text-xs">
+                    <th className="px-3 py-2.5 sm:px-5 sm:py-3 w-12 sm:w-16 text-center">ลำดับ</th>
+                    <th className="px-3 py-2.5 sm:px-5 sm:py-3">ชื่อจริง</th>
+                    <th className="px-3 py-2.5 sm:px-5 sm:py-3">ชื่อเล่น</th>
+                    <th className="px-3 py-2.5 sm:px-5 sm:py-3 w-28 sm:w-40 text-center">สถานะการทำงาน</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
+                <tbody className="divide-y divide-gray-100 text-xs sm:text-sm">
                   {processedWorkers.map((w) => (
                     <tr key={w.index} className="hover:bg-gray-50/40 transition-colors">
-                      <td className="px-5 py-3 text-center text-xs font-mono text-gray-400">{w.index}</td>
-                      <td className="px-5 py-3 font-medium text-gray-800">{w.name}</td>
-                      <td className="px-5 py-3 text-gray-600">{w.nickname}</td>
-                      <td className="px-5 py-3 text-center">
+                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-center text-[10px] sm:text-xs font-mono text-gray-400">{w.index}</td>
+                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 font-medium text-gray-800">{w.name}</td>
+                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-gray-600">{w.nickname}</td>
+                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-center">
                         {w.isOff ? (
-                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200/60 text-xs px-2.5 py-1 rounded-full font-medium shadow-xs">
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200/60 text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-medium shadow-xs">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                             วันหยุด
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200/60 text-xs px-2.5 py-1 rounded-full font-medium shadow-xs">
+                          <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200/60 text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-medium shadow-xs">
                             <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
                             ทำงาน
                           </span>
@@ -609,8 +609,8 @@ export default function WeeklyWorkforcePage() {
         )}
       </div>
 
-      {/* Divider */}
-      <div className="relative py-3">
+      {/* Divider - Hidden on Mobile */}
+      <div className="hidden md:block relative py-3">
         <div className="absolute inset-0 flex items-center" aria-hidden="true">
           <div className="w-full border-t border-gray-200"></div>
         </div>
@@ -619,8 +619,8 @@ export default function WeeklyWorkforcePage() {
         </div>
       </div>
 
-      {/* 2. Uploader cards (BOTTOM) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 2. Uploader cards (BOTTOM) - Hidden on Mobile */}
+      <div className="hidden md:grid grid-cols-1 lg:grid-cols-3 gap-6">
         <WeeklyUploader
           type="sa-phok-special"
           label="สะโพกพิเศษ"
