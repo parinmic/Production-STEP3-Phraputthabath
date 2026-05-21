@@ -389,3 +389,19 @@ CREATE TABLE IF NOT EXISTS yield_bags (
 CREATE INDEX IF NOT EXISTS idx_yield_bags_date ON yield_bags(work_date);
 ALTER TABLE yield_bags ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_yield_bags" ON yield_bags FOR ALL USING (true) WITH CHECK (true);
+
+-- 19. แผนเข้างานประจำสัปดาห์ (Weekly Workforce Plan)
+CREATE TABLE IF NOT EXISTS workforce_weekly (
+  id             uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  weekly_type    text        NOT NULL,  -- sa-phok-special | sam-chan-special | lai-special
+  row_data       jsonb       NOT NULL DEFAULT '{}',
+  source_file    text,
+  uploaded_at    timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workforce_weekly_type ON workforce_weekly(weekly_type);
+CREATE INDEX IF NOT EXISTS idx_workforce_weekly_uploaded ON workforce_weekly(uploaded_at DESC);
+
+ALTER TABLE workforce_weekly ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_workforce_weekly" ON workforce_weekly FOR ALL USING (true) WITH CHECK (true);
+
