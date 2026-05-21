@@ -257,6 +257,7 @@ export default function WeeklyWorkforcePage() {
   const [error, setError] = useState('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [workerStatuses, setWorkerStatuses] = useState<Record<string, string>>({})
+  const [selectedShift, setSelectedShift] = useState<'all' | '1' | '2'>('all')
 
   const handleStatusChange = (workerName: string, newStatus: string) => {
     setWorkerStatuses(prev => ({
@@ -281,6 +282,26 @@ export default function WeeklyWorkforcePage() {
         return 'bg-gray-50 text-gray-700 border-gray-200/60'
     }
   }
+
+  const getShiftBadge = (shiftStr: string) => {
+    const normalized = String(shiftStr).trim()
+    if (normalized === '1' || normalized.includes('1')) {
+      return (
+        <span className="inline-flex items-center bg-indigo-50 text-indigo-700 border border-indigo-100/80 text-[10px] px-2 py-0.5 rounded-md font-medium">
+          กะ 1 (08:00)
+        </span>
+      )
+    }
+    if (normalized === '2' || normalized.includes('2')) {
+      return (
+        <span className="inline-flex items-center bg-sky-50 text-sky-700 border border-sky-100/80 text-[10px] px-2 py-0.5 rounded-md font-medium">
+          กะ 2 (14:00)
+        </span>
+      )
+    }
+    return <span className="text-gray-400 text-xs">{shiftStr || '-'}</span>
+  }
+
 
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -392,6 +413,7 @@ export default function WeeklyWorkforcePage() {
     const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
     const nickname = getFieldValue(rowData, ['ชื่อเล่น', 'nickname', 'nick'])
     const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
+    const shiftStr = getFieldValue(rowData, ['กะทำงาน', 'กะ', 'กะงาน', 'shift'])
     
     // Check if worker is off or working
     const isOff = checkIsDayOff(dayOffStr, selectedDate)
@@ -404,7 +426,8 @@ export default function WeeklyWorkforcePage() {
       nickname: nickname || '-',
       dayOffStr,
       isOff,
-      status
+      status,
+      shiftStr
     }
   }).filter(w => {
     // Search Term Filter
@@ -412,23 +435,46 @@ export default function WeeklyWorkforcePage() {
     const term = searchTerm.toLowerCase()
     return w.name.toLowerCase().includes(term) || w.nickname.toLowerCase().includes(term)
   }).filter(w => {
+    // Shift Filter
+    if (selectedShift === '1') {
+      const normalized = w.shiftStr.trim()
+      return normalized === '1' || normalized.includes('1')
+    }
+    if (selectedShift === '2') {
+      const normalized = w.shiftStr.trim()
+      return normalized === '2' || normalized.includes('2')
+    }
+    return true
+  }).filter(w => {
     // Tab Filter
     if (statusTab === 'work') return w.status === 'ทำงาน'
     if (statusTab === 'off') return w.status !== 'ทำงาน'
     return true
   })
 
-  // Statistics calculations based on unfiltered list
+  // Statistics calculations based on shift-filtered list
   const allWorkersCalculated = workforceRows.map(r => {
     const rowData = r.row_data ?? {}
     const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name']) || 'ไม่ระบุชื่อ'
     const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
+    const shiftStr = getFieldValue(rowData, ['กะทำงาน', 'กะ', 'กะงาน', 'shift'])
     const isOff = checkIsDayOff(dayOffStr, selectedDate)
-    return workerStatuses[`${selectedDate}_${selectedStation}_${name}`] || (isOff ? 'วันหยุด' : 'ทำงาน')
+    const status = workerStatuses[`${selectedDate}_${selectedStation}_${name}`] || (isOff ? 'วันหยุด' : 'ทำงาน')
+    return { status, shiftStr }
+  }).filter(w => {
+    if (selectedShift === '1') {
+      const normalized = w.shiftStr.trim()
+      return normalized === '1' || normalized.includes('1')
+    }
+    if (selectedShift === '2') {
+      const normalized = w.shiftStr.trim()
+      return normalized === '2' || normalized.includes('2')
+    }
+    return true
   })
   
   const totalCount = allWorkersCalculated.length
-  const workingCount = allWorkersCalculated.filter(status => status === 'ทำงาน').length
+  const workingCount = allWorkersCalculated.filter(w => w.status === 'ทำงาน').length
   const dayOffCount = totalCount - workingCount
 
   // Get current Thai day name to show in UI
@@ -488,6 +534,22 @@ export default function WeeklyWorkforcePage() {
                 {stations.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* Shift Dropdown */}
+            <div className="flex flex-col flex-1 sm:flex-initial sm:min-w-[150px]">
+              <span className="text-[10px] md:text-[11px] font-semibold text-gray-400 mb-1 uppercase tracking-wider">กะทำงาน</span>
+              <select
+                value={selectedShift}
+                onChange={e => {
+                  setSelectedShift(e.target.value as 'all' | '1' | '2')
+                }}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-xs"
+              >
+                <option value="all">ทั้งหมด</option>
+                <option value="1">กะที่ 1 (08:00)</option>
+                <option value="2">กะที่ 2 (14:00)</option>
               </select>
             </div>
           </div>
@@ -609,6 +671,7 @@ export default function WeeklyWorkforcePage() {
                     <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-10 sm:w-16 text-center">ลำดับ</th>
                     <th className="px-2 py-2.5 sm:px-5 sm:py-3">ชื่อจริง</th>
                     <th className="px-2 py-2.5 sm:px-5 sm:py-3">ชื่อเล่น</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-16 sm:w-24 text-center">กะ</th>
                     <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-20 sm:w-32 text-center">วันทำงาน</th>
                     <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-24 sm:w-40 text-center">สถานะ</th>
                   </tr>
@@ -619,6 +682,9 @@ export default function WeeklyWorkforcePage() {
                       <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center text-[10px] sm:text-xs font-mono text-gray-400">{w.index}</td>
                       <td className="px-2 py-2.5 sm:px-5 sm:py-3 font-medium text-gray-800">{w.name}</td>
                       <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-gray-600">{w.nickname}</td>
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center">
+                        {getShiftBadge(w.shiftStr)}
+                      </td>
                       <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center">
                         {w.isOff ? (
                           <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200/60 text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-medium shadow-xs">
