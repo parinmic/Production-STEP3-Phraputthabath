@@ -1000,8 +1000,14 @@ export async function POST(req: NextRequest) {
         (p3ChannelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
     } else {
-      // Phase 1 & 2: Mas Channel priority order, sorted by qty desc within each channel
-      assignList = activeChannels.flatMap(ch =>
+      // Phase 1 & 2: channel master provides priority order; always include all 3 core channels
+      // (Makro, Wet Market, LOTUS) even if missing from master — master is for ordering, not filtering
+      const coreChannels = ['Wet Market', 'Makro', 'LOTUS']
+      const orderedChannels = [
+        ...activeChannels,
+        ...coreChannels.filter(ch => !activeChannels.includes(ch)),
+      ]
+      assignList = orderedChannels.flatMap(ch =>
         (channelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty)
       )
     }
