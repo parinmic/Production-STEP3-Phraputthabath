@@ -256,6 +256,32 @@ export default function WeeklyWorkforcePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [workerStatuses, setWorkerStatuses] = useState<Record<string, string>>({})
+
+  const handleStatusChange = (workerName: string, newStatus: string) => {
+    setWorkerStatuses(prev => ({
+      ...prev,
+      [`${selectedDate}_${selectedStation}_${workerName}`]: newStatus
+    }))
+  }
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'ทำงาน':
+        return 'bg-green-50 text-green-700 border-green-200/60'
+      case 'วันหยุด':
+        return 'bg-amber-50 text-amber-700 border-amber-200/60'
+      case 'ลาป่วย':
+        return 'bg-red-50 text-red-700 border-red-200/60'
+      case 'ลากิจ':
+        return 'bg-purple-50 text-purple-700 border-purple-200/60'
+      case 'ลาพักร้อน':
+        return 'bg-blue-50 text-blue-700 border-blue-200/60'
+      default:
+        return 'bg-gray-50 text-gray-700 border-gray-200/60'
+    }
+  }
+
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusTab, setStatusTab] = useState<'all' | 'work' | 'off'>('all')
@@ -369,13 +395,16 @@ export default function WeeklyWorkforcePage() {
     
     // Check if worker is off or working
     const isOff = checkIsDayOff(dayOffStr, selectedDate)
+    const workerName = name || 'ไม่ระบุชื่อ'
+    const status = workerStatuses[`${selectedDate}_${selectedStation}_${workerName}`] || (isOff ? 'วันหยุด' : 'ทำงาน')
     
     return {
       index: i + 1,
-      name: name || 'ไม่ระบุชื่อ',
+      name: workerName,
       nickname: nickname || '-',
       dayOffStr,
-      isOff
+      isOff,
+      status
     }
   }).filter(w => {
     // Search Term Filter
@@ -384,21 +413,23 @@ export default function WeeklyWorkforcePage() {
     return w.name.toLowerCase().includes(term) || w.nickname.toLowerCase().includes(term)
   }).filter(w => {
     // Tab Filter
-    if (statusTab === 'work') return !w.isOff
-    if (statusTab === 'off') return w.isOff
+    if (statusTab === 'work') return w.status === 'ทำงาน'
+    if (statusTab === 'off') return w.status !== 'ทำงาน'
     return true
   })
 
   // Statistics calculations based on unfiltered list
   const allWorkersCalculated = workforceRows.map(r => {
     const rowData = r.row_data ?? {}
+    const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name']) || 'ไม่ระบุชื่อ'
     const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
-    return checkIsDayOff(dayOffStr, selectedDate)
+    const isOff = checkIsDayOff(dayOffStr, selectedDate)
+    return workerStatuses[`${selectedDate}_${selectedStation}_${name}`] || (isOff ? 'วันหยุด' : 'ทำงาน')
   })
   
   const totalCount = allWorkersCalculated.length
-  const dayOffCount = allWorkersCalculated.filter(isOff => isOff).length
-  const workingCount = totalCount - dayOffCount
+  const workingCount = allWorkersCalculated.filter(status => status === 'ทำงาน').length
+  const dayOffCount = totalCount - workingCount
 
   // Get current Thai day name to show in UI
   const getThaiDayLabel = () => {
@@ -575,19 +606,20 @@ export default function WeeklyWorkforcePage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] sm:text-xs">
-                    <th className="px-3 py-2.5 sm:px-5 sm:py-3 w-12 sm:w-16 text-center">ลำดับ</th>
-                    <th className="px-3 py-2.5 sm:px-5 sm:py-3">ชื่อจริง</th>
-                    <th className="px-3 py-2.5 sm:px-5 sm:py-3">ชื่อเล่น</th>
-                    <th className="px-3 py-2.5 sm:px-5 sm:py-3 w-28 sm:w-40 text-center">สถานะการทำงาน</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-10 sm:w-16 text-center">ลำดับ</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3">ชื่อจริง</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3">ชื่อเล่น</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-20 sm:w-32 text-center">วันทำงาน</th>
+                    <th className="px-2 py-2.5 sm:px-5 sm:py-3 w-24 sm:w-40 text-center">สถานะ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-xs sm:text-sm">
                   {processedWorkers.map((w) => (
                     <tr key={w.index} className="hover:bg-gray-50/40 transition-colors">
-                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-center text-[10px] sm:text-xs font-mono text-gray-400">{w.index}</td>
-                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 font-medium text-gray-800">{w.name}</td>
-                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-gray-600">{w.nickname}</td>
-                      <td className="px-3 py-2.5 sm:px-5 sm:py-3 text-center">
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center text-[10px] sm:text-xs font-mono text-gray-400">{w.index}</td>
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 font-medium text-gray-800">{w.name}</td>
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-gray-600">{w.nickname}</td>
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center">
                         {w.isOff ? (
                           <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200/60 text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-medium shadow-xs">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
@@ -599,6 +631,20 @@ export default function WeeklyWorkforcePage() {
                             ทำงาน
                           </span>
                         )}
+                      </td>
+                      <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center">
+                        <select
+                          value={w.status}
+                          onChange={(e) => handleStatusChange(w.name, e.target.value)}
+                          className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 sm:py-1 rounded-full border shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer ${getStatusBadgeClass(w.status)}`}
+                        >
+                          <option value="ทำงาน" className="bg-white text-green-700">ทำงาน</option>
+                          <option value="วันหยุด" className="bg-white text-amber-700">วันหยุด</option>
+                          <option value="ลาป่วย" className="bg-white text-red-700">ลาป่วย</option>
+                          <option value="ลากิจ" className="bg-white text-purple-700">ลากิจ</option>
+                          <option value="ลาพักร้อน" className="bg-white text-blue-700">ลาพักร้อน</option>
+                          <option value="อื่นๆ" className="bg-white text-gray-700">อื่นๆ</option>
+                        </select>
                       </td>
                     </tr>
                   ))}
