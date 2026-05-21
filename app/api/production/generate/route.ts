@@ -772,7 +772,8 @@ export async function POST(req: NextRequest) {
     const lotusVarianceMap = new Map<string, number>()
     for (const row of (masterVarLotusRaw ?? [])) {
       const r = row.row_data as Record<string, unknown>
-      const station = normalizeStation(String(r['Station'] ?? '').trim())
+      const rawStation = normalizeStation(String(r['Station'] ?? '').trim())
+      const station = STATION_TABLE[rawStation] ?? rawStation
       const pct = Number(r['%Variance'] ?? 0)
       if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
     }
@@ -800,7 +801,8 @@ export async function POST(req: NextRequest) {
     // ------ Workers grouped by station ------
     const workersByStation: Record<string, WorkforceRow[]> = {}
     for (const w of workforce) {
-      const station = normalizeStation(w.work_station ?? '')
+      const rawStation = normalizeStation(w.work_station ?? '')
+      const station = STATION_TABLE[rawStation] ?? rawStation
       if (!station) continue
       workersByStation[station] ??= []
       workersByStation[station].push(w)
@@ -940,7 +942,8 @@ export async function POST(req: NextRequest) {
       return Array.from(avgLotus.entries())
         .map(([sku, avg]) => {
           const prod = skuMap.get(sku)
-          const station = prod ? normalizeStation(prod.station) : ''
+          const rawStation = prod ? normalizeStation(prod.station) : ''
+          const station = STATION_TABLE[rawStation] ?? rawStation
           const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
           return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
         }).filter(s => s.targetQty > 0)
@@ -1069,7 +1072,8 @@ export async function POST(req: NextRequest) {
         const targetQty = roundUpToBag(sku, rawQty)
         const prod = skuMap.get(sku) ?? skuMap.get(String(Number(sku) || sku))
         if (!prod) continue
-        const station   = normalizeStation(prod.station)
+        const rawStation = normalizeStation(prod.station)
+        const station = STATION_TABLE[rawStation] ?? rawStation
         const tableName = STATION_TABLE[station] ?? station
         const skuGroup  = prod.product_group
         const allAtStation = workersByStation[station] ?? []
@@ -1125,7 +1129,8 @@ export async function POST(req: NextRequest) {
       const prod = skuMap.get(String(sku)) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
 
-      const station   = normalizeStation(prod.station)
+      const rawStation = normalizeStation(prod.station)
+      const station = STATION_TABLE[rawStation] ?? rawStation
       const tableName = STATION_TABLE[station] ?? station
       const skuGroup  = prod.product_group
 

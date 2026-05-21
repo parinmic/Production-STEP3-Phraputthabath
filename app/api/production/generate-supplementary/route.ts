@@ -360,7 +360,8 @@ export async function POST(req: NextRequest) {
     // Workers by station
     const workersByStation: Record<string, WorkforceRow[]> = {}
     for (const w of workforce) {
-      const station = normalizeStation(w.work_station ?? '')
+      const rawStation = normalizeStation(w.work_station ?? '')
+      const station = STATION_TABLE[rawStation] ?? rawStation
       if (!station) continue
       workersByStation[station] ??= []; workersByStation[station].push(w)
     }
@@ -415,7 +416,8 @@ export async function POST(req: NextRequest) {
       const targetQty = roundUpToBag(sku, rawQty)
       const prod = skuMap.get(sku) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
-      const station   = normalizeStation(prod.station)
+      const rawStation = normalizeStation(prod.station)
+      const station = STATION_TABLE[rawStation] ?? rawStation
       const tableName = STATION_TABLE[station] ?? station
       const skuGroup  = prod.product_group
       const allAtStation = workersByStation[station] ?? []
