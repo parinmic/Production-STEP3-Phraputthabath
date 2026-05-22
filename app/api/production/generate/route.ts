@@ -683,7 +683,8 @@ function getNextCheckpoint(t: Date): Date {
 export async function POST(req: NextRequest) {
   try {
     const { date, phase: phaseParam, deductMode: rawDeductMode } = await req.json()
-    const productionDate: string = date ?? new Date().toISOString().split('T')[0]
+    const defaultDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+    const productionDate: string = date ?? defaultDate
     const selectedPhase: number = phaseParam ? Number(phaseParam) : 1
     const deductMode: 'plan' | 'actual' | 'yield' =
       rawDeductMode === 'actual' || rawDeductMode === 'yield' ? rawDeductMode : 'plan'
@@ -710,9 +711,18 @@ export async function POST(req: NextRequest) {
       ? getNextCheckpoint(now)
       : now
     const effectiveFromISO = effectiveFrom.toISOString()
-    const effectiveTimeStr = `${String(effectiveFrom.getHours()).padStart(2, '0')}:${String(effectiveFrom.getMinutes()).padStart(2, '0')}`
+    
+    // Resolve hours and minutes in Asia/Bangkok timezone to prevent server timezone mismatch
+    const bangkokTime = new Date(effectiveFrom.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+    const bangkokHours = bangkokTime.getHours()
+    const bangkokMinutes = bangkokTime.getMinutes()
+
+    const effectiveTimeStr = `${String(bangkokHours).padStart(2, '0')}:${String(bangkokMinutes).padStart(2, '0')}`
     const isScheduled = effectiveFrom > now
 
+    const checkpointMins = latestAssign?.effective_from
+      ? (bangkokHours * 60 + bangkokMinutes)
+      : (phaseCfg.startH * 60)
 
     const d = new Date(productionDate)
     const histDates = [1, 2, 3].map(n => {
@@ -742,6 +752,7 @@ export async function POST(req: NextRequest) {
       { data: pickingUnitRaw },
       { data: masterSpecialRaw },
       { data: masterVarLotusRaw },
+      { data: oldAssignmentsRaw },
     ] = await Promise.all([
       supabase.from('daily_workforce')
         .select('emp_id, name, work_station, shift')
@@ -819,6 +830,13 @@ export async function POST(req: NextRequest) {
         .select('row_data')
         .eq('calculation_type', 'Mas %Variance LOTUS')
         .order('uploaded_at', { ascending: false }),
+      latestAssign?.effective_from
+        ? supabase.from('production_assignments')
+            .select('*')
+            .eq('production_date', productionDate)
+            .eq('period', phaseCfg.period)
+            .eq('effective_from', latestAssign.effective_from)
+        : Promise.resolve({ data: [] as any[], error: null }),
     ])
 
     // Merge workforce: Phase 2/3 = 1300 overrides 0800
@@ -986,6 +1004,55 @@ export async function POST(req: NextRequest) {
     const phaseStartMins = phaseCfg.startH * 60
     const phaseEndMins   = phaseCfg.endH   * 60
 
+    // Intersect daily uploaded workforce and weekly workforce plan
+    const dailyUploadedNames = new Set([
+      ...(workforceRaw0800 ?? []).map(w => normName(w.name)),
+      ...(workforceRaw1300 ?? []).map(w => normName(w.name))
+    ])
+    const weeklyWorkforce = await fetchWeeklyWorkforce(productionDate)
+    const weeklyWorkforceNames = new Set(weeklyWorkforce.map(w => normName(w.name)))
+    const effectiveDailyUploadedNames = dailyUploadedNames.size > 0
+      ? dailyUploadedNames
+      : weeklyWorkforceNames
+
+    const keptAssignments: any[] = []
+    const keptChannelQtyMap = new Map<string, number>()
+    const workerKeptMaxEndMins = new Map<string, number>()
+
+    if (latestAssign?.effective_from && oldAssignmentsRaw) {
+      for (const a of oldAssignmentsRaw) {
+        const wName = normName(a.worker_name || '')
+        if (effectiveDailyUploadedNames.has(wName) && weeklyWorkforceNames.has(wName)) {
+          const deadlineStr = a.deadline_time as string | null
+          if (deadlineStr && deadlineStr.includes(':')) {
+            const [h, m] = deadlineStr.split(':').map(Number)
+            const startMins = h * 60 + m
+            if (startMins < checkpointMins) {
+              const cleanSku = (a.sku as string).replace(/^0+/, '')
+              const prod = skuMap.get(cleanSku) ?? skuMap.get(a.sku as string)
+              const rate = prod?.rate ?? 27.0
+              const duration = rate > 0 ? Math.round((Number(a.target_quantity) / rate) * 60) : 0
+              const endMins = wallClockFinish(startMins, duration)
+
+              const currentMax = workerKeptMaxEndMins.get(wName) ?? 0
+              workerKeptMaxEndMins.set(wName, Math.max(currentMax, endMins))
+
+              const { id, created_at, updated_at, ...rest } = a
+              keptAssignments.push({
+                ...rest,
+                isKept: true
+              })
+
+              const sku = (a.sku as string).replace(/^0+/, '')
+              const ch = a.channel || ''
+              const key = `${ch}_${sku}`
+              keptChannelQtyMap.set(key, (keptChannelQtyMap.get(key) ?? 0) + Number(a.target_quantity))
+            }
+          }
+        }
+      }
+    }
+
     const workerHours = new Map<string, number>()
     const workerFreeAtMins = new Map<string, number>()
     const workerBusySegments = new Map<string, { start: number; end: number }[]>()
@@ -997,10 +1064,14 @@ export async function POST(req: NextRequest) {
         shiftEndMins = 24 * 60
       }
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
-      const actualHours   = Math.max(0, actualEndMins - phaseStartMins) / 60
       const nameKey = normName(w.name)
+      
+      const keptMaxEnd = workerKeptMaxEndMins.get(nameKey) ?? 0
+      const startFreeMins = Math.max(checkpointMins, keptMaxEnd)
+      
+      const actualHours   = Math.max(0, actualEndMins - startFreeMins) / 60
       workerHours.set(nameKey, actualHours)
-      workerFreeAtMins.set(nameKey, phaseStartMins)
+      workerFreeAtMins.set(nameKey, startFreeMins)
       workerBusySegments.set(nameKey, [])
     }
 
@@ -1180,6 +1251,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Deduct kept assignments from assignList
+    const updatedAssignList: SkuTarget[] = []
+    for (const item of assignList) {
+      const sku = item.sku.replace(/^0+/, '')
+      const ch = item.channel || ''
+      const key = `${ch}_${sku}`
+      const keptQty = keptChannelQtyMap.get(key) ?? 0
+      const newQty = Math.max(0, item.targetQty - keptQty)
+      if (newQty > 0) {
+        updatedAssignList.push({
+          ...item,
+          targetQty: newQty
+        })
+      }
+    }
+    assignList = updatedAssignList
+
     // Split and prioritize Special SKUs with start or stop times
     const hasSpecialTimes = (sku: string): boolean => {
       const cleanSku = sku.replace(/^0+/, '')
@@ -1339,6 +1427,8 @@ export async function POST(req: NextRequest) {
       }))
     }
 
+    assignments.push(...keptAssignments)
+
     if (!assignments.length) {
       const prodMatchCount = assignList.filter(t => skuMap.has(t.sku) || skuMap.has(t.sku.replace(/^0+/, ''))).length
       const totalWorkerHours = Array.from(workerHours.values()).reduce((s, h) => s + h, 0)
@@ -1391,20 +1481,36 @@ export async function POST(req: NextRequest) {
       // Recalculate wall-clock start times so they chain exactly with no gaps.
       let curMins = startMinsPhase
       for (const task of workerTasks) {
-        const cleanSku = (task.sku as string).replace(/^0+/, '')
-        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
-        const rate = prod?.rate ?? 27.0
-        const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        if (task.isKept) {
+          const cleanSku = (task.sku as string).replace(/^0+/, '')
+          const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
+          const rate = prod?.rate ?? 27.0
+          const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
 
-        let startMins = curMins
-        const specialStart =
-          specialTimeMap.get(cleanSku)?.startMins ??
-          specialTimeMap.get(task.sku as string)?.startMins ??
-          null
-        if (specialStart !== null) startMins = Math.max(startMins, specialStart)
+          const [h, m] = (task.deadline_time as string).split(':').map(Number)
+          const startMins = h * 60 + m
+          curMins = wallClockFinish(startMins, duration)
 
-        task.deadline_time = minsToTimeStr(startMins)
-        curMins = wallClockFinish(startMins, duration)
+          delete task.isKept
+        } else {
+          if (curMins < checkpointMins) {
+            curMins = checkpointMins
+          }
+          const cleanSku = (task.sku as string).replace(/^0+/, '')
+          const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
+          const rate = prod?.rate ?? 27.0
+          const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+
+          let startMins = curMins
+          const specialStart =
+            specialTimeMap.get(cleanSku)?.startMins ??
+            specialTimeMap.get(task.sku as string)?.startMins ??
+            null
+          if (specialStart !== null) startMins = Math.max(startMins, specialStart)
+
+          task.deadline_time = minsToTimeStr(startMins)
+          curMins = wallClockFinish(startMins, duration)
+        }
       }
 
       resequenced.push(...workerTasks)
