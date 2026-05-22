@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     const { rows, filename, round } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
+    const cols = Object.keys(rows[0])
     const isPlanMapped  = 'sku' in rows[0] && 'delivery_date' in rows[0]
     const isMakroNative = !isPlanMapped && 'rProduct_code' in rows[0]
 
