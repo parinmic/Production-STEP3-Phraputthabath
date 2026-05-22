@@ -375,7 +375,6 @@ export default function WithdrawalPage() {
               <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
               <th className="px-3 py-2.5 text-right text-gray-600 font-medium">ตะกร้า</th>
-              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หมายเหตุ</th>
             </tr>
           </thead>
           <tbody>
@@ -413,7 +412,6 @@ export default function WithdrawalPage() {
                         ? `${getTotalBaskets(item)} ตะกร้า`
                         : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-500 text-xs">{item.note ?? ''}</td>
                   </tr>
                   {isExpanded && hasProducts && (
                     <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
@@ -460,7 +458,6 @@ export default function WithdrawalPage() {
                             ? `${getBaskets(item.sku, qty)} ตะกร้า`
                             : ''}
                         </td>
-                        <td />
                       </tr>
                     ))
                   })()}
@@ -470,7 +467,7 @@ export default function WithdrawalPage() {
             <tr className="bg-gray-50 font-semibold">
               <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
               <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
-              <td colSpan={3} />
+              <td colSpan={2} />
             </tr>
           </tbody>
         </table>
