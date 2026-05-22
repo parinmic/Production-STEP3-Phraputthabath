@@ -685,7 +685,7 @@ function getNextCheckpoint(t: Date): Date {
 
 // ========== Auto-generate Withdrawal Request ==========
 
-async function autoGenerateWithdrawal(productionDate: string, selectedPhase: number) {
+export async function autoGenerateWithdrawal(productionDate: string, selectedPhase: number) {
   const phaseStr = String(selectedPhase)
   const periodMap: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
   const period = periodMap[phaseStr]
