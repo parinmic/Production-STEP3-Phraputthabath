@@ -4,13 +4,13 @@ import { supabase } from '@/lib/supabase'
 const PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
 const PHASE_ROUND_MINS: Record<string, number[]> = {
-  '1': [480, 600, 780],
-  '2': [840],
-  '3': [960, 1080, 1200],
+  '1': [510, 600, 780],
+  '2': [870],
+  '3': [990, 1080, 1200],
 }
 
 const DEFAULT_START_MINS: Record<string, number> = {
-  '1': 480, '2': 840, '3': 960,
+  '1': 510, '2': 870, '3': 990,
 }
 
 function minsToTime(mins: number): string {

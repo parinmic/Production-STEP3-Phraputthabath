@@ -49,15 +49,15 @@ type RowItem = CalcItem
 type PopupItem = { item: RowItem; station: string; roundTime: string } | null
 
 const PHASE_CONFIG = {
-  '1': { label: 'Phase 1 — รอบเช้า',  color: 'blue',   time: '08:00 น.' },
-  '2': { label: 'Phase 2 — รอบบ่าย',  color: 'orange', time: '13:00 น.' },
-  '3': { label: 'Phase 3 — แผน 100%', color: 'purple', time: '18:00 น.' },
+  '1': { label: 'Phase 1 — รอบเช้า',  color: 'blue',   time: '08:30 น.' },
+  '2': { label: 'Phase 2 — รอบบ่าย',  color: 'orange', time: '14:30 น.' },
+  '3': { label: 'Phase 3 — แผน 100%', color: 'purple', time: '16:30 น.' },
 } as const
 
 const PHASE_ROUNDS: Record<string, string[]> = {
-  '1': ['08:00', '10:00', '13:00'],
-  '2': ['14:00'],
-  '3': ['16:00', '18:00', '20:00'],
+  '1': ['08:30', '10:00', '13:00'],
+  '2': ['14:30'],
+  '3': ['16:30', '18:00', '20:00'],
 }
 
 const STATION_COLORS: Record<string, string> = {

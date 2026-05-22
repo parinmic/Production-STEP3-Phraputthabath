@@ -68,16 +68,16 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 // ========== Phase config ==========
 
 const PHASE_CONFIG = [
-  { phase: 1, period: 'เช้า',  deadline: '14:00:00', hours: 5.5, startH: 8.5,  endH: 14 },
-  { phase: 2, period: 'บ่าย',  deadline: '16:00:00', hours: 2, startH: 14, endH: 16 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 24, startH: 16, endH: 24 },
+  { phase: 1, period: 'เช้า',  deadline: '14:30:00', hours: 6.0, startH: 8.5,  endH: 14.5 },
+  { phase: 2, period: 'บ่าย',  deadline: '16:30:00', hours: 1.8333, startH: 14.6667, endH: 16.5 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 24 },
 ]
 
 // round boundaries per phase (minutes from midnight)
 const PHASE_ROUND_MINS: Record<number, number[]> = {
   1: [510, 600, 780],   // 08:30, 10:00, 13:00
-  2: [840],             // 14:00
-  3: [960, 1080, 1200], // 16:00, 18:00, 20:00
+  2: [870],             // 14:30
+  3: [990, 1080, 1200], // 16:30, 18:00, 20:00
 }
 
 function getRoundMins(t: number, roundMins: number[]): number {
@@ -692,12 +692,12 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (!productionDate || !period) return
 
   const roundMinsConfig: Record<string, number[]> = {
-    '1': [480, 600, 780],
-    '2': [840],
-    '3': [960, 1080, 1200],
+    '1': [510, 600, 780],
+    '2': [870],
+    '3': [990, 1080, 1200],
   }
   const defaultStartMinsConfig: Record<string, number> = {
-    '1': 480, '2': 840, '3': 960,
+    '1': 510, '2': 870, '3': 990,
   }
 
   const roundMins = roundMinsConfig[phaseStr] ?? roundMinsConfig['1']
@@ -1430,17 +1430,20 @@ export async function POST(req: NextRequest) {
     const workerFreeAtMins = new Map<string, number>()
     const workerBusySegments = new Map<string, { start: number; end: number }[]>()
     for (const w of workforce) {
+      let shiftStartMins = phaseCfg.startH * 60
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
-        shiftEndMins = isPhase3 ? phaseEndMins : 17 * 60
+        shiftStartMins = 8.5 * 60 // 08:30
+        shiftEndMins = isPhase3 ? phaseEndMins : 17.5 * 60 // 17:30
       } else if (w.shift === 'กะ 2') {
-        shiftEndMins = 24 * 60
+        shiftStartMins = 14.5 * 60 // 14:30
+        shiftEndMins = 24 * 60 // 24:00
       }
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
       const nameKey = normName(w.name)
       
       const keptMaxEnd = workerKeptMaxEndMins.get(nameKey) ?? 0
-      const startFreeMins = Math.max(checkpointMins, keptMaxEnd)
+      const startFreeMins = Math.max(checkpointMins, shiftStartMins, keptMaxEnd)
       
       const actualHours   = Math.max(0, actualEndMins - startFreeMins) / 60
       workerHours.set(nameKey, actualHours)

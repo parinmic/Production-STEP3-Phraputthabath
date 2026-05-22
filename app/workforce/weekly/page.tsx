@@ -351,14 +351,14 @@ export default function WeeklyWorkforcePage() {
     if (normalized === '1' || normalized.includes('1')) {
       return (
         <span className="inline-flex items-center bg-indigo-50 text-indigo-700 border border-indigo-100/80 text-[10px] px-2 py-0.5 rounded-md font-medium">
-          กะ 1 (08:00)
+          กะ 1 (08:30)
         </span>
       )
     }
     if (normalized === '2' || normalized.includes('2')) {
       return (
         <span className="inline-flex items-center bg-sky-50 text-sky-700 border border-sky-100/80 text-[10px] px-2 py-0.5 rounded-md font-medium">
-          กะ 2 (14:00)
+          กะ 2 (14:30)
         </span>
       )
     }
@@ -611,8 +611,8 @@ export default function WeeklyWorkforcePage() {
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-xs"
               >
                 <option value="all">ทั้งหมด</option>
-                <option value="1">กะที่ 1 (08:00)</option>
-                <option value="2">กะที่ 2 (14:00)</option>
+                <option value="1">กะที่ 1 (08:30)</option>
+                <option value="2">กะที่ 2 (14:30)</option>
               </select>
             </div>
           </div>
