@@ -59,10 +59,17 @@ export async function POST(req: NextRequest) {
     const records = rows
       .filter((r: Record<string, unknown>) => {
         const bst = getRowValue(r, 'rBst_code')
-        if (bst !== null && bst !== '923') return false
         const oper = getRowValue(r, 'rOper_code')
-        if (oper !== null && oper !== '489M') return false
-        return true
+        const cvChannel = getRowValue(r, 'rCv_channel') || ''
+        const cvName = getRowValue(r, 'rCv_name') || ''
+        if (bst === '923' || oper === '489M') return true
+        if (cvChannel.toLowerCase().includes('makro') || cvName.toLowerCase().includes('makro')) return true
+        if ((bst === null || bst === '' || bst === 'null') && (oper === null || oper === '' || oper === 'null')) {
+          if (cvChannel === '' || cvChannel === 'null' || cvChannel.toLowerCase().includes('makro')) {
+            return true
+          }
+        }
+        return false
       })
       .map((r: Record<string, unknown>) => {
         if (isPlanMapped) {
@@ -79,13 +86,25 @@ export async function POST(req: NextRequest) {
           }
         }
         if (isMakroNative) {
-          const date = shiftDate(toISODate(r['rRDate2']), -1)
+          const skuCol = cols.includes('rProduct_code') ? 'rProduct_code' : cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('code')) ?? ''
+          const nameCol = cols.includes('rProduct_name') ? 'rProduct_name' : cols.find(c => c.toLowerCase().includes('product') && c.toLowerCase().includes('name')) ?? ''
+          const qtyCol = cols.includes('rStock_wgt') ? 'rStock_wgt' : cols.includes('rPlan_wgt') ? 'rPlan_wgt' : cols.find(c => ['qty','quantity','wgt'].some(k => c.toLowerCase().includes(k))) ?? ''
+          const dateCol = cols.includes('rDoc_date') ? 'rDoc_date' : cols.find(c => c.toLowerCase().includes('doc') && c.toLowerCase().includes('date')) ?? cols.find(c => c.toLowerCase().includes('date') && !c.toLowerCase().startsWith('rr')) ?? ''
+          const dlvCol = cols.includes('rRDate2') ? 'rRDate2' : cols.includes('rRDate1') ? 'rRDate1' : cols.includes('rReq_date') ? 'rReq_date' : cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('delivery')) ?? ''
+
+          const orderDate = toISODate(r[dateCol])
+          const deliveryDate = shiftDate(toISODate(r[dlvCol]), -1)
+
+          let qty = parseFloat(String(r[qtyCol] ?? '0')) || 0
+          if (qty === 0 && cols.includes('rPlan_wgt')) {
+            qty = parseFloat(String(r['rPlan_wgt'] ?? '0')) || 0
+          }
           return {
-            order_date:    date,
-            delivery_date: date,
-            sku:           String(r['rProduct_code'] ?? '').trim(),
-            sku_name:      String(r['rProduct_name'] ?? '').trim(),
-            quantity:      parseFloat(String(r['rStock_wgt'] ?? '0')) || 0,
+            order_date:    orderDate,
+            delivery_date: deliveryDate,
+            sku:           String(r[skuCol] ?? '').trim(),
+            sku_name:      String(r[nameCol] ?? '').trim(),
+            quantity:      qty,
             period:        String(r['rShip_name'] ?? '').trim() || null,
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',

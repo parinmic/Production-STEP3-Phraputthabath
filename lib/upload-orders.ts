@@ -66,16 +66,37 @@ function transformRows(
   if (channel === 'wet_market') {
     filteredRows = rows.filter(r => {
       const bst = getRowValue(r, 'rBst_code')
-      if (bst !== null && bst !== '250') return false
-      return true
+      const cvChannel = getRowValue(r, 'rCv_channel') || ''
+      if (bst === '250') return true
+      if (
+        cvChannel.toLowerCase().includes('wet') ||
+        cvChannel.includes('ตลาดสด') ||
+        cvChannel.toLowerCase().includes('food service') ||
+        cvChannel.includes('ค้าส่ง') ||
+        cvChannel.includes('ในเครือ') ||
+        cvChannel.includes('นอกเครือ')
+      ) return true
+      if (bst === null || bst === '' || bst === 'null') {
+        if (!cvChannel.toLowerCase().includes('lotus') && !cvChannel.toLowerCase().includes('makro')) {
+          return true
+        }
+      }
+      return false
     })
   } else if (channel === 'lotus') {
     filteredRows = rows.filter(r => {
       const bst = getRowValue(r, 'rBst_code')
-      if (bst !== null && bst !== '923') return false
       const oper = getRowValue(r, 'rOper_code')
-      if (oper !== null && oper !== '489') return false
-      return true
+      const cvChannel = getRowValue(r, 'rCv_channel') || ''
+      const cvName = getRowValue(r, 'rCv_name') || ''
+      if (bst === '923' || oper === '489') return true
+      if (cvChannel.toLowerCase().includes('lotus') || cvName.toLowerCase().includes('lotus')) return true
+      if ((bst === null || bst === '' || bst === 'null') && (oper === null || oper === '' || oper === 'null')) {
+        if (cvChannel === '' || cvChannel === 'null' || cvChannel.toLowerCase().includes('lotus')) {
+          return true
+        }
+      }
+      return false
     })
   }
 
@@ -97,12 +118,16 @@ function transformRows(
 
   return filteredRows.map(r => {
     if (hasNative) {
+      let qty = parseFloat(String(r[qtyCol] ?? '0')) || 0
+      if (qty === 0 && cols.includes('rPlan_wgt')) {
+        qty = parseFloat(String(r['rPlan_wgt'] ?? '0')) || 0
+      }
       return {
         order_date:    toISODate(r[dateCol]),
         delivery_date: shiftDate(toISODate(r[dlvCol]), deliveryShiftDays),
         sku:           String(r[skuCol] ?? '').trim(),
         sku_name:      String(r[nameCol] ?? '').trim(),
-        quantity:      parseFloat(String(r[qtyCol] || '0')) || 0,
+        quantity:      qty,
         period:        null,
         upload_round:  round,
         source_file:   filename,

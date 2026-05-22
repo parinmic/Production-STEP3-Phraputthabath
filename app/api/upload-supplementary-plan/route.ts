@@ -101,7 +101,12 @@ export async function POST(req: NextRequest) {
                         : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('rdate')) ?? '')
           sku           = String(r[skuCol] ?? '').trim()
           sku_name      = String(r[nameCol] ?? '').trim()
-          quantity      = parseFloat(String(r[qtyCol] || '0')) || 0
+          
+          let qty = parseFloat(String(r[qtyCol] || '0')) || 0
+          if (qty === 0 && cols.includes('rPlan_wgt')) {
+            qty = parseFloat(String(r['rPlan_wgt'] ?? '0')) || 0
+          }
+          quantity      = qty
           order_date    = toISODate(r[dateCol])
           delivery_date = toISODate(r[dlvCol])
 
