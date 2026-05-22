@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
+import { allocateFIFOWithRules, RawMaterialRule, getLotType, LotEntry } from '@/lib/withdrawal-rules'
 
 
 // ========== Types ==========
@@ -27,7 +27,7 @@ interface ProductivityRow {
   rate: number  // กก./ชม./คน
 }
 
-interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string }
+interface SkuTarget { sku: string; skuName: string | null; targetQty: number; channel: string; isDeficit?: boolean }
 
 function minsToTimeStr(mins: number): string {
   const h = Math.floor(mins / 60)
@@ -383,12 +383,13 @@ function assignWorkers(
     wpb?: number
     specialStartMins?: number | null
     specialStopMins?: number | null
+    isDeficit?: boolean
   }
 ): Record<string, unknown>[] {
   const {
     productionDate, tableName, sku, skuName, targetQty,
     eligibleWorkers, rate, workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins, period, channel, phaseRoundMins, wpb,
-    specialStartMins, specialStopMins,
+    specialStartMins, specialStopMins, isDeficit,
   } = params
 
   let entries = eligibleWorkers
@@ -606,6 +607,7 @@ function assignWorkers(
       note:            roundsNote,
       status:          'รอดำเนินการ',
       channel,
+      is_deficit:      isDeficit || false,
     })
   }
 
@@ -623,7 +625,8 @@ function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
   const merged = new Map<string, SkuTarget>()
   const order: string[] = []
   for (const item of list) {
-    const key = item.sku.replace(/^0+/, '')
+    const skuClean = item.sku.replace(/^0+/, '')
+    const key = item.isDeficit ? `${skuClean}_deficit` : skuClean
     if (merged.has(key)) {
       merged.get(key)!.targetQty += item.targetQty
     } else {
@@ -1663,6 +1666,245 @@ export async function POST(req: NextRequest) {
     }
     assignList = updatedAssignList
 
+    // ------ Phase 1: Stock-based target splitting logic ------
+    if (selectedPhase === 1) {
+      // 1. Fetch no_withdrawal_skus to know which SKUs don't require raw material checks
+      const { data: noWithdrawalRows } = await supabase
+        .from('no_withdrawal_skus')
+        .select('sap')
+      const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
+
+      // 2. Fetch BOM for all target SKUs in assignList
+      const skusPadded = Array.from(new Set([
+        ...assignList.map(item => item.sku),
+        ...assignList.map(item => item.sku.replace(/^0+/, ''))
+      ]))
+      const { data: bomRows } = await supabase
+        .from('bom_items')
+        .select('product_sap, raw_sap, raw_name, yield_pct')
+        .in('product_sap', skusPadded)
+
+      const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
+      for (const b of bomRows ?? []) {
+        if (!b.raw_sap) continue
+        const rawSap = b.raw_sap.replace(/^0+/, '')
+        const prodSap = b.product_sap.replace(/^0+/, '')
+        const list = bomMap.get(prodSap) ?? []
+        list.push({ raw_sap: rawSap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0 })
+        bomMap.set(prodSap, list)
+        bomMap.set(b.product_sap, list)
+      }
+
+      // 3. Collect all raw material SAP codes and fetch stock
+      const rawSapsSet = new Set<string>()
+      for (const item of assignList) {
+        const cleanSku = item.sku.replace(/^0+/, '')
+        const boms = bomMap.get(cleanSku) ?? []
+        for (const b of boms) {
+          rawSapsSet.add(b.raw_sap)
+          rawSapsSet.add(b.raw_sap.replace(/^0+/, ''))
+        }
+      }
+      const rawSaps = Array.from(rawSapsSet)
+
+      type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
+      const stockRows: StockRow[] = []
+
+      if (rawSaps.length > 0) {
+        const [res0010, res20] = await Promise.all([
+          supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+          supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+        ])
+        stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
+
+        // Name-based fallback
+        const foundCodes = new Set(stockRows.map(r => r.material_code))
+        const missingNames = Array.from(new Set(
+          assignList.flatMap(item => {
+            const cleanSku = item.sku.replace(/^0+/, '')
+            const boms = bomMap.get(cleanSku) ?? []
+            return boms.map(b => b.raw_name).filter(Boolean) as string[]
+          })
+        ))
+        if (missingNames.length > 0) {
+          const expandedNames = Array.from(new Set(missingNames.flatMap(n => [
+            n,
+            n.replace(/\s*-\s*/g, '-'),
+            n.replace(/\s*-\s*/g, ' - '),
+          ])))
+          const [res0010n, res20n] = await Promise.all([
+            supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+            supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+          ])
+          stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+        }
+      }
+
+      // 4. Fetch Mas Raw Material rules
+      const { data: rawMaterialRules } = await supabase
+        .from('master_logic_calculation')
+        .select('row_data')
+        .eq('calculation_type', 'Mas Raw Material')
+        .order('uploaded_at', { ascending: false })
+
+      const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
+        const data = (r.row_data ?? {}) as Record<string, any>
+        return {
+          productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(),
+          type: String(data['ประเภท'] ?? '').trim(),
+          d16: String(data['D16'] ?? '').trim(),
+          d17: String(data['D17'] ?? '').trim(),
+        }
+      })
+
+      // 5. Build stock list
+      const lotAggCode = new Map<string, number>()
+      const matCodeToName = new Map<string, string>()
+      for (const row of stockRows) {
+        if (!row.material_code || !row.spec_code) continue
+        const k = `${row.material_code}|||${row.spec_code}`
+        lotAggCode.set(k, (lotAggCode.get(k) ?? 0) + Number(row.weight_total))
+        if (row.material_name) matCodeToName.set(row.material_code, row.material_name)
+      }
+
+      const stockByMat  = new Map<string, LotEntry[]>()
+      const stockByName = new Map<string, LotEntry[]>()
+
+      const parseSpecCodeLocal = (s: string): { factory: string; prod_date: string; sortKey: string } | null => {
+        const m1 = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
+        if (m1) return {
+          factory:   m1[1],
+          prod_date: `${m1[2]}/${m1[3]}`,
+          sortKey:   `${m1[3]}${m1[2]}`,
+        }
+        const m2 = s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})[A-Z]/)
+        if (m2) return {
+          factory:   m2[1],
+          prod_date: `${m2[3]}/${m2[2]}`,
+          sortKey:   `${m2[2]}${m2[3]}${m2[4]}`,
+        }
+        return null
+      }
+
+      const normMatNameLocal = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+
+      for (const [k, weight] of Array.from(lotAggCode.entries())) {
+        const [matCode, spec_code] = k.split('|||')
+        const parsed = parseSpecCodeLocal(spec_code)
+        const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
+
+        const codeList = stockByMat.get(matCode) ?? []
+        codeList.push(lot)
+        stockByMat.set(matCode, codeList)
+
+        const matName = matCodeToName.get(matCode)
+        if (matName) {
+          const nameKey = normMatNameLocal(matName)
+          const nameList = stockByName.get(nameKey) ?? []
+          nameList.push(lot)
+          stockByName.set(nameKey, nameList)
+        }
+      }
+      for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+
+      // 6. Simulate prioritized stock allocation and split assignList
+      const splitAssignList: SkuTarget[] = []
+
+      for (const item of assignList) {
+        const cleanSku = item.sku.replace(/^0+/, '')
+        
+        // Skip if doesn't require withdrawal or has no BOM
+        if (noWithdrawalSaps.has(item.sku) || noWithdrawalSaps.has(cleanSku)) {
+          splitAssignList.push(item)
+          continue
+        }
+
+        const boms = bomMap.get(cleanSku)
+        if (!boms || boms.length === 0) {
+          splitAssignList.push(item)
+          continue
+        }
+
+        // Calculate max finished quantity we can produce with remaining stock
+        let Q_max = item.targetQty
+
+        for (const b of boms) {
+          const yield_pct = b.yield_pct > 0 ? b.yield_pct : 1.0
+          const lots = stockByMat.get(b.raw_sap) ?? stockByName.get(normMatNameLocal(b.raw_name ?? '')) ?? []
+          
+          let availWeight = 0
+          for (const lot of lots) {
+            if (lot.weight <= 0.005) continue
+            const lotType = getLotType(b.raw_name ?? '', lot.spec_code, rules)
+            if (lotType === 'RAW' || (item.skuName && item.skuName.toUpperCase().includes(lotType.toUpperCase()))) {
+              availWeight += lot.weight
+            }
+          }
+          
+          const maxProduceable = availWeight * yield_pct
+          if (maxProduceable < Q_max) {
+            Q_max = maxProduceable
+          }
+        }
+
+        if (Q_max < 0) Q_max = 0
+
+        // Deduct raw material from stock for the produced quantity (Q_max)
+        if (Q_max > 0.01) {
+          for (const b of boms) {
+            const yield_pct = b.yield_pct > 0 ? b.yield_pct : 1.0
+            let rawDeduct = Q_max / yield_pct
+            const lots = stockByMat.get(b.raw_sap) ?? stockByName.get(normMatNameLocal(b.raw_name ?? '')) ?? []
+
+            // Pass 1: restricted matching lots
+            for (const lot of lots) {
+              if (rawDeduct <= 0.005) break
+              if (lot.weight <= 0.005) continue
+              const lotType = getLotType(b.raw_name ?? '', lot.spec_code, rules)
+              if (lotType !== 'RAW' && item.skuName && item.skuName.toUpperCase().includes(lotType.toUpperCase())) {
+                const take = Math.min(lot.weight, rawDeduct)
+                lot.weight -= take
+                rawDeduct -= take
+              }
+            }
+
+            // Pass 2: normal ('RAW') lots
+            for (const lot of lots) {
+              if (rawDeduct <= 0.005) break
+              if (lot.weight <= 0.005) continue
+              const lotType = getLotType(b.raw_name ?? '', lot.spec_code, rules)
+              if (lotType === 'RAW') {
+                const take = Math.min(lot.weight, rawDeduct)
+                lot.weight -= take
+                rawDeduct -= take
+              }
+            }
+          }
+        }
+
+        // Split target into normal and deficit parts
+        if (Q_max > 0.01) {
+          splitAssignList.push({
+            ...item,
+            targetQty: Q_max,
+            isDeficit: false
+          })
+        }
+        
+        const deficitQty = item.targetQty - Q_max
+        if (deficitQty > 0.01) {
+          splitAssignList.push({
+            ...item,
+            targetQty: deficitQty,
+            isDeficit: true
+          })
+        }
+      }
+
+      assignList = splitAssignList
+    }
+
     // Split and prioritize Special SKUs with start or stop times
     const hasSpecialTimes = (sku: string): boolean => {
       const cleanSku = sku.replace(/^0+/, '')
@@ -1766,7 +2008,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Pass 2 — normal assignList (workers continue from wherever they left off)
-    for (const { sku, skuName, targetQty: rawQty, channel } of assignList) {
+    for (const { sku, skuName, targetQty: rawQty, channel, isDeficit } of assignList) {
       // Makro uses exact order quantities — do not round up to bag size (would over-produce)
       let targetQty = channel === 'Makro' ? Math.round(rawQty) : roundUpToBag(sku, rawQty)
 
@@ -1819,8 +2061,11 @@ export async function POST(req: NextRequest) {
         period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
         wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
-        specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
+        specialStartMins: isDeficit
+          ? Math.max(780, specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? 0)
+          : (specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null),
         specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
+        isDeficit: isDeficit,
       }))
     }
 
@@ -1904,6 +2149,7 @@ export async function POST(req: NextRequest) {
             specialTimeMap.get(task.sku as string)?.startMins ??
             null
           if (specialStart !== null) startMins = Math.max(startMins, specialStart)
+          if (task.is_deficit) startMins = Math.max(startMins, 780)
 
           task.deadline_time = minsToTimeStr(startMins)
           curMins = wallClockFinish(startMins, duration)
@@ -1913,7 +2159,11 @@ export async function POST(req: NextRequest) {
       resequenced.push(...workerTasks)
     }
 
-    resequenced.forEach((a, i) => { a['seq'] = i; a['effective_from'] = effectiveFromISO })
+    resequenced.forEach((a, i) => {
+      a['seq'] = i
+      a['effective_from'] = effectiveFromISO
+      delete a.is_deficit
+    })
     assignments.length = 0
     assignments.push(...resequenced)
 
