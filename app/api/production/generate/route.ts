@@ -683,6 +683,364 @@ function getNextCheckpoint(t: Date): Date {
   return result
 }
 
+// ========== Auto-generate Withdrawal Request ==========
+
+async function autoGenerateWithdrawal(productionDate: string, selectedPhase: number) {
+  const phaseStr = String(selectedPhase)
+  const periodMap: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
+  const period = periodMap[phaseStr]
+  if (!productionDate || !period) return
+
+  const roundMinsConfig: Record<string, number[]> = {
+    '1': [480, 600, 780],
+    '2': [840],
+    '3': [960, 1080, 1200],
+  }
+  const defaultStartMinsConfig: Record<string, number> = {
+    '1': 480, '2': 840, '3': 960,
+  }
+
+  const roundMins = roundMinsConfig[phaseStr] ?? roundMinsConfig['1']
+
+  function minsToTime(mins: number): string {
+    const h = Math.floor(mins / 60)
+    const m = Math.floor(mins % 60)
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  }
+
+  const normMatName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+
+  function timeStrToMins(t: string): number {
+    const parts = String(t ?? '').split(':')
+    return parseInt(parts[0] ?? '0') * 60 + parseInt(parts[1] ?? '0')
+  }
+
+  function getRoundMins(startMins: number, roundMinsArray: number[]): number {
+    let round = roundMinsArray[0]
+    for (const r of roundMinsArray) {
+      if (startMins >= r) round = r
+      else break
+    }
+    return round
+  }
+
+  function parseRoundNoteLocal(note: string | null): Map<number, number> {
+    const result = new Map<number, number>()
+    if (!note?.startsWith('rounds:')) return result
+    for (const part of note.replace('rounds:', '').split(';')) {
+      const [rStr, qStr] = part.split('=')
+      if (rStr && qStr) result.set(parseInt(rStr), parseFloat(qStr))
+    }
+    return result
+  }
+
+  interface LotInfo {
+    spec_code: string
+    factory: string
+    prod_date: string
+    available: number
+    to_withdraw: number
+    insufficient?: boolean
+  }
+
+  function parseSpecCodeLocal(s: string): { factory: string; prod_date: string; sortKey: string } | null {
+    const m1 = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
+    if (m1) return {
+      factory:   m1[1],
+      prod_date: `${m1[2]}/${m1[3]}`,
+      sortKey:   `${m1[3]}${m1[2]}`,
+    }
+    const m2 = s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})[A-Z]/)
+    if (m2) return {
+      factory:   m2[1],
+      prod_date: `${m2[3]}/${m2[2]}`,
+      sortKey:   `${m2[2]}${m2[3]}${m2[4]}`,
+    }
+    return null
+  }
+
+  function allocateFIFOLocal(
+    lots: { spec_code: string; weight: number; factory: string; prod_date: string }[],
+    needed: number,
+  ): LotInfo[] {
+    const result: LotInfo[] = []
+    let remaining = needed
+    for (const lot of lots) {
+      if (remaining <= 0.005) break
+      if (lot.weight <= 0.005) continue
+      const take = Math.min(remaining, lot.weight)
+      result.push({
+        spec_code:   lot.spec_code,
+        factory:     lot.factory,
+        prod_date:   lot.prod_date,
+        available:   Math.round(lot.weight * 100) / 100,
+        to_withdraw: Math.round(take  * 100) / 100,
+      })
+      lot.weight -= take
+      remaining  -= take
+    }
+    if (remaining > 0.005) {
+      result.push({
+        spec_code:   '— ไม่เพียงพอ —',
+        factory:     '-',
+        prod_date:   '-',
+        available:   0,
+        to_withdraw: Math.round(remaining * 100) / 100,
+        insufficient: true,
+      })
+    }
+    return result
+  }
+
+  // 1. Fetch production assignments
+  const { data: assignments, error: e1 } = await supabase
+    .from('production_assignments')
+    .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
+    .eq('production_date', productionDate)
+    .eq('period', period)
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+
+  if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
+  if (!assignments?.length) return
+
+  // 2. Build finRoundMap: (station|||sku) → Map<roundMins, qty>
+  const finRoundMap = new Map<string, Map<number, number>>()
+  const finNameMap  = new Map<string, string | null>()
+  const skuSet      = new Set<string>()
+
+  for (const a of assignments) {
+    const key = `${a.table_name}|||${a.sku}`
+    if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
+    finNameMap.set(key, a.sku_name ?? null)
+    skuSet.add(a.sku)
+
+    const roundQtys = finRoundMap.get(key)!
+    const noteRounds = parseRoundNoteLocal(a.note)
+
+    if (noteRounds.size > 0) {
+      for (const [rm, q] of Array.from(noteRounds.entries())) {
+        const mappedRm = getRoundMins(rm, roundMins)
+        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
+      }
+    } else {
+      const startMins = a.deadline_time
+        ? timeStrToMins(String(a.deadline_time))
+        : (defaultStartMinsConfig[phaseStr] ?? 480)
+      const rm = getRoundMins(startMins, roundMins)
+      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + Number(a.target_quantity))
+    }
+  }
+
+  // 3. Fetch BOM
+  const skus = Array.from(skuSet)
+  const { data: bomRows, error: e2 } = await supabase
+    .from('bom_items')
+    .select('product_sap, raw_sap, raw_name, yield_pct')
+    .in('product_sap', skus)
+  if (e2) throw new Error(`Fetch BOM error: ${e2.message}`)
+
+  const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
+  for (const b of bomRows ?? []) {
+    if (!b.raw_sap) continue
+    const list = bomMap.get(b.product_sap) ?? []
+    list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0 })
+    bomMap.set(b.product_sap, list)
+  }
+
+  // 4. Calculate raw material requirements
+  interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
+  const rawMap = new Map<string, RawEntry>()
+  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number }[]>()
+  const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
+
+  for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
+    const [station, sku] = finKey.split('|||')
+    const sku_name = finNameMap.get(finKey) ?? null
+    const boms = bomMap.get(sku)
+
+    for (const [rm, finQty] of Array.from(roundQtys.entries())) {
+      if (!boms?.length) {
+        noBom.push({ station, sku, sku_name, qty: finQty, roundMins: rm })
+        continue
+      }
+      for (const b of boms) {
+        const rawQty = b.yield_pct > 0 ? finQty / b.yield_pct : finQty
+        const rawKey = `${station}|||${b.raw_sap}|||${rm}`
+        const cur = rawMap.get(rawKey)
+        if (cur) { cur.qty += rawQty }
+        else { rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm }) }
+        const prodList = rawToProducts.get(rawKey) ?? []
+        prodList.push({ sku, sku_name, qty: finQty })
+        rawToProducts.set(rawKey, prodList)
+      }
+    }
+  }
+
+  // 5. Fetch stock
+  const rawSaps  = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
+  type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
+  const stockRows: StockRow[] = []
+
+  if (rawSaps.length > 0) {
+    const [res0010, res20] = await Promise.all([
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+    ])
+    stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
+  }
+
+  // Name-based fallback
+  const foundCodes = new Set(stockRows.map(r => r.material_code))
+  const missingNames = Array.from(new Set(
+    Array.from(rawMap.values())
+      .filter(v => !foundCodes.has(v.raw_sap))
+      .map(v => v.raw_name)
+      .filter(Boolean) as string[]
+  ))
+  if (missingNames.length > 0) {
+    const expandedNames = Array.from(new Set(missingNames.flatMap(n => [
+      n,
+      n.replace(/\s*-\s*/g, '-'),
+      n.replace(/\s*-\s*/g, ' - '),
+    ])))
+    const [res0010n, res20n] = await Promise.all([
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+    ])
+    stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+  }
+
+  type LotEntry = { spec_code: string; weight: number; factory: string; prod_date: string; sortKey: string }
+  const lotAggCode = new Map<string, number>()
+  const matCodeToName = new Map<string, string>()
+  for (const row of stockRows) {
+    if (!row.material_code || !row.spec_code) continue
+    const k = `${row.material_code}|||${row.spec_code}`
+    lotAggCode.set(k, (lotAggCode.get(k) ?? 0) + Number(row.weight_total))
+    if (row.material_name) matCodeToName.set(row.material_code, row.material_name)
+  }
+
+  const stockByMat  = new Map<string, LotEntry[]>()
+  const stockByName = new Map<string, LotEntry[]>()
+  for (const [k, weight] of Array.from(lotAggCode.entries())) {
+    const [matCode, spec_code] = k.split('|||')
+    const parsed = parseSpecCodeLocal(spec_code)
+    const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
+
+    const codeList = stockByMat.get(matCode) ?? []
+    codeList.push(lot)
+    stockByMat.set(matCode, codeList)
+
+    const matName = matCodeToName.get(matCode)
+    if (matName) {
+      const nameKey = normMatName(matName)
+      const nameList = stockByName.get(nameKey) ?? []
+      nameList.push(lot)
+      stockByName.set(nameKey, nameList)
+    }
+  }
+  for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+  for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+
+  // 6. Generate preview items
+  const rawItems = Array.from(rawMap.values())
+    .sort((a, b) => a.roundMins - b.roundMins)
+    .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
+      const needed  = Math.round(qty * 100) / 100
+      const nameKey = normMatName(raw_name ?? '')
+      const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
+      const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
+      return {
+        sku:              raw_sap,
+        sku_name:         raw_name,
+        quantity:         needed,
+        unit:             'กก.',
+        work_station:     station,
+        note:             'คำนวณจาก BOM',
+        lots:             lots ? allocateFIFOLocal(lots, needed) : [],
+        for_products:     rawToProducts.get(rawKey) ?? [],
+        withdrawal_round: minsToTime(roundMins),
+      }
+    })
+
+  const noBomItems = noBom.map(({ station, sku, sku_name, qty, roundMins }) => ({
+    sku,
+    sku_name,
+    quantity:         Math.round(qty * 100) / 100,
+    unit:             'กก.',
+    work_station:     station,
+    note:             'ไม่พบ BOM — ใช้ปริมาณผลิตโดยตรง',
+    lots:             [] as LotInfo[],
+    for_products:     [] as { sku: string; sku_name: string | null; qty: number }[],
+    withdrawal_round: minsToTime(roundMins),
+  }))
+
+  const items = [...rawItems, ...noBomItems].sort((a, b) =>
+    a.withdrawal_round.localeCompare(b.withdrawal_round) ||
+    (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
+    (a.sku ?? '').localeCompare(b.sku ?? '')
+  )
+
+  // 7. Flatten to final records to insert
+  const encodeFPTag = (products: { sku: string; sku_name: string | null; qty: number }[]) => {
+    if (!products.length) return ''
+    const s = products
+      .map(p => `${p.sku}~${(p.sku_name ?? '').replace(/[|~[\]]/g, ' ')}~${p.qty}`)
+      .join('|')
+    return `[FP:${s}] `
+  }
+
+  const flatItems = items.flatMap(item => {
+    const fpTag = encodeFPTag(item.for_products ?? [])
+    const roundPrefix = item.withdrawal_round ? `[Round: ${item.withdrawal_round}] ` : ''
+    if (!item.lots?.length) return [
+      {
+        sku:          item.sku,
+        sku_name:     item.sku_name,
+        quantity:     item.quantity,
+        unit:         item.unit,
+        work_station: item.work_station,
+        note:         `${roundPrefix}${fpTag}${item.note ?? ''}`,
+      }
+    ]
+    return item.lots.map(lot => ({
+      sku:          item.sku,
+      sku_name:     item.sku_name,
+      quantity:     lot.to_withdraw,
+      unit:         item.unit,
+      work_station: item.work_station,
+      note: lot.insufficient
+        ? `${roundPrefix}${fpTag}ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
+        : `${roundPrefix}${fpTag}Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
+    }))
+  })
+
+  if (!flatItems.length) return
+
+  // 8. Delete and insert to Supabase
+  await supabase
+    .from('withdrawal_requests')
+    .delete()
+    .eq('request_date', productionDate)
+    .eq('phase', selectedPhase)
+
+  const records = flatItems.map(r => ({
+    request_date: productionDate,
+    phase:        selectedPhase,
+    sku:          String(r.sku ?? '').trim(),
+    sku_name:     String(r.sku_name ?? '').trim() || null,
+    quantity:     Number(r.quantity ?? 0),
+    unit:         String(r.unit ?? 'ชิ้น').trim(),
+    work_station: String(r.work_station ?? '').trim() || null,
+    note:         String(r.note ?? '').trim() || null,
+  })).filter(r => r.sku)
+
+  const { error: insertErr } = await supabase.from('withdrawal_requests').insert(records)
+  if (insertErr) {
+    throw new Error(`Insert withdrawal requests error: ${insertErr.message}`)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { date, phase: phaseParam, deductMode: rawDeductMode } = await req.json()
@@ -1528,6 +1886,13 @@ export async function POST(req: NextRequest) {
 
     const { error } = await supabase.from('production_assignments').insert(assignments)
     if (error) throw error
+
+    // Auto-generate corresponding withdrawal plan
+    try {
+      await autoGenerateWithdrawal(productionDate, selectedPhase)
+    } catch (wdErr: any) {
+      console.error('Failed to auto-generate withdrawal plan:', wdErr.message || wdErr)
+    }
 
     const channelSummary = isPhase3
       ? 'แผน 100% − Ph1 − Ph2'
