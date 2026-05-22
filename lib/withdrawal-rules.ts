@@ -52,7 +52,11 @@ export function getLotType(raw_name: string, spec_code: string, rules: RawMateri
       const ruleD17 = rule.d17.trim().toUpperCase();
       
       if (ruleD16 === d16Char && ruleD17 === d17Char) {
-        return rule.type.trim() || 'RAW';
+        const typeClean = rule.type.trim().toUpperCase();
+        if (typeClean === 'RAW' || typeClean === 'K' || !typeClean) {
+          return 'RAW';
+        }
+        return rule.type.trim();
       }
     }
   }
