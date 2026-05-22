@@ -216,6 +216,12 @@ export default function WithdrawalPage() {
     return Math.ceil(qty / rate)
   }
 
+  function roundTo5Or0(qty: number): number {
+    if (qty <= 0) return 0
+    const rounded = Math.round(qty / 5) * 5
+    return rounded === 0 ? 5 : rounded
+  }
+
   // ถ้ามี lots ให้ sum ceil ต่อ lot แทน ceil ของ total (เพื่อให้ sub-rows + = หัว)
   function getTotalBaskets(item: RowItem): number | null {
     if (!item.lots?.length) return getBaskets(item.sku, item.quantity)
@@ -269,7 +275,7 @@ export default function WithdrawalPage() {
   }
 
   const displayItems: RowItem[] = preview ?? groupSaved(items)
-  const totalQty = displayItems.reduce((s, i) => s + i.quantity, 0)
+  const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
                        : cfg.color === 'orange' ? 'bg-orange-500'
@@ -284,7 +290,7 @@ export default function WithdrawalPage() {
   }
 
   function renderStationTable(roundItems: RowItem[], roundTime: string, station: string) {
-    const stationTotal = roundItems.reduce((s, i) => s + i.quantity, 0)
+    const stationTotal = roundItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
     return (
       <div key={`${station}-${roundTime}`} className="card mb-4">
@@ -330,7 +336,7 @@ export default function WithdrawalPage() {
                         {item.sku_name ?? '-'}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{item.quantity.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{roundTo5Or0(item.quantity).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
                     <td className="px-3 py-2.5 text-right text-orange-600 font-medium">
                       {getTotalBaskets(item) != null
@@ -376,7 +382,7 @@ export default function WithdrawalPage() {
                         </td>
                         <td />
                         <td className={`px-3 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
-                          {qty.toLocaleString()}
+                          {roundTo5Or0(qty).toLocaleString()}
                         </td>
                         <td className="px-3 py-1.5 text-gray-500">กก.</td>
                         <td className="px-3 py-1.5 text-right text-orange-500 text-xs">
@@ -521,7 +527,7 @@ export default function WithdrawalPage() {
                   const r = (item as CalcItem).withdrawal_round
                   return r ? r === roundTime : roundIdx === 0
                 })
-                const roundTotal = roundDisplayItems.reduce((s, i) => s + i.quantity, 0)
+                const roundTotal = roundDisplayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
                 const grouped = roundDisplayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
                   const key = item.work_station ?? 'ไม่ระบุ Station'

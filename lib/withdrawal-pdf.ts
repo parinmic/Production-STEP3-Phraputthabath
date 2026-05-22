@@ -66,6 +66,12 @@ function groupLots(lots: LotInfo[]) {
 
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
+const roundTo5Or0 = (qty: number): number => {
+  if (qty <= 0) return 0
+  const rounded = Math.round(qty / 5) * 5
+  return rounded === 0 ? 5 : rounded
+}
+
 export async function downloadWithdrawalPDF(params: {
   date: string
   phase: string
@@ -170,7 +176,7 @@ export async function downloadWithdrawalPDF(params: {
           String(idx + 1),
           item.sku,
           item.sku_name ?? '-',
-          fmt(item.quantity),
+          fmt(roundTo5Or0(item.quantity)),
           item.unit,
           b != null ? `${b}` : '',
         ])
@@ -186,7 +192,7 @@ export async function downloadWithdrawalPDF(params: {
               },
               '',
               {
-                content: fmt(qty),
+                content: fmt(roundTo5Or0(qty)),
                 styles: { textColor: insufficient ? [220, 38, 38] : [29, 78, 216], fontStyle: 'bold', fillColor: bg },
               },
               { content: 'กก.', styles: { fillColor: bg } },
@@ -199,7 +205,7 @@ export async function downloadWithdrawalPDF(params: {
         }
       })
 
-      const stTotal = stItems.reduce((s, i) => s + i.quantity, 0)
+      const stTotal = stItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
       bodyRows.push([
         '', '', { content: 'รวม', styles: { halign: 'right', fontStyle: 'bold', fillColor: [243, 244, 246] } },
         { content: fmt(stTotal), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
