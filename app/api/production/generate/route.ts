@@ -101,7 +101,10 @@ const STATION_TABLE: Record<string, string> = {
 
 // ========== Helpers ==========
 
-const normName = (s: string) => s.replace(/\s+/g, ' ').trim()
+const normName = (s: string) => {
+  if (!s) return ''
+  return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
+}
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
   const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
@@ -706,8 +709,9 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle()
 
-    // effective_from: ถ้ามีแผนเดิม → แผนใหม่เริ่มมีผลที่ checkpoint ถัดไป | ถ้าไม่มี → มีผลทันที
-    const effectiveFrom: Date = latestAssign?.effective_from
+    // effective_from: ถ้ามีแผนเดิม และเป็น Phase 1 → แผนใหม่เริ่มมีผลที่ checkpoint ถัดไป | ถ้าไม่ใช่ → มีผลทันที
+    const useRegen = !!latestAssign?.effective_from && selectedPhase === 1
+    const effectiveFrom: Date = useRegen
       ? getNextCheckpoint(now)
       : now
     const effectiveFromISO = effectiveFrom.toISOString()
@@ -720,7 +724,7 @@ export async function POST(req: NextRequest) {
     const effectiveTimeStr = `${String(bangkokHours).padStart(2, '0')}:${String(bangkokMinutes).padStart(2, '0')}`
     const isScheduled = effectiveFrom > now
 
-    const checkpointMins = latestAssign?.effective_from
+    const checkpointMins = useRegen
       ? (bangkokHours * 60 + bangkokMinutes)
       : (phaseCfg.startH * 60)
 
@@ -830,7 +834,7 @@ export async function POST(req: NextRequest) {
         .select('row_data')
         .eq('calculation_type', 'Mas %Variance LOTUS')
         .order('uploaded_at', { ascending: false }),
-      latestAssign?.effective_from
+      useRegen
         ? supabase.from('production_assignments')
             .select('*')
             .eq('production_date', productionDate)
@@ -1019,7 +1023,7 @@ export async function POST(req: NextRequest) {
     const keptChannelQtyMap = new Map<string, number>()
     const workerKeptMaxEndMins = new Map<string, number>()
 
-    if (latestAssign?.effective_from && oldAssignmentsRaw) {
+    if (useRegen && oldAssignmentsRaw) {
       for (const a of oldAssignmentsRaw) {
         const wName = normName(a.worker_name || '')
         if (effectiveDailyUploadedNames.has(wName) && weeklyWorkforceNames.has(wName)) {
@@ -1343,7 +1347,7 @@ export async function POST(req: NextRequest) {
           .filter(w => {
             if (jobAssignMap.size === 0) return true
             const jobInfo = jobAssignMap.get(normName(w.name))
-            if (jobInfo?.isWeigher) return false
+            if (jobInfo?.isWeigher && (!skuGroup || !jobInfo.groups.has(skuGroup))) return false
             if (!jobInfo) return false
             return skuGroup ? jobInfo.groups.has(skuGroup) : true
           })
@@ -1402,7 +1406,7 @@ export async function POST(req: NextRequest) {
         .filter(w => {
           if (jobAssignMap.size === 0) return true
           const jobInfo = jobAssignMap.get(normName(w.name))
-          if (jobInfo?.isWeigher) return false
+          if (jobInfo?.isWeigher && (!skuGroup || !jobInfo.groups.has(skuGroup))) return false
           if (!jobInfo) return false
           return skuGroup ? jobInfo.groups.has(skuGroup) : true
         })
@@ -1442,7 +1446,7 @@ export async function POST(req: NextRequest) {
 
     // ── Delete only the old batch being superseded (same effective_from as the current active plan) ──
     // ถ้ามีแผนเดิมที่ยัง effective อยู่ ให้ลบเฉพาะชุดนั้น (batch เดิมที่ถูก supersede)
-    if (latestAssign?.effective_from) {
+    if (useRegen) {
       await supabase
         .from('production_assignments')
         .delete()
@@ -1450,7 +1454,7 @@ export async function POST(req: NextRequest) {
         .eq('period', phaseCfg.period)
         .eq('effective_from', latestAssign.effective_from)
     } else {
-      // ไม่มีแผนเดิม → ลบทั้งหมด (safety)
+      // ไม่มีแผนเดิม หรือ Phase 2/3 → ลบทั้งหมด (safety)
       await supabase
         .from('production_assignments')
         .delete()

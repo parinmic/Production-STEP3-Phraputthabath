@@ -258,6 +258,8 @@ export default function WeeklyWorkforcePage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [workerStatuses, setWorkerStatuses] = useState<Record<string, string>>({})
   const [selectedShift, setSelectedShift] = useState<'all' | '1' | '2'>('all')
+  const [statusPopup, setStatusPopup] = useState<{ workerName: string; currentStatus: string } | null>(null)
+  const [pendingStatus, setPendingStatus] = useState('')
 
   // Fetch overrides on date/station change
   useEffect(() => {
@@ -285,6 +287,17 @@ export default function WeeklyWorkforcePage() {
     fetchOverrides()
     return () => { active = false }
   }, [selectedDate, selectedStation])
+
+  const openStatusPopup = (workerName: string, currentStatus: string) => {
+    setStatusPopup({ workerName, currentStatus })
+    setPendingStatus(currentStatus)
+  }
+
+  const saveStatusFromPopup = async () => {
+    if (!statusPopup) return
+    await handleStatusChange(statusPopup.workerName, pendingStatus)
+    setStatusPopup(null)
+  }
 
   const handleStatusChange = async (workerName: string, newStatus: string) => {
     // 1. Update local state immediately for visual responsiveness
@@ -749,18 +762,12 @@ export default function WeeklyWorkforcePage() {
                         )}
                       </td>
                       <td className="px-2 py-2.5 sm:px-5 sm:py-3 text-center">
-                        <select
-                          value={w.status}
-                          onChange={(e) => handleStatusChange(w.name, e.target.value)}
-                          className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 sm:py-1 rounded-full border shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer ${getStatusBadgeClass(w.status)}`}
+                        <button
+                          onClick={() => openStatusPopup(w.name, w.status)}
+                          className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 sm:py-1 rounded-full border shadow-xs cursor-pointer transition-opacity hover:opacity-80 ${getStatusBadgeClass(w.status)}`}
                         >
-                          <option value="ทำงาน" className="bg-white text-green-700">ทำงาน</option>
-                          <option value="วันหยุด" className="bg-white text-amber-700">วันหยุด</option>
-                          <option value="ลาป่วย" className="bg-white text-red-700">ลาป่วย</option>
-                          <option value="ลากิจ" className="bg-white text-purple-700">ลากิจ</option>
-                          <option value="ลาพักร้อน" className="bg-white text-blue-700">ลาพักร้อน</option>
-                          <option value="อื่นๆ" className="bg-white text-gray-700">อื่นๆ</option>
-                        </select>
+                          {w.status}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -770,6 +777,50 @@ export default function WeeklyWorkforcePage() {
           </div>
         )}
       </div>
+
+      {/* Status Popup Modal */}
+      {statusPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setStatusPopup(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-5 w-64 z-10">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-gray-800 text-sm">เปลี่ยนสถานะ</h3>
+              <button onClick={() => setStatusPopup(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-4 truncate">{statusPopup.workerName}</p>
+            <div className="space-y-2 mb-5">
+              {[
+                { value: 'ทำงาน', cls: 'bg-green-50 text-green-700 border-green-300' },
+                { value: 'วันหยุด', cls: 'bg-amber-50 text-amber-700 border-amber-300' },
+                { value: 'ลาป่วย', cls: 'bg-red-50 text-red-700 border-red-300' },
+                { value: 'ลากิจ', cls: 'bg-purple-50 text-purple-700 border-purple-300' },
+                { value: 'ลาพักร้อน', cls: 'bg-blue-50 text-blue-700 border-blue-300' },
+                { value: 'อื่นๆ', cls: 'bg-gray-50 text-gray-700 border-gray-300' },
+              ].map(({ value, cls }) => (
+                <button
+                  key={value}
+                  onClick={() => setPendingStatus(value)}
+                  className={`w-full text-left text-xs px-3 py-2 rounded-full border font-semibold transition-all ${
+                    pendingStatus === value
+                      ? `${cls} ring-2 ring-offset-1 ring-blue-400`
+                      : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={saveStatusFromPopup}
+              className="w-full bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white py-2 rounded-xl text-xs font-semibold transition-colors"
+            >
+              บันทึก
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Divider - Hidden on Mobile */}
       <div className="hidden md:block relative py-3">

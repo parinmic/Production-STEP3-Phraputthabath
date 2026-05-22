@@ -11,7 +11,10 @@ const STATION_TABLE: Record<string, string> = {
   'สามชั้นพิเศษ': 'สามชั้น', 'ไหล่พิเศษ': 'ไหล่', 'สะโพกพิเศษ': 'สะโพก',
 }
 
-const normName       = (s: string) => s.replace(/\s+/g, ' ').trim()
+const normName       = (s: string) => {
+  if (!s) return ''
+  return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
+}
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
@@ -553,7 +556,7 @@ export async function POST(req: NextRequest) {
         .filter(w => {
           if (jobAssignMap.size === 0) return true
           const j = jobAssignMap.get(normName(w.name))
-          if (j?.isWeigher) return false
+          if (j?.isWeigher && (!skuGroup || !j.groups.has(skuGroup))) return false
           if (!j) return false
           return skuGroup ? j.groups.has(skuGroup) : true
         })
