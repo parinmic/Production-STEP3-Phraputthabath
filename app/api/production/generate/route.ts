@@ -1434,10 +1434,10 @@ export async function POST(req: NextRequest) {
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
         shiftStartMins = 8.5 * 60 // 08:30
-        shiftEndMins = 17.5 * 60 // 17:30 (ไม่รวม OT)
+        shiftEndMins = isPhase3 ? phaseEndMins : 17.5 * 60 // 17:30 (มี OT ใน Phase 3)
       } else if (w.shift === 'กะ 2') {
         shiftStartMins = 14.5 * 60 // 14:30
-        shiftEndMins = 23.5 * 60 // 23:30 (ไม่รวม OT)
+        shiftEndMins = isPhase3 ? phaseEndMins : 23.5 * 60 // 23:30 (มี OT ใน Phase 3)
       }
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
       const nameKey = normName(w.name)
