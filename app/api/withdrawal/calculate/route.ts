@@ -147,9 +147,10 @@ export async function POST(req: NextRequest) {
     const noteRounds = parseRoundNote(a.note)
 
     if (noteRounds.size > 0) {
-      // มีข้อมูล per-round จาก generate → ใช้ได้เลย
+      // มีข้อมูล per-round จาก generate → นำมา map เข้ากับ round boundary ของ withdrawal
       for (const [rm, q] of Array.from(noteRounds.entries())) {
-        roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + q)
+        const mappedRm = getRoundMins(rm, roundMins)
+        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
       }
     } else {
       // fallback: ถ้าไม่มี round breakdown ใช้ deadline_time เป็น start time

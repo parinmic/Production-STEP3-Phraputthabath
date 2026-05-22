@@ -169,16 +169,25 @@ export default function WithdrawalPage() {
     setSaving(true); setCalcMsg(null)
     try {
       const flatItems = preview.flatMap(item => {
-        if (!item.lots?.length) return [item]
+        if (!item.lots?.length) return [
+          {
+            sku:          item.sku,
+            sku_name:     item.sku_name,
+            quantity:     item.quantity,
+            unit:         item.unit,
+            work_station: item.work_station,
+            note:         item.withdrawal_round ? `[Round: ${item.withdrawal_round}] ${item.note ?? ''}` : item.note,
+          }
+        ]
         return item.lots.map(lot => ({
           sku:          item.sku,
           sku_name:     item.sku_name,
           quantity:     lot.to_withdraw,
           unit:         item.unit,
           work_station: item.work_station,
-          note:         lot.insufficient
-            ? `ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
-            : `Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
+          note: lot.insufficient
+            ? `[Round: ${item.withdrawal_round ?? ''}] ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
+            : `[Round: ${item.withdrawal_round ?? ''}] Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
         }))
       })
       const res = await fetch('/api/withdrawal', {
@@ -240,26 +249,51 @@ export default function WithdrawalPage() {
     return total
   }
 
-  function groupSaved(raw: WithdrawalItem[]): RowItem[] {
-    const map = new Map<string, WithdrawalItem[]>()
-    for (const item of raw) {
-      const k = `${item.work_station ?? ''}|||${item.sku}`
-      const list = map.get(k) ?? []
-      list.push(item)
-      map.set(k, list)
+  function parseRoundFromNote(note: string | null): { round: string | null; cleanNote: string | null } {
+    if (!note) return { round: null, cleanNote: null }
+    const m = note.match(/^\[Round:\s*([^\]]+)\]\s*(.*)$/)
+    if (m) {
+      return { round: m[1].trim(), cleanNote: m[2].trim() || null }
     }
-    return Array.from(map.values()).map(group => {
+    return { round: null, cleanNote: note }
+  }
+
+  function groupSaved(raw: WithdrawalItem[]): RowItem[] {
+    const map = new Map<string, { round: string | null; items: WithdrawalItem[] }>()
+    for (const item of raw) {
+      const { round } = parseRoundFromNote(item.note)
+      const k = `${item.work_station ?? ''}|||${item.sku}|||${round ?? ''}`
+      const entry = map.get(k) ?? { round, items: [] }
+      entry.items.push(item)
+      map.set(k, entry)
+    }
+    return Array.from(map.values()).map(({ round, items: group }) => {
       const first = group[0]
-      const hasLot = group.some(i => parseLotNote(i.note) !== null)
-      if (!hasLot) return { ...first } as RowItem
+      const cleanedGroup = group.map(i => {
+        const { cleanNote } = parseRoundFromNote(i.note)
+        return { ...i, note: cleanNote }
+      })
+      const hasLot = cleanedGroup.some(i => parseLotNote(i.note) !== null)
+      if (!hasLot) {
+        return {
+          sku:          first.sku,
+          sku_name:     first.sku_name,
+          quantity:     cleanedGroup.reduce((s, i) => s + i.quantity, 0),
+          unit:         first.unit,
+          work_station: first.work_station,
+          note:         cleanedGroup[0]?.note ?? null,
+          withdrawal_round: round ?? undefined,
+        } as RowItem
+      }
       return {
         sku:          first.sku,
         sku_name:     first.sku_name,
-        quantity:     group.reduce((s, i) => s + i.quantity, 0),
+        quantity:     cleanedGroup.reduce((s, i) => s + i.quantity, 0),
         unit:         first.unit,
         work_station: first.work_station,
         note:         'คำนวณจาก BOM',
-        lots: group.map(item => {
+        withdrawal_round: round ?? undefined,
+        lots: cleanedGroup.map(item => {
           const p = parseLotNote(item.note)
           return {
             spec_code:    p?.spec_code ?? item.note ?? '-',
