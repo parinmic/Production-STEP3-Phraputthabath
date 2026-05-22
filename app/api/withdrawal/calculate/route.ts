@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
+
 
 const PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
@@ -116,6 +118,23 @@ export async function POST(req: NextRequest) {
   const period = PERIOD[phaseStr]
   if (!date || !period) return NextResponse.json({ error: 'missing params' }, { status: 400 })
 
+  // ดึงกฎ Mas Raw Material
+  const { data: rawMaterialRules } = await supabase
+    .from('master_logic_calculation')
+    .select('row_data')
+    .eq('calculation_type', 'Mas Raw Material')
+    .order('uploaded_at', { ascending: false })
+
+  const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
+    const data = (r.row_data ?? {}) as Record<string, any>
+    return {
+      productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(),
+      type: String(data['ประเภท'] ?? '').trim(),
+      d16: String(data['D16'] ?? '').trim(),
+      d17: String(data['D17'] ?? '').trim(),
+    }
+  })
+
   const roundMins = PHASE_ROUND_MINS[phaseStr] ?? PHASE_ROUND_MINS['1']
 
   // 1. ดึง production_assignments พร้อม note (round breakdown) และ deadline_time (fallback)
@@ -194,7 +213,7 @@ export async function POST(req: NextRequest) {
   // 4. คำนวณ raw material ต่อ (station, raw_sap, roundMins)
   interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
   const rawMap = new Map<string, RawEntry>()
-  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number }[]>()
+  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
 
   for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
@@ -214,7 +233,7 @@ export async function POST(req: NextRequest) {
         if (cur) { cur.qty += rawQty }
         else { rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm }) }
         const prodList = rawToProducts.get(rawKey) ?? []
-        prodList.push({ sku, sku_name, qty: finQty })
+        prodList.push({ sku, sku_name, qty: finQty, rawQty })
         rawToProducts.set(rawKey, prodList)
       }
     }
@@ -305,7 +324,7 @@ export async function POST(req: NextRequest) {
       unit:             'กก.',
       work_station:     station,
       note:             'คำนวณจาก BOM',
-      lots:             lots ? allocateFIFO(lots, needed) : [],
+      lots:             lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
       for_products:     rawToProducts.get(rawKey) ?? [],
       withdrawal_round: minsToTime(roundMins),
     }

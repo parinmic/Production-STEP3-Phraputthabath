@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
+
 
 // ========== Types ==========
 
@@ -691,6 +693,23 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   const period = periodMap[phaseStr]
   if (!productionDate || !period) return
 
+  // Query Mas Raw Material rules
+  const { data: rawMaterialRules } = await supabase
+    .from('master_logic_calculation')
+    .select('row_data')
+    .eq('calculation_type', 'Mas Raw Material')
+    .order('uploaded_at', { ascending: false })
+
+  const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
+    const data = (r.row_data ?? {}) as Record<string, any>
+    return {
+      productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(),
+      type: String(data['ประเภท'] ?? '').trim(),
+      d16: String(data['D16'] ?? '').trim(),
+      d17: String(data['D17'] ?? '').trim(),
+    }
+  })
+
   const roundMinsConfig: Record<string, number[]> = {
     '1': [510, 600, 780],
     '2': [870],
@@ -861,7 +880,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   // 4. Calculate raw material requirements
   interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
   const rawMap = new Map<string, RawEntry>()
-  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number }[]>()
+  const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
 
   for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
@@ -881,7 +900,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
         if (cur) { cur.qty += rawQty }
         else { rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm }) }
         const prodList = rawToProducts.get(rawKey) ?? []
-        prodList.push({ sku, sku_name, qty: finQty })
+        prodList.push({ sku, sku_name, qty: finQty, rawQty })
         rawToProducts.set(rawKey, prodList)
       }
     }
@@ -968,7 +987,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
         unit:             'กก.',
         work_station:     station,
         note:             'คำนวณจาก BOM',
-        lots:             lots ? allocateFIFOLocal(lots, needed) : [],
+        lots:             lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
         for_products:     rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
       }
