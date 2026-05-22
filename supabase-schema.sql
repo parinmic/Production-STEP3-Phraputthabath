@@ -421,4 +421,20 @@ CREATE INDEX IF NOT EXISTS idx_workforce_daily_status_lookup ON workforce_daily_
 ALTER TABLE workforce_daily_status ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_workforce_daily_status" ON workforce_daily_status FOR ALL USING (true) WITH CHECK (true);
 
+-- 21. Mas SKU ที่ไม่ต้องเบิกของ (No Withdrawal SKUs Master)
+CREATE TABLE IF NOT EXISTS no_withdrawal_skus (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  work_station  TEXT,
+  product_group TEXT,
+  sap           TEXT NOT NULL,
+  product_name  TEXT,
+  source_file   TEXT,
+  uploaded_at   TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_no_withdrawal_skus_sap ON no_withdrawal_skus(sap);
+ALTER TABLE no_withdrawal_skus ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_no_withdrawal_skus" ON no_withdrawal_skus FOR ALL USING (true) WITH CHECK (true);
+
+
 

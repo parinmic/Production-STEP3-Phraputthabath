@@ -685,7 +685,7 @@ function getNextCheckpoint(t: Date): Date {
 
 // ========== Auto-generate Withdrawal Request ==========
 
-export async function autoGenerateWithdrawal(productionDate: string, selectedPhase: number) {
+async function autoGenerateWithdrawal(productionDate: string, selectedPhase: number) {
   const phaseStr = String(selectedPhase)
   const periodMap: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
   const period = periodMap[phaseStr]
@@ -803,12 +803,23 @@ export async function autoGenerateWithdrawal(productionDate: string, selectedPha
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
+  // Fetch SKUs that do not require withdrawal
+  const { data: noWithdrawalRows } = await supabase
+    .from('no_withdrawal_skus')
+    .select('sap')
+
+  const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
+
+  // Filter assignments: skip any whose SKU is in the no_withdrawal_skus master table
+  const activeAssignments = assignments.filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
+  if (!activeAssignments.length) return
+
   // 2. Build finRoundMap: (station|||sku) → Map<roundMins, qty>
   const finRoundMap = new Map<string, Map<number, number>>()
   const finNameMap  = new Map<string, string | null>()
   const skuSet      = new Set<string>()
 
-  for (const a of assignments) {
+  for (const a of activeAssignments) {
     const key = `${a.table_name}|||${a.sku}`
     if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
     finNameMap.set(key, a.sku_name ?? null)

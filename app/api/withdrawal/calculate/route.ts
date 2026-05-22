@@ -131,13 +131,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ items: [], message: `ไม่พบคำสั่งผลิต Phase ${phase} วันที่ ${date}` })
   }
 
+  // Fetch SKUs that do not require withdrawal
+  const { data: noWithdrawalRows } = await supabase
+    .from('no_withdrawal_skus')
+    .select('sap')
+
+  const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
+
+  // Filter assignments: skip any whose SKU is in the no_withdrawal_skus master table
+  const activeAssignments = assignments.filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
+  if (!activeAssignments.length) {
+    return NextResponse.json({ items: [], message: `ไม่พบรายการเบิก เนื่องจาก SKU ทั้งหมดในแผนผลิตเป็น SKU ที่ไม่ต้องเบิกของ` })
+  }
+
   // 2. Build finRoundMap: (station|||sku) → Map<roundMins, qty>
   //    ใช้ข้อมูล per-round จาก note (ถ้ามี) หรือ fallback จาก deadline_time
   const finRoundMap = new Map<string, Map<number, number>>()
   const finNameMap  = new Map<string, string | null>()
   const skuSet      = new Set<string>()
 
-  for (const a of assignments) {
+  for (const a of activeAssignments) {
     const key = `${a.table_name}|||${a.sku}`
     if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
     finNameMap.set(key, a.sku_name ?? null)

@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -301,6 +301,10 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-yellow-500" />Mas หน่วยหยิบสินค้า
               </Link>
+              <Link href="/no-withdrawal"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />Mas SKU ไม่ต้องเบิก
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -321,6 +325,11 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas หน่วยหยิบสินค้า">
                 <Scale size={14} />
+              </Link>
+              <Link href="/no-withdrawal"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas SKU ไม่ต้องเบิก">
+                <Ban size={14} />
               </Link>
             </div>
           )}
