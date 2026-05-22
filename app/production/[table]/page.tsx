@@ -639,10 +639,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
     type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string; created_at?: string; updated_at?: string }
 
+    const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
+
     const channel = supabase
       .channel(`production_actual:${date}:${tableName}`)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'production_actual' },
+        { event: 'INSERT', schema: supabaseSchema, table: 'production_actual' },
         (payload) => {
           const row = payload.new as Row
           if (row.production_date !== date || row.table_name !== tableName) return
@@ -661,7 +663,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         }
       )
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'production_actual' },
+        { event: 'UPDATE', schema: supabaseSchema, table: 'production_actual' },
         (payload) => {
           const row = payload.new as Row
           if (row.production_date !== date || row.table_name !== tableName) return
