@@ -46,6 +46,8 @@ interface CalcItem {
 
 type RowItem = CalcItem
 
+type PopupItem = { item: RowItem; station: string; roundTime: string } | null
+
 const PHASE_CONFIG = {
   '1': { label: 'Phase 1 — รอบเช้า',  color: 'blue',   time: '08:00 น.' },
   '2': { label: 'Phase 2 — รอบบ่าย',  color: 'orange', time: '13:00 น.' },
@@ -87,6 +89,7 @@ export default function WithdrawalPage() {
   const [printRoundSel, setPrintRoundSel] = useState<Set<string>>(new Set())
   const [downloading, setDownloading]     = useState(false)
   const [basketMap, setBasketMap]         = useState<Map<string, number>>(new Map())
+  const [popupItem, setPopupItem]         = useState<PopupItem>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -370,7 +373,13 @@ export default function WithdrawalPage() {
                         {item.sku_name ?? '-'}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{roundTo5Or0(item.quantity).toLocaleString()}</td>
+                    <td className="px-2 py-1.5 text-right">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPopupItem({ item, station, roundTime }) }}
+                        className="font-bold text-gray-900 bg-gray-100 active:bg-blue-100 hover:bg-blue-50 rounded-xl px-3 py-2 min-w-[56px] w-full touch-manipulation transition-colors text-right">
+                        {roundTo5Or0(item.quantity).toLocaleString()}
+                      </button>
+                    </td>
                     <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
                     <td className="px-3 py-2.5 text-right text-orange-600 font-medium">
                       {getTotalBaskets(item) != null
@@ -630,6 +639,132 @@ export default function WithdrawalPage() {
           )}
         </div>
       </div>
+
+      {/* Item detail bottom-sheet popup */}
+      {popupItem && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
+          onClick={() => setPopupItem(null)}>
+          <div className="bg-white rounded-t-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+            {/* Handle bar */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="px-5 pt-2 pb-4 border-b border-gray-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[popupItem.station] ?? 'bg-gray-100 text-gray-700'}`}>
+                      {STATION_DISPLAY[popupItem.station] ?? popupItem.station}
+                    </span>
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock size={11} /> รอบ {popupItem.roundTime} น.
+                    </span>
+                  </div>
+                  <p className="font-mono text-xs text-gray-400 mb-0.5">{popupItem.item.sku}</p>
+                  <p className="font-bold text-gray-900 text-base leading-snug">{popupItem.item.sku_name ?? '-'}</p>
+                </div>
+                <button onClick={() => setPopupItem(null)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mt-0.5">
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Main quantity cards */}
+            <div className="px-5 py-4 flex gap-3">
+              <div className="flex-1 bg-blue-50 rounded-2xl px-4 py-4 text-center">
+                <p className="text-xs text-blue-500 font-medium mb-1">จำนวนรวม</p>
+                <p className="text-3xl font-bold text-blue-700 leading-none">
+                  {roundTo5Or0(popupItem.item.quantity).toLocaleString()}
+                </p>
+                <p className="text-sm text-blue-400 mt-1">{popupItem.item.unit}</p>
+              </div>
+              {getTotalBaskets(popupItem.item) != null && (
+                <div className="flex-1 bg-orange-50 rounded-2xl px-4 py-4 text-center">
+                  <p className="text-xs text-orange-500 font-medium mb-1">จำนวนตะกร้า</p>
+                  <p className="text-3xl font-bold text-orange-600 leading-none">
+                    {getTotalBaskets(popupItem.item)}
+                  </p>
+                  <p className="text-sm text-orange-400 mt-1">ตะกร้า</p>
+                </div>
+              )}
+            </div>
+
+            {/* For products */}
+            {(popupItem.item.for_products?.length ?? 0) > 0 && (
+              <div className="px-5 pb-4">
+                <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2.5">ใช้ผลิตสินค้า</p>
+                <div className="space-y-2">
+                  {popupItem.item.for_products!.map((p, pi) => (
+                    <div key={pi} className="flex items-center justify-between bg-indigo-50 rounded-xl px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-mono text-gray-400">{p.sku}</p>
+                        <p className="text-sm font-semibold text-gray-800 leading-snug">{p.sku_name ?? p.sku}</p>
+                      </div>
+                      <span className="text-base font-bold text-indigo-600 shrink-0 ml-3">
+                        {p.qty.toLocaleString()} กก.
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Lot breakdown */}
+            {(popupItem.item.lots?.length ?? 0) > 0 && (
+              <div className="px-5 pb-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">แบ่งตาม Lot</p>
+                <div className="space-y-2">
+                  {(() => {
+                    const byDate = new Map<string, { qty: number; insufficient: boolean }>()
+                    for (const lot of popupItem.item.lots!) {
+                      const key = lot.insufficient ? '⚠ ไม่เพียงพอ' : lot.prod_date
+                      const cur = byDate.get(key) ?? { qty: 0, insufficient: lot.insufficient ?? false }
+                      cur.qty += lot.to_withdraw
+                      byDate.set(key, cur)
+                    }
+                    return Array.from(byDate.entries()).map(([d, { qty, insufficient }]) => (
+                      <div key={d} className={`flex items-center justify-between rounded-xl px-4 py-3 ${insufficient ? 'bg-red-50' : 'bg-blue-50'}`}>
+                        <div className="flex items-center gap-2">
+                          {insufficient ? (
+                            <span className="text-red-500 text-sm font-semibold">⚠ สต็อกไม่เพียงพอ</span>
+                          ) : (
+                            <>
+                              <span className="text-xs text-gray-400">ผลิต</span>
+                              <span className="text-sm font-semibold text-gray-800">{d}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-base font-bold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
+                            {roundTo5Or0(qty).toLocaleString()} กก.
+                          </p>
+                          {!insufficient && getBaskets(popupItem.item.sku, qty) != null && (
+                            <p className="text-xs text-orange-500 mt-0.5">{getBaskets(popupItem.item.sku, qty)} ตะกร้า</p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Note */}
+            {popupItem.item.note && (
+              <div className="px-5 pb-5">
+                <p className="text-xs text-gray-400">หมายเหตุ: {popupItem.item.note}</p>
+              </div>
+            )}
+
+            {/* Safe area spacer for iOS */}
+            <div className="pb-safe h-6" />
+          </div>
+        </div>
+      )}
 
       {/* Print modal */}
       {printModal && (
