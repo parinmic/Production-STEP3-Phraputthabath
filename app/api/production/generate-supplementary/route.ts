@@ -551,8 +551,10 @@ export async function POST(req: NextRequest) {
       const allAtStation = workersByStation[station] ?? []
       const eligible = allAtStation
         .filter(w => {
+          if (jobAssignMap.size === 0) return true
           const j = jobAssignMap.get(normName(w.name))
-          if (!j || j.groups.size === 0) return true
+          if (j?.isWeigher) return false
+          if (!j) return false
           return skuGroup ? j.groups.has(skuGroup) : true
         })
         .sort((a, b) => {
