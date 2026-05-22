@@ -14,7 +14,7 @@ const CFG: Record<string, { label: string; accent: string; light: string }> = {
 const PHASES = [
   { phase: 1, label: 'Phase 1', sub: '8:30-14:30',       period: 'เช้า', startH: 8.5,  endH: 14.5,
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
-  { phase: 2, label: 'Phase 2', sub: '14:40-16:30',      period: 'บ่าย', startH: 14.6667, endH: 16.5,
+  { phase: 2, label: 'Phase 2', sub: '14:30-16:30',      period: 'บ่าย', startH: 14.5, endH: 16.5,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
   { phase: 3, label: 'Phase 3', sub: '16:30 เป็นต้นไป', period: 'ค่ำ',  startH: 16.5, endH: 24,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },

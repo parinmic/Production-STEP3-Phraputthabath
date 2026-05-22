@@ -69,7 +69,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:30:00', hours: 6.0, startH: 8.5,  endH: 14.5 },
-  { phase: 2, period: 'บ่าย',  deadline: '16:30:00', hours: 1.8333, startH: 14.6667, endH: 16.5 },
+  { phase: 2, period: 'บ่าย',  deadline: '16:30:00', hours: 2.0, startH: 14.5,  endH: 16.5 },
   { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 24 },
 ]
 
@@ -1434,10 +1434,10 @@ export async function POST(req: NextRequest) {
       let shiftEndMins = phaseEndMins
       if (w.shift === 'กะ 1') {
         shiftStartMins = 8.5 * 60 // 08:30
-        shiftEndMins = isPhase3 ? phaseEndMins : 17.5 * 60 // 17:30
+        shiftEndMins = 17.5 * 60 // 17:30 (ไม่รวม OT)
       } else if (w.shift === 'กะ 2') {
         shiftStartMins = 14.5 * 60 // 14:30
-        shiftEndMins = 24 * 60 // 24:00
+        shiftEndMins = 23.5 * 60 // 23:30 (ไม่รวม OT)
       }
       const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
       const nameKey = normName(w.name)
