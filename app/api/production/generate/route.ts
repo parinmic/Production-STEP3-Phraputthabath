@@ -101,7 +101,10 @@ const STATION_TABLE: Record<string, string> = {
 
 // ========== Helpers ==========
 
-const normName = (s: string) => s.replace(/\s+/g, ' ').trim()
+const normName = (s: string) => {
+  if (!s) return ''
+  return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
+}
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
   const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
@@ -1344,7 +1347,7 @@ export async function POST(req: NextRequest) {
           .filter(w => {
             if (jobAssignMap.size === 0) return true
             const jobInfo = jobAssignMap.get(normName(w.name))
-            if (jobInfo?.isWeigher) return false
+            if (jobInfo?.isWeigher && (!skuGroup || !jobInfo.groups.has(skuGroup))) return false
             if (!jobInfo) return false
             return skuGroup ? jobInfo.groups.has(skuGroup) : true
           })
@@ -1403,7 +1406,7 @@ export async function POST(req: NextRequest) {
         .filter(w => {
           if (jobAssignMap.size === 0) return true
           const jobInfo = jobAssignMap.get(normName(w.name))
-          if (jobInfo?.isWeigher) return false
+          if (jobInfo?.isWeigher && (!skuGroup || !jobInfo.groups.has(skuGroup))) return false
           if (!jobInfo) return false
           return skuGroup ? jobInfo.groups.has(skuGroup) : true
         })
