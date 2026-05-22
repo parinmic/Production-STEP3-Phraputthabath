@@ -172,6 +172,8 @@ export default function WithdrawalPage() {
     setSaving(true); setCalcMsg(null)
     try {
       const flatItems = preview.flatMap(item => {
+        const fpTag = encodeFPTag(item.for_products ?? [])
+        const roundPrefix = item.withdrawal_round ? `[Round: ${item.withdrawal_round}] ` : ''
         if (!item.lots?.length) return [
           {
             sku:          item.sku,
@@ -179,7 +181,7 @@ export default function WithdrawalPage() {
             quantity:     item.quantity,
             unit:         item.unit,
             work_station: item.work_station,
-            note:         item.withdrawal_round ? `[Round: ${item.withdrawal_round}] ${item.note ?? ''}` : item.note,
+            note:         `${roundPrefix}${fpTag}${item.note ?? ''}`,
           }
         ]
         return item.lots.map(lot => ({
@@ -189,8 +191,8 @@ export default function WithdrawalPage() {
           unit:         item.unit,
           work_station: item.work_station,
           note: lot.insufficient
-            ? `[Round: ${item.withdrawal_round ?? ''}] ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
-            : `[Round: ${item.withdrawal_round ?? ''}] Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
+            ? `${roundPrefix}${fpTag}ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
+            : `${roundPrefix}${fpTag}Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
         }))
       })
       const res = await fetch('/api/withdrawal', {
@@ -252,13 +254,34 @@ export default function WithdrawalPage() {
     return total
   }
 
+  function encodeFPTag(products: ForProduct[]): string {
+    if (!products.length) return ''
+    const s = products
+      .map(p => `${p.sku}~${(p.sku_name ?? '').replace(/[|~[\]]/g, ' ')}~${p.qty}`)
+      .join('|')
+    return `[FP:${s}] `
+  }
+
+  function parseFPFromNote(note: string | null): ForProduct[] {
+    if (!note) return []
+    const m = note.match(/\[FP:([^\]]*)\]/)
+    if (!m?.[1]) return []
+    return m[1].split('|').filter(Boolean).map(entry => {
+      const parts = entry.split('~')
+      return { sku: parts[0] ?? '', sku_name: parts[1] || null, qty: parseFloat(parts[2] ?? '0') }
+    })
+  }
+
   function parseRoundFromNote(note: string | null): { round: string | null; cleanNote: string | null } {
     if (!note) return { round: null, cleanNote: null }
-    const m = note.match(/^\[Round:\s*([^\]]+)\]\s*(.*)$/)
-    if (m) {
-      return { round: m[1].trim(), cleanNote: m[2].trim() || null }
-    }
-    return { round: null, cleanNote: note }
+    let rest = note
+    let round: string | null = null
+    const roundM = rest.match(/^\[Round:\s*([^\]]+)\]\s*/)
+    if (roundM) { round = roundM[1].trim(); rest = rest.slice(roundM[0].length) }
+    // strip FP tag so it doesn't appear as visible note text
+    const fpM = rest.match(/^\[FP:[^\]]*\]\s*/)
+    if (fpM) rest = rest.slice(fpM[0].length)
+    return { round, cleanNote: rest.trim() || null }
   }
 
   function groupSaved(raw: WithdrawalItem[]): RowItem[] {
@@ -272,6 +295,8 @@ export default function WithdrawalPage() {
     }
     return Array.from(map.values()).map(({ round, items: group }) => {
       const first = group[0]
+      // reconstruct for_products from any note that has the FP tag
+      const forProducts = group.map(i => parseFPFromNote(i.note)).find(fp => fp.length > 0) ?? []
       const cleanedGroup = group.map(i => {
         const { cleanNote } = parseRoundFromNote(i.note)
         return { ...i, note: cleanNote }
@@ -286,6 +311,7 @@ export default function WithdrawalPage() {
           work_station: first.work_station,
           note:         cleanedGroup[0]?.note ?? null,
           withdrawal_round: round ?? undefined,
+          for_products: forProducts.length ? forProducts : undefined,
         } as RowItem
       }
       return {
@@ -296,6 +322,7 @@ export default function WithdrawalPage() {
         work_station: first.work_station,
         note:         'คำนวณจาก BOM',
         withdrawal_round: round ?? undefined,
+        for_products: forProducts.length ? forProducts : undefined,
         lots: cleanedGroup.map(item => {
           const p = parseLotNote(item.note)
           return {
