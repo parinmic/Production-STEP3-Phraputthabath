@@ -1298,6 +1298,18 @@ export default function TablePage() {
   const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
   const [genSupResult, setGenSupResult] = useState<{ success: boolean; message: string } | null>(null)
 
+  const [midRecal, setMidRecal]     = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('midRecalEnabled')
+      return saved !== 'false'
+    }
+    return true
+  })
+
+  useEffect(() => {
+    localStorage.setItem('midRecalEnabled', String(midRecal))
+  }, [midRecal])
+
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
     if (!silent) setLoading(true)
@@ -1344,7 +1356,12 @@ export default function TablePage() {
     try {
       const res    = await fetch('/api/production/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: selectedPhase, deductMode }),
+        body: JSON.stringify({ 
+          date, 
+          phase: selectedPhase, 
+          deductMode,
+          disableMidRecal: !midRecal
+        }),
       })
       const result = await res.json()
       setGenResult(result)
@@ -1455,6 +1472,23 @@ export default function TablePage() {
         ))}
 
         <div className="hidden sm:flex items-center gap-3 ml-auto">
+          {selectedPhase === 1 && (
+            <label className="inline-flex items-center cursor-pointer select-none gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-100 transition-colors">
+              <span className="text-xs font-semibold text-gray-600">
+                {midRecal ? 'ค้างแผนเก่า (Mid Recal)' : 'สร้างใหม่ทั้งหมด'}
+              </span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={midRecal}
+                  onChange={(e) => setMidRecal(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </div>
+            </label>
+          )}
+
           <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-sm text-gray-700">
             <Calendar size={14} className="text-gray-400" />
             <input type="date" value={date}

@@ -26,7 +26,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas Channel',               slug: 'mas-channel',             dot: 'bg-orange-500' },
   { label: 'Mas ตระกร้า',               slug: 'mas-trakra',              dot: 'bg-yellow-500' },
   { label: 'Mas Special',               slug: 'mas-special',             dot: 'bg-pink-500' },
-  { label: 'Mas Raw Material',          slug: 'mas-raw-material',        dot: 'bg-red-500' },
+  // { label: 'Mas Raw Material',          slug: 'mas-raw-material',        dot: 'bg-red-500' },
 ]
 
 export default function Sidebar() {

@@ -35,32 +35,7 @@ export function cleanGroupName(groupName: string): string {
 }
 
 export function getLotType(raw_name: string, spec_code: string, rules: RawMaterialRule[]): string {
-  if (!raw_name || !spec_code) return 'RAW';
-  
-  // Extract Digit 16 (index 15) and Digit 17 (index 16)
-  const d16Char = (spec_code[15] ?? '').trim().toUpperCase();
-  const d17Char = (spec_code[16] ?? '').trim().toUpperCase();
-  
-  const rawNameClean = raw_name.trim().toLowerCase();
-  
-  for (const rule of rules) {
-    const groupClean = cleanGroupName(rule.productGroup).toLowerCase();
-    if (!groupClean) continue;
-    
-    if (rawNameClean.includes(groupClean)) {
-      const ruleD16 = rule.d16.trim().toUpperCase();
-      const ruleD17 = rule.d17.trim().toUpperCase();
-      
-      if (ruleD16 === d16Char && ruleD17 === d17Char) {
-        const typeClean = rule.type.trim().toUpperCase();
-        if (typeClean === 'RAW' || typeClean === 'K' || !typeClean) {
-          return 'RAW';
-        }
-        return rule.type.trim();
-      }
-    }
-  }
-  
+  // Mas Raw Material rules are disabled: always return 'RAW' so lots are treated as standard raw materials
   return 'RAW';
 }
 

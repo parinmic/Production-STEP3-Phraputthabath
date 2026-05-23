@@ -1076,7 +1076,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
 
 export async function POST(req: NextRequest) {
   try {
-    const { date, phase: phaseParam, deductMode: rawDeductMode } = await req.json()
+    const { date, phase: phaseParam, deductMode: rawDeductMode, disableMidRecal } = await req.json()
     const defaultDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
     const productionDate: string = date ?? defaultDate
     const selectedPhase: number = phaseParam ? Number(phaseParam) : 1
@@ -1101,7 +1101,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     // effective_from: ถ้ามีแผนเดิม และเป็น Phase 1 → แผนใหม่เริ่มมีผลที่ checkpoint ถัดไป | ถ้าไม่ใช่ → มีผลทันที
-    const useRegen = !!latestAssign?.effective_from && selectedPhase === 1
+    const useRegen = !disableMidRecal && !!latestAssign?.effective_from && selectedPhase === 1
     const effectiveFrom: Date = useRegen
       ? getNextCheckpoint(now)
       : now
