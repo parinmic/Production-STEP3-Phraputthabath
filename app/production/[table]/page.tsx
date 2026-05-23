@@ -299,14 +299,20 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
   )
 }
 
-function mergeSegments(segs: { start: number; end: number }[]) {
-  if (!segs.length) return segs
+function mergeSegmentsWithWorkers(segs: { start: number; end: number; worker: string }[]) {
+  if (!segs.length) return [] as { start: number; end: number; workers: string[] }[]
   const sorted = [...segs].sort((a, b) => a.start - b.start)
-  const merged = [{ ...sorted[0] }]
+  const merged: { start: number; end: number; workers: string[] }[] = [
+    { start: sorted[0].start, end: sorted[0].end, workers: [sorted[0].worker] }
+  ]
   for (let i = 1; i < sorted.length; i++) {
     const last = merged[merged.length - 1]
-    if (sorted[i].start <= last.end) last.end = Math.max(last.end, sorted[i].end)
-    else merged.push({ ...sorted[i] })
+    if (sorted[i].start <= last.end) {
+      last.end = Math.max(last.end, sorted[i].end)
+      if (!last.workers.includes(sorted[i].worker)) last.workers.push(sorted[i].worker)
+    } else {
+      merged.push({ start: sorted[i].start, end: sorted[i].end, workers: [sorted[i].worker] })
+    }
   }
   return merged
 }
@@ -353,7 +359,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number }[], minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string }[], minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -385,7 +391,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       s.maxEnd    = Math.max(s.maxEnd, endMin)
       s.minSeq    = Math.min(s.minSeq, task.seq ?? 999999)
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
-      s.segments.push({ start: startMin, end: endMin })
+      s.segments.push({ start: startMin, end: endMin, worker: task.worker_name })
     }
   }
 
@@ -491,7 +497,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
               {/* Bar area */}
               <div className="flex-1 relative h-10 sm:h-14">
-                {mergeSegments(stat.segments).map((seg, idx) => {
+                {mergeSegmentsWithWorkers(stat.segments).map((seg, idx) => {
                   const barLeft  = Math.max(pct(seg.start), 0)
                   const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                   const segDone  = nowMins >= seg.end
@@ -502,7 +508,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                         opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
                       onClick={e => {
                         e.stopPropagation()
-                        setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: stat.workers, color: col.bg })
+                        setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg })
                       }} />
                   )
                 })}
