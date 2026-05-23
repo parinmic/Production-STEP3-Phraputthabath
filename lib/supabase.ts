@@ -2,7 +2,30 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
+// Dynamically resolve schema based on environment to isolate dev and production environments
+let resolvedSchema = 'public'
+
+if (typeof window !== 'undefined') {
+  const hostname = window.location.hostname
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    resolvedSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'dev'
+  } else if (hostname.includes('production-step-3-phraputthabath.vercel.app')) {
+    resolvedSchema = 'public'
+  } else {
+    resolvedSchema = 'dev'
+  }
+} else {
+  const env = process.env.VERCEL_ENV || process.env.NODE_ENV
+  if (env === 'production') {
+    resolvedSchema = 'public'
+  } else if (env === 'preview') {
+    resolvedSchema = 'dev'
+  } else {
+    resolvedSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'dev'
+  }
+}
+
+export const supabaseSchema = resolvedSchema
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   db: { schema: supabaseSchema },

@@ -19,6 +19,7 @@ export default function PickingUnitPage() {
       historyEndpoint="/api/upload-picking-unit"
       onUpload={upload}
       parseFileFn={parsePickingUnit}
+      downloadTable="picking_unit_master"
     />
   )
 }

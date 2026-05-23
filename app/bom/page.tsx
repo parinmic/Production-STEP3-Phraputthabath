@@ -19,6 +19,7 @@ export default function BomPage() {
       historyEndpoint="/api/upload-bom"
       onUpload={upload}
       parseFileFn={parseBom}
+      downloadTable="bom_items"
     />
   )
 }

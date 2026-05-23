@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseSchema } from '@/lib/supabase'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
@@ -644,8 +644,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     const poll = setInterval(() => { fetchActual(); fetchYield() }, 3000)
 
     type Row = { id: string; sku: string; quantity: number; table_name: string; production_date: string; created_at?: string; updated_at?: string }
-
-    const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
 
     const channel = supabase
       .channel(`production_actual:${date}:${tableName}`)

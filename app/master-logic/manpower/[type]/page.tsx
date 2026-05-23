@@ -27,6 +27,7 @@ export default function ManpowerTypePage({ params }: { params: { type: string } 
       description={cfg.desc}
       historyEndpoint={`/api/upload-master-logic-manpower?type=${params.type}`}
       onUpload={upload}
+      downloadTable="master_logic_manpower"
     />
   )
 }

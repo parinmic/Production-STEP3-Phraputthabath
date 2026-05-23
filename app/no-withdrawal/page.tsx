@@ -19,6 +19,7 @@ export default function NoWithdrawalPage() {
       historyEndpoint="/api/upload-no-withdrawal"
       onUpload={upload}
       parseFileFn={parseNoWithdrawalSkus}
+      downloadTable="no_withdrawal_skus"
     />
   )
 }

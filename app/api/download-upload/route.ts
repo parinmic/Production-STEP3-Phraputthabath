@@ -139,6 +139,41 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       unit:          'หน่วย',
     },
   },
+  bom_items: {
+    cols: ['pg', 'pg_name', 'product_code', 'product_sap', 'product_name', 'raw_code', 'raw_sap', 'raw_name', 'yield_pct', 'loss_pct'],
+    headers: {
+      pg:           'PG',
+      pg_name:      'ชื่อ PG',
+      product_code: 'รหัสสินค้า',
+      product_sap:  'รหัส SAP สินค้า',
+      product_name: 'ชื่อสินค้า',
+      raw_code:     'รหัสวัตถุดิบ',
+      raw_sap:      'รหัส SAP วัตถุดิบ',
+      raw_name:     'ชื่อวัตถุดิบ',
+      yield_pct:    'Yield %',
+      loss_pct:     'Loss %',
+    },
+  },
+  no_withdrawal_skus: {
+    cols: ['work_station', 'product_group', 'sap', 'product_name'],
+    headers: {
+      work_station:  'จุดงาน',
+      product_group: 'กลุ่มสินค้า',
+      sap:           'SAP',
+      product_name:  'ชื่อสินค้า',
+    },
+  },
+  picking_unit_master: {
+    cols: ['step', 'unix_code', 'sap', 'product_name', 'weight_per_bag', 'unit'],
+    headers: {
+      step:           'ขั้นตอน',
+      unix_code:      'รหัส Unix',
+      sap:            'SAP',
+      product_name:   'ชื่อสินค้า',
+      weight_per_bag: 'น้ำหนักต่อถุง',
+      unit:           'หน่วย',
+    },
+  },
 }
 
 export async function GET(req: NextRequest) {
@@ -148,6 +183,30 @@ export async function GET(req: NextRequest) {
 
   if (!table || !sourceFile) {
     return NextResponse.json({ error: 'missing table or file' }, { status: 400 })
+  }
+
+  // Handle master logic tables (JSONB row_data format)
+  const isMasterTable = table === 'master_logic_calculation' || table === 'master_logic_manpower'
+  if (isMasterTable) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('row_data')
+      .eq('source_file', sourceFile)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data || !data.length) return NextResponse.json({ headers: {}, data: [] })
+
+    // Flatten rows
+    const rows = data.map(r => (r.row_data ?? {}) as Record<string, unknown>)
+    
+    // Dynamically build headers mapping (key -> key)
+    const allKeys = Array.from(new Set(rows.flatMap(r => Object.keys(r))))
+    const headers: Record<string, string> = {}
+    for (const k of allKeys) {
+      headers[k] = k
+    }
+
+    return NextResponse.json({ headers, data: rows })
   }
 
   const config = TABLE_CONFIG[table]
