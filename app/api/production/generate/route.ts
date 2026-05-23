@@ -1649,6 +1649,16 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Filter assignList to only keep SKUs that can be produced at our tables (have active workers today)
+    assignList = assignList.filter(item => {
+      const prod = skuMap.get(item.sku) ?? skuMap.get(item.sku.replace(/^0+/, ''))
+      if (!prod) return false
+      const rawStation = normalizeStation(prod.station)
+      const station = STATION_TABLE[rawStation] ?? rawStation
+      const workers = workersByStation[station] ?? []
+      return workers.length > 0
+    })
+
     // Deduct kept assignments from assignList
     const updatedAssignList: SkuTarget[] = []
     for (const item of assignList) {
