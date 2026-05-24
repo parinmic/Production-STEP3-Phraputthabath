@@ -428,9 +428,11 @@ function allocateBalanced(params: {
                getWorkerSkillLevel(b, prod.product_group)
       })
 
-    // Cap workers per SKU based on quantity tiers
+    // Cap workers per SKU based on quantity tiers; also cap per-worker qty at 15 kg
+    // so that large SKUs are always shared across multiple people.
     const qty = target.targetQty
-    const maxWorkers = qty <= 15 ? 1 : qty <= 30 ? 2 : qty <= 45 ? 3 : Infinity
+    const maxWorkers    = qty <= 15 ? 1 : qty <= 30 ? 2 : qty <= 45 ? 3 : Infinity
+    const maxQtyPerWorker = qty > 15 ? 15 : Infinity
     const candidates = maxWorkers === Infinity ? sorted : sorted.slice(0, maxWorkers)
 
     for (const w of candidates) {
@@ -446,7 +448,7 @@ function allocateBalanced(params: {
       const maxByTime    = (availMins / 60) * rate
       const maxByHours   = (workerHours.get(nk) ?? 0) * rate
 
-      let assignQty = Math.min(remaining, maxByTime, maxByHours)
+      let assignQty = Math.min(remaining, maxByTime, maxByHours, maxQtyPerWorker)
       if (wpb > 1) {
         const bags = Math.floor(assignQty / wpb)
         if (bags === 0) continue
