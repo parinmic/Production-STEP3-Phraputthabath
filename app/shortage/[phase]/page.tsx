@@ -144,31 +144,35 @@ export default function ShortagePage() {
     setExp(true)
     try {
       const { toPng } = await import('html-to-image')
-      const source = captureRef.current
+      const el = captureRef.current
 
-      // Clone off-screen and strip all overflow clipping so full table renders
-      const wrapper = document.createElement('div')
-      wrapper.style.cssText = `position:fixed;top:0;left:${-(source.offsetWidth + 200)}px;width:${source.offsetWidth}px;background:#fff;`
-      const clone = source.cloneNode(true) as HTMLElement
-      const stripOverflow = (el: HTMLElement) => {
-        el.style.overflow  = 'visible'
-        el.style.maxHeight = 'none'
-        Array.from(el.children).forEach(c => stripOverflow(c as HTMLElement))
+      // Patch overflow in-place (element stays in DOM with full CSS) then restore
+      type Saved = { overflow: string; maxHeight: string }
+      const saved = new Map<HTMLElement, Saved>()
+      const patch = (node: HTMLElement) => {
+        saved.set(node, { overflow: node.style.overflow, maxHeight: node.style.maxHeight })
+        node.style.overflow  = 'visible'
+        node.style.maxHeight = 'none'
+        Array.from(node.children).forEach(c => patch(c as HTMLElement))
       }
-      stripOverflow(clone)
-      wrapper.appendChild(clone)
-      document.body.appendChild(wrapper)
+      const restore = (node: HTMLElement) => {
+        const s = saved.get(node)
+        if (s) { node.style.overflow = s.overflow; node.style.maxHeight = s.maxHeight }
+        Array.from(node.children).forEach(c => restore(c as HTMLElement))
+      }
 
-      // Wait one frame for layout
+      patch(el)
+      const fullH = el.scrollHeight
       await new Promise<void>(r => requestAnimationFrame(() => r()))
 
-      const dataUrl = await toPng(wrapper, {
+      const dataUrl = await toPng(el, {
         backgroundColor: '#ffffff',
         pixelRatio: 2,
-        width:  wrapper.offsetWidth,
-        height: wrapper.scrollHeight,
+        width:  el.offsetWidth,
+        height: fullH,
+        style:  { height: `${fullH}px`, overflow: 'visible', maxHeight: 'none' },
       })
-      document.body.removeChild(wrapper)
+      restore(el)
 
       const a = document.createElement('a')
       a.href = dataUrl
