@@ -60,14 +60,6 @@ function parseDeficit(note: string | null): number | null {
   return parseFloat(m[1].replace(/,/g, ''))
 }
 
-async function loadThSarabun() {
-  if (document.fonts.check("14px 'TH Sarabun New'")) return
-  const link = document.createElement('link')
-  link.rel  = 'stylesheet'
-  link.href = 'https://fonts.googleapis.com/css2?family=TH+Sarabun+New:wght@400;700&display=swap'
-  document.head.appendChild(link)
-  await document.fonts.load("14px 'TH Sarabun New'")
-}
 
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
@@ -150,8 +142,6 @@ export default function ShortagePage() {
   const exportImage = async () => {
     setExp(true)
     try {
-      await loadThSarabun()
-
       const dDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
         day: 'numeric', month: 'long', year: 'numeric',
       })
@@ -164,7 +154,7 @@ export default function ShortagePage() {
       const RH     = 38
       const H      = BANNER + TH_H + rows.length * RH + 1
 
-      const TH_FONT     = (sz: number, bold = false) => (bold ? 'bold ' : '') + sz + "px 'TH Sarabun New',Tahoma,sans-serif"
+      const TH_FONT     = (sz: number, bold = false) => (bold ? 'bold ' : '') + sz + "px FreesiaUPC,Tahoma,sans-serif"
       const MONO_FONT   = (sz: number) => sz + "px 'Courier New',monospace"
 
       const canvas  = document.createElement('canvas')
