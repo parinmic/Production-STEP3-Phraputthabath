@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 import { Calendar, RefreshCw, AlertTriangle } from 'lucide-react'
 
 interface WithdrawalItem {
@@ -21,7 +22,7 @@ interface ShortageRow {
   quantity: number
   unit: string
   deficit: number | null
-  roundTime: string | null
+  productionTime: string | null
   work_station: string | null
 }
 
@@ -30,6 +31,8 @@ const PHASE_CONFIG = {
   '2': { label: 'Phase 2 — รอบบ่าย',  dotColor: 'bg-orange-500' },
   '3': { label: 'Phase 3 — แผน 100%', dotColor: 'bg-purple-500' },
 } as const
+
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
 
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
@@ -43,10 +46,11 @@ const STATION_DISPLAY: Record<string, string> = {
   'ไหล่':    'ไหล่พิเศษ',
 }
 
-function parseRound(note: string | null): string | null {
-  if (!note) return null
-  const m = note.match(/\[Round:\s*(\d{1,2}:\d{2})\]/)
-  return m ? m[1] : null
+function parseFPSkus(note: string | null): string[] {
+  if (!note) return []
+  const m = note.match(/\[FP:([^\]]+)\]/)
+  if (!m) return []
+  return m[1].split('|').map(p => p.split('~')[0]).filter(Boolean)
 }
 
 function parseDeficit(note: string | null): number | null {
@@ -65,27 +69,62 @@ export default function ShortagePage() {
 
   const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
 
+  const PERIOD_MAP: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
+
   const load = useCallback(async () => {
     setLoad(true)
     try {
-      const res  = await fetch(`/api/withdrawal?date=${date}&phase=${phase}`)
-      const data = await res.json()
-      const items: WithdrawalItem[] = data.items ?? []
+      const period = PERIOD_MAP[phase] ?? 'เช้า'
+
+      const [withdrawalRes, assignRes] = await Promise.all([
+        fetch(`/api/withdrawal?date=${date}&phase=${phase}`).then(r => r.json()),
+        supabase
+          .from('production_assignments')
+          .select('sku, deadline_time, table_name')
+          .eq('production_date', date)
+          .eq('period', period)
+          .like('note', '%|deficit%')
+          .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่']),
+      ])
+
+      const items: WithdrawalItem[] = withdrawalRes.items ?? []
+
+      // Map station+normSku -> earliest deadline_time (HH:MM) among deficit assignments
+      const deficitTimeMap = new Map<string, string>()
+      for (const a of assignRes.data ?? []) {
+        const normSku  = String(a.sku).replace(/^0+/, '')
+        const key      = `${a.table_name}|||${normSku}`
+        const dt       = String(a.deadline_time ?? '').slice(0, 5)
+        const existing = deficitTimeMap.get(key)
+        if (dt && (!existing || dt < existing)) deficitTimeMap.set(key, dt)
+      }
 
       const shortage = items
         .filter(i => i.note?.includes('ไม่เพียงพอ'))
-        .map(i => ({
-          sku:          i.sku,
-          sku_name:     i.sku_name,
-          quantity:     i.quantity,
-          unit:         i.unit,
-          deficit:      parseDeficit(i.note),
-          roundTime:    parseRound(i.note),
-          work_station: i.work_station,
-        }))
+        .map(i => {
+          const fpSkus = parseFPSkus(i.note)
+          let productionTime: string | null = null
+          for (const fpSku of fpSkus) {
+            const normFp = fpSku.replace(/^0+/, '')
+            const dt = deficitTimeMap.get(`${i.work_station}|||${normFp}`)
+            if (dt && (!productionTime || dt < productionTime)) productionTime = dt
+          }
+          return {
+            sku:            i.sku,
+            sku_name:       i.sku_name,
+            quantity:       i.quantity,
+            unit:           i.unit,
+            deficit:        parseDeficit(i.note),
+            productionTime,
+            work_station:   i.work_station,
+          }
+        })
         .sort((a, b) => {
-          const ta = a.roundTime ?? '99:99'
-          const tb = b.roundTime ?? '99:99'
+          const sa = STATION_ORDER.indexOf(a.work_station ?? '')
+          const sb = STATION_ORDER.indexOf(b.work_station ?? '')
+          if (sa !== sb) return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb)
+          const ta = a.productionTime ?? '99:99'
+          const tb = b.productionTime ?? '99:99'
           if (ta !== tb) return ta.localeCompare(tb)
           return (a.sku_name ?? a.sku).localeCompare(b.sku_name ?? b.sku)
         })
@@ -109,7 +148,7 @@ export default function ShortagePage() {
           <AlertTriangle size={22} className="text-red-500" />
           <h1 className="text-2xl font-bold text-gray-900">รายการ Raw รอผลิต</h1>
         </div>
-        <p className="text-gray-500 mt-1">{cfg.label} · วัตถุดิบที่สต็อกไม่เพียงพอ รอจัดหา</p>
+        <p className="text-gray-500 mt-1">{cfg.label} · วัตถุดิบที่สต็อกไม่เพียงพอ รอ STEP 2</p>
       </div>
 
       <div className="card flex flex-wrap items-center gap-4">
@@ -161,8 +200,8 @@ export default function ShortagePage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">วัตถุดิบ</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">ปริมาณที่ต้องการ</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">SAP</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อวัตถุดิบ</th>
                   <th className="px-4 py-3 text-right font-semibold text-red-600">ปริมาณที่ขาด</th>
                   <th className="px-4 py-3 text-center font-semibold text-gray-700">เวลาที่ต้องใช้</th>
                 </tr>
@@ -179,13 +218,8 @@ export default function ShortagePage() {
                         <span className="text-gray-300 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-gray-800">{r.sku_name ?? r.sku}</p>
-                      {r.sku_name && <p className="text-xs text-gray-400">{r.sku}</p>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-gray-900">
-                      {r.quantity.toLocaleString()} <span className="text-gray-400 font-normal">{r.unit}</span>
-                    </td>
+                    <td className="px-4 py-2.5 font-mono text-sm text-gray-600">{r.sku}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-2.5 text-right">
                       {r.deficit != null ? (
                         <span className="font-bold text-red-600">
@@ -196,9 +230,9 @@ export default function ShortagePage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      {r.roundTime ? (
+                      {r.productionTime ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
-                          {r.roundTime} น.
+                          {r.productionTime} น.
                         </span>
                       ) : (
                         <span className="text-gray-300">—</span>
