@@ -1270,8 +1270,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const r = row.row_data as Record<string, unknown>
     const rawStation = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? '').trim())
     const station = STATION_TABLE[rawStation] ?? rawStation
-    const pct = Number(r['%Variance'] ?? 0)
-    if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
+    let pct = Number(r['%Variance'] ?? 0)
+    if (pct > 1) pct = pct / 100
+    if (station && pct > 0) lotusVarianceMap.set(station, pct)
   }
 
   // Parse WM variance params: [nonSharedHigh, nonSharedLow, sharedHigh, sharedLow]
@@ -1279,7 +1280,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   for (const row of masterVarWMRaw ?? []) {
     const vals = Object.values(row.row_data as Record<string, unknown>)
     if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
-      const nums = vals.filter(v => typeof v === 'number') as number[]
+      const nums = vals.filter(v => typeof v === 'number').map(v => v > 1 ? v / 100 : v) as number[]
       if (nums.length >= 4) { wmVarParams = [nums[0], nums[1], nums[2], nums[3]]; break }
     }
   }
@@ -1290,7 +1291,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   for (const row of masterVarMakroRaw ?? []) {
     const vals = Object.values(row.row_data as Record<string, unknown>)
     if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
-      const nums = vals.filter(v => typeof v === 'number') as number[]
+      const nums = vals.filter(v => typeof v === 'number').map(v => v > 1 ? v / 100 : v) as number[]
       if (nums.length >= 6) { makroVarParams = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]]; break }
     }
   }
