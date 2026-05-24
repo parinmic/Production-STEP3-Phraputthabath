@@ -294,6 +294,79 @@ function getMakroVariance(
 
 // ========== Worker Assignment ==========
 
+function getWorkerFreeAt(
+  nameKey: string,
+  workerFreeAtMins: Map<string, number>,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  phaseStartMins: number,
+): number {
+  let freeAt = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+  const sorted = [...(workerBusySegments.get(nameKey) ?? [])].sort((a, b) => a.start - b.start)
+  let advanced = true
+  while (advanced) {
+    advanced = false
+    for (const seg of sorted) {
+      if (freeAt >= seg.start - 0.01 && freeAt < seg.end) { freeAt = seg.end; advanced = true }
+    }
+  }
+  return freeAt
+}
+
+function estimateWorkerFinish(
+  freeAt: number,
+  durationMins: number,
+  busySegments: { start: number; end: number }[],
+  limitEnd: number,
+  specialStart: number | null,
+  specialStop: number | null,
+): number | null {
+  let pos = (specialStart !== null) ? Math.max(freeAt, specialStart) : freeAt
+  let targetEnd = (specialStop !== null) ? Math.min(limitEnd, specialStop) : limitEnd
+  let remaining = durationMins
+  const sortedSegs = [...busySegments].sort((a, b) => a.start - b.start)
+
+  while (remaining > 0.01) {
+    let advanced = true
+    while (advanced) {
+      advanced = false
+      // Overlap with busy segments
+      for (const seg of sortedSegs) {
+        if (pos >= seg.start - 0.01 && pos < seg.end) {
+          pos = seg.end
+          advanced = true
+        }
+      }
+      // Overlap with breaks
+      for (const [bs, be] of BREAKS) {
+        if (pos >= bs && pos < be) {
+          pos = be
+          advanced = true
+        }
+      }
+    }
+
+    if (pos >= targetEnd) return null // exceeds limit/deadline
+
+    // Find next event (next busy segment start, next break start, or targetEnd)
+    let nextEvent = targetEnd
+    for (const seg of sortedSegs) {
+      if (seg.start > pos) nextEvent = Math.min(nextEvent, seg.start)
+    }
+    for (const [bs, be] of BREAKS) {
+      if (bs > pos) nextEvent = Math.min(nextEvent, bs)
+    }
+
+    const chunk = nextEvent - pos
+    if (remaining <= chunk) {
+      return pos + remaining
+    } else {
+      remaining -= chunk
+      pos = nextEvent
+    }
+  }
+  return pos
+}
+
 function allocateBalanced(params: {
   productionDate: string
   tableName: string
@@ -318,8 +391,49 @@ function allocateBalanced(params: {
 
   if (!targets.length || !workers.length) return []
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // 1. Break targets into units (bags or 1kg units)
+  interface Unit {
+    sku: string
+    skuName: string | null
+    weight: number
+    duration: number // hours
+    isDeficit: boolean
+    channel: string
+    productGroup: string
+    rate: number
+  }
 
+  const units: Unit[] = []
+  for (const t of targets) {
+    const cleanSku = t.sku.replace(/^0+/, '')
+    const prod = skuMap.get(cleanSku) ?? skuMap.get(t.sku)
+    if (!prod) continue
+
+    const rate = prod.rate
+    if (rate <= 0) continue
+
+    const wpb = t.channel === 'Makro' ? 1 : (wpbMap.get(cleanSku) ?? wpbMap.get(t.sku) ?? 1)
+    const unitQty = wpb > 0 ? wpb : 1
+    const numUnits = Math.round(t.targetQty / unitQty)
+
+    for (let i = 0; i < numUnits; i++) {
+      units.push({
+        sku: t.sku,
+        skuName: prod.sku_name || t.skuName || null,
+        weight: unitQty,
+        duration: unitQty / rate,
+        isDeficit: t.isDeficit || false,
+        channel: t.channel,
+        productGroup: prod.product_group,
+        rate
+      })
+    }
+  }
+
+  // Sort units by duration descending (LPT first)
+  units.sort((a, b) => b.duration - a.duration)
+
+  // 2. Helper to check if a worker is eligible for a product group
   const isWorkerEligible = (worker: WorkforceRow, skuGroup: string): boolean => {
     if (jobAssignMap.size === 0) return true
     const jobInfo = jobAssignMap.get(normName(worker.name))
@@ -328,165 +442,282 @@ function allocateBalanced(params: {
     return skuGroup ? jobInfo.groups.has(skuGroup) : true
   }
 
+  // 3. Helper to get worker's skill level for a product group (lower is better, 99 if none)
   const getWorkerSkillLevel = (worker: WorkforceRow, skuGroup: string): number => {
     if (jobAssignMap.size === 0) return 1
     const jobInfo = jobAssignMap.get(normName(worker.name))
     return jobInfo?.groups.get(skuGroup) ?? 99
   }
 
+  // Track worker round quantities: workerName -> Map<sku, Map<roundMins, qty>>
+  const workerSkuRoundQty = new Map<string, Map<string, Map<number, number>>>()
+  // Track total quantity assigned to worker per SKU: workerName -> Map<sku, number>
+  const workerSkuQty = new Map<string, Map<string, number>>()
+  // Track if SKU is deficit for worker: workerName -> Map<sku, boolean>
+  const workerSkuDeficit = new Map<string, Map<string, boolean>>()
+  // Track earliest start time per SKU: workerName -> Map<sku, number>
+  const workerSkuEarliestStart = new Map<string, Map<string, number>>()
+
+  const getRoundMins = (t: number, roundMinsList: number[]): number => {
+    let round = roundMinsList[0]
+    for (const r of roundMinsList) {
+      if (t >= r) round = r
+      else break
+    }
+    return round
+  }
+
   const phaseStartMins = phaseRoundMins[0] ?? 510
 
-  // ── Rounds note for a continuous block ───────────────────────────────────
-  // Distributes qty across phase checkpoints proportionally to available work time.
-  const computeRoundsNote = (startMins: number, qty: number, rate: number): string => {
-    const roundMap = new Map<number, number>()
-    let remaining = qty
-    let pos = startMins
-    let guard = 0
-    while (remaining > 0.05 && pos < phaseEndMins && guard++ < 60) {
-      let round = phaseRoundMins[0]
-      for (const r of phaseRoundMins) { if (pos >= r) round = r; else break }
-      const ri = phaseRoundMins.lastIndexOf(round)
-      const windowEnd = ri + 1 < phaseRoundMins.length ? phaseRoundMins[ri + 1] : phaseEndMins
-      const avail = availableWorkMins(pos, windowEnd)
-      if (avail <= 0) { pos = windowEnd; continue }
-      const here = Math.min(remaining, (avail / 60) * rate)
-      roundMap.set(round, (roundMap.get(round) ?? 0) + here)
-      remaining -= here
-      pos = wallClockFinish(pos, (here / rate) * 60)
-      if (pos < windowEnd) pos = windowEnd
-    }
-    return 'rounds:' + Array.from(roundMap.entries())
-      .map(([r, q]) => `${r}=${Math.round(q * 100) / 100}`).join(';')
-  }
+  // 4. Allocate units
+  for (const unit of units) {
+    let bestWorker: WorkforceRow | null = null
+    let bestNewFinish = Infinity
+    let bestSkillLevel = 99
+    let bestRemainingHrs = -Infinity
+    let bestStartMins = 0
 
-  // ── SKU-Level Balanced Assignment ────────────────────────────────────────
-  // Algorithm:
-  //   1. Sort SKUs by total work time descending (LPT at SKU level).
-  //   2. For each SKU, assign the entire block to the eligible worker(s) with
-  //      the least committed load (min-load-first).  If one worker cannot absorb
-  //      the whole quantity, spill the remainder to the next least-loaded worker.
-  //   3. Result: each worker does one continuous block per SKU → no mid-SKU
-  //      switching, finish times are naturally balanced.
+    // Filter to eligible workers
+    const eligible = workers.filter(w => isWorkerEligible(w, unit.productGroup))
+    if (!eligible.length) continue
 
-  interface SkuEntry {
-    target: typeof targets[0]
-    prod: ProductivityRow
-    rate: number
-    wpb: number
-    totalWorkMins: number
-    specialStart: number | null
-    specialStop:  number | null
-  }
+    const specialTime = specialTimeMap.get(unit.sku) ?? specialTimeMap.get(unit.sku.replace(/^0+/, ''))
+    const specialStart = specialTime?.startMins ?? null
+    const specialStop = specialTime?.stopMins ?? null
 
-  const skuEntries: SkuEntry[] = []
-  for (const t of targets) {
-    const clean = t.sku.replace(/^0+/, '')
-    const prod  = skuMap.get(clean) ?? skuMap.get(t.sku)
-    if (!prod || prod.rate <= 0) continue
-    const wpb = t.channel === 'Makro' ? 1 : (wpbMap.get(clean) ?? wpbMap.get(t.sku) ?? 1)
-    const info = specialTimeMap.get(clean) ?? specialTimeMap.get(t.sku)
-    skuEntries.push({
-      target: t,
-      prod,
-      rate: prod.rate,
-      wpb: wpb > 0 ? wpb : 1,
-      totalWorkMins: (t.targetQty / prod.rate) * 60,
-      specialStart: info?.startMins ?? null,
-      specialStop:  info?.stopMins  ?? null,
-    })
-  }
-  skuEntries.sort((a, b) => b.totalWorkMins - a.totalWorkMins)
+    for (const w of eligible) {
+      const nameKey = normName(w.name)
+      const currentFree = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+      const remainingHours = workerHours.get(nameKey) ?? 0
 
-  // committed work minutes per worker (local to this call, for load-balancing sort)
-  const workerLoad = new Map<string, number>()
+      // Enforce shift capacity limit (with a tiny 0.01 tolerance)
+      if (remainingHours < unit.duration - 0.01) continue
 
-  const result: Record<string, unknown>[] = []
+      const limitEnd = phaseEndMins
+      const segs = workerBusySegments.get(nameKey) ?? []
 
-  for (const entry of skuEntries) {
-    const { target, prod, rate, wpb, specialStart, specialStop } = entry
-    const effectiveEnd = specialStop !== null && specialStop < phaseEndMins
-      ? specialStop : phaseEndMins
+      // Estimate finish time
+      const newFinish = estimateWorkerFinish(
+        currentFree,
+        unit.duration * 60,
+        segs,
+        limitEnd,
+        specialStart,
+        specialStop
+      )
 
-    let remaining = target.targetQty
+      if (newFinish === null) continue // exceeds limit/deadline
 
-    // Eligible workers sorted by ascending committed load (then skill level as tiebreak)
-    const sorted = workers
-      .filter(w => {
-        if (!isWorkerEligible(w, prod.product_group)) return false
-        const nk = normName(w.name)
-        if ((workerHours.get(nk) ?? 0) <= 0) return false
-        const free = workerFreeAtMins.get(nk) ?? phaseStartMins
-        const start = specialStart !== null ? Math.max(free, specialStart) : free
-        return start < effectiveEnd
-      })
-      .sort((a, b) => {
-        const la = workerLoad.get(normName(a.name)) ?? 0
-        const lb = workerLoad.get(normName(b.name)) ?? 0
-        if (Math.abs(la - lb) > 1) return la - lb
-        return getWorkerSkillLevel(a, prod.product_group) -
-               getWorkerSkillLevel(b, prod.product_group)
-      })
+      const lv = getWorkerSkillLevel(w, unit.productGroup)
 
-    // Cap workers per SKU based on quantity tiers; also cap per-worker qty at 15 kg
-    // so that large SKUs are always shared across multiple people.
-    const qty = target.targetQty
-    const maxWorkers    = qty <= 15 ? 1 : qty <= 30 ? 2 : qty <= 45 ? 3 : Infinity
-    const maxQtyPerWorker = qty > 15 ? 15 : Infinity
-    const candidates = maxWorkers === Infinity ? sorted : sorted.slice(0, maxWorkers)
-
-    for (const w of candidates) {
-      if (remaining < 0.1) break
-
-      const nk        = normName(w.name)
-      const freeMins  = workerFreeAtMins.get(nk) ?? phaseStartMins
-      const startMins = specialStart !== null ? Math.max(freeMins, specialStart) : freeMins
-      if (startMins >= effectiveEnd) continue
-
-      const availMins    = availableWorkMins(startMins, effectiveEnd)
-      if (availMins <= 0) continue
-      const maxByTime    = (availMins / 60) * rate
-      const maxByHours   = (workerHours.get(nk) ?? 0) * rate
-
-      let assignQty = Math.min(remaining, maxByTime, maxByHours, maxQtyPerWorker)
-      if (wpb > 1) {
-        const bags = Math.floor(assignQty / wpb)
-        if (bags === 0) continue
-        assignQty = bags * wpb
+      // Compare to find the best candidate
+      let isBetter = false
+      if (bestWorker === null) {
+        isBetter = true
       } else {
-        assignQty = Math.round(assignQty)
-        if (assignQty === 0) continue
+        const diff = newFinish - bestNewFinish
+        if (Math.abs(diff) > 15) {
+          isBetter = diff < 0
+        } else {
+          if (lv !== bestSkillLevel) {
+            isBetter = lv < bestSkillLevel
+          } else {
+            if (remainingHours !== bestRemainingHrs) {
+              isBetter = remainingHours > bestRemainingHrs
+            } else {
+              isBetter = newFinish < bestNewFinish
+            }
+          }
+        }
       }
 
-      const workMins = (assignQty / rate) * 60
-      const endMins  = wallClockFinish(startMins, workMins)
+      if (isBetter) {
+        bestWorker = w
+        bestNewFinish = newFinish
+        bestSkillLevel = lv
+        bestRemainingHrs = remainingHours
+        bestStartMins = (specialStart !== null) ? Math.max(currentFree, specialStart) : currentFree
+      }
+    }
+
+    // Fallback: if no worker has enough remaining shift capacity, try relaxing the remainingHours constraint
+    if (bestWorker === null) {
+      for (const w of eligible) {
+        const nameKey = normName(w.name)
+        const currentFree = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+        const remainingHours = workerHours.get(nameKey) ?? 0
+        const limitEnd = phaseEndMins
+        const segs = workerBusySegments.get(nameKey) ?? []
+
+        const newFinish = estimateWorkerFinish(
+          currentFree,
+          unit.duration * 60,
+          segs,
+          limitEnd,
+          specialStart,
+          specialStop
+        )
+        if (newFinish === null) continue
+
+        const lv = getWorkerSkillLevel(w, unit.productGroup)
+        let isBetter = false
+        if (bestWorker === null) {
+          isBetter = true
+        } else {
+          const diff = newFinish - bestNewFinish
+          if (Math.abs(diff) > 15) {
+            isBetter = diff < 0
+          } else {
+            if (lv !== bestSkillLevel) {
+              isBetter = lv < bestSkillLevel
+            } else {
+              isBetter = newFinish < bestNewFinish
+            }
+          }
+        }
+
+        if (isBetter) {
+          bestWorker = w
+          bestNewFinish = newFinish
+          bestSkillLevel = lv
+          bestRemainingHrs = remainingHours
+          bestStartMins = (specialStart !== null) ? Math.max(currentFree, specialStart) : currentFree
+        }
+      }
+    }
+
+    // Fallback 2: if still null, relax specialStop and limitEnd constraints to force allocation
+    if (bestWorker === null) {
+      for (const w of eligible) {
+        const nameKey = normName(w.name)
+        const currentFree = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+        const remainingHours = workerHours.get(nameKey) ?? 0
+        const segs = workerBusySegments.get(nameKey) ?? []
+
+        // Estimate with relaxed limitEnd
+        const newFinish = estimateWorkerFinish(
+          currentFree,
+          unit.duration * 60,
+          segs,
+          9999, // very large limit
+          specialStart,
+          null
+        )
+        if (newFinish === null) continue
+
+        const lv = getWorkerSkillLevel(w, unit.productGroup)
+        let isBetter = false
+        if (bestWorker === null) {
+          isBetter = true
+        } else {
+          const diff = newFinish - bestNewFinish
+          if (Math.abs(diff) > 15) {
+            isBetter = diff < 0
+          } else {
+            if (lv !== bestSkillLevel) {
+              isBetter = lv < bestSkillLevel
+            } else {
+              isBetter = newFinish < bestNewFinish
+            }
+          }
+        }
+
+        if (isBetter) {
+          bestWorker = w
+          bestNewFinish = newFinish
+          bestSkillLevel = lv
+          bestRemainingHrs = remainingHours
+          bestStartMins = (specialStart !== null) ? Math.max(currentFree, specialStart) : currentFree
+        }
+      }
+    }
+
+    if (bestWorker === null) {
+      // If we literally have no eligible worker at all, skip unit
+      continue
+    }
+
+    // Assign unit to bestWorker
+    const nameKey = normName(bestWorker.name)
+    const segs = workerBusySegments.get(nameKey) ?? []
+    segs.push({ start: bestStartMins, end: bestNewFinish })
+    workerBusySegments.set(nameKey, segs)
+
+    // Advance workerFreeAtMins past busy segments
+    workerFreeAtMins.set(nameKey, getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins))
+    workerHours.set(nameKey, Math.max(0, bestRemainingHrs - unit.duration))
+
+    // Track statistics for generating assignments (key = channel|||sku to keep channels separate)
+    const skuChKey = `${unit.channel}|||${unit.sku}`
+
+    // 1. Sku Qty
+    const sqMap = workerSkuQty.get(nameKey) ?? new Map<string, number>()
+    sqMap.set(skuChKey, (sqMap.get(skuChKey) ?? 0) + unit.weight)
+    workerSkuQty.set(nameKey, sqMap)
+
+    // 2. Deficit
+    const sdMap = workerSkuDeficit.get(nameKey) ?? new Map<string, boolean>()
+    if (unit.isDeficit) sdMap.set(skuChKey, true)
+    workerSkuDeficit.set(nameKey, sdMap)
+
+    // 3. Rounds Qty
+    const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
+    const rMap = srMap.get(skuChKey) ?? new Map<number, number>()
+    const segRound = getRoundMins(bestStartMins, phaseRoundMins)
+    rMap.set(segRound, (rMap.get(segRound) ?? 0) + unit.weight)
+    srMap.set(skuChKey, rMap)
+    workerSkuRoundQty.set(nameKey, srMap)
+
+    // 4. Earliest Start per SKU
+    const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
+    if (!seMap.has(skuChKey) || bestStartMins < (seMap.get(skuChKey) ?? Infinity)) {
+      seMap.set(skuChKey, bestStartMins)
+    }
+    workerSkuEarliestStart.set(nameKey, seMap)
+  }
+
+  // 5. Build assignment records
+  const result: Record<string, unknown>[] = []
+  for (const w of workers) {
+    const nameKey = normName(w.name)
+    const sqMap = workerSkuQty.get(nameKey)
+    if (!sqMap) continue
+
+    for (const [skuChKey, qty] of Array.from(sqMap.entries())) {
+      if (qty < 0.1) continue
+      const sepIdx = skuChKey.indexOf('|||')
+      const channel = sepIdx >= 0 ? skuChKey.slice(0, sepIdx) : ''
+      const sku     = sepIdx >= 0 ? skuChKey.slice(sepIdx + 3) : skuChKey
+      const isDeficit = workerSkuDeficit.get(nameKey)?.get(skuChKey) ?? false
+      const srMap = workerSkuRoundQty.get(nameKey)
+      const rMap = srMap?.get(skuChKey)
+
+      const roundsNote = 'rounds:' + (rMap
+        ? Array.from(rMap.entries())
+            .map(([rm, q]) => `${rm}=${Math.round(q * 100) / 100}`).join(';')
+        : '')
+
+      const skuName = targets.find(t => t.sku === sku && t.channel === channel)?.skuName ?? null
+
+      // Estimate starting time of the first unit for this SKU+channel
+      const earliestStart = workerSkuEarliestStart.get(nameKey)?.get(skuChKey) ?? phaseStartMins
 
       result.push({
         production_date: productionDate,
         table_name:      tableName,
         worker_code:     w.emp_id,
         worker_name:     w.name,
-        sku:             target.sku,
-        sku_name:        prod.sku_name || target.skuName || null,
-        target_quantity: Math.round(assignQty * 100) / 100,
+        sku,
+        sku_name:        skuName,
+        target_quantity: Math.round(qty * 100) / 100,
         unit:            'กก.',
         period,
-        deadline_time:   minsToTimeStr(startMins),
-        note:            computeRoundsNote(startMins, assignQty, rate),
+        deadline_time:   minsToTimeStr(earliestStart),
+        note:            roundsNote,
         status:          'รอดำเนินการ',
-        channel:         target.channel,
-        is_deficit:      target.isDeficit || false,
+        channel,
+        is_deficit:      isDeficit,
       })
-
-      // Update shared state
-      workerFreeAtMins.set(nk, endMins)
-      workerHours.set(nk, Math.max(0, (workerHours.get(nk) ?? 0) - workMins / 60))
-      const segs = workerBusySegments.get(nk) ?? []
-      segs.push({ start: startMins, end: endMins })
-      workerBusySegments.set(nk, segs)
-      workerLoad.set(nk, (workerLoad.get(nk) ?? 0) + workMins)
-
-      remaining -= assignQty
     }
   }
 
