@@ -1932,7 +1932,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   for (const a of assignments) {
     const name = a.worker_name as string
     byWorkerPost[name] ??= []
-    const isDeficit = a.is_deficit || a.note?.includes('|deficit') || false
+    const isDeficit = (a as any).is_deficit || String((a as any).note ?? '').includes('|deficit') || false
     byWorkerPost[name].push({ ...a, is_deficit: isDeficit })
   }
 
