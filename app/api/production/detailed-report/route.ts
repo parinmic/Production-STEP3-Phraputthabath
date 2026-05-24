@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     if (!effectiveFrom) continue
     const { data } = await supabase
       .from('production_assignments')
-      .select('table_name, sku, sku_name, target_quantity, channel, period, deadline_time')
+      .select('table_name, sku, sku_name, target_quantity, channel, period, deadline_time, note')
       .eq('production_date', date)
       .eq('period', period)
       .eq('effective_from', effectiveFrom)
@@ -64,9 +64,11 @@ export async function GET(req: NextRequest) {
     const key = `${a.channel ?? ''}||${a.table_name}||${cleanSku}`
     const qty = Number(a.target_quantity ?? 0)
 
-    // Detect deficit task: Phase 1 with deadline ≥ 13:00 (780 min)
+    // Detect deficit task: Check if it's marked as deficit in note or has deadline >= 13:00 (780 min)
     let isDeficitTask = false
-    if (a.period === 'เช้า' && a.deadline_time) {
+    if (a.note?.includes('|deficit')) {
+      isDeficitTask = true
+    } else if (a.period === 'เช้า' && a.deadline_time) {
       const parts = String(a.deadline_time).split(':').map(Number)
       if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
         if (parts[0] * 60 + parts[1] >= 780) isDeficitTask = true

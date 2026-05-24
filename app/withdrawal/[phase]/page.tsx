@@ -301,7 +301,7 @@ export default function WithdrawalPage() {
         const { cleanNote } = parseRoundFromNote(i.note)
         return { ...i, note: cleanNote }
       })
-      const hasLot = cleanedGroup.some(i => parseLotNote(i.note) !== null)
+      const hasLot = cleanedGroup.some(i => parseLotNote(i.note) !== null || i.note?.includes('ไม่เพียงพอ'))
       if (!hasLot) {
         return {
           sku:          first.sku,

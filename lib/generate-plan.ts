@@ -851,8 +851,10 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
 
   const parseRoundNote = (note: string | null): Map<number, number> => {
     const result = new Map<number, number>()
-    if (!note?.startsWith('rounds:')) return result
-    for (const part of note.replace('rounds:', '').split(';')) {
+    if (!note) return result
+    const cleanNote = note.split('|')[0]
+    if (!cleanNote.startsWith('rounds:')) return result
+    for (const part of cleanNote.replace('rounds:', '').split(';')) {
       const [rStr, qStr] = part.split('=')
       if (rStr && qStr) result.set(parseInt(rStr), parseFloat(qStr))
     }
@@ -1930,7 +1932,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   for (const a of assignments) {
     const name = a.worker_name as string
     byWorkerPost[name] ??= []
-    byWorkerPost[name].push(a)
+    const isDeficit = a.is_deficit || a.note?.includes('|deficit') || false
+    byWorkerPost[name].push({ ...a, is_deficit: isDeficit })
   }
 
   const resequenced: any[] = []
@@ -1958,6 +1961,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (a.isKept && !b.isKept) return -1
       if (!a.isKept && b.isKept) return 1
       if (a.isKept && b.isKept) return 0
+
+      // Normal tasks (is_deficit = false) MUST run before deficit tasks (is_deficit = true)
+      const defA = a.is_deficit ? 1 : 0
+      const defB = b.is_deficit ? 1 : 0
+      if (defA !== defB) return defA - defB
 
       const normSkuA = (a.sku as string).replace(/^0+/, '')
       const normSkuB = (b.sku as string).replace(/^0+/, '')
@@ -2055,7 +2063,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  resequenced.forEach((a, i) => { a['seq'] = i; a['effective_from'] = effectiveFromISO; delete a.is_deficit })
+  resequenced.forEach((a, i) => { 
+    a['seq'] = i; 
+    a['effective_from'] = effectiveFromISO; 
+    if (a.is_deficit && !a.note?.includes('|deficit')) {
+      a.note = (a.note ?? '') + '|deficit'
+    }
+    delete a.is_deficit 
+  })
   assignments.length = 0
   assignments.push(...resequenced)
 
