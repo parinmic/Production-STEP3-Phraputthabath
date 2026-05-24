@@ -60,6 +60,15 @@ function parseDeficit(note: string | null): number | null {
   return parseFloat(m[1].replace(/,/g, ''))
 }
 
+async function loadThSarabun() {
+  if (document.fonts.check("14px 'TH Sarabun New'")) return
+  const link = document.createElement('link')
+  link.rel  = 'stylesheet'
+  link.href = 'https://fonts.googleapis.com/css2?family=TH+Sarabun+New:wght@400;700&display=swap'
+  document.head.appendChild(link)
+  await document.fonts.load("14px 'TH Sarabun New'")
+}
+
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
   const today = new Date().toISOString().split('T')[0]
@@ -91,7 +100,6 @@ export default function ShortagePage() {
 
       const items: WithdrawalItem[] = withdrawalRes.items ?? []
 
-      // Map station+normSku -> earliest deadline_time (HH:MM) among deficit assignments
       const deficitTimeMap = new Map<string, string>()
       for (const a of assignRes.data ?? []) {
         const normSku  = String(a.sku).replace(/^0+/, '')
@@ -112,13 +120,13 @@ export default function ShortagePage() {
             if (dt && (!productionTime || dt < productionTime)) productionTime = dt
           }
           return {
-            sku:            i.sku,
-            sku_name:       i.sku_name,
-            quantity:       i.quantity,
-            unit:           i.unit,
-            deficit:        parseDeficit(i.note),
+            sku:          i.sku,
+            sku_name:     i.sku_name,
+            quantity:     i.quantity,
+            unit:         i.unit,
+            deficit:      parseDeficit(i.note),
             productionTime,
-            work_station:   i.work_station,
+            work_station: i.work_station,
           }
         })
         .sort((a, b) => {
@@ -139,30 +147,32 @@ export default function ShortagePage() {
 
   useEffect(() => { load() }, [load])
 
-  const exportImage = () => {
+  const exportImage = async () => {
     setExp(true)
     try {
+      await loadThSarabun()
+
       const dDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
         day: 'numeric', month: 'long', year: 'numeric',
       })
 
-      const DPR     = 2
-      const COL_W   = [140, 120, 220, 120, 100]
-      const W       = COL_W.reduce((a, b) => a + b, 0)
-      const BANNER  = 44
-      const TH      = 38
-      const RH      = 34
-      const H       = BANNER + TH + rows.length * RH + 1
-      const FONT    = '13px Tahoma,Arial,sans-serif'
-      const BOLD    = 'bold 13px Tahoma,Arial,sans-serif'
-      const SMALL_B = 'bold 11px Tahoma,Arial,sans-serif'
-      const MONO    = '12px "Courier New",monospace'
+      const DPR    = 2
+      const COL_W  = [155, 130, 240, 130, 110]
+      const W      = COL_W.reduce((a, b) => a + b, 0)
+      const BANNER = 50
+      const TH_H   = 42
+      const RH     = 38
+      const H      = BANNER + TH_H + rows.length * RH + 1
+
+      const TH_FONT     = (sz: number, bold = false) => (bold ? 'bold ' : '') + sz + "px 'TH Sarabun New',Tahoma,sans-serif"
+      const MONO_FONT   = (sz: number) => sz + "px 'Courier New',monospace"
 
       const canvas  = document.createElement('canvas')
       canvas.width  = W * DPR
       canvas.height = H * DPR
       const ctx     = canvas.getContext('2d')!
       ctx.scale(DPR, DPR)
+      ctx.textBaseline = 'middle'
 
       // White bg
       ctx.fillStyle = '#fff'
@@ -173,23 +183,26 @@ export default function ShortagePage() {
       ctx.fillRect(0, 0, W, BANNER)
       ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(0, BANNER); ctx.lineTo(W, BANNER); ctx.stroke()
-      ctx.fillStyle = '#b91c1c'; ctx.font = BOLD; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = '#b91c1c'
+      ctx.font = TH_FONT(15, true)
+      ctx.textAlign = 'left'
       ctx.fillText('Raw รอผลิต ' + rows.length + ' รายการ · ' + dDisplay + ' · ' + cfg.label, 16, BANNER / 2)
 
       // Header row
       ctx.fillStyle = '#f9fafb'
-      ctx.fillRect(0, BANNER, W, TH)
+      ctx.fillRect(0, BANNER, W, TH_H)
       ctx.strokeStyle = '#e5e7eb'
-      ctx.beginPath(); ctx.moveTo(0, BANNER + TH); ctx.lineTo(W, BANNER + TH); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(0, BANNER + TH_H); ctx.lineTo(W, BANNER + TH_H); ctx.stroke()
 
-      const headers   = ['Station', 'SAP', 'ชื่อวัตถุดิบ', 'ปริมาณที่ขาด', 'เวลาที่ต้องใช้']
-      const hColors   = ['#374151','#374151','#374151','#dc2626','#374151']
+      const headers  = ['Station', 'SAP', 'ชื่อวัตถุดิบ', 'ปริมาณที่ขาด', 'เวลาที่ต้องใช้']
+      const hColors  = ['#374151','#374151','#374151','#dc2626','#374151']
       const hAlign: CanvasTextAlign[] = ['left','left','left','center','center']
       let hx = 0
       headers.forEach((h, i) => {
-        ctx.fillStyle = hColors[i]; ctx.font = 'bold 12px Tahoma,Arial,sans-serif'
+        ctx.fillStyle = hColors[i]
+        ctx.font = TH_FONT(13, true)
         ctx.textAlign = hAlign[i]
-        ctx.fillText(h, hAlign[i] === 'center' ? hx + COL_W[i] / 2 : hx + 14, BANNER + TH / 2)
+        ctx.fillText(h, hAlign[i] === 'center' ? hx + COL_W[i] / 2 : hx + 14, BANNER + TH_H / 2)
         hx += COL_W[i]
       })
 
@@ -200,7 +213,7 @@ export default function ShortagePage() {
       }
 
       rows.forEach((r, i) => {
-        const y = BANNER + TH + i * RH
+        const y = BANNER + TH_H + i * RH
         ctx.fillStyle = i % 2 === 0 ? '#fff' : '#fafafa'
         ctx.fillRect(0, y, W, RH)
         ctx.strokeStyle = '#f3f4f6'
@@ -211,11 +224,11 @@ export default function ShortagePage() {
 
         // Station badge
         const sc = SC[r.work_station ?? '']
-        ctx.font = SMALL_B; ctx.textAlign = 'left'
+        ctx.font = TH_FONT(12, true); ctx.textAlign = 'left'
         if (sc) {
           const [bg, fg, label] = sc
           const tw = ctx.measureText(label).width
-          const bx = cx + 14, by = cy - 9, bw = tw + 14, bh = 18
+          const bx = cx + 14, by = cy - 10, bw = tw + 14, bh = 20
           ctx.fillStyle = bg; ctx.fillRect(bx, by, bw, bh)
           ctx.fillStyle = fg; ctx.fillText(label, bx + 7, cy)
         } else {
@@ -224,27 +237,26 @@ export default function ShortagePage() {
         cx += COL_W[0]
 
         // SAP
-        ctx.fillStyle = '#4b5563'; ctx.font = MONO; ctx.textAlign = 'left'
+        ctx.fillStyle = '#4b5563'; ctx.font = MONO_FONT(12); ctx.textAlign = 'left'
         ctx.fillText(r.sku, cx + 14, cy)
         cx += COL_W[1]
 
-        // Name (truncate)
-        ctx.fillStyle = '#1f2937'; ctx.font = FONT; ctx.textAlign = 'left'
+        // Name (truncate if needed)
+        ctx.font = TH_FONT(14); ctx.fillStyle = '#1f2937'; ctx.textAlign = 'left'
         let nm = r.sku_name ?? '—'
-        const maxW = COL_W[2] - 28
-        ctx.font = FONT
-        while (nm.length > 1 && ctx.measureText(nm).width > maxW) nm = nm.slice(0, -1)
+        const maxNmW = COL_W[2] - 28
+        while (nm.length > 1 && ctx.measureText(nm).width > maxNmW) nm = nm.slice(0, -1)
         if (nm !== (r.sku_name ?? '—')) nm += '…'
         ctx.fillText(nm, cx + 14, cy)
         cx += COL_W[2]
 
         // Deficit
-        ctx.fillStyle = '#dc2626'; ctx.font = BOLD; ctx.textAlign = 'center'
+        ctx.fillStyle = '#dc2626'; ctx.font = TH_FONT(14, true); ctx.textAlign = 'center'
         ctx.fillText(r.deficit != null ? r.deficit.toLocaleString() + ' กก.' : '—', cx + COL_W[3] / 2, cy)
         cx += COL_W[3]
 
         // Time
-        ctx.fillStyle = '#1f2937'; ctx.font = FONT; ctx.textAlign = 'center'
+        ctx.fillStyle = '#1f2937'; ctx.font = TH_FONT(14); ctx.textAlign = 'center'
         ctx.fillText(r.productionTime ? r.productionTime + ' น.' : '—', cx + COL_W[4] / 2, cy)
       })
 
@@ -256,8 +268,10 @@ export default function ShortagePage() {
         if (!blob) return
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
-        a.href = url; a.download = 'Raw_รอผลิต_Phase' + phase + '_' + date + '.png'
-        a.click(); URL.revokeObjectURL(url)
+        a.href = url
+        a.download = 'Raw_รอผลิต_Phase' + phase + '_' + date + '.png'
+        a.click()
+        URL.revokeObjectURL(url)
       }, 'image/png')
     } finally {
       setExp(false)
@@ -269,41 +283,38 @@ export default function ShortagePage() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <div className="flex items-center gap-2">
-          <AlertTriangle size={22} className="text-red-500" />
-          <h1 className="text-2xl font-bold text-gray-900">รายการ Raw รอผลิต</h1>
+          <AlertTriangle size={20} className="text-red-500" />
+          <h1 className="text-xl font-bold text-gray-900">รายการ Raw รอผลิต</h1>
         </div>
-        <p className="text-gray-500 mt-1">{cfg.label} · วัตถุดิบที่สต็อกไม่เพียงพอ รอ STEP 2</p>
+        <p className="text-gray-500 text-sm mt-0.5">{cfg.label} · วัตถุดิบที่สต็อกไม่เพียงพอ รอ STEP 2</p>
       </div>
 
-      <div className="card flex flex-wrap items-center gap-4">
-        <Calendar size={20} className="text-blue-500 shrink-0" />
-        <label className="font-medium text-gray-700 whitespace-nowrap">วันที่ผลิต</label>
-        <input
-          type="date"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button onClick={load} disabled={loading}
-          className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          รีโหลด
-        </button>
-        {rows.length > 0 && (
-          <>
-            <span className="text-sm text-gray-500 sm:ml-auto">
-              {rows.length} รายการขาด
-            </span>
-            <button
-              onClick={exportImage}
-              disabled={exporting}
-              className="flex items-center justify-center text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors disabled:opacity-50">
-              <Download size={18} className={exporting ? 'animate-pulse' : ''} />
+      {/* Toolbar — single row on mobile */}
+      <div className="card py-3 px-4">
+        <div className="flex items-center gap-2">
+          <Calendar size={16} className="text-blue-500 shrink-0" />
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button onClick={load} disabled={loading}
+            className="flex items-center justify-center p-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50 shrink-0">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
+          {rows.length > 0 && (
+            <button onClick={exportImage} disabled={exporting}
+              className="flex items-center justify-center p-2 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors disabled:opacity-50 shrink-0">
+              <Download size={15} className={exporting ? 'animate-pulse' : ''} />
             </button>
-          </>
+          )}
+        </div>
+        {rows.length > 0 && (
+          <p className="text-xs text-gray-400 mt-2">{rows.length} รายการขาด · {dateDisplay}</p>
         )}
       </div>
 
@@ -318,58 +329,50 @@ export default function ShortagePage() {
         <div className="card text-center py-12 text-gray-400">
           <AlertTriangle size={32} className="mx-auto mb-3 text-gray-300" />
           <p className="font-medium text-gray-500">ไม่พบสินค้าขาด</p>
-          <p className="text-sm mt-1">{cfg.label} · วันที่ {dateDisplay}</p>
+          <p className="text-sm mt-1">{cfg.label} · {dateDisplay}</p>
         </div>
       )}
 
       {!loading && rows.length > 0 && (
         <div ref={captureRef} className="card p-0 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-red-50 flex items-center gap-2">
-            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+          <div className="px-4 py-3 border-b border-gray-100 bg-red-50 flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-500 shrink-0" />
             <span className="text-sm font-semibold text-red-700">
               Raw รอผลิต {rows.length} รายการ · {dateDisplay}
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[560px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">SAP</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อวัตถุดิบ</th>
-                  <th className="px-4 py-3 text-right font-semibold text-red-600">ปริมาณที่ขาด</th>
-                  <th className="px-4 py-3 text-center font-semibold text-gray-700">เวลาที่ต้องใช้</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700 whitespace-nowrap">Station</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700 whitespace-nowrap">SAP</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700">ชื่อวัตถุดิบ</th>
+                  <th className="px-3 py-3 text-right font-semibold text-red-600 whitespace-nowrap">ปริมาณที่ขาด</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 whitespace-nowrap">เวลาที่ต้องใช้</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => (
                   <tr key={`${r.sku}-${i}`} className="hover:bg-red-50/40">
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       {r.work_station ? (
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.work_station] ?? 'bg-gray-100 text-gray-700'}`}>
                           {STATION_DISPLAY[r.work_station] ?? r.work_station}
                         </span>
-                      ) : (
-                        <span className="text-gray-300 text-xs">—</span>
-                      )}
+                      ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-sm text-gray-600">{r.sku}</td>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{r.sku}</td>
+                    <td className="px-3 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {r.deficit != null ? (
                         <span className="font-bold text-red-600">
-                          {r.deficit.toLocaleString()} <span className="font-normal text-red-400">กก.</span>
+                          {r.deficit.toLocaleString()} <span className="font-normal text-red-400 text-xs">กก.</span>
                         </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
+                      ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {r.productionTime ? (
-                        <span className="text-sm text-gray-800">{r.productionTime} น.</span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
+                    <td className="px-3 py-2.5 text-center whitespace-nowrap text-gray-800">
+                      {r.productionTime ? r.productionTime + ' น.' : <span className="text-gray-300">—</span>}
                     </td>
                   </tr>
                 ))}
