@@ -1875,19 +1875,38 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   const resequenced: any[] = []
   for (const workerTasks of Object.values(byWorkerPost)) {
+    const getPriority = (ch: string) => ch === 'เสริม' ? 0 : channelPriority[ch] ?? 99
+
+    // Compute SKU group order: group same-SKU tasks together, ordered by the SKU's
+    // earliest (channel priority, deadline_time) so overall channel ordering is preserved.
+    const skuFirstKey = new Map<string, { minPrio: number; minDeadline: string }>()
+    for (const task of workerTasks) {
+      if (task.isKept) continue
+      const normSku = (task.sku as string).replace(/^0+/, '')
+      const p = getPriority(task.channel as string)
+      const d = (task.deadline_time as string) || ''
+      const cur = skuFirstKey.get(normSku)
+      if (!cur || p < cur.minPrio || (p === cur.minPrio && d < cur.minDeadline))
+        skuFirstKey.set(normSku, { minPrio: p, minDeadline: d })
+    }
+    const skuGroupOrder = new Map<string, number>()
+    Array.from(skuFirstKey.entries())
+      .sort(([, a], [, b]) => a.minPrio !== b.minPrio ? a.minPrio - b.minPrio : a.minDeadline.localeCompare(b.minDeadline))
+      .forEach(([sku], i) => skuGroupOrder.set(sku, i))
+
     workerTasks.sort((a, b) => {
       if (a.isKept && !b.isKept) return -1
       if (!a.isKept && b.isKept) return 1
       if (a.isKept && b.isKept) return 0
-      
-      const getPriority = (ch: string) => {
-        if (ch === 'เสริม') return 0
-        return channelPriority[ch] ?? 99
-      }
-      const priorityA = getPriority(a.channel)
-      const priorityB = getPriority(b.channel)
-      if (priorityA !== priorityB) return priorityA - priorityB
-      
+
+      const normSkuA = (a.sku as string).replace(/^0+/, '')
+      const normSkuB = (b.sku as string).replace(/^0+/, '')
+      const groupDiff = (skuGroupOrder.get(normSkuA) ?? 999) - (skuGroupOrder.get(normSkuB) ?? 999)
+      if (groupDiff !== 0) return groupDiff
+
+      // Same SKU: sort by channel priority, then deadline_time
+      const pDiff = getPriority(a.channel as string) - getPriority(b.channel as string)
+      if (pDiff !== 0) return pDiff
       return ((a.deadline_time as string) || '').localeCompare((b.deadline_time as string) || '')
     })
 
