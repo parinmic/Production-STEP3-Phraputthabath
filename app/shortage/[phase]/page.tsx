@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Calendar, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Calendar, RefreshCw, AlertTriangle, ImageDown } from 'lucide-react'
 
 interface WithdrawalItem {
   id: string
@@ -66,6 +66,8 @@ export default function ShortagePage() {
   const [date, setDate]     = useState(today)
   const [rows, setRows]     = useState<ShortageRow[]>([])
   const [loading, setLoad]  = useState(false)
+  const [exporting, setExp] = useState(false)
+  const captureRef          = useRef<HTMLDivElement>(null)
 
   const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
 
@@ -137,6 +139,30 @@ export default function ShortagePage() {
 
   useEffect(() => { load() }, [load])
 
+  const exportImage = async () => {
+    if (!captureRef.current) return
+    setExp(true)
+    try {
+      const { toPng } = await import('html-to-image')
+      const el = captureRef.current
+      const fullW = el.offsetWidth
+      const fullH = el.scrollHeight
+      const dataUrl = await toPng(el, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        width: fullW,
+        height: fullH,
+        style: { height: `${fullH}px`, overflow: 'visible', maxHeight: 'none' },
+      })
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `Raw_รอผลิต_Phase${phase}_${date}.png`
+      a.click()
+    } finally {
+      setExp(false)
+    }
+  }
+
   const dateDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
@@ -166,9 +192,18 @@ export default function ShortagePage() {
           รีโหลด
         </button>
         {rows.length > 0 && (
-          <span className="text-sm text-gray-500 sm:ml-auto">
-            {rows.length} รายการขาด
-          </span>
+          <>
+            <span className="text-sm text-gray-500 sm:ml-auto">
+              {rows.length} รายการขาด
+            </span>
+            <button
+              onClick={exportImage}
+              disabled={exporting}
+              className="hidden sm:flex items-center gap-2 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <ImageDown size={15} />
+              {exporting ? 'กำลังส่งออก...' : 'Export รูปภาพ'}
+            </button>
+          </>
         )}
       </div>
 
@@ -188,7 +223,7 @@ export default function ShortagePage() {
       )}
 
       {!loading && rows.length > 0 && (
-        <div className="card p-0 overflow-hidden">
+        <div ref={captureRef} className="card p-0 overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-100 bg-red-50 flex items-center gap-2">
             <AlertTriangle size={16} className="text-red-500 shrink-0" />
             <span className="text-sm font-semibold text-red-700">
