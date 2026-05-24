@@ -280,7 +280,7 @@ export default function AdminProductionPlanPage() {
             <tfoot className="bg-gray-50 border-t border-gray-200">
               <tr>
                 <td colSpan={7} className="px-4 py-3 text-right text-sm font-semibold text-gray-600">
-                  รวม {rows.length} SKU
+                  รวม {rows.length} รายการ
                 </td>
                 <td className="px-4 py-3 text-right font-bold text-gray-900">
                   {Math.round(rows.reduce((s, r) => s + r.total_qty, 0)).toLocaleString()}

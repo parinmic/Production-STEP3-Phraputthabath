@@ -114,9 +114,14 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  const sorted = Array.from(map.values()).sort((a, b) =>
-    STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
-  )
+  const CHANNEL_ORDER = ['Makro', 'Wet Market', 'LOTUS']
+  const sorted = Array.from(map.values()).sort((a, b) => {
+    const stationDiff = STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
+    if (stationDiff !== 0) return stationDiff
+    const skuDiff = a.sku.localeCompare(b.sku)
+    if (skuDiff !== 0) return skuDiff
+    return CHANNEL_ORDER.indexOf(a.channel ?? '') - CHANNEL_ORDER.indexOf(b.channel ?? '')
+  })
 
   return NextResponse.json({
     data: sorted,
