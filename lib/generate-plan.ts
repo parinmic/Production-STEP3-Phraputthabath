@@ -1685,6 +1685,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
   const specialList = assignList.filter(i => hasSpecialTimes(i.sku))
     .sort((a, b) => {
+      const priorityA = channelPriority[a.channel] ?? 99
+      const priorityB = channelPriority[b.channel] ?? 99
+      if (priorityA !== priorityB) return priorityA - priorityB
+
       const startA = specialTimeMap.get(a.sku.replace(/^0+/, ''))?.startMins ?? 0
       const startB = specialTimeMap.get(b.sku.replace(/^0+/, ''))?.startMins ?? 0
       return startA !== startB ? startA - startB : b.targetQty - a.targetQty
