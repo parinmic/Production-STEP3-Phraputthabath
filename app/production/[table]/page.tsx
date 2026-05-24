@@ -49,6 +49,7 @@ interface Assignment {
   status: string
   seq: number | null
   channel: string | null
+  note: string | null
 }
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
@@ -359,7 +360,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string }[], minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string }[], minSeq: number; isDeficit: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -382,7 +383,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       const endMin   = wallClockFinish(startMin, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isDeficit: false }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
@@ -392,6 +393,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       s.minSeq    = Math.min(s.minSeq, task.seq ?? 999999)
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
       s.segments.push({ start: startMin, end: endMin, worker: task.worker_name })
+      if (task.note?.includes('|deficit')) s.isDeficit = true
     }
   }
 
@@ -505,7 +507,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                   return (
                     <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
                       style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1,
+                        outline: stat.isDeficit ? '2px solid #ef4444' : undefined,
+                        outlineOffset: '1px' }}
                       onClick={e => {
                         e.stopPropagation()
                         setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg })
