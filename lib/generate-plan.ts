@@ -294,6 +294,24 @@ function getMakroVariance(
 
 // ========== Worker Assignment ==========
 
+function getWorkerFreeAt(
+  nameKey: string,
+  workerFreeAtMins: Map<string, number>,
+  workerBusySegments: Map<string, { start: number; end: number }[]>,
+  phaseStartMins: number,
+): number {
+  let freeAt = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+  const sorted = [...(workerBusySegments.get(nameKey) ?? [])].sort((a, b) => a.start - b.start)
+  let advanced = true
+  while (advanced) {
+    advanced = false
+    for (const seg of sorted) {
+      if (freeAt >= seg.start - 0.01 && freeAt < seg.end) { freeAt = seg.end; advanced = true }
+    }
+  }
+  return freeAt
+}
+
 function estimateWorkerFinish(
   freeAt: number,
   durationMins: number,
