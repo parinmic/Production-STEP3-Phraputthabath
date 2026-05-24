@@ -1,9 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Each Vercel deployment (production / preview) points to its own Supabase project
-// via separate NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY env vars.
-// Both projects use the 'public' schema by default.
-export const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
+function resolveSchema(): string {
+  if (typeof window !== 'undefined') {
+    // Client-side (browser): use exact hostname — no build-time env var needed
+    return window.location.hostname === 'production-step-3-phraputthabath.vercel.app'
+      ? 'public'
+      : 'dev'
+  }
+  // Server-side (API routes / SSR): VERCEL_ENV has no NEXT_PUBLIC_ prefix so it is
+  // read at runtime — not baked into the bundle at build time.
+  // production deployment → 'public', preview / local → 'dev'
+  return process.env.VERCEL_ENV === 'production' ? 'public' : 'dev'
+}
+
+export const supabaseSchema = resolveSchema()
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
