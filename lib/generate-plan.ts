@@ -1762,26 +1762,42 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Pass 2 — regular sequential channel-by-channel
+  // Pass 2 — sequential channel-by-channel; same SKU across consecutive channels is batched
+  // together into the first channel's allocateBalanced call so workers produce it back-to-back.
   const channelsInAssignList = activeChannels.filter(ch => assignList.some(item => item.channel === ch))
   for (const item of assignList) {
     if (!channelsInAssignList.includes(item.channel)) channelsInAssignList.push(item.channel)
   }
 
-  for (const ch of channelsInAssignList) {
-    const chTargets = assignList.filter(item => item.channel === ch)
-    if (!chTargets.length) continue
+  const handledKeys = new Set<string>() // "channel|||normSku" already scheduled
+
+  const resolveTargetQty = (item: SkuTarget): number => {
+    let qty = item.channel === 'Makro' ? Math.round(item.targetQty) : roundUpToBag(item.sku, item.targetQty)
+    if (isPhase3) {
+      const planItem = planMap.get(item.sku.replace(/^0+/, ''))
+      if (planItem) {
+        const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(item.sku.replace(/^0+/, '')) ?? 0))
+        if (qty > remaining) qty = remaining
+      }
+    }
+    return qty
+  }
+
+  for (let chIdx = 0; chIdx < channelsInAssignList.length; chIdx++) {
+    const ch = channelsInAssignList[chIdx]
+    const chItems = assignList.filter(item => {
+      const key = `${item.channel}|||${item.sku.replace(/^0+/, '')}`
+      return item.channel === ch && !handledKeys.has(key)
+    })
+    if (!chItems.length) continue
 
     const targetsByStation: Record<string, typeof assignList> = {}
-    for (const item of chTargets) {
-      let targetQty = item.channel === 'Makro' ? Math.round(item.targetQty) : roundUpToBag(item.sku, item.targetQty)
-      if (isPhase3) {
-        const planItem = planMap.get(item.sku.replace(/^0+/, ''))
-        if (planItem) {
-          const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(item.sku.replace(/^0+/, '')) ?? 0))
-          if (targetQty > remaining) targetQty = remaining
-        }
-      }
+
+    for (const item of chItems) {
+      const normSku = item.sku.replace(/^0+/, '')
+      handledKeys.add(`${item.channel}|||${normSku}`)
+
+      const targetQty = resolveTargetQty(item)
       if (targetQty <= 0) continue
 
       const prod = skuMap.get(String(item.sku)) ?? skuMap.get(String(Number(item.sku) || item.sku))
@@ -1789,6 +1805,20 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
       targetsByStation[station] ??= []
       targetsByStation[station].push({ ...item, targetQty })
+
+      // If this same SKU exists in a subsequent channel, append it here so workers
+      // produce it back-to-back without switching to another SKU in between.
+      for (let nextIdx = chIdx + 1; nextIdx < channelsInAssignList.length; nextIdx++) {
+        const nextCh = channelsInAssignList[nextIdx]
+        const nextKey = `${nextCh}|||${normSku}`
+        if (handledKeys.has(nextKey)) continue
+        const nextItem = assignList.find(i => i.channel === nextCh && i.sku.replace(/^0+/, '') === normSku)
+        if (!nextItem) continue
+        handledKeys.add(nextKey)
+        const nextQty = resolveTargetQty(nextItem)
+        if (nextQty <= 0) continue
+        targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
+      }
     }
 
     for (const [station, stationTargets] of Object.entries(targetsByStation)) {
