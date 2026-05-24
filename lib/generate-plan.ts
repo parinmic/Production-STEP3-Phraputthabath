@@ -647,29 +647,31 @@ function allocateBalanced(params: {
     workerFreeAtMins.set(nameKey, getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins))
     workerHours.set(nameKey, Math.max(0, bestRemainingHrs - unit.duration))
 
-    // Track statistics for generating assignments
+    // Track statistics for generating assignments (key = channel|||sku to keep channels separate)
+    const skuChKey = `${unit.channel}|||${unit.sku}`
+
     // 1. Sku Qty
     const sqMap = workerSkuQty.get(nameKey) ?? new Map<string, number>()
-    sqMap.set(unit.sku, (sqMap.get(unit.sku) ?? 0) + unit.weight)
+    sqMap.set(skuChKey, (sqMap.get(skuChKey) ?? 0) + unit.weight)
     workerSkuQty.set(nameKey, sqMap)
 
     // 2. Deficit
     const sdMap = workerSkuDeficit.get(nameKey) ?? new Map<string, boolean>()
-    if (unit.isDeficit) sdMap.set(unit.sku, true)
+    if (unit.isDeficit) sdMap.set(skuChKey, true)
     workerSkuDeficit.set(nameKey, sdMap)
 
     // 3. Rounds Qty
     const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
-    const rMap = srMap.get(unit.sku) ?? new Map<number, number>()
+    const rMap = srMap.get(skuChKey) ?? new Map<number, number>()
     const segRound = getRoundMins(bestStartMins, phaseRoundMins)
     rMap.set(segRound, (rMap.get(segRound) ?? 0) + unit.weight)
-    srMap.set(unit.sku, rMap)
+    srMap.set(skuChKey, rMap)
     workerSkuRoundQty.set(nameKey, srMap)
 
     // 4. Earliest Start per SKU
     const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
-    if (!seMap.has(unit.sku) || bestStartMins < (seMap.get(unit.sku) ?? Infinity)) {
-      seMap.set(unit.sku, bestStartMins)
+    if (!seMap.has(skuChKey) || bestStartMins < (seMap.get(skuChKey) ?? Infinity)) {
+      seMap.set(skuChKey, bestStartMins)
     }
     workerSkuEarliestStart.set(nameKey, seMap)
   }
@@ -681,21 +683,24 @@ function allocateBalanced(params: {
     const sqMap = workerSkuQty.get(nameKey)
     if (!sqMap) continue
 
-    for (const [sku, qty] of Array.from(sqMap.entries())) {
+    for (const [skuChKey, qty] of Array.from(sqMap.entries())) {
       if (qty < 0.1) continue
-      const isDeficit = workerSkuDeficit.get(nameKey)?.get(sku) ?? false
+      const sepIdx = skuChKey.indexOf('|||')
+      const channel = sepIdx >= 0 ? skuChKey.slice(0, sepIdx) : ''
+      const sku     = sepIdx >= 0 ? skuChKey.slice(sepIdx + 3) : skuChKey
+      const isDeficit = workerSkuDeficit.get(nameKey)?.get(skuChKey) ?? false
       const srMap = workerSkuRoundQty.get(nameKey)
-      const rMap = srMap?.get(sku)
+      const rMap = srMap?.get(skuChKey)
 
       const roundsNote = 'rounds:' + (rMap
         ? Array.from(rMap.entries())
             .map(([rm, q]) => `${rm}=${Math.round(q * 100) / 100}`).join(';')
         : '')
 
-      const skuName = targets.find(t => t.sku === sku)?.skuName ?? null
+      const skuName = targets.find(t => t.sku === sku && t.channel === channel)?.skuName ?? null
 
-      // Estimate starting time of the first unit for this SKU
-      const earliestStart = workerSkuEarliestStart.get(nameKey)?.get(sku) ?? phaseStartMins
+      // Estimate starting time of the first unit for this SKU+channel
+      const earliestStart = workerSkuEarliestStart.get(nameKey)?.get(skuChKey) ?? phaseStartMins
 
       result.push({
         production_date: productionDate,
@@ -710,7 +715,7 @@ function allocateBalanced(params: {
         deadline_time:   minsToTimeStr(earliestStart),
         note:            roundsNote,
         status:          'รอดำเนินการ',
-        channel:         targets.find(t => t.sku === sku)?.channel || '',
+        channel,
         is_deficit:      isDeficit,
       })
     }
@@ -724,7 +729,7 @@ function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
   const order: string[] = []
   for (const item of list) {
     const skuClean = item.sku.replace(/^0+/, '')
-    const key = item.isDeficit ? `${skuClean}_deficit` : skuClean
+    const key = item.isDeficit ? `${item.channel}_${skuClean}_deficit` : `${item.channel}_${skuClean}`
     if (merged.has(key)) {
       merged.get(key)!.targetQty += item.targetQty
     } else {
