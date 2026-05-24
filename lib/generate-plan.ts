@@ -262,17 +262,34 @@ function buildAvgMap(rows: OrderRow[]): Map<string, number> {
   return result
 }
 
-function getWetMarketVariance(isShared: boolean, quotaToday: number, avgBL3: number, lotusBL3: number): number {
-  if (!isShared) return Math.min(quotaToday, avgBL3) > 100 ? 0.5 : 0.3
+// params: [nonSharedHigh, nonSharedLow, sharedHigh, sharedLow]
+function getWetMarketVariance(
+  isShared: boolean, quotaToday: number, avgBL3: number, lotusBL3: number,
+  params: [number, number, number, number] = [0.5, 0.3, 0.5, 0.7],
+): number {
+  const [nsHigh, nsLow, sHigh, sLow] = params
+  if (!isShared) return Math.min(quotaToday, avgBL3) > 100 ? nsHigh : nsLow
   const ratio = lotusBL3 > 0 ? Math.min(quotaToday, avgBL3) / lotusBL3 : 999
-  return ratio > 0.5 ? 0.5 : 0.7
+  return ratio > 0.5 ? sHigh : sLow
 }
 
-function getMakroVariance(proportionAbove10pct: boolean, orderQty: number, avgBL3: number): number {
+// params order matches master columns: [propHigh_trendLow, propHigh_trendMid, propHigh_trendHigh, propLow_trendLow, propLow_trendMid, propLow_trendHigh]
+// proportion = SKU order / total Makro order; trend = order / avgBL3
+function getMakroVariance(
+  proportionAbove10pct: boolean, orderQty: number, avgBL3: number,
+  params: [number, number, number, number, number, number] = [0.9, 0.8, 0.6, 0.8, 0.6, 0.4],
+): number {
+  const [phTL, phTM, phTH, plTL, plTM, plTH] = params
   const trend = avgBL3 > 0 ? orderQty / avgBL3 : 2
-  if (trend > 1.0) return 1.0
-  if (trend > 0.8) return 0.8
-  return proportionAbove10pct ? 0.6 : 0.4
+  if (proportionAbove10pct) {
+    if (trend > 1.0) return phTH
+    if (trend > 0.8) return phTM
+    return phTL
+  } else {
+    if (trend > 1.0) return plTH
+    if (trend > 0.8) return plTM
+    return plTL
+  }
 }
 
 // ========== Worker Assignment ==========
@@ -1051,20 +1068,25 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
   }
 
-  const wmVarianceMap = new Map<string, number>()
+  // Parse WM variance params: [nonSharedHigh, nonSharedLow, sharedHigh, sharedLow]
+  let wmVarParams: [number, number, number, number] | undefined
   for (const row of masterVarWMRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
-    const sku = String(r['SKU'] ?? '').trim().replace(/^0+/, '')
-    const pct = Number(r['%Variance'] ?? 0)
-    if (sku && pct > 0) wmVarianceMap.set(sku, pct / 100)
+    const vals = Object.values(row.row_data as Record<string, unknown>)
+    if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
+      const nums = vals.filter(v => typeof v === 'number') as number[]
+      if (nums.length >= 4) { wmVarParams = [nums[0], nums[1], nums[2], nums[3]]; break }
+    }
   }
 
-  const makroVarianceMap = new Map<string, number>()
+  // Parse Makro variance params: [phTL, phTM, phTH, plTL, plTM, plTH]
+  // ph=proportion>10%, pl=proportion<=10%; TL=trend<=80%, TM=trend>80-100%, TH=trend>100%
+  let makroVarParams: [number, number, number, number, number, number] | undefined
   for (const row of masterVarMakroRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
-    const sku = String(r['SKU'] ?? '').trim().replace(/^0+/, '')
-    const pct = Number(r['%Variance'] ?? 0)
-    if (sku && pct > 0) makroVarianceMap.set(sku, pct / 100)
+    const vals = Object.values(row.row_data as Record<string, unknown>)
+    if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
+      const nums = vals.filter(v => typeof v === 'number') as number[]
+      if (nums.length >= 6) { makroVarParams = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]]; break }
+    }
   }
 
   const jobAssignMap = buildJobAssignMap((jobAssignRaw ?? []) as { row_data: Record<string, unknown> }[])
@@ -1205,9 +1227,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const lotusHistSkus = new Set(avgLotus.keys())
     return Array.from(avgWM.entries()).map(([sku, avg]) => {
       const isShared = lotusHistSkus.has(sku)
-      const variance = wmVarianceMap.size > 0
-        ? (wmVarianceMap.get(sku) ?? 1.0)
-        : getWetMarketVariance(isShared, avg, avg, avgLotus.get(sku) ?? 0)
+      const variance = getWetMarketVariance(isShared, avg, avg, avgLotus.get(sku) ?? 0, wmVarParams)
       return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
@@ -1223,9 +1243,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const makroTotal = Object.values(makroMap).reduce((s, v) => s + v.qty, 0)
     return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
       const proportion = makroTotal > 0 ? orderQty / makroTotal : 0
-      const variance = makroVarianceMap.size > 0
-        ? (makroVarianceMap.get(sku) ?? 1.0)
-        : getMakroVariance(proportion > 0.1, orderQty, avgMakro.get(sku) ?? 0)
+      const variance = getMakroVariance(proportion > 0.1, orderQty, avgMakro.get(sku) ?? 0, makroVarParams)
       return { sku, skuName: name, targetQty: orderQty * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
