@@ -199,7 +199,7 @@ export default function ShortagePage() {
             <button
               onClick={exportImage}
               disabled={exporting}
-              className="hidden sm:flex items-center gap-2 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              className="flex items-center gap-2 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
               <ImageDown size={15} />
               {exporting ? 'กำลังส่งออก...' : 'Export รูปภาพ'}
             </button>
