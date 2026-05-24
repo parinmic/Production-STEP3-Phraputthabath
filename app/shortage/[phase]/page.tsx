@@ -231,9 +231,7 @@ export default function ShortagePage() {
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       {r.productionTime ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
-                          {r.productionTime} น.
-                        </span>
+                        <span className="text-sm text-gray-800">{r.productionTime} น.</span>
                       ) : (
                         <span className="text-gray-300">—</span>
                       )}
