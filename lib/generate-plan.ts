@@ -1062,7 +1062,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
     const r = row.row_data as Record<string, unknown>
-    const rawStation = normalizeStation(String(r['Station'] ?? '').trim())
+    const rawStation = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? '').trim())
     const station = STATION_TABLE[rawStation] ?? rawStation
     const pct = Number(r['%Variance'] ?? 0)
     if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
