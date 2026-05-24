@@ -46,17 +46,17 @@ export async function GET(req: NextRequest) {
     // Order today (filtered by SKU — format usually consistent for today)
     supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
-    // BL3: fetch ALL orders for histDates (no SKU filter) — normalize in memory like generate route
+    // BL3: filter by SKU directly to avoid hitting PostgREST row limit
     supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
-      .in('delivery_date', histDates).eq('upload_round', '1600'),
+      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1600'),
     supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
     supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
-      .in('delivery_date', histDates).eq('upload_round', '1600'),
+      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1600'),
     supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
     supabase.from('makro_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
-      .in('delivery_date', histDates).eq('upload_round', '1400'),
+      .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1400'),
     supabase.from('production_assignments').select('sku, target_quantity, channel, period, worker_name')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`)
       .eq('production_date', date)
