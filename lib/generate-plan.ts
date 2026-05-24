@@ -790,7 +790,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
       return {
         sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station,
-        note: 'คำนวณจาก BOM',
+        note: lots ? 'คำนวณจาก BOM' : 'ไม่มี Stock',
         lots: lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
         for_products: rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
@@ -1563,9 +1563,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       period: phaseCfg.period, deadline: phaseCfg.deadline, channel,
       phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
       wpb: wpbMap.get(String(sku).replace(/^0+/, '')) ?? 0,
-      specialStartMins: isDeficit
-        ? Math.max(780, specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? 0)
-        : (specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null),
+      specialStartMins: specialTimeMap.get(String(sku))?.startMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.startMins ?? null,
       specialStopMins: specialTimeMap.get(String(sku))?.stopMins ?? specialTimeMap.get(String(sku).replace(/^0+/, ''))?.stopMins ?? null,
       isDeficit,
     }))
@@ -1622,7 +1620,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         let startMins = curMins
         const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku as string)?.startMins ?? null
         if (specialStart !== null) startMins = Math.max(startMins, specialStart)
-        if (task.is_deficit) startMins = Math.max(startMins, 780)
         task.deadline_time = minsToTimeStr(startMins)
         curMins = wallClockFinish(startMins, duration)
       }
