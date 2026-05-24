@@ -428,7 +428,12 @@ function allocateBalanced(params: {
                getWorkerSkillLevel(b, prod.product_group)
       })
 
-    for (const w of sorted) {
+    // Cap workers per SKU based on quantity tiers
+    const qty = target.targetQty
+    const maxWorkers = qty <= 15 ? 1 : qty <= 30 ? 2 : qty <= 45 ? 3 : Infinity
+    const candidates = maxWorkers === Infinity ? sorted : sorted.slice(0, maxWorkers)
+
+    for (const w of candidates) {
       if (remaining < 0.1) break
 
       const nk        = normName(w.name)
