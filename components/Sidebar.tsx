@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -33,6 +33,7 @@ export default function Sidebar() {
   const p = usePathname()
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))
+  const [openShortage, setOpenShortage]   = useState(p.startsWith('/shortage'))
   const [openWorkforce, setOpenWorkforce] = useState(p.startsWith('/workforce'))
   const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
@@ -142,6 +143,43 @@ export default function Sidebar() {
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/withdrawal/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                   title={`Phase ${phase}`}>
                   <span className="text-xs font-bold">P{phase}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* สินค้าขาด */}
+          <button
+            onClick={() => setOpenShortage(!openShortage)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/shortage') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="รายการ Raw รอผลิต"
+          >
+            <AlertTriangle size={18} className="shrink-0" />
+            <span className={`flex-1 text-left ${labelCls}`}>รายการ Raw รอผลิต</span>
+            {!collapsed && (openShortage ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {openShortage && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              {[
+                { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
+                { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
+                { label: 'Phase 3 (แผน 100%)',  slug: '3', dot: 'bg-purple-500' },
+              ].map((t) => (
+                <Link key={t.slug} href={`/shortage/${t.slug}`}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/shortage/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                </Link>
+              ))}
+            </div>
+          )}
+          {openShortage && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              {['1','2','3'].map((phase) => (
+                <Link key={phase} href={`/shortage/${phase}`}
+                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/shortage/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                  title={`Shortage Phase ${phase}`}>
+                  <span className="text-xs font-bold">S{phase}</span>
                 </Link>
               ))}
             </div>
