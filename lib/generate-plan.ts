@@ -84,7 +84,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:30:00', hours: 6.0, startH: 8.5,  endH: 14.5 },
   { phase: 2, period: 'บ่าย',  deadline: '16:30:00', hours: 2.0, startH: 14.5, endH: 16.5 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 24 },
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 30 }, // 06:00 next day — no fixed cutoff
 ]
 
 const PHASE_ROUND_MINS: Record<number, number[]> = {
