@@ -43,7 +43,10 @@ export async function GET(req: NextRequest) {
     if (s) {
       querySkus.add(s)
       const norm = s.replace(/^0+/, '')
-      if (norm) querySkus.add(norm)
+      if (norm) {
+        querySkus.add(norm)
+        querySkus.add(norm.padStart(18, '0'))
+      }
     }
   }
   const skusList = Array.from(querySkus)

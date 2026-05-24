@@ -296,6 +296,10 @@ ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS seq integer;
 -- Migration: เพิ่ม channel เพื่อ track ว่างานมาจากช่องทางไหน (Wet Market / LOTUS / Makro / plan100)
 ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS channel text;
 
+-- Migration: เพิ่ม effective_from เพื่อ track batch ของแผน (checkpoint scheduling)
+ALTER TABLE production_assignments ADD COLUMN IF NOT EXISTS effective_from timestamptz DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_assignments_effective ON production_assignments(production_date, period, effective_from DESC);
+
 -- 14. Migration: เพิ่ม upload_round เพื่อแยก รอบ 8:00 / 13:00
 ALTER TABLE daily_workforce   ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
 ALTER TABLE makro_orders      ADD COLUMN IF NOT EXISTS upload_round text DEFAULT '0800';
