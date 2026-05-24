@@ -1912,6 +1912,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     const busySegs: { start: number; end: number }[] = []
     let curMins = phaseCfg.startH * 60
+    const keptTasks: typeof workerTasks = []
 
     for (const task of workerTasks) {
       const cleanSku = (task.sku as string).replace(/^0+/, '')
@@ -1926,18 +1927,22 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         busySegs.push({ start: startMins, end: endMins })
         curMins = Math.max(curMins, endMins)
         delete task.isKept
+        keptTasks.push(task)
       } else {
         if (curMins < checkpointMins) curMins = checkpointMins
-        
+
         const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku as string)?.startMins ?? null
-        
+
         if (specialStart !== null) {
           // It's a special task!
           const startMins = Math.max(curMins, specialStart)
+          // For non-phase3: drop special tasks past phase cutoff
+          if (!isPhase3 && startMins >= phaseEndMins) continue
           const endMins = wallClockFinish(startMins, duration)
           task.deadline_time = minsToTimeStr(startMins)
           busySegs.push({ start: startMins, end: endMins })
           // We do NOT update curMins to endMins, so it doesn't block regular tasks!
+          keptTasks.push(task)
         } else {
           // It's a regular task!
           let startMins = curMins
@@ -1957,15 +1962,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
               }
             }
           }
-          
+
+          // For non-phase3: drop tasks that start at or after phase cutoff
+          if (!isPhase3 && startMins >= phaseEndMins) continue
+
           task.deadline_time = minsToTimeStr(startMins)
           const endMins = wallClockFinish(startMins, duration)
           busySegs.push({ start: startMins, end: endMins })
           curMins = endMins
+          keptTasks.push(task)
         }
       }
     }
-    resequenced.push(...workerTasks)
+    resequenced.push(...keptTasks)
   }
 
   resequenced.forEach((a, i) => { a['seq'] = i; a['effective_from'] = effectiveFromISO; delete a.is_deficit })
