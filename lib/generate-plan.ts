@@ -1967,7 +1967,25 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           if (!isPhase3 && startMins >= phaseEndMins) continue
 
           task.deadline_time = minsToTimeStr(startMins)
-          const endMins = wallClockFinish(startMins, duration)
+          let endMins = wallClockFinish(startMins, duration)
+
+          // For non-phase3: if task runs past cutoff, truncate qty to what fits before cutoff
+          if (!isPhase3 && endMins > phaseEndMins) {
+            const availMins = availableWorkMins(startMins, phaseEndMins)
+            const truncQty = (availMins / 60) * rate
+            const skuForWpb = cleanSku || (task.sku as string)
+            const wpb = wpbMap.get(skuForWpb) ?? wpbMap.get(task.sku as string) ?? 1
+            let finalQty: number
+            if (wpb > 1 && (task.channel as string) !== 'Makro') {
+              finalQty = Math.floor(truncQty / wpb) * wpb
+            } else {
+              finalQty = Math.round(truncQty)
+            }
+            if (finalQty <= 0) continue
+            task.target_quantity = Math.round(finalQty * 100) / 100
+            endMins = wallClockFinish(startMins, (finalQty / rate) * 60)
+          }
+
           busySegs.push({ start: startMins, end: endMins })
           curMins = endMins
           keptTasks.push(task)
