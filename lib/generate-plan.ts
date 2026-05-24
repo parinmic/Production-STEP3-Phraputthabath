@@ -1582,8 +1582,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return { ...item, targetQty: newQty }
   }).filter(item => item.targetQty > 0)
 
-  // Phase 1: stock-based splitting
-  if (selectedPhase === 1) {
+  // Stock-based splitting: run for every phase when stock data is available
+  {
     const { data: noWithdrawalRows } = await supabase.from('no_withdrawal_skus').select('sap')
     const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
 
@@ -1741,6 +1741,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   assignList = [...specialList, ...assignList.filter(i => !hasSpecialTimes(i.sku))]
   assignList = mergeAssignList(assignList)
 
+  // Separate stock-supported and deficit items so they are scheduled in two distinct passes:
+  // Pass 2a (stock) fills worker time with produceable quantities first;
+  // Pass 2b (deficit) uses whatever time remains and gets flagged as insufficient in withdrawal.
+  const stockAssignList   = assignList.filter(i => !i.isDeficit)
+  const deficitAssignList = assignList.filter(i => !!i.isDeficit)
+
   // Supplementary plan
   interface SuppSlot { deadlineMins: number; skus: { sku: string; name: string | null; qty: number }[] }
   const suppSlotResults = await Promise.all([1, 2, 3].map(async slot => {
@@ -1801,14 +1807,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Pass 2 — sequential channel-by-channel; same SKU across consecutive channels is batched
-  // together into the first channel's allocateBalanced call so workers produce it back-to-back.
-  const channelsInAssignList = activeChannels.filter(ch => assignList.some(item => item.channel === ch))
-  for (const item of assignList) {
-    if (!channelsInAssignList.includes(item.channel)) channelsInAssignList.push(item.channel)
-  }
-
-  const handledKeys = new Set<string>() // "channel|||normSku" already scheduled
+  // Pass 2 — run stock-supported items first (2a), then deficit items (2b).
+  // Both passes share the same worker state so deficit work only fills remaining capacity.
 
   const resolveTargetQty = (item: SkuTarget): number => {
     let qty = item.channel === 'Makro' ? Math.round(item.targetQty) : roundUpToBag(item.sku, item.targetQty)
@@ -1822,66 +1822,75 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return qty
   }
 
-  for (let chIdx = 0; chIdx < channelsInAssignList.length; chIdx++) {
-    const ch = channelsInAssignList[chIdx]
-    const chItems = assignList.filter(item => {
-      const key = `${item.channel}|||${item.sku.replace(/^0+/, '')}`
-      return item.channel === ch && !handledKeys.has(key)
-    })
-    if (!chItems.length) continue
+  const runChannelPass = (passList: SkuTarget[]) => {
+    const chsInPass = activeChannels.filter(ch => passList.some(item => item.channel === ch))
+    for (const item of passList) {
+      if (!chsInPass.includes(item.channel)) chsInPass.push(item.channel)
+    }
+    const handled = new Set<string>()
 
-    const targetsByStation: Record<string, typeof assignList> = {}
+    for (let chIdx = 0; chIdx < chsInPass.length; chIdx++) {
+      const ch = chsInPass[chIdx]
+      const chItems = passList.filter(item => {
+        const key = `${item.channel}|||${item.sku.replace(/^0+/, '')}`
+        return item.channel === ch && !handled.has(key)
+      })
+      if (!chItems.length) continue
 
-    for (const item of chItems) {
-      const normSku = item.sku.replace(/^0+/, '')
-      handledKeys.add(`${item.channel}|||${normSku}`)
+      const targetsByStation: Record<string, SkuTarget[]> = {}
 
-      const targetQty = resolveTargetQty(item)
-      if (targetQty <= 0) continue
+      for (const item of chItems) {
+        const normSku = item.sku.replace(/^0+/, '')
+        handled.add(`${item.channel}|||${normSku}`)
 
-      const prod = skuMap.get(String(item.sku)) ?? skuMap.get(String(Number(item.sku) || item.sku))
-      if (!prod) continue
-      const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
-      targetsByStation[station] ??= []
-      targetsByStation[station].push({ ...item, targetQty })
+        const targetQty = resolveTargetQty(item)
+        if (targetQty <= 0) continue
 
-      // If this same SKU exists in a subsequent channel, append it here so workers
-      // produce it back-to-back without switching to another SKU in between.
-      for (let nextIdx = chIdx + 1; nextIdx < channelsInAssignList.length; nextIdx++) {
-        const nextCh = channelsInAssignList[nextIdx]
-        const nextKey = `${nextCh}|||${normSku}`
-        if (handledKeys.has(nextKey)) continue
-        const nextItem = assignList.find(i => i.channel === nextCh && i.sku.replace(/^0+/, '') === normSku)
-        if (!nextItem) continue
-        handledKeys.add(nextKey)
-        const nextQty = resolveTargetQty(nextItem)
-        if (nextQty <= 0) continue
-        targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
+        const prod = skuMap.get(String(item.sku)) ?? skuMap.get(String(Number(item.sku) || item.sku))
+        if (!prod) continue
+        const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+        targetsByStation[station] ??= []
+        targetsByStation[station].push({ ...item, targetQty })
+
+        // Same SKU in a subsequent channel → batch back-to-back within the same pass
+        for (let nextIdx = chIdx + 1; nextIdx < chsInPass.length; nextIdx++) {
+          const nextCh = chsInPass[nextIdx]
+          const nextKey = `${nextCh}|||${normSku}`
+          if (handled.has(nextKey)) continue
+          const nextItem = passList.find(i => i.channel === nextCh && i.sku.replace(/^0+/, '') === normSku)
+          if (!nextItem) continue
+          handled.add(nextKey)
+          const nextQty = resolveTargetQty(nextItem)
+          if (nextQty <= 0) continue
+          targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
+        }
+      }
+
+      for (const [station, stationTargets] of Object.entries(targetsByStation)) {
+        const stationWorkers = workersByStation[station] ?? []
+        if (!stationWorkers.length) continue
+        assignments.push(...allocateBalanced({
+          productionDate,
+          tableName: station,
+          targets: stationTargets,
+          workers: stationWorkers,
+          skuMap,
+          jobAssignMap,
+          workerHours,
+          workerFreeAtMins,
+          workerBusySegments,
+          phaseEndMins,
+          period: phaseCfg.period,
+          phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+          wpbMap,
+          specialTimeMap,
+        }))
       }
     }
-
-    for (const [station, stationTargets] of Object.entries(targetsByStation)) {
-      const stationWorkers = workersByStation[station] ?? []
-      if (!stationWorkers.length) continue
-
-      assignments.push(...allocateBalanced({
-        productionDate,
-        tableName: station,
-        targets: stationTargets,
-        workers: stationWorkers,
-        skuMap,
-        jobAssignMap,
-        workerHours,
-        workerFreeAtMins,
-        workerBusySegments,
-        phaseEndMins,
-        period: phaseCfg.period,
-        phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
-        wpbMap,
-        specialTimeMap,
-      }))
-    }
   }
+
+  runChannelPass(stockAssignList)   // Pass 2a: stock-supported
+  runChannelPass(deficitAssignList) // Pass 2b: deficit (remaining worker time)
 
   assignments.push(...keptAssignments)
 
