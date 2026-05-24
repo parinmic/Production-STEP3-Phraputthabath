@@ -888,6 +888,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: pickingUnitRaw },
     { data: masterSpecialRaw },
     { data: masterVarLotusRaw },
+    { data: masterVarWMRaw },
+    { data: masterVarMakroRaw },
     { data: oldAssignmentsRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
@@ -933,6 +935,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas %Variance LOTUS').order('uploaded_at', { ascending: false }),
+    supabase.from('master_logic_calculation').select('row_data')
+      .eq('calculation_type', 'Mas %Variance Wet Market').order('uploaded_at', { ascending: false }),
+    supabase.from('master_logic_calculation').select('row_data')
+      .eq('calculation_type', 'Mas %Variance Makro').order('uploaded_at', { ascending: false }),
     useRegen
       ? supabase.from('production_assignments').select('*')
           .eq('production_date', productionDate).eq('period', phaseCfg.period)
@@ -1043,6 +1049,22 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const station = STATION_TABLE[rawStation] ?? rawStation
     const pct = Number(r['%Variance'] ?? 0)
     if (station && pct > 0) lotusVarianceMap.set(station, pct / 100)
+  }
+
+  const wmVarianceMap = new Map<string, number>()
+  for (const row of masterVarWMRaw ?? []) {
+    const r = row.row_data as Record<string, unknown>
+    const sku = String(r['SKU'] ?? '').trim().replace(/^0+/, '')
+    const pct = Number(r['%Variance'] ?? 0)
+    if (sku && pct > 0) wmVarianceMap.set(sku, pct / 100)
+  }
+
+  const makroVarianceMap = new Map<string, number>()
+  for (const row of masterVarMakroRaw ?? []) {
+    const r = row.row_data as Record<string, unknown>
+    const sku = String(r['SKU'] ?? '').trim().replace(/^0+/, '')
+    const pct = Number(r['%Variance'] ?? 0)
+    if (sku && pct > 0) makroVarianceMap.set(sku, pct / 100)
   }
 
   const jobAssignMap = buildJobAssignMap((jobAssignRaw ?? []) as { row_data: Record<string, unknown> }[])
@@ -1183,7 +1205,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const lotusHistSkus = new Set(avgLotus.keys())
     return Array.from(avgWM.entries()).map(([sku, avg]) => {
       const isShared = lotusHistSkus.has(sku)
-      const variance = getWetMarketVariance(isShared, avg, avg, avgLotus.get(sku) ?? 0)
+      const variance = wmVarianceMap.size > 0
+        ? (wmVarianceMap.get(sku) ?? 1.0)
+        : getWetMarketVariance(isShared, avg, avg, avgLotus.get(sku) ?? 0)
       return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
@@ -1199,7 +1223,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const makroTotal = Object.values(makroMap).reduce((s, v) => s + v.qty, 0)
     return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
       const proportion = makroTotal > 0 ? orderQty / makroTotal : 0
-      const variance = getMakroVariance(proportion > 0.1, orderQty, avgMakro.get(sku) ?? 0)
+      const variance = makroVarianceMap.size > 0
+        ? (makroVarianceMap.get(sku) ?? 1.0)
+        : getMakroVariance(proportion > 0.1, orderQty, avgMakro.get(sku) ?? 0)
       return { sku, skuName: name, targetQty: orderQty * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
