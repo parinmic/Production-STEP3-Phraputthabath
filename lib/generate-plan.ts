@@ -700,7 +700,6 @@ function allocateBalanced(params: {
 
   return result
 }
-}
 
 function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
   const merged = new Map<string, SkuTarget>()
