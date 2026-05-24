@@ -140,39 +140,61 @@ export default function ShortagePage() {
   useEffect(() => { load() }, [load])
 
   const exportImage = async () => {
-    if (!captureRef.current) return
     setExp(true)
     try {
       const { toPng } = await import('html-to-image')
-      const el = captureRef.current
+      const W = captureRef.current?.offsetWidth ?? 720
 
-      // Patch overflow in-place (element stays in DOM with full CSS) then restore
-      type Saved = { overflow: string; maxHeight: string }
-      const saved = new Map<HTMLElement, Saved>()
-      const patch = (node: HTMLElement) => {
-        saved.set(node, { overflow: node.style.overflow, maxHeight: node.style.maxHeight })
-        node.style.overflow  = 'visible'
-        node.style.maxHeight = 'none'
-        Array.from(node.children).forEach(c => patch(c as HTMLElement))
+      const stationBadge = (ws: string | null) => {
+        const styles: Record<string, string> = {
+          'สามชั้น': 'background:#dbeafe;color:#1d4ed8',
+          'สะโพก':   'background:#ffedd5;color:#c2410c',
+          'ไหล่':    'background:#dcfce7;color:#15803d',
+        }
+        const labels: Record<string, string> = {
+          'สามชั้น': 'สามชั้นพิเศษ',
+          'สะโพก':   'สะโพกพิเศษ',
+          'ไหล่':    'ไหล่พิเศษ',
+        }
+        const s = ws ?? ''
+        return `<span style="padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;${styles[s] ?? 'background:#f3f4f6;color:#374151'}">${labels[s] ?? s || '—'}</span>`
       }
-      const restore = (node: HTMLElement) => {
-        const s = saved.get(node)
-        if (s) { node.style.overflow = s.overflow; node.style.maxHeight = s.maxHeight }
-        Array.from(node.children).forEach(c => restore(c as HTMLElement))
-      }
 
-      patch(el)
-      const fullH = el.scrollHeight
-      await new Promise<void>(r => requestAnimationFrame(() => r()))
+      const container = document.createElement('div')
+      container.style.cssText = `position:absolute;top:-99999px;left:0;width:${W}px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;`
 
-      const dataUrl = await toPng(el, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        width:  el.offsetWidth,
-        height: fullH,
-        style:  { height: `${fullH}px`, overflow: 'visible', maxHeight: 'none' },
-      })
-      restore(el)
+      container.innerHTML = `
+        <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <div style="background:#fef2f2;padding:12px 20px;border-bottom:1px solid #fca5a5;">
+            <span style="font-size:13px;font-weight:600;color:#b91c1c;">Raw รอผลิต ${rows.length} รายการ · ${dateDisplay} · ${cfg.label}</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f9fafb;">
+                ${['Station','SAP','ชื่อวัตถุดิบ','ปริมาณที่ขาด','เวลาที่ต้องใช้'].map((h, i) => `
+                  <th style="padding:10px 14px;font-size:12px;font-weight:600;color:${i===3?'#dc2626':'#374151'};border-bottom:1px solid #e5e7eb;text-align:${i>=3?'center':'left'}">${h}</th>
+                `).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r) => `
+                <tr style="border-bottom:1px solid #f3f4f6;">
+                  <td style="padding:9px 14px;">${stationBadge(r.work_station)}</td>
+                  <td style="padding:9px 14px;font-family:monospace;font-size:12px;color:#4b5563;">${r.sku}</td>
+                  <td style="padding:9px 14px;font-weight:500;color:#1f2937;">${r.sku_name ?? '—'}</td>
+                  <td style="padding:9px 14px;text-align:center;font-weight:700;color:#dc2626;">${r.deficit != null ? r.deficit.toLocaleString() + ' กก.' : '—'}</td>
+                  <td style="padding:9px 14px;text-align:center;color:#1f2937;">${r.productionTime ? r.productionTime + ' น.' : '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`
+
+      document.body.appendChild(container)
+      await new Promise<void>(r => setTimeout(r, 150))
+
+      const dataUrl = await toPng(container, { backgroundColor: '#ffffff', pixelRatio: 2 })
+      document.body.removeChild(container)
 
       const a = document.createElement('a')
       a.href = dataUrl
