@@ -544,8 +544,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                   const segPend  = nowMins < seg.start
                   return (
                     <div key={`d-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
-                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: '#b91c1c',
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
+                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1,
+                        outline: '2.5px solid #ef4444', outlineOffset: '1px' }}
                       onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
                   )
                 })}
