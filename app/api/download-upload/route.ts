@@ -176,6 +176,35 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
   },
 }
 
+async function fetchAllRows(
+  table: string,
+  select: string,
+  sourceFile: string,
+  slot?: string | null
+): Promise<{ data: any[]; error: any }> {
+  const PAGE = 1000
+  const all: any[] = []
+  let from = 0
+  while (true) {
+    let q = supabase
+      .from(table)
+      .select(select)
+      .eq('source_file', sourceFile)
+      .range(from, from + PAGE - 1)
+
+    if (slot && table === 'production_plan_supplementary') {
+      q = q.eq('slot', slot)
+    }
+
+    const { data, error } = await q
+    if (error) return { data: [], error }
+    all.push(...(data ?? []))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return { data: all, error: null }
+}
+
 export async function GET(req: NextRequest) {
   const table      = req.nextUrl.searchParams.get('table') ?? ''
   const sourceFile = req.nextUrl.searchParams.get('file')  ?? ''
@@ -188,10 +217,7 @@ export async function GET(req: NextRequest) {
   // Handle master logic tables (JSONB row_data format)
   const isMasterTable = table === 'master_logic_calculation' || table === 'master_logic_manpower'
   if (isMasterTable) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('row_data')
-      .eq('source_file', sourceFile)
+    const { data, error } = await fetchAllRows(table, 'row_data', sourceFile)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data || !data.length) return NextResponse.json({ headers: {}, data: [] })
@@ -214,16 +240,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `unknown table: ${table}` }, { status: 400 })
   }
 
-  let query = supabase
-    .from(table)
-    .select(config.cols.join(','))
-    .eq('source_file', sourceFile)
-
-  if (slot && table === 'production_plan_supplementary') {
-    query = query.eq('slot', slot)
-  }
-
-  const { data, error } = await query
+  const { data, error } = await fetchAllRows(table, config.cols.join(','), sourceFile, slot)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ headers: config.headers, data: data ?? [] })
