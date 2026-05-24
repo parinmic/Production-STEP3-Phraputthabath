@@ -1012,6 +1012,8 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
   for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
+  const stockUploaded = stockRows.length > 0
+
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) => a.roundMins - b.roundMins)
     .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
@@ -1019,10 +1021,18 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
+
+      // If stock was uploaded today but this material has no data → treat as zero stock (insufficient)
+      const resolvedLots: LotInfo[] = lots
+        ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
+        : stockUploaded
+          ? [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: needed, insufficient: true }]
+          : []
+
       return {
         sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station,
-        note: lots ? 'คำนวณจาก BOM' : 'ไม่มี Stock',
-        lots: lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
+        note: lots ? 'คำนวณจาก BOM' : stockUploaded ? 'คำนวณจาก BOM' : 'ไม่มี Stock',
+        lots: resolvedLots,
         for_products: rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
       }
