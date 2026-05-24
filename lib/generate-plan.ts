@@ -1850,27 +1850,60 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       
       return ((a.deadline_time as string) || '').localeCompare((b.deadline_time as string) || '')
     })
+
+    const busySegs: { start: number; end: number }[] = []
     let curMins = phaseCfg.startH * 60
+
     for (const task of workerTasks) {
+      const cleanSku = (task.sku as string).replace(/^0+/, '')
+      const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
+      const rate = prod?.rate ?? 27.0
+      const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+
       if (task.isKept) {
-        const cleanSku = (task.sku as string).replace(/^0+/, '')
-        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
-        const rate = prod?.rate ?? 27.0
-        const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
         const [h, m] = (task.deadline_time as string).split(':').map(Number)
-        curMins = wallClockFinish(h * 60 + m, duration)
+        const startMins = h * 60 + m
+        const endMins = wallClockFinish(startMins, duration)
+        busySegs.push({ start: startMins, end: endMins })
+        curMins = Math.max(curMins, endMins)
         delete task.isKept
       } else {
         if (curMins < checkpointMins) curMins = checkpointMins
-        const cleanSku = (task.sku as string).replace(/^0+/, '')
-        const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
-        const rate = prod?.rate ?? 27.0
-        const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-        let startMins = curMins
+        
         const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku as string)?.startMins ?? null
-        if (specialStart !== null) startMins = Math.max(startMins, specialStart)
-        task.deadline_time = minsToTimeStr(startMins)
-        curMins = wallClockFinish(startMins, duration)
+        
+        if (specialStart !== null) {
+          // It's a special task!
+          const startMins = Math.max(curMins, specialStart)
+          const endMins = wallClockFinish(startMins, duration)
+          task.deadline_time = minsToTimeStr(startMins)
+          busySegs.push({ start: startMins, end: endMins })
+          // We do NOT update curMins to endMins, so it doesn't block regular tasks!
+        } else {
+          // It's a regular task!
+          let startMins = curMins
+          let advanced = true
+          while (advanced) {
+            advanced = false
+            for (const seg of busySegs) {
+              if (startMins >= seg.start - 0.01 && startMins < seg.end) {
+                startMins = seg.end
+                advanced = true
+              }
+            }
+            for (const [bs, be] of BREAKS) {
+              if (startMins >= bs && startMins < be) {
+                startMins = be
+                advanced = true
+              }
+            }
+          }
+          
+          task.deadline_time = minsToTimeStr(startMins)
+          const endMins = wallClockFinish(startMins, duration)
+          busySegs.push({ start: startMins, end: endMins })
+          curMins = endMins
+        }
       }
     }
     resequenced.push(...workerTasks)
