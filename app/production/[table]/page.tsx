@@ -360,10 +360,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string }[], minSeq: number; isDeficit: boolean }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean }[], minSeq: number }
   const skuStats: Record<string, SkuStat> = {}
 
+  const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
+
   for (const rawTasks of Object.values(byWorker)) {
+    // Pass 1: use mergeTasks for accurate totals/workers/minStart/maxEnd
     const tasks = mergeTasks(rawTasks)
     let cur = 0
     let lastPeriod = ''
@@ -376,24 +379,47 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       let startMin = cur
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
-        if (!isNaN(dh) && !isNaN(dm)) {
-          startMin = Math.max(startMin, dh * 60 + dm)
-        }
+        if (!isNaN(dh) && !isNaN(dm)) startMin = Math.max(startMin, dh * 60 + dm)
       }
-      const endMin   = wallClockFinish(startMin, dur)
+      const endMin = wallClockFinish(startMin, dur)
       cur = endMin
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isDeficit: false }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
       s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
-      s.minStart  = Math.min(s.minStart, startMin)
-      s.maxEnd    = Math.max(s.maxEnd, endMin)
-      s.minSeq    = Math.min(s.minSeq, task.seq ?? 999999)
+      s.minStart = Math.min(s.minStart, startMin)
+      s.maxEnd   = Math.max(s.maxEnd, endMin)
+      s.minSeq   = Math.min(s.minSeq, task.seq ?? 999999)
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
-      s.segments.push({ start: startMin, end: endMin, worker: task.worker_name })
-      if (task.note?.includes('|deficit')) s.isDeficit = true
+    }
+
+    // Pass 2: use raw (sorted) assignments for segments — preserves isDeficit per assignment
+    const sortedRaw = [...rawTasks].sort((a, b) => {
+      const pA = periodOrder[a.period] ?? 99, pB = periodOrder[b.period] ?? 99
+      if (pA !== pB) return pA - pB
+      const tA = a.deadline_time || '', tB = b.deadline_time || ''
+      if (tA !== tB) return tA.localeCompare(tB)
+      return (a.seq ?? 999999) - (b.seq ?? 999999)
+    })
+    let curRaw = 0, lastPeriodRaw = ''
+    for (const task of sortedRaw) {
+      if (task.period !== lastPeriodRaw) {
+        curRaw = Math.max(curRaw, getPhaseStart(task.period))
+        lastPeriodRaw = task.period
+      }
+      const dur = taskDurMins(task)
+      let startMin = curRaw
+      if (task.deadline_time) {
+        const [dh, dm] = task.deadline_time.split(':').map(Number)
+        if (!isNaN(dh) && !isNaN(dm)) startMin = Math.max(startMin, dh * 60 + dm)
+      }
+      const endMin = wallClockFinish(startMin, dur)
+      curRaw = endMin
+      if (skuStats[task.sku]) {
+        skuStats[task.sku].segments.push({ start: startMin, end: endMin, worker: task.worker_name, isDeficit: !!task.note?.includes('|deficit') })
+      }
     }
   }
 
@@ -499,21 +525,29 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
               {/* Bar area */}
               <div className="flex-1 relative h-10 sm:h-14">
-                {mergeSegmentsWithWorkers(stat.segments).map((seg, idx) => {
+                {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit)).map((seg, idx) => {
                   const barLeft  = Math.max(pct(seg.start), 0)
                   const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                   const segDone  = nowMins >= seg.end
                   const segPend  = nowMins < seg.start
                   return (
-                    <div key={idx} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                    <div key={`s-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
+                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                      onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                  )
+                })}
+                {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
+                  const barLeft  = Math.max(pct(seg.start), 0)
+                  const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                  const segDone  = nowMins >= seg.end
+                  const segPend  = nowMins < seg.start
+                  return (
+                    <div key={`d-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
                       style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
                         opacity: segDone ? 0.45 : segPend ? 0.35 : 1,
-                        outline: stat.isDeficit ? '2px solid #ef4444' : undefined,
-                        outlineOffset: '1px' }}
-                      onClick={e => {
-                        e.stopPropagation()
-                        setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg })
-                      }} />
+                        outline: '2px solid #ef4444', outlineOffset: '1px' }}
+                      onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
                   )
                 })}
               </div>
