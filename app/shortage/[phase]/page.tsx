@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Calendar, RefreshCw, AlertTriangle, ImageDown } from 'lucide-react'
+import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
 interface WithdrawalItem {
   id: string
@@ -139,60 +139,126 @@ export default function ShortagePage() {
 
   useEffect(() => { load() }, [load])
 
-  const exportImage = async () => {
+  const exportImage = () => {
     setExp(true)
     try {
-      const { toPng } = await import('html-to-image')
-      const W = captureRef.current?.offsetWidth ?? 720
       const dDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
         day: 'numeric', month: 'long', year: 'numeric',
       })
 
-      const stationStyle = (ws: string | null) => {
-        if (ws === 'สามชั้น') return 'background:#dbeafe;color:#1d4ed8'
-        if (ws === 'สะโพก')   return 'background:#ffedd5;color:#c2410c'
-        if (ws === 'ไหล่')    return 'background:#dcfce7;color:#15803d'
-        return 'background:#f3f4f6;color:#374151'
+      const DPR     = 2
+      const COL_W   = [140, 120, 220, 120, 100]
+      const W       = COL_W.reduce((a, b) => a + b, 0)
+      const BANNER  = 44
+      const TH      = 38
+      const RH      = 34
+      const H       = BANNER + TH + rows.length * RH + 1
+      const FONT    = '13px Tahoma,Arial,sans-serif'
+      const BOLD    = 'bold 13px Tahoma,Arial,sans-serif'
+      const SMALL_B = 'bold 11px Tahoma,Arial,sans-serif'
+      const MONO    = '12px "Courier New",monospace'
+
+      const canvas  = document.createElement('canvas')
+      canvas.width  = W * DPR
+      canvas.height = H * DPR
+      const ctx     = canvas.getContext('2d')!
+      ctx.scale(DPR, DPR)
+
+      // White bg
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, W, H)
+
+      // Banner
+      ctx.fillStyle = '#fef2f2'
+      ctx.fillRect(0, 0, W, BANNER)
+      ctx.strokeStyle = '#fca5a5'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(0, BANNER); ctx.lineTo(W, BANNER); ctx.stroke()
+      ctx.fillStyle = '#b91c1c'; ctx.font = BOLD; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText('Raw รอผลิต ' + rows.length + ' รายการ · ' + dDisplay + ' · ' + cfg.label, 16, BANNER / 2)
+
+      // Header row
+      ctx.fillStyle = '#f9fafb'
+      ctx.fillRect(0, BANNER, W, TH)
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.beginPath(); ctx.moveTo(0, BANNER + TH); ctx.lineTo(W, BANNER + TH); ctx.stroke()
+
+      const headers   = ['Station', 'SAP', 'ชื่อวัตถุดิบ', 'ปริมาณที่ขาด', 'เวลาที่ต้องใช้']
+      const hColors   = ['#374151','#374151','#374151','#dc2626','#374151']
+      const hAlign: CanvasTextAlign[] = ['left','left','left','center','center']
+      let hx = 0
+      headers.forEach((h, i) => {
+        ctx.fillStyle = hColors[i]; ctx.font = 'bold 12px Tahoma,Arial,sans-serif'
+        ctx.textAlign = hAlign[i]
+        ctx.fillText(h, hAlign[i] === 'center' ? hx + COL_W[i] / 2 : hx + 14, BANNER + TH / 2)
+        hx += COL_W[i]
+      })
+
+      const SC: Record<string, [string, string, string]> = {
+        'สามชั้น': ['#dbeafe','#1d4ed8','สามชั้นพิเศษ'],
+        'สะโพก':   ['#ffedd5','#c2410c','สะโพกพิเศษ'],
+        'ไหล่':    ['#dcfce7','#15803d','ไหล่พิเศษ'],
       }
-      const stationLabel = (ws: string | null) => {
-        if (ws === 'สามชั้น') return 'สามชั้นพิเศษ'
-        if (ws === 'สะโพก')   return 'สะโพกพิเศษ'
-        if (ws === 'ไหล่')    return 'ไหล่พิเศษ'
-        return ws ?? '—'
-      }
 
-      // Pre-build rows HTML with string concat — avoids deeply nested template literals
-      const rowsHtml = rows.map(r => {
-        const badge = '<span style="padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;' +
-          stationStyle(r.work_station) + '">' + stationLabel(r.work_station) + '</span>'
-        return (
-          '<tr style="border-bottom:1px solid #f3f4f6;">' +
-          '<td style="padding:9px 14px;">' + badge + '</td>' +
-          '<td style="padding:9px 14px;font-family:monospace;font-size:12px;color:#4b5563;">' + r.sku + '</td>' +
-          '<td style="padding:9px 14px;font-weight:500;color:#1f2937;">' + (r.sku_name ?? '—') + '</td>' +
-          '<td style="padding:9px 14px;text-align:center;font-weight:700;color:#dc2626;">' +
-            (r.deficit != null ? r.deficit.toLocaleString() + ' กก.' : '—') + '</td>' +
-          '<td style="padding:9px 14px;text-align:center;color:#1f2937;">' +
-            (r.productionTime ? r.productionTime + ' น.' : '—') + '</td>' +
-          '</tr>'
-        )
-      }).join('')
+      rows.forEach((r, i) => {
+        const y = BANNER + TH + i * RH
+        ctx.fillStyle = i % 2 === 0 ? '#fff' : '#fafafa'
+        ctx.fillRect(0, y, W, RH)
+        ctx.strokeStyle = '#f3f4f6'
+        ctx.beginPath(); ctx.moveTo(0, y + RH); ctx.lineTo(W, y + RH); ctx.stroke()
 
-      const container = document.createElement('div')
-      container.style.cssText = `position:absolute;top:-99999px;left:0;width:${W}px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;`
-      container.innerHTML = `<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;"><div style="background:#fef2f2;padding:12px 20px;border-bottom:1px solid #fca5a5;"><span style="font-size:13px;font-weight:600;color:#b91c1c;">Raw รอผลิต ${rows.length} รายการ · ${dDisplay} · ${cfg.label}</span></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f9fafb;"><th style="padding:10px 14px;font-size:12px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;text-align:left;">Station</th><th style="padding:10px 14px;font-size:12px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;text-align:left;">SAP</th><th style="padding:10px 14px;font-size:12px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;text-align:left;">ชื่อวัตถุดิบ</th><th style="padding:10px 14px;font-size:12px;font-weight:600;color:#dc2626;border-bottom:1px solid #e5e7eb;text-align:center;">ปริมาณที่ขาด</th><th style="padding:10px 14px;font-size:12px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;text-align:center;">เวลาที่ต้องใช้</th></tr></thead><tbody>` +
-        rowsHtml +
-        `</tbody></table></div>`
+        const cy = y + RH / 2
+        let cx = 0
 
-      document.body.appendChild(container)
-      await new Promise<void>(r => setTimeout(r, 150))
-      const dataUrl = await toPng(container, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      document.body.removeChild(container)
+        // Station badge
+        const sc = SC[r.work_station ?? '']
+        ctx.font = SMALL_B; ctx.textAlign = 'left'
+        if (sc) {
+          const [bg, fg, label] = sc
+          const tw = ctx.measureText(label).width
+          const bx = cx + 14, by = cy - 9, bw = tw + 14, bh = 18
+          ctx.fillStyle = bg; ctx.fillRect(bx, by, bw, bh)
+          ctx.fillStyle = fg; ctx.fillText(label, bx + 7, cy)
+        } else {
+          ctx.fillStyle = '#374151'; ctx.fillText(r.work_station ?? '—', cx + 14, cy)
+        }
+        cx += COL_W[0]
 
-      const a = document.createElement('a')
-      a.href = dataUrl
-      a.download = `Raw_รอผลิต_Phase${phase}_${date}.png`
-      a.click()
+        // SAP
+        ctx.fillStyle = '#4b5563'; ctx.font = MONO; ctx.textAlign = 'left'
+        ctx.fillText(r.sku, cx + 14, cy)
+        cx += COL_W[1]
+
+        // Name (truncate)
+        ctx.fillStyle = '#1f2937'; ctx.font = FONT; ctx.textAlign = 'left'
+        let nm = r.sku_name ?? '—'
+        const maxW = COL_W[2] - 28
+        ctx.font = FONT
+        while (nm.length > 1 && ctx.measureText(nm).width > maxW) nm = nm.slice(0, -1)
+        if (nm !== (r.sku_name ?? '—')) nm += '…'
+        ctx.fillText(nm, cx + 14, cy)
+        cx += COL_W[2]
+
+        // Deficit
+        ctx.fillStyle = '#dc2626'; ctx.font = BOLD; ctx.textAlign = 'center'
+        ctx.fillText(r.deficit != null ? r.deficit.toLocaleString() + ' กก.' : '—', cx + COL_W[3] / 2, cy)
+        cx += COL_W[3]
+
+        // Time
+        ctx.fillStyle = '#1f2937'; ctx.font = FONT; ctx.textAlign = 'center'
+        ctx.fillText(r.productionTime ? r.productionTime + ' น.' : '—', cx + COL_W[4] / 2, cy)
+      })
+
+      // Outer border
+      ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1
+      ctx.strokeRect(0.5, 0.5, W - 1, H - 1)
+
+      canvas.toBlob(blob => {
+        if (!blob) return
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = 'Raw_รอผลิต_Phase' + phase + '_' + date + '.png'
+        a.click(); URL.revokeObjectURL(url)
+      }, 'image/png')
     } finally {
       setExp(false)
     }
@@ -235,7 +301,7 @@ export default function ShortagePage() {
               onClick={exportImage}
               disabled={exporting}
               className="flex items-center justify-center text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors disabled:opacity-50">
-              <ImageDown size={18} className={exporting ? 'animate-pulse' : ''} />
+              <Download size={18} className={exporting ? 'animate-pulse' : ''} />
             </button>
           </>
         )}
