@@ -469,6 +469,22 @@ function allocateBalanced(params: {
 
   const phaseStartMins = phaseRoundMins[0] ?? 510
 
+  // Pre-compute total qty per normSku (across all channels) for worker-count cap
+  const skuTotalQty = new Map<string, number>()
+  for (const t of targets) {
+    const k = t.sku.replace(/^0+/, '')
+    skuTotalQty.set(k, (skuTotalQty.get(k) ?? 0) + t.targetQty)
+  }
+  const getMaxWorkers = (normSku: string): number => {
+    const qty = skuTotalQty.get(normSku) ?? 0
+    if (qty <= 15) return 1
+    if (qty <= 30) return 2
+    if (qty <= 45) return 3
+    return Infinity
+  }
+  // Track which workers have been assigned to each normSku
+  const skuAssignedWorkers = new Map<string, Set<string>>()
+
   // 4. Allocate units
   for (const unit of units) {
     let bestWorker: WorkforceRow | null = null
@@ -477,8 +493,16 @@ function allocateBalanced(params: {
     let bestRemainingHrs = -Infinity
     let bestStartMins = 0
 
-    // Filter to eligible workers
-    const eligible = workers.filter(w => isWorkerEligible(w, unit.productGroup))
+    const normUnitSku = unit.sku.replace(/^0+/, '')
+    const maxW = getMaxWorkers(normUnitSku)
+    const assignedForSku = skuAssignedWorkers.get(normUnitSku) ?? new Set<string>()
+
+    // Filter to eligible workers, also enforce per-SKU worker cap
+    const eligible = workers.filter(w => {
+      if (!isWorkerEligible(w, unit.productGroup)) return false
+      if (maxW !== Infinity && assignedForSku.size >= maxW && !assignedForSku.has(normName(w.name))) return false
+      return true
+    })
     if (!eligible.length) continue
 
     const specialTime = specialTimeMap.get(unit.sku) ?? specialTimeMap.get(unit.sku.replace(/^0+/, ''))
@@ -639,6 +663,11 @@ function allocateBalanced(params: {
 
     // Assign unit to bestWorker
     const nameKey = normName(bestWorker.name)
+
+    // Update SKU worker set for cap tracking
+    if (!skuAssignedWorkers.has(normUnitSku)) skuAssignedWorkers.set(normUnitSku, new Set())
+    skuAssignedWorkers.get(normUnitSku)!.add(nameKey)
+
     const segs = workerBusySegments.get(nameKey) ?? []
     segs.push({ start: bestStartMins, end: bestNewFinish })
     workerBusySegments.set(nameKey, segs)
