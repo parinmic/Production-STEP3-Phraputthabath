@@ -1,35 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-// Dynamically resolve schema based on environment to isolate dev and production environments
-let resolvedSchema = 'public'
+// Each Vercel deployment (production / preview) points to its own Supabase project
+// via separate NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY env vars.
+// Both projects use the 'public' schema by default.
+export const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
 
-if (typeof window !== 'undefined') {
-  const hostname = window.location.hostname
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    resolvedSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'dev'
-  } else if (hostname.includes('production-step-3-phraputthabath.vercel.app')) {
-    resolvedSchema = 'public'
-  } else {
-    resolvedSchema = 'dev'
-  }
-} else {
-  const env = process.env.VERCEL_ENV || process.env.NODE_ENV
-  if (env === 'production') {
-    resolvedSchema = 'public'
-  } else if (env === 'preview') {
-    resolvedSchema = 'dev'
-  } else {
-    resolvedSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'dev'
-  }
-}
-
-export const supabaseSchema = resolvedSchema
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  db: { schema: supabaseSchema },
-})
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { db: { schema: supabaseSchema } },
+)
 
 export type TableName = 'สามชั้น' | 'สะโพก' | 'ไหล่'
 export type Shift = 'เช้า' | 'บ่าย' | 'ค่ำ'
