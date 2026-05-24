@@ -968,6 +968,12 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
   const stockRows: StockRow[] = []
 
+  const { data: stockUploadLog } = await supabase
+    .from('upload_log').select('uploaded_at')
+    .in('table_name', ['stock_0010', 'stock_20'])
+    .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
+  const stockUploaded = !!stockUploadLog
+
   if (rawSaps.length > 0) {
     const [res0010, res20] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
@@ -1012,7 +1018,6 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
   for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
-  const stockUploaded = stockRows.length > 0
 
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) => a.roundMins - b.roundMins)
@@ -1584,6 +1589,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   // Stock-based splitting: run for every phase when stock data is available
   {
+    const { data: stockPlanLog } = await supabase
+      .from('upload_log').select('uploaded_at')
+      .in('table_name', ['stock_0010', 'stock_20'])
+      .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
+    const stockWasUploaded = !!stockPlanLog
+
     const { data: noWithdrawalRows } = await supabase.from('no_withdrawal_skus').select('sap')
     const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
 
@@ -1676,6 +1687,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const item of assignList) {
       const cleanSku = item.sku.replace(/^0+/, '')
       if (noWithdrawalSaps.has(item.sku) || noWithdrawalSaps.has(cleanSku)) { splitAssignList.push(item); continue }
+      if (!stockWasUploaded) { splitAssignList.push(item); continue }
       const boms = bomMap.get(cleanSku)
       if (!boms?.length) { splitAssignList.push(item); continue }
 
