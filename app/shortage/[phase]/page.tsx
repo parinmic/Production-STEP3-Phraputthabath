@@ -144,16 +144,32 @@ export default function ShortagePage() {
     setExp(true)
     try {
       const { toPng } = await import('html-to-image')
-      const el = captureRef.current
-      const fullW = el.offsetWidth
-      const fullH = el.scrollHeight
-      const dataUrl = await toPng(el, {
+      const source = captureRef.current
+
+      // Clone off-screen and strip all overflow clipping so full table renders
+      const wrapper = document.createElement('div')
+      wrapper.style.cssText = `position:fixed;top:0;left:${-(source.offsetWidth + 200)}px;width:${source.offsetWidth}px;background:#fff;`
+      const clone = source.cloneNode(true) as HTMLElement
+      const stripOverflow = (el: HTMLElement) => {
+        el.style.overflow  = 'visible'
+        el.style.maxHeight = 'none'
+        Array.from(el.children).forEach(c => stripOverflow(c as HTMLElement))
+      }
+      stripOverflow(clone)
+      wrapper.appendChild(clone)
+      document.body.appendChild(wrapper)
+
+      // Wait one frame for layout
+      await new Promise<void>(r => requestAnimationFrame(() => r()))
+
+      const dataUrl = await toPng(wrapper, {
         backgroundColor: '#ffffff',
         pixelRatio: 2,
-        width: fullW,
-        height: fullH,
-        style: { height: `${fullH}px`, overflow: 'visible', maxHeight: 'none' },
+        width:  wrapper.offsetWidth,
+        height: wrapper.scrollHeight,
       })
+      document.body.removeChild(wrapper)
+
       const a = document.createElement('a')
       a.href = dataUrl
       a.download = `Raw_รอผลิต_Phase${phase}_${date}.png`
