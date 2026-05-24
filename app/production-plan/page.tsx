@@ -52,25 +52,23 @@ export default function ProductionPlanPage() {
         .eq('production_date', date)
         .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
 
-      const map = new Map<string, { sku_name: string | null; qty: number; channel: string | null; minSeq: number; fullSku: string }>()
+      const map = new Map<string, { sku_name: string | null; qty: number; channel: string | null; minSeq: number }>()
       for (const r of data ?? []) {
-        const normSku = r.sku.replace(/^0+/, '') || r.sku
-        const ch = r.channel || null
-        const key = `${r.table_name}|||${normSku}|||${ch ?? ''}`
-        const cur = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, channel: ch, minSeq: r.seq ?? Infinity, fullSku: r.sku }
+        const key = `${r.table_name}|||${r.sku}`
+        const cur = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, channel: r.channel ?? null, minSeq: r.seq ?? Infinity }
         cur.qty += Number(r.target_quantity ?? 0)
         if ((r.seq ?? Infinity) < cur.minSeq) cur.minSeq = r.seq ?? Infinity
         map.set(key, cur)
       }
 
       const result: PlanRow[] = Array.from(map.entries())
-        .map(([key, { sku_name, qty, channel, minSeq, fullSku }]) => {
+        .map(([key, { sku_name, qty, channel, minSeq }]) => {
           const [station, sku] = key.split('|||')
           const normSku = sku.replace(/^0+/, '')
-          const wpb = bagMap[fullSku] ?? bagMap[normSku]
+          const wpb = bagMap[sku] ?? bagMap[normSku]
           return {
             station,
-            sku:      fullSku,
+            sku,
             sku_name,
             totalQty: Math.round(qty * 100) / 100,
             bags:     wpb && wpb > 0 ? Math.round(qty / wpb) : null,
@@ -81,7 +79,7 @@ export default function ProductionPlanPage() {
         .sort((a, b) => {
           const si = STATION_ORDER.indexOf(a.station) - STATION_ORDER.indexOf(b.station)
           if (si !== 0) return si
-          // sort by channel priority order (seq)
+          // sort by generation order (seq reflects channel priority — Makro first, WM next, LOTUS last)
           if (a.minSeq !== b.minSeq) return a.minSeq - b.minSeq
           return b.totalQty - a.totalQty
         })
@@ -199,7 +197,6 @@ export default function ProductionPlanPage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Station</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">ช่องทาง</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">ชื่อ SKU</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (กก.)</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">แผน (ถุง)</th>
@@ -207,17 +204,13 @@ export default function ProductionPlanPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => (
-                  <tr key={`${r.station}-${r.sku}-${r.channel ?? ''}-${i}`} className="hover:bg-gray-50">
+                  <tr key={`${r.station}-${r.sku}-${i}`} className="hover:bg-gray-50">
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.station] ?? 'bg-gray-100 text-gray-700'}`}>
                         {STATION_DISPLAY[r.station] ?? r.station}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-700 font-medium">{r.channel ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-800 font-medium">
-                      <span className="text-xs font-mono text-gray-400 mr-2">{r.sku.replace(/^0+/, '')}</span>
-                      {r.sku_name ?? r.sku}
-                    </td>
+                    <td className="px-4 py-2.5 text-gray-800 font-medium">{r.sku_name ?? r.sku}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{r.totalQty.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-blue-700">
                       {r.bags != null ? r.bags.toLocaleString() : <span className="text-gray-300">—</span>}
@@ -227,7 +220,7 @@ export default function ProductionPlanPage() {
               </tbody>
               <tfoot className="bg-gray-50 border-t border-gray-200">
                 <tr>
-                  <td colSpan={3} className="px-4 py-3 font-semibold text-gray-700 text-right">รวม</td>
+                  <td colSpan={2} className="px-4 py-3 font-semibold text-gray-700 text-right">รวม</td>
                   <td className="px-4 py-3 text-right font-bold text-gray-900">{totalQty.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right font-bold text-blue-700">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</td>
                 </tr>
