@@ -542,11 +542,15 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                   const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                   const segDone  = nowMins >= seg.end
                   const segPend  = nowMins < seg.start
+                  const alpha    = segDone ? 0.45 : segPend ? 0.35 : 1
                   return (
                     <div key={`d-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
-                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1,
-                        outline: '2.5px solid #ef4444', outlineOffset: '1px' }}
+                      style={{
+                        left: `${barLeft}%`, width: `${barWidth}%`,
+                        opacity: alpha,
+                        background: `repeating-linear-gradient(-45deg, ${col.bg} 0px, ${col.bg} 5px, #ef4444 5px, #ef4444 8px)`,
+                        border: '1.5px solid #ef4444',
+                      }}
                       onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
                   )
                 })}
@@ -1076,19 +1080,25 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
             {/* Task list */}
             <div className="space-y-1.5">
               {taskInfo.map(t => {
-                const col    = skuColor[t.sku]
-                const isDone = t.status === 'เสร็จแล้ว'
+                const col      = skuColor[t.sku]
+                const isDone   = t.status === 'เสร็จแล้ว'
+                const isDeficit = !!t.note?.includes('|deficit')
                 return (
                   <div key={t.id} className="flex items-start gap-2 rounded-lg px-3 py-2"
-                    style={{ backgroundColor: col.bg + '20' }}>
-                    <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: col.bg, opacity: isDone ? 0.5 : 1 }} />
+                    style={{
+                      background: isDeficit
+                        ? `repeating-linear-gradient(-45deg, ${col.bg}25 0px, ${col.bg}25 5px, #ef444418 5px, #ef444418 9px)`
+                        : col.bg + '20',
+                      border: isDeficit ? '1.5px solid #ef4444' : '1.5px solid transparent',
+                    }}>
+                    <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: isDeficit ? '#ef4444' : col.bg, opacity: isDone ? 0.5 : 1 }} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium leading-tight" style={{ color: col.fg }}>
+                      <p className="text-xs font-medium leading-tight" style={{ color: isDeficit ? '#dc2626' : col.fg }}>
                         {t.sku_name ?? t.sku}
                       </p>
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono text-gray-400">{timeRangeLabel(t.startMin, t.endMin)}</span>
-                        <span className="text-xs font-bold ml-2" style={{ color: col.fg }}>
+                        <span className="text-xs font-bold ml-2" style={{ color: isDeficit ? '#dc2626' : col.fg }}>
                           {bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), bagMap)}{roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap).toLocaleString()} กก.
                         </span>
                       </div>
