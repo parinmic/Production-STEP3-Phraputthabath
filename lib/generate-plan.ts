@@ -1822,13 +1822,26 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!deadlineStr) return null
     const [dh, dm] = deadlineStr.split(':').map(Number)
     const deadlineMins = dh * 60 + dm
-    if (deadlineMins <= phaseStartMins || deadlineMins > phaseEndMins) return null
-    return {
-      deadlineMins,
-      skus: data.map(r => ({ sku: String(r.sku ?? '').replace(/^0+/, ''), name: r.sku_name as string | null, qty: Number(r.quantity) })).filter(s => s.qty > 0),
-    } as SuppSlot
+    const skus = data.map(r => ({ sku: String(r.sku ?? '').replace(/^0+/, ''), name: r.sku_name as string | null, qty: Number(r.quantity) })).filter(s => s.qty > 0)
+    return { deadlineMins, skus, withinPhase: deadlineMins > phaseStartMins && deadlineMins <= phaseEndMins } as SuppSlot & { withinPhase: boolean }
   }))
-  const activeSuppSlots = (suppSlotResults.filter(Boolean) as SuppSlot[]).sort((a, b) => a.deadlineMins - b.deadlineMins)
+  const allSuppSlots = suppSlotResults.filter(Boolean) as (SuppSlot & { withinPhase: boolean })[]
+  const activeSuppSlots = allSuppSlots.filter(s => s.withinPhase).sort((a, b) => a.deadlineMins - b.deadlineMins)
+
+  // Extend concurrent fallback map with ALL supplementary targets (even those outside this phase window)
+  // so that concurrent-group partner SKUs in ยอดล่วงหน้า get injected alongside their paired group.
+  if (concurrentGroupPairsMap.size > 0) {
+    for (const slot of allSuppSlots) {
+      for (const { sku, name, qty } of slot.skus) {
+        if (qty <= 0.01) continue
+        const grp = skuGroupMap.get(sku)
+        if (!grp || !concurrentGroupPairsMap.has(grp)) continue
+        const existing = concurrentSkuFallbackTargets.get(sku)
+        if (!existing || qty > existing.qty)
+          concurrentSkuFallbackTargets.set(sku, { qty, name: name ?? null, channel: 'เสริม' })
+      }
+    }
+  }
 
   // Assign workers
   const assignments: Record<string, unknown>[] = []
