@@ -1296,24 +1296,24 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return isNaN(num) ? null : Math.round(num * 24 * 60)
   }
 
-  // Build concurrent SKU pairs map (both directions: A→B and B→A)
-  const concurrentPairsMap = new Map<string, string>()
-  const getSapCol = (r: Record<string, unknown>, n: 1 | 2): string => {
-    const val = r[`SAP ${n}`] ?? r[`SAP${n}`] ?? r[`sap ${n}`] ?? r[`sap${n}`]
+  // Build concurrent product-group pairs map (both directions: G1→G2 and G2→G1)
+  const concurrentGroupPairsMap = new Map<string, string>()
+  const getGroupCol = (r: Record<string, unknown>, n: 1 | 2): string => {
+    const val = r[`กลุ่มสินค้า ${n}`] ?? r[`กลุ่มสินค้า${n}`]
     if (val !== undefined && val !== null && String(val).trim() !== '')
-      return String(val).replace(/^0+/, '').trim()
+      return String(val).trim()
     const key = Object.keys(r).find(k =>
-      k.replace(/\s/g, '').toUpperCase() === `SAP${n}`
+      k.replace(/\s/g, '') === `กลุ่มสินค้า${n}`
     )
-    return key ? String(r[key] ?? '').replace(/^0+/, '').trim() : ''
+    return key ? String(r[key] ?? '').trim() : ''
   }
   for (const row of concurrentSkuRaw ?? []) {
     const r = row.row_data as Record<string, unknown>
-    const sap1 = getSapCol(r, 1)
-    const sap2 = getSapCol(r, 2)
-    if (sap1 && sap2 && sap1 !== sap2) {
-      concurrentPairsMap.set(sap1, sap2)
-      concurrentPairsMap.set(sap2, sap1)
+    const g1 = getGroupCol(r, 1)
+    const g2 = getGroupCol(r, 2)
+    if (g1 && g2 && g1 !== g2) {
+      concurrentGroupPairsMap.set(g1, g2)
+      concurrentGroupPairsMap.set(g2, g1)
     }
   }
 
@@ -1339,6 +1339,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   for (const p of productivity) {
     if (!skuMap.has(p.sku))                    skuMap.set(p.sku, p)
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
+  }
+
+  // Map normSku → product_group for concurrent group-pair logic
+  const skuGroupMap = new Map<string, string>()
+  for (const [sku, prod] of Array.from(skuMap.entries())) {
+    if (prod.product_group) skuGroupMap.set(sku, prod.product_group)
   }
 
   const lotusVarianceMap = new Map<string, number>()
@@ -1569,14 +1575,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'LOTUS':      buildLotusTargets(),
   }
 
-  // Pre-capture target quantities for concurrent SKU pairs before any station/stock filtering.
-  // Used to inject synthetic entries when one side of a pair gets filtered out of allocation.
+  // Pre-capture target quantities for SKUs in concurrent group pairs before any station/stock filtering.
+  // Used to inject synthetic entries when one side of a group pair is absent from allocation.
   const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
-  if (concurrentPairsMap.size > 0) {
+  if (concurrentGroupPairsMap.size > 0) {
     for (const [ch, targets] of Object.entries(channelTargets)) {
       for (const t of targets) {
         const normSku = t.sku.replace(/^0+/, '')
-        if (!concurrentPairsMap.has(normSku)) continue
+        const group = skuGroupMap.get(normSku)
+        if (!group || !concurrentGroupPairsMap.has(group)) continue
         const existing = concurrentSkuFallbackTargets.get(normSku)
         if (!existing || t.targetQty > existing.qty)
           concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
@@ -2103,21 +2110,21 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  // Concurrent SKU pairs: move both SKUs to the same worker and same start time.
-  // "ผลิตพร้อมกัน" = one worker processes both products simultaneously.
-  // If one SKU in a pair was filtered out of allocation entirely, inject a synthetic entry
-  // for it using the allocated partner's worker/time and the pre-filter target quantity.
-  if (concurrentPairsMap.size > 0) {
-    // Find the earliest start + worker for each concurrent SKU (store task reference for cloning)
-    const skuPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number; taskRef: Record<string, unknown> }>()
+  // Concurrent group pairs: all SKUs from paired product groups start at the same time on the same worker.
+  // "ผลิตพร้อมกัน" — normal allocation decides which SKUs to produce; this step syncs their start times.
+  // If one group has no allocation, inject its SKUs from the pre-filter fallback targets.
+  if (concurrentGroupPairsMap.size > 0) {
+    // Find the earliest start + worker for each concurrent product group
+    const groupPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number; taskRef: Record<string, unknown> }>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
-      if (!concurrentPairsMap.has(normSku)) continue
+      const group = skuGroupMap.get(normSku)
+      if (!group || !concurrentGroupPairsMap.has(group)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
-      const cur = skuPrimary.get(normSku)
+      const cur = groupPrimary.get(group)
       if (!cur || startMins < cur.startMins)
-        skuPrimary.set(normSku, {
+        groupPrimary.set(group, {
           workerCode: task.worker_code as string,
           workerName: task.worker_name as string,
           startMins,
@@ -2128,38 +2135,38 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const processedPairs = new Set<string>()
     const injectedTasks: Record<string, unknown>[] = []
 
-    for (const [sku, paired] of Array.from(concurrentPairsMap.entries())) {
-      const pairKey = [sku, paired].sort().join('|||')
+    for (const [group, pairedGroup] of Array.from(concurrentGroupPairsMap.entries())) {
+      const pairKey = [group, pairedGroup].sort().join('|||')
       if (processedPairs.has(pairKey)) continue
       processedPairs.add(pairKey)
 
-      const primA = skuPrimary.get(sku)
-      const primB = skuPrimary.get(paired)
+      const primA = groupPrimary.get(group)
+      const primB = groupPrimary.get(pairedGroup)
 
       if (primA && primB) {
-        // Both allocated: pick the earlier worker, move both there at that start time
+        // Both groups allocated: pick the earlier worker, move all tasks from both groups there
         const canonical  = primA.startMins <= primB.startMins ? primA : primB
         const syncedStart = Math.min(primA.startMins, primB.startMins)
         for (const task of resequenced) {
           const normSku = (task.sku as string).replace(/^0+/, '')
-          if (normSku !== sku && normSku !== paired) continue
+          const taskGroup = skuGroupMap.get(normSku)
+          if (taskGroup !== group && taskGroup !== pairedGroup) continue
           task.worker_code   = canonical.workerCode
           task.worker_name   = canonical.workerName
           task.deadline_time = minsToTimeStr(syncedStart)
-          // Mark as concurrent so the display renders both tasks starting at the same time
           const existingNote = String(task.note ?? '')
           if (!existingNote.includes('concurrent')) {
             task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
           }
         }
       } else if (primA && !primB) {
-        // Only A allocated: inject B at A's worker/time using pre-filter target qty
-        const fallback = concurrentSkuFallbackTargets.get(paired)
-        if (fallback && fallback.qty > 0.01) {
+        // Only group A allocated: inject all group-B SKUs from fallback targets
+        for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
+          if (skuGroupMap.get(sku) !== pairedGroup || fallback.qty <= 0.01) continue
           injectedTasks.push({
             ...primA.taskRef,
-            sku: paired,
-            sku_name: skuMap.get(paired)?.sku_name ?? fallback.name ?? null,
+            sku,
+            sku_name: skuMap.get(sku)?.sku_name ?? fallback.name ?? null,
             target_quantity: Math.round(fallback.qty * 100) / 100,
             channel: fallback.channel,
             worker_code: primA.workerCode,
@@ -2170,9 +2177,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           })
         }
       } else if (!primA && primB) {
-        // Only B allocated: inject A at B's worker/time using pre-filter target qty
-        const fallback = concurrentSkuFallbackTargets.get(sku)
-        if (fallback && fallback.qty > 0.01) {
+        // Only group B allocated: inject all group-A SKUs from fallback targets
+        for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
+          if (skuGroupMap.get(sku) !== group || fallback.qty <= 0.01) continue
           injectedTasks.push({
             ...primB.taskRef,
             sku,
@@ -2249,7 +2256,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
     debug_concurrent_pairs: Array.from(new Set(
-      Array.from(concurrentPairsMap.entries())
+      Array.from(concurrentGroupPairsMap.entries())
         .map(([a, b]) => [a, b].sort().join('|||'))
     )).map(s => { const [sap1, sap2] = s.split('|||'); return { sap1, sap2 } }),
   }
