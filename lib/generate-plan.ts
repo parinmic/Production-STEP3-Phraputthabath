@@ -1157,6 +1157,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: masterVarMakroRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
+    { data: concurrentSkuRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', '0800'),
@@ -1212,6 +1213,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
+    supabase.from('master_logic_calculation').select('row_data')
+      .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }),
   ])
 
   // Merge workforce
@@ -1290,6 +1293,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const num = Number(val)
     return isNaN(num) ? null : Math.round(num * 24 * 60)
+  }
+
+  // Build concurrent SKU pairs map (both directions: A→B and B→A)
+  const concurrentPairsMap = new Map<string, string>()
+  for (const row of concurrentSkuRaw ?? []) {
+    const r = row.row_data as Record<string, unknown>
+    const sap1 = String(r['SAP 1'] ?? '').replace(/^0+/, '').trim()
+    const sap2 = String(r['SAP 2'] ?? '').replace(/^0+/, '').trim()
+    if (sap1 && sap2 && sap1 !== sap2) {
+      concurrentPairsMap.set(sap1, sap2)
+      concurrentPairsMap.set(sap2, sap1)
+    }
   }
 
   const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
@@ -2061,6 +2076,29 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
     resequenced.push(...keptTasks)
+  }
+
+  // Sync deadline_time for concurrent SKU pairs: both SKUs start at the earlier of the two
+  if (concurrentPairsMap.size > 0) {
+    const skuMinStart = new Map<string, number>()
+    for (const task of resequenced) {
+      const normSku = (task.sku as string).replace(/^0+/, '')
+      const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
+      const startMins = h * 60 + m
+      const cur = skuMinStart.get(normSku)
+      if (cur === undefined || startMins < cur) skuMinStart.set(normSku, startMins)
+    }
+    for (const task of resequenced) {
+      const normSku = (task.sku as string).replace(/^0+/, '')
+      const pairedSku = concurrentPairsMap.get(normSku)
+      if (!pairedSku) continue
+      const myStart     = skuMinStart.get(normSku)  ?? Infinity
+      const pairedStart = skuMinStart.get(pairedSku) ?? Infinity
+      const syncedStart = Math.min(myStart, pairedStart)
+      if (syncedStart < Infinity && syncedStart !== myStart) {
+        task.deadline_time = minsToTimeStr(syncedStart)
+      }
+    }
   }
 
   resequenced.forEach((a, i) => { 
