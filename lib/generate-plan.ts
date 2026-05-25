@@ -2114,20 +2114,24 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // "ผลิตพร้อมกัน" — normal allocation decides which SKUs to produce; this step syncs their start times.
   // If one group has no allocation, inject its SKUs from the pre-filter fallback targets.
   if (concurrentGroupPairsMap.size > 0) {
-    // Find the earliest start + worker for each concurrent product group
-    const groupPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number; taskRef: Record<string, unknown> }>()
+    // Build per-SKU earliest-start info for each concurrent product group
+    type SkuData = { startMins: number; workerCode: string; workerName: string; taskRef: Record<string, unknown> }
+    const groupSkuInfo = new Map<string, Map<string, SkuData>>()
+
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
       const group = skuGroupMap.get(normSku)
       if (!group || !concurrentGroupPairsMap.has(group)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
-      const cur = groupPrimary.get(group)
+      if (!groupSkuInfo.has(group)) groupSkuInfo.set(group, new Map())
+      const skuInfo = groupSkuInfo.get(group)!
+      const cur = skuInfo.get(normSku)
       if (!cur || startMins < cur.startMins)
-        groupPrimary.set(group, {
+        skuInfo.set(normSku, {
+          startMins,
           workerCode: task.worker_code as string,
           workerName: task.worker_name as string,
-          startMins,
           taskRef: task,
         })
     }
@@ -2140,55 +2144,73 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (processedPairs.has(pairKey)) continue
       processedPairs.add(pairKey)
 
-      const primA = groupPrimary.get(group)
-      const primB = groupPrimary.get(pairedGroup)
+      const infoA = groupSkuInfo.get(group) ?? new Map<string, SkuData>()
+      const infoB = groupSkuInfo.get(pairedGroup) ?? new Map<string, SkuData>()
 
-      if (primA && primB) {
-        // Both groups allocated: pick the earlier worker, move all tasks from both groups there
-        const canonical  = primA.startMins <= primB.startMins ? primA : primB
-        const syncedStart = Math.min(primA.startMins, primB.startMins)
-        for (const task of resequenced) {
-          const normSku = (task.sku as string).replace(/^0+/, '')
-          const taskGroup = skuGroupMap.get(normSku)
-          if (taskGroup !== group && taskGroup !== pairedGroup) continue
-          task.worker_code   = canonical.workerCode
-          task.worker_name   = canonical.workerName
-          task.deadline_time = minsToTimeStr(syncedStart)
-          const existingNote = String(task.note ?? '')
-          if (!existingNote.includes('concurrent')) {
-            task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+      // Sort each group's SKUs by start time for rank-based pairing
+      const sortedA = Array.from(infoA.entries()).sort((a, b) => a[1].startMins - b[1].startMins)
+      const sortedB = Array.from(infoB.entries()).sort((a, b) => a[1].startMins - b[1].startMins)
+
+      const pairCount = Math.min(sortedA.length, sortedB.length)
+
+      if (pairCount > 0) {
+        // Rank i of group A pairs with rank i of group B — sync each pair to min start on earlier worker
+        for (let i = 0; i < pairCount; i++) {
+          const [skuA, dataA] = sortedA[i]
+          const [skuB, dataB] = sortedB[i]
+          const syncedStart = Math.min(dataA.startMins, dataB.startMins)
+          const canonical = dataA.startMins <= dataB.startMins ? dataA : dataB
+
+          for (const task of resequenced) {
+            const normSku = (task.sku as string).replace(/^0+/, '')
+            if (normSku !== skuA && normSku !== skuB) continue
+            task.worker_code   = canonical.workerCode
+            task.worker_name   = canonical.workerName
+            task.deadline_time = minsToTimeStr(syncedStart)
+            const existingNote = String(task.note ?? '')
+            if (!existingNote.includes('concurrent')) {
+              task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+            }
           }
         }
-      } else if (primA && !primB) {
-        // Only group A allocated: inject all group-B SKUs from fallback targets
-        for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
-          if (skuGroupMap.get(sku) !== pairedGroup || fallback.qty <= 0.01) continue
+      } else if (sortedA.length > 0 && sortedB.length === 0) {
+        // Group B entirely absent: inject its fallback SKUs at group A's rank-matched start times
+        const fallbackB = Array.from(concurrentSkuFallbackTargets.entries())
+          .filter(([sku, fb]) => skuGroupMap.get(sku) === pairedGroup && fb.qty > 0.01)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+        for (let i = 0; i < Math.min(sortedA.length, fallbackB.length); i++) {
+          const [, dataA] = sortedA[i]
+          const [sku, fallback] = fallbackB[i]
           injectedTasks.push({
-            ...primA.taskRef,
+            ...dataA.taskRef,
             sku,
             sku_name: skuMap.get(sku)?.sku_name ?? fallback.name ?? null,
             target_quantity: Math.round(fallback.qty * 100) / 100,
             channel: fallback.channel,
-            worker_code: primA.workerCode,
-            worker_name: primA.workerName,
-            deadline_time: minsToTimeStr(primA.startMins),
+            worker_code: dataA.workerCode,
+            worker_name: dataA.workerName,
+            deadline_time: minsToTimeStr(dataA.startMins),
             is_deficit: false,
             note: 'concurrent_injected',
           })
         }
-      } else if (!primA && primB) {
-        // Only group B allocated: inject all group-A SKUs from fallback targets
-        for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
-          if (skuGroupMap.get(sku) !== group || fallback.qty <= 0.01) continue
+      } else if (sortedA.length === 0 && sortedB.length > 0) {
+        // Group A entirely absent: inject its fallback SKUs at group B's rank-matched start times
+        const fallbackA = Array.from(concurrentSkuFallbackTargets.entries())
+          .filter(([sku, fb]) => skuGroupMap.get(sku) === group && fb.qty > 0.01)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+        for (let i = 0; i < Math.min(sortedB.length, fallbackA.length); i++) {
+          const [, dataB] = sortedB[i]
+          const [sku, fallback] = fallbackA[i]
           injectedTasks.push({
-            ...primB.taskRef,
+            ...dataB.taskRef,
             sku,
             sku_name: skuMap.get(sku)?.sku_name ?? fallback.name ?? null,
             target_quantity: Math.round(fallback.qty * 100) / 100,
             channel: fallback.channel,
-            worker_code: primB.workerCode,
-            worker_name: primB.workerName,
-            deadline_time: minsToTimeStr(primB.startMins),
+            worker_code: dataB.workerCode,
+            worker_name: dataB.workerName,
+            deadline_time: minsToTimeStr(dataB.startMins),
             is_deficit: false,
             note: 'concurrent_injected',
           })
