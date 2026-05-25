@@ -41,6 +41,7 @@ export interface GeneratePlanResult {
   message: string
   count?: number
   debug_targets?: { sku: string; wm: number; makro: number; lotus: number; merged: number }[]
+  debug_concurrent_pairs?: { sap1: string; sap2: string }[]
 }
 
 // ========== Utilities ==========
@@ -1297,10 +1298,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   // Build concurrent SKU pairs map (both directions: A→B and B→A)
   const concurrentPairsMap = new Map<string, string>()
+  const getSapCol = (r: Record<string, unknown>, n: 1 | 2): string => {
+    const val = r[`SAP ${n}`] ?? r[`SAP${n}`] ?? r[`sap ${n}`] ?? r[`sap${n}`]
+    if (val !== undefined && val !== null && String(val).trim() !== '')
+      return String(val).replace(/^0+/, '').trim()
+    const key = Object.keys(r).find(k =>
+      k.replace(/\s/g, '').toUpperCase() === `SAP${n}`
+    )
+    return key ? String(r[key] ?? '').replace(/^0+/, '').trim() : ''
+  }
   for (const row of concurrentSkuRaw ?? []) {
     const r = row.row_data as Record<string, unknown>
-    const sap1 = String(r['SAP 1'] ?? '').replace(/^0+/, '').trim()
-    const sap2 = String(r['SAP 2'] ?? '').replace(/^0+/, '').trim()
+    const sap1 = getSapCol(r, 1)
+    const sap2 = getSapCol(r, 2)
     if (sap1 && sap2 && sap1 !== sap2) {
       concurrentPairsMap.set(sap1, sap2)
       concurrentPairsMap.set(sap2, sap1)
@@ -2157,5 +2167,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .map(([sku, v]) => ({ sku, ...v }))
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
+    debug_concurrent_pairs: Array.from(new Set(
+      Array.from(concurrentPairsMap.entries())
+        .map(([a, b]) => [a, b].sort().join('|||'))
+    )).map(s => { const [sap1, sap2] = s.split('|||'); return { sap1, sap2 } }),
   }
 }
