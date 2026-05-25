@@ -235,17 +235,21 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
               curMins = Math.max(curMins, getPhaseStart(t.period))
               lastPeriod = t.period
             }
-            const h         = taskHours(t)
-            let startMins = curMins
+            const h = taskHours(t)
+            // Concurrent tasks (produced simultaneously) start at their deadline_time directly,
+            // without waiting for previous tasks to finish. curMins advances to the max end time.
+            const isConcurrent = String(t.note ?? '').includes('concurrent')
+            let startMins: number
             if (t.deadline_time) {
               const [dh, dm] = t.deadline_time.split(':').map(Number)
-              if (!isNaN(dh) && !isNaN(dm)) {
-                startMins = Math.max(startMins, dh * 60 + dm)
-              }
+              const deadlineMins = (!isNaN(dh) && !isNaN(dm)) ? dh * 60 + dm : curMins
+              startMins = isConcurrent ? deadlineMins : Math.max(curMins, deadlineMins)
+            } else {
+              startMins = curMins
             }
-            const durMins   = h !== null ? Math.round(h * 60) : 0
-            const endMins   = wallClockFinish(startMins, durMins)
-            curMins = endMins
+            const durMins = h !== null ? Math.round(h * 60) : 0
+            const endMins = wallClockFinish(startMins, durMins)
+            curMins = Math.max(curMins, endMins)
             const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap)
             return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h, displayQty }
           })
@@ -376,13 +380,17 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         lastPeriod = task.period
       }
       const dur      = taskDurMins(task)
+      const isConcurrent = String(task.note ?? '').includes('concurrent')
       let startMin = cur
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
-        if (!isNaN(dh) && !isNaN(dm)) startMin = Math.max(startMin, dh * 60 + dm)
+        if (!isNaN(dh) && !isNaN(dm)) {
+          const dl = dh * 60 + dm
+          startMin = isConcurrent ? dl : Math.max(startMin, dl)
+        }
       }
       const endMin = wallClockFinish(startMin, dur)
-      cur = endMin
+      cur = Math.max(cur, endMin)
       if (!skuStats[task.sku]) {
         skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
       }
@@ -410,13 +418,17 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         lastPeriodRaw = task.period
       }
       const dur = taskDurMins(task)
+      const isConcurrentRaw = String(task.note ?? '').includes('concurrent')
       let startMin = curRaw
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
-        if (!isNaN(dh) && !isNaN(dm)) startMin = Math.max(startMin, dh * 60 + dm)
+        if (!isNaN(dh) && !isNaN(dm)) {
+          const dl = dh * 60 + dm
+          startMin = isConcurrentRaw ? dl : Math.max(startMin, dl)
+        }
       }
       const endMin = wallClockFinish(startMin, dur)
-      curRaw = endMin
+      curRaw = Math.max(curRaw, endMin)
       if (skuStats[task.sku]) {
         skuStats[task.sku].segments.push({ start: startMin, end: endMin, worker: task.worker_name, isDeficit: !!task.note?.includes('|deficit') })
       }
@@ -1035,16 +1047,18 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
 
         let curMins = phaseStartMins
         const taskInfo = tasks.map(t => {
-          const dur      = taskDurMins(t)
+          const dur = taskDurMins(t)
+          const isConcurrent = String(t.note ?? '').includes('concurrent')
           let startMin = curMins
           if (t.deadline_time) {
             const [dh, dm] = t.deadline_time.split(':').map(Number)
             if (!isNaN(dh) && !isNaN(dm)) {
-              startMin = Math.max(startMin, dh * 60 + dm)
+              const dl = dh * 60 + dm
+              startMin = isConcurrent ? dl : Math.max(startMin, dl)
             }
           }
-          const endMin   = wallClockFinish(startMin, dur)
-          curMins = endMin
+          const endMin = wallClockFinish(startMin, dur)
+          curMins = Math.max(curMins, endMin)
           return { ...t, startMin, endMin, dur,
             startLabel: minsToLabel(startMin),
             endLabel:   minsToLabel(endMin) }
@@ -1165,16 +1179,18 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor
 
         let curMins2 = phaseStartMins
         const taskInfo = tasks.map(t => {
-          const dur      = taskDurMins(t)
+          const dur = taskDurMins(t)
+          const isConcurrent = String(t.note ?? '').includes('concurrent')
           let startMin = curMins2
           if (t.deadline_time) {
             const [dh, dm] = t.deadline_time.split(':').map(Number)
             if (!isNaN(dh) && !isNaN(dm)) {
-              startMin = Math.max(startMin, dh * 60 + dm)
+              const dl = dh * 60 + dm
+              startMin = isConcurrent ? dl : Math.max(startMin, dl)
             }
           }
-          const endMin   = wallClockFinish(startMin, dur)
-          curMins2 = endMin
+          const endMin = wallClockFinish(startMin, dur)
+          curMins2 = Math.max(curMins2, endMin)
           return { ...t, startMin, endMin, dur,
             startLabel: minsToLabel(startMin),
             endLabel:   minsToLabel(endMin) }
@@ -1275,16 +1291,18 @@ function exportExcel(
       let curMins = phaseStartMins
       for (const task of tasks) {
         const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-        const dur    = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        const dur  = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+        const isConcurrent = String(task.note ?? '').includes('concurrent')
         let startMin = curMins
         if (task.deadline_time) {
           const [dh, dm] = task.deadline_time.split(':').map(Number)
           if (!isNaN(dh) && !isNaN(dm)) {
-            startMin = Math.max(startMin, dh * 60 + dm)
+            const dl = dh * 60 + dm
+            startMin = isConcurrent ? dl : Math.max(startMin, dl)
           }
         }
-        const endMin   = wallClockFinish(startMin, dur)
-        curMins = endMin
+        const endMin = wallClockFinish(startMin, dur)
+        curMins = Math.max(curMins, endMin)
         rows.push([
           seq++,
           task.worker_code,

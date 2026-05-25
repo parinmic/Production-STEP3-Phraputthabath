@@ -2146,6 +2146,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           task.worker_code   = canonical.workerCode
           task.worker_name   = canonical.workerName
           task.deadline_time = minsToTimeStr(syncedStart)
+          // Mark as concurrent so the display renders both tasks starting at the same time
+          const existingNote = String(task.note ?? '')
+          if (!existingNote.includes('concurrent')) {
+            task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+          }
         }
       } else if (primA && !primB) {
         // Only A allocated: inject B at A's worker/time using pre-filter target qty
