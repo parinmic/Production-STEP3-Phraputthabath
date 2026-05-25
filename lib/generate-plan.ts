@@ -2338,8 +2338,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     debug_concurrent_sku_groups: Array.from(skuGroupMap.entries())
       .filter(([, g]) => concurrentGroupPairsMap.has(g))
       .map(([sku, group]) => ({ sku, group })),
-    debug_concurrent_assigned: assignments
-      .filter(a => { const g = skuGroupMap.get(String(a.sku ?? '').replace(/^0+/, '')); return g && concurrentGroupPairsMap.has(g) })
-      .map(a => ({ sku: a.sku, worker: a.worker_code, deadline: a.deadline_time, note: a.note })),
+    debug_concurrent_assigned: (assignments as Record<string, unknown>[])
+      .filter(a => { const g = skuGroupMap.get(String(a['sku'] ?? '').replace(/^0+/, '')); return !!(g && concurrentGroupPairsMap.has(g)) })
+      .map(a => ({ sku: String(a['sku'] ?? ''), worker: String(a['worker_code'] ?? ''), deadline: String(a['deadline_time'] ?? ''), note: String(a['note'] ?? '') })),
   }
 }
