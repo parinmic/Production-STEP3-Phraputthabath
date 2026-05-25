@@ -2088,24 +2088,45 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  // Sync deadline_time for concurrent SKU pairs: both SKUs start at the earlier of the two
+  // Concurrent SKU pairs: move both SKUs to the same worker and same start time.
+  // "ผลิตพร้อมกัน" = one worker processes both products simultaneously (e.g. cutting yields
+  // both สันหลัง and หนังสันหลัง). Both tasks appear on the same worker row at the same time.
   if (concurrentPairsMap.size > 0) {
-    const skuMinStart = new Map<string, number>()
+    // Find the earliest start + worker for each concurrent SKU
+    const skuPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number }>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
+      if (!concurrentPairsMap.has(normSku)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
-      const cur = skuMinStart.get(normSku)
-      if (cur === undefined || startMins < cur) skuMinStart.set(normSku, startMins)
+      const cur = skuPrimary.get(normSku)
+      if (!cur || startMins < cur.startMins)
+        skuPrimary.set(normSku, {
+          workerCode: task.worker_code as string,
+          workerName: task.worker_name as string,
+          startMins,
+        })
     }
-    for (const task of resequenced) {
-      const normSku = (task.sku as string).replace(/^0+/, '')
-      const pairedSku = concurrentPairsMap.get(normSku)
-      if (!pairedSku) continue
-      const myStart     = skuMinStart.get(normSku)  ?? Infinity
-      const pairedStart = skuMinStart.get(pairedSku) ?? Infinity
-      const syncedStart = Math.min(myStart, pairedStart)
-      if (syncedStart < Infinity && syncedStart !== myStart) {
+
+    // For each unique pair: pick the earlier worker, move BOTH SKUs there at that start time
+    const processedPairs = new Set<string>()
+    for (const [sku, paired] of Array.from(concurrentPairsMap.entries())) {
+      const pairKey = [sku, paired].sort().join('|||')
+      if (processedPairs.has(pairKey)) continue
+      processedPairs.add(pairKey)
+
+      const primA = skuPrimary.get(sku)
+      const primB = skuPrimary.get(paired)
+      if (!primA || !primB) continue
+
+      const canonical  = primA.startMins <= primB.startMins ? primA : primB
+      const syncedStart = Math.min(primA.startMins, primB.startMins)
+
+      for (const task of resequenced) {
+        const normSku = (task.sku as string).replace(/^0+/, '')
+        if (normSku !== sku && normSku !== paired) continue
+        task.worker_code   = canonical.workerCode
+        task.worker_name   = canonical.workerName
         task.deadline_time = minsToTimeStr(syncedStart)
       }
     }
