@@ -437,7 +437,7 @@ function allocateBalanced(params: {
   const isWorkerEligible = (worker: WorkforceRow, skuGroup: string): boolean => {
     if (jobAssignMap.size === 0) return true
     const jobInfo = jobAssignMap.get(normName(worker.name))
-    if (!jobInfo) return false
+    if (!jobInfo) return true // name not in job assign → treat as eligible for all groups (lowest priority)
     if (jobInfo.isWeigher && (!skuGroup || !jobInfo.groups.has(skuGroup))) return false
     return skuGroup ? jobInfo.groups.has(skuGroup) : true
   }
