@@ -2329,17 +2329,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       Array.from(concurrentGroupPairsMap.entries())
         .map(([a, b]) => [a, b].sort().join('|||'))
     )).map(s => { const [sap1, sap2] = s.split('|||'); return { sap1, sap2 } }),
-    debug_concurrent_fallback: Array.from(concurrentSkuFallbackTargets.entries()).map(([sku, fb]) => ({
-      sku,
-      group: skuGroupMap.get(sku) ?? '(no group)',
-      qty: fb.qty,
-      channel: fb.channel,
-    })),
-    debug_concurrent_sku_groups: Array.from(skuGroupMap.entries())
-      .filter(([, g]) => concurrentGroupPairsMap.has(g))
-      .map(([sku, group]) => ({ sku, group })),
-    debug_concurrent_assigned: (assignments as Record<string, unknown>[])
-      .filter(a => { const g = skuGroupMap.get(String(a['sku'] ?? '').replace(/^0+/, '')); return !!(g && concurrentGroupPairsMap.has(g)) })
-      .map(a => ({ sku: String(a['sku'] ?? ''), worker: String(a['worker_code'] ?? ''), deadline: String(a['deadline_time'] ?? ''), note: String(a['note'] ?? '') })),
+    debug_concurrent: {
+      fallback: Array.from(concurrentSkuFallbackTargets.entries()).map(([sku, fb]) => ({
+        sku, group: skuGroupMap.get(sku) ?? '(no group)', qty: fb.qty, channel: fb.channel,
+      })),
+      skuGroups: Array.from(skuGroupMap.entries())
+        .filter(([, g]) => concurrentGroupPairsMap.has(g))
+        .map(([sku, group]) => ({ sku, group })),
+      assigned: assignments
+        .filter((a: any) => { const g = skuGroupMap.get(String(a.sku ?? '').replace(/^0+/, '')); return !!(g && concurrentGroupPairsMap.has(g)) })
+        .map((a: any) => ({ sku: String(a.sku ?? ''), worker: String(a.worker_code ?? ''), deadline: String(a.deadline_time ?? ''), note: String(a.note ?? '') })),
+    },
   }
 }
