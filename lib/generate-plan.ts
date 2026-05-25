@@ -618,12 +618,12 @@ function allocateBalanced(params: {
         const remainingHours = workerHours.get(nameKey) ?? 0
         const segs = workerBusySegments.get(nameKey) ?? []
 
-        // Estimate with relaxed limitEnd
+        // Relax specialStop but still respect phaseEndMins
         const newFinish = estimateWorkerFinish(
           currentFree,
           unit.duration * 60,
           segs,
-          9999, // very large limit
+          phaseEndMins,
           specialStart,
           null
         )
