@@ -2189,6 +2189,37 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
               task.worker_name = firstCanonical.workerName
             }
           }
+
+          // Inject unallocated fallback SKUs from BOTH groups that should follow on the same worker.
+          // This covers partial-absence: e.g. group B has TT (allocated) + M (not allocated) —
+          // M still needs to appear right after TT on the canonical worker.
+          const allocatedSkusA = new Set(sortedA.map(([sku]) => sku))
+          const allocatedSkusB = new Set(sortedB.map(([sku]) => sku))
+          const canonicalStart = Math.min(sortedA[0][1].startMins, sortedB[0][1].startMins)
+          const taskRefA = sortedA[0]?.[1].taskRef
+          const taskRefB = sortedB[0]?.[1].taskRef
+
+          for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
+            if (fallback.qty <= 0.01) continue
+            const skuGroup = skuGroupMap.get(sku)
+            if (skuGroup !== group && skuGroup !== pairedGroup) continue
+            const alreadyAllocated = skuGroup === group ? allocatedSkusA.has(sku) : allocatedSkusB.has(sku)
+            if (alreadyAllocated) continue
+            const taskRef = skuGroup === group ? (taskRefA ?? taskRefB) : (taskRefB ?? taskRefA)
+            if (!taskRef) continue
+            injectedTasks.push({
+              ...taskRef,
+              sku,
+              sku_name: skuMap.get(sku)?.sku_name ?? fallback.name ?? null,
+              target_quantity: Math.round(fallback.qty * 100) / 100,
+              channel: fallback.channel,
+              worker_code: firstCanonical.workerCode,
+              worker_name: firstCanonical.workerName,
+              deadline_time: minsToTimeStr(canonicalStart),
+              is_deficit: false,
+              note: 'concurrent_group_follow',
+            })
+          }
         }
       } else if (sortedA.length > 0 && sortedB.length === 0) {
         // Group B entirely absent: inject its fallback SKUs at group A's rank-matched start times
