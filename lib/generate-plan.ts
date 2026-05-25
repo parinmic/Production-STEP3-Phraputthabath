@@ -2155,11 +2155,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
       if (pairCount > 0) {
         // Rank i of group A pairs with rank i of group B — sync each pair to min start on earlier worker
+        let firstCanonical: { workerCode: string; workerName: string } | null = null
         for (let i = 0; i < pairCount; i++) {
           const [skuA, dataA] = sortedA[i]
           const [skuB, dataB] = sortedB[i]
           const syncedStart = Math.min(dataA.startMins, dataB.startMins)
           const canonical = dataA.startMins <= dataB.startMins ? dataA : dataB
+          if (i === 0) firstCanonical = { workerCode: canonical.workerCode, workerName: canonical.workerName }
 
           for (const task of resequenced) {
             const normSku = (task.sku as string).replace(/^0+/, '')
@@ -2170,6 +2172,21 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             const existingNote = String(task.note ?? '')
             if (!existingNote.includes('concurrent')) {
               task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+            }
+          }
+        }
+
+        // Move excess SKUs (no pair in the shorter group) to the same canonical worker so they
+        // follow their paired sibling sequentially on the same worker instead of a different one
+        if (firstCanonical) {
+          const longerSorted = sortedA.length > sortedB.length ? sortedA : sortedB
+          for (let i = pairCount; i < longerSorted.length; i++) {
+            const [excessSku] = longerSorted[i]
+            for (const task of resequenced) {
+              const normSku = (task.sku as string).replace(/^0+/, '')
+              if (normSku !== excessSku) continue
+              task.worker_code = firstCanonical.workerCode
+              task.worker_name = firstCanonical.workerName
             }
           }
         }
