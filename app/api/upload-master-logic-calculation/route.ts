@@ -23,7 +23,7 @@ const TYPE_LABEL: Record<string, string> = {
   'mas-channel':             'Mas Channel',
   'mas-trakra':              'Mas ตระกร้า',
   'mas-special':             'Mas Special',
-  'mas-sku-concurrent':      'Master Sku ผลิตพร้อมกัน',
+  'mas-sku-concurrent':      'Mas Sku ผลิตพร้อมกัน',
   'mas-raw-material':        'Mas Raw Material',
 }
 
