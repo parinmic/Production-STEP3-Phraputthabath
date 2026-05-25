@@ -1569,6 +1569,21 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'LOTUS':      buildLotusTargets(),
   }
 
+  // Pre-capture target quantities for concurrent SKU pairs before any station/stock filtering.
+  // Used to inject synthetic entries when one side of a pair gets filtered out of allocation.
+  const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
+  if (concurrentPairsMap.size > 0) {
+    for (const [ch, targets] of Object.entries(channelTargets)) {
+      for (const t of targets) {
+        const normSku = t.sku.replace(/^0+/, '')
+        if (!concurrentPairsMap.has(normSku)) continue
+        const existing = concurrentSkuFallbackTargets.get(normSku)
+        if (!existing || t.targetQty > existing.qty)
+          concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
+      }
+    }
+  }
+
   // Build assignment list
   let assignList: SkuTarget[]
   const planMap = new Map<string, { name: string | null; qty: number }>()
@@ -2089,11 +2104,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   // Concurrent SKU pairs: move both SKUs to the same worker and same start time.
-  // "ผลิตพร้อมกัน" = one worker processes both products simultaneously (e.g. cutting yields
-  // both สันหลัง and หนังสันหลัง). Both tasks appear on the same worker row at the same time.
+  // "ผลิตพร้อมกัน" = one worker processes both products simultaneously.
+  // If one SKU in a pair was filtered out of allocation entirely, inject a synthetic entry
+  // for it using the allocated partner's worker/time and the pre-filter target quantity.
   if (concurrentPairsMap.size > 0) {
-    // Find the earliest start + worker for each concurrent SKU
-    const skuPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number }>()
+    // Find the earliest start + worker for each concurrent SKU (store task reference for cloning)
+    const skuPrimary = new Map<string, { workerCode: string; workerName: string; startMins: number; taskRef: Record<string, unknown> }>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
       if (!concurrentPairsMap.has(normSku)) continue
@@ -2105,11 +2121,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           workerCode: task.worker_code as string,
           workerName: task.worker_name as string,
           startMins,
+          taskRef: task,
         })
     }
 
-    // For each unique pair: pick the earlier worker, move BOTH SKUs there at that start time
     const processedPairs = new Set<string>()
+    const injectedTasks: Record<string, unknown>[] = []
+
     for (const [sku, paired] of Array.from(concurrentPairsMap.entries())) {
       const pairKey = [sku, paired].sort().join('|||')
       if (processedPairs.has(pairKey)) continue
@@ -2117,19 +2135,56 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
       const primA = skuPrimary.get(sku)
       const primB = skuPrimary.get(paired)
-      if (!primA || !primB) continue
 
-      const canonical  = primA.startMins <= primB.startMins ? primA : primB
-      const syncedStart = Math.min(primA.startMins, primB.startMins)
-
-      for (const task of resequenced) {
-        const normSku = (task.sku as string).replace(/^0+/, '')
-        if (normSku !== sku && normSku !== paired) continue
-        task.worker_code   = canonical.workerCode
-        task.worker_name   = canonical.workerName
-        task.deadline_time = minsToTimeStr(syncedStart)
+      if (primA && primB) {
+        // Both allocated: pick the earlier worker, move both there at that start time
+        const canonical  = primA.startMins <= primB.startMins ? primA : primB
+        const syncedStart = Math.min(primA.startMins, primB.startMins)
+        for (const task of resequenced) {
+          const normSku = (task.sku as string).replace(/^0+/, '')
+          if (normSku !== sku && normSku !== paired) continue
+          task.worker_code   = canonical.workerCode
+          task.worker_name   = canonical.workerName
+          task.deadline_time = minsToTimeStr(syncedStart)
+        }
+      } else if (primA && !primB) {
+        // Only A allocated: inject B at A's worker/time using pre-filter target qty
+        const fallback = concurrentSkuFallbackTargets.get(paired)
+        if (fallback && fallback.qty > 0.01) {
+          injectedTasks.push({
+            ...primA.taskRef,
+            sku: paired,
+            sku_name: skuMap.get(paired)?.sku_name ?? fallback.name ?? null,
+            target_quantity: Math.round(fallback.qty * 100) / 100,
+            channel: fallback.channel,
+            worker_code: primA.workerCode,
+            worker_name: primA.workerName,
+            deadline_time: minsToTimeStr(primA.startMins),
+            is_deficit: false,
+            note: 'concurrent_injected',
+          })
+        }
+      } else if (!primA && primB) {
+        // Only B allocated: inject A at B's worker/time using pre-filter target qty
+        const fallback = concurrentSkuFallbackTargets.get(sku)
+        if (fallback && fallback.qty > 0.01) {
+          injectedTasks.push({
+            ...primB.taskRef,
+            sku,
+            sku_name: skuMap.get(sku)?.sku_name ?? fallback.name ?? null,
+            target_quantity: Math.round(fallback.qty * 100) / 100,
+            channel: fallback.channel,
+            worker_code: primB.workerCode,
+            worker_name: primB.workerName,
+            deadline_time: minsToTimeStr(primB.startMins),
+            is_deficit: false,
+            note: 'concurrent_injected',
+          })
+        }
       }
     }
+
+    resequenced.push(...injectedTasks)
   }
 
   resequenced.forEach((a, i) => { 
