@@ -2212,6 +2212,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const taskRefA = sortedA[0]?.[1].taskRef
           const taskRefB = sortedB[0]?.[1].taskRef
 
+          const injectedByFallback = new Set<string>()
           for (const [sku, fallback] of Array.from(concurrentSkuFallbackTargets.entries())) {
             if (fallback.qty <= 0.01) continue
             const skuGroup = skuGroupMap.get(sku)
@@ -2232,6 +2233,35 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
               is_deficit: false,
               note: 'concurrent_group_follow',
             })
+            injectedByFallback.add(sku)
+          }
+
+          // Safety-net: scan allSuppSlots directly for concurrent SKUs that weren't in
+          // concurrentSkuFallbackTargets (e.g. M whose supp slot deadline was outside phase)
+          for (const slot of allSuppSlots) {
+            for (const { sku: rawSku, name: rawName, qty } of slot.skus) {
+              const sku = rawSku.replace(/^0+/, '')
+              if (qty <= 0.01 || injectedByFallback.has(sku)) continue
+              const skuGroup = skuGroupMap.get(sku)
+              if (skuGroup !== group && skuGroup !== pairedGroup) continue
+              const alreadyAllocated = skuGroup === group ? allocatedSkusA.has(sku) : allocatedSkusB.has(sku)
+              if (alreadyAllocated) continue
+              const taskRef = skuGroup === group ? (taskRefA ?? taskRefB) : (taskRefB ?? taskRefA)
+              if (!taskRef) continue
+              injectedTasks.push({
+                ...taskRef,
+                sku,
+                sku_name: skuMap.get(sku)?.sku_name ?? rawName ?? null,
+                target_quantity: Math.round(qty * 100) / 100,
+                channel: 'เสริม',
+                worker_code: firstCanonical.workerCode,
+                worker_name: firstCanonical.workerName,
+                deadline_time: minsToTimeStr(canonicalStart),
+                is_deficit: false,
+                note: 'concurrent_group_follow',
+              })
+              injectedByFallback.add(sku)
+            }
           }
         }
       } else if (sortedA.length > 0 && sortedB.length === 0) {
@@ -2282,7 +2312,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...injectedTasks)
   }
 
-  resequenced.forEach((a, i) => { 
+  // Sort so concurrent SKUs from เสริม (priority 0) appear before lower-priority channels
+  // on the same worker — ensures M shows before TT in the worker card
+  resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const wCmp = String(a['worker_name'] ?? '').localeCompare(String(b['worker_name'] ?? ''))
+    if (wCmp !== 0) return wCmp
+    const getP = (ch: string) => ch === 'เสริม' ? 0 : (channelPriority[ch] ?? 99)
+    const pCmp = getP(String(a['channel'] ?? '')) - getP(String(b['channel'] ?? ''))
+    if (pCmp !== 0) return pCmp
+    const toMins = (s: string) => { const p = s.split(':').map(Number); return (p[0] ?? 0) * 60 + (p[1] ?? 0) }
+    return toMins(String(a['deadline_time'] ?? '')) - toMins(String(b['deadline_time'] ?? ''))
+  })
+
+  resequenced.forEach((a, i) => {
     a['seq'] = i; 
     a['effective_from'] = effectiveFromISO; 
     if (a.is_deficit && !a.note?.includes('|deficit')) {
