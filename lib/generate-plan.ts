@@ -1528,11 +1528,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     const lotusHistSkus = new Set(avgLotus.keys())
-    // Exclude by-products: WM uses historical avg (not actual orders) so by-products
-    // would pick up stale targets here instead of using their actual Makro/advance order.
-    // Concurrent injection handles their production qty separately.
+    // Exclude by-products and Makro-only SKUs: if a SKU has a Makro order today but no WM
+    // order, don't produce WM historical qty on top of the Makro order (would exceed total order).
     return Array.from(avgWM.entries())
       .filter(([sku]) => !byProductSkuSet.has(sku))
+      .filter(([sku]) => !makroMap[sku] || !!wmMap[sku])
       .map(([sku, avg]) => {
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
@@ -1582,8 +1582,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     // Same rationale as WM: LOTUS uses historical avg, not actual orders.
+    // Also exclude Makro-only SKUs (no LOTUS order today) to prevent double-counting.
     return Array.from(avgLotus.entries())
       .filter(([sku]) => !byProductSkuSet.has(sku))
+      .filter(([sku]) => !makroMap[sku] || !!lotusMap[sku])
       .map(([sku, avg]) => {
         const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
         const rawStation = prod ? normalizeStation(prod.station) : ''
