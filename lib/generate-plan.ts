@@ -2235,6 +2235,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       return null
     }
 
+    // Pre-compute total source production qty per by-product SKU across ALL source groups.
+    // When multiple sources share a by-product, the by-product qty must be split
+    // proportionally (not given in full to each source independently).
+    const bpAllSrcQtyMap = new Map<string, number>()
+    for (const [src, bps] of Array.from(byProductMap.entries())) {
+      const wm = sourceWorkerMap.get(src)
+      if (!wm || wm.size === 0) continue
+      const srcTotal = Array.from(wm.values()).reduce((s, w) => s + w.qty, 0)
+      for (const e of bps) bpAllSrcQtyMap.set(e.byProductSku, (bpAllSrcQtyMap.get(e.byProductSku) ?? 0) + srcTotal)
+    }
+
     const injectedTasks: Record<string, unknown>[] = []
 
     for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
@@ -2327,8 +2338,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
 
         for (const srcWorker of sourceWorkers) {
-          const proportion = totalSourceQty > 0 ? srcWorker.qty / totalSourceQty : 1 / numWorkers
-          const workerQty = Math.round(entry.totalQty * proportion * 100) / 100
+          // Distribute using the GLOBAL source qty across all sources, so that when
+          // multiple source SKUs share a by-product, each worker only receives its
+          // proportional fraction of the total plan qty (not the full qty independently).
+          const allSrcQty = bpAllSrcQtyMap.get(entry.sku) ?? totalSourceQty
+          const workerQty = allSrcQty > 0
+            ? Math.round(entry.totalQty * (srcWorker.qty / allSrcQty) * 100) / 100
+            : Math.round(entry.totalQty / numWorkers * 100) / 100
           if (workerQty <= 0.01) continue
 
           if (existingWMap.has(srcWorker.workerCode)) {
