@@ -1523,7 +1523,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => ({
-        sku, skuName: name, targetQty: Math.max(0, orderQty - (p1.get(sku) ?? 0)), channel: ch,
+        sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, orderQty) - (p1.get(sku) ?? 0)), channel: ch,
       })).filter(s => s.targetQty > 0)
     }
     const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
@@ -1577,7 +1577,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => ({
-        sku, skuName: name, targetQty: Math.max(0, orderQty - (p1.get(sku) ?? 0)), channel: ch,
+        sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, orderQty) - (p1.get(sku) ?? 0)), channel: ch,
       })).filter(s => s.targetQty > 0)
     }
     const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
