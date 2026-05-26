@@ -560,8 +560,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       style={{
                         left: `${barLeft}%`, width: `${barWidth}%`,
                         opacity: alpha,
-                        background: `repeating-linear-gradient(-45deg, ${col.bg} 0px, ${col.bg} 5px, #ef4444 5px, #ef4444 8px)`,
-                        border: '1.5px solid #ef4444',
+                        background: col.bg,
+                        border: '2px solid #ef4444',
                       }}
                       onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
                   )
@@ -1098,9 +1098,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
                 return (
                   <div key={t.id} className="flex items-start gap-2 rounded-lg px-3 py-2"
                     style={{
-                      background: isDeficit
-                        ? `repeating-linear-gradient(-45deg, ${col.bg}25 0px, ${col.bg}25 5px, #ef444418 5px, #ef444418 9px)`
-                        : col.bg + '20',
+                      background: col.bg + '20',
                       border: isDeficit ? '1.5px solid #ef4444' : '1.5px solid transparent',
                     }}>
                     <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: isDeficit ? '#ef4444' : col.bg, opacity: isDone ? 0.5 : 1 }} />
