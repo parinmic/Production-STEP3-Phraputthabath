@@ -383,11 +383,12 @@ function allocateBalanced(params: {
   phaseRoundMins: number[]
   wpbMap: Map<string, number>
   specialTimeMap: Map<string, { startMins: number | null; stopMins: number | null }>
+  skuTotalQtyOverride?: Map<string, number>
 }): Record<string, unknown>[] {
   const {
     productionDate, tableName, targets, workers, skuMap, jobAssignMap,
     workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins,
-    period, phaseRoundMins, wpbMap, specialTimeMap
+    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride
   } = params
 
   if (!targets.length || !workers.length) return []
@@ -470,12 +471,17 @@ function allocateBalanced(params: {
 
   const phaseStartMins = phaseRoundMins[0] ?? 510
 
-  // Pre-compute total qty per normSku (across all channels) for worker-count cap
-  const skuTotalQty = new Map<string, number>()
-  for (const t of targets) {
-    const k = t.sku.replace(/^0+/, '')
-    skuTotalQty.set(k, (skuTotalQty.get(k) ?? 0) + t.targetQty)
-  }
+  // Pre-compute total qty per normSku for worker-count cap.
+  // Use override when provided (passes the full stock+deficit total so the cap isn't
+  // artificially tightened when only a small deficit slice is being allocated).
+  const skuTotalQty: Map<string, number> = skuTotalQtyOverride ?? (() => {
+    const m = new Map<string, number>()
+    for (const t of targets) {
+      const k = t.sku.replace(/^0+/, '')
+      m.set(k, (m.get(k) ?? 0) + t.targetQty)
+    }
+    return m
+  })()
   const getMaxWorkers = (normSku: string): number => {
     const qty = skuTotalQty.get(normSku) ?? 0
     if (qty <= 15) return 1
@@ -1623,9 +1629,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     const channelsToProcess = [...activeChannels]
     for (const ch of Object.keys(p3ChannelTargets)) { if (!channelsToProcess.includes(ch)) channelsToProcess.push(ch) }
-    assignList = channelsToProcess.flatMap(ch => (p3ChannelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty))
+    assignList = channelsToProcess.flatMap(ch => (p3ChannelTargets[ch] ?? [])
+      .filter(item => !byProductSkuSet.has(item.sku.replace(/^0+/, '')))
+      .sort((a, b) => b.targetQty - a.targetQty))
   } else {
-    assignList = activeChannels.flatMap(ch => (channelTargets[ch] ?? []).sort((a, b) => b.targetQty - a.targetQty))
+    assignList = activeChannels.flatMap(ch => (channelTargets[ch] ?? [])
+      .filter(item => !byProductSkuSet.has(item.sku.replace(/^0+/, '')))
+      .sort((a, b) => b.targetQty - a.targetQty))
   }
 
   // Filter to produceable SKUs
@@ -1908,6 +1918,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   const runChannelPass = (passList: SkuTarget[]) => {
+    // Use the full assignList (stock + deficit combined) so getMaxWorkers isn't capped by the
+    // small deficit slice when only the deficit portion is being scheduled.
+    const globalSkuTotalQty = new Map<string, number>()
+    for (const item of assignList) {
+      const k = item.sku.replace(/^0+/, '')
+      globalSkuTotalQty.set(k, (globalSkuTotalQty.get(k) ?? 0) + item.targetQty)
+    }
+
     const chsInPass = activeChannels.filter(ch => passList.some(item => item.channel === ch))
     for (const item of passList) {
       if (!chsInPass.includes(item.channel)) chsInPass.push(item.channel)
@@ -1969,6 +1987,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
           wpbMap,
           specialTimeMap,
+          skuTotalQtyOverride: globalSkuTotalQty,
         }))
       }
     }
