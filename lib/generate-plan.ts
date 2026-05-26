@@ -1296,27 +1296,39 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return isNaN(num) ? null : Math.round(num * 24 * 60)
   }
 
-  // Build concurrent product-group pairs map (GROUP-based, bidirectional: group → group).
-  // Rows may include cross-pairs (มัน M ↔ หนัง TT) but all reduce to the same group pair.
-  // Deduplication via the map ensures only one canonical pair (กลุ่มมัน ↔ กลุ่มหนัง).
-  const concurrentGroupPairsMap = new Map<string, string>()
-  const getGroupCol = (r: Record<string, unknown>, n: 1 | 2): string => {
-    const val = r[`กลุ่มสินค้า ${n}`] ?? r[`กลุ่มสินค้า${n}`]
-    if (val !== undefined && val !== null && String(val).trim() !== '')
-      return String(val).trim()
-    const key = Object.keys(r).find(k => k.replace(/\s/g, '') === `กลุ่มสินค้า${n}`)
+  // Build by-product map from mas-sku-concurrent:
+  // sourceSku → [{byProductSku, ratio (numeric เท่า or 'remainder'), name}]
+  // When a source SKU is produced, all its by-products are scheduled on the same worker.
+  type ByProductEntry = { byProductSku: string; ratio: number | 'remainder'; name: string | null }
+  const byProductMap = new Map<string, ByProductEntry[]>()
+
+  const getConcCol = (r: Record<string, unknown>, name: string): string => {
+    if (r[name] !== undefined) return String(r[name] ?? '').trim()
+    const key = Object.keys(r).find(k => k.trim() === name || k.replace(/\s+/g, ' ').trim() === name)
     return key ? String(r[key] ?? '').trim() : ''
   }
   for (const row of concurrentSkuRaw ?? []) {
     const r = row.row_data as Record<string, unknown>
-    const g1 = getGroupCol(r, 1)
-    const g2 = getGroupCol(r, 2)
-    if (g1 && g2 && g1 !== g2) {
-      concurrentGroupPairsMap.set(g1, g2)
-      concurrentGroupPairsMap.set(g2, g1)
+    const sourceSap    = getConcCol(r, 'Sap ตั้งต้น').replace(/^0+/, '')
+    const byProductSap = getConcCol(r, 'Sap ผลพลอยได้').replace(/^0+/, '')
+    const qtyRaw       = getConcCol(r, 'ปริมาณผลพลอยได้')
+    const bpName       = getConcCol(r, 'ชื่อสินค้าผลพลอยได้') || null
+    if (!sourceSap || !byProductSap) continue
+    let ratio: number | 'remainder'
+    if (!qtyRaw || qtyRaw.includes('เหลือ') || qtyRaw.toLowerCase() === 'remainder') {
+      ratio = 'remainder'
+    } else {
+      const n = parseFloat(qtyRaw)
+      ratio = isNaN(n) ? 'remainder' : n
     }
+    if (!byProductMap.has(sourceSap)) byProductMap.set(sourceSap, [])
+    byProductMap.get(sourceSap)!.push({ byProductSku: byProductSap, ratio, name: bpName })
   }
-  // concurrentSkuSet is built below after skuGroupMap is ready
+  const sourceSkuSet = new Set(byProductMap.keys())
+  const byProductSkuSet = new Set<string>()
+  for (const entries of Array.from(byProductMap.values())) {
+    for (const e of entries) byProductSkuSet.add(e.byProductSku)
+  }
 
   const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
   for (const row of masterSpecialRaw ?? []) {
@@ -1348,11 +1360,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (prod.product_group) skuGroupMap.set(sku, prod.product_group)
   }
 
-  // Build set of all concurrent SKUs now that skuGroupMap is ready
-  const concurrentSkuSet = new Set<string>()
-  for (const [sku, group] of Array.from(skuGroupMap.entries())) {
-    if (concurrentGroupPairsMap.has(group)) concurrentSkuSet.add(sku)
-  }
+  // (skuGroupMap kept for reference; concurrent logic now uses byProductMap / sourceSkuSet / byProductSkuSet)
 
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
@@ -1582,14 +1590,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'LOTUS':      buildLotusTargets(),
   }
 
-  // Pre-capture target quantities for SKUs in concurrent group pairs before any station/stock filtering.
-  // Used to inject synthetic entries when one side of a group pair is absent from allocation.
+  // Pre-capture target quantities for by-product SKUs before any station/stock filtering.
+  // Used when a by-product SKU has no allocated task yet — inject from these targets.
   const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
-  if (concurrentSkuSet.size > 0) {
+  if (byProductSkuSet.size > 0) {
     for (const [ch, targets] of Object.entries(channelTargets)) {
       for (const t of targets) {
         const normSku = t.sku.replace(/^0+/, '')
-        if (!concurrentSkuSet.has(normSku)) continue
+        if (!byProductSkuSet.has(normSku)) continue
         const existing = concurrentSkuFallbackTargets.get(normSku)
         if (!existing || t.targetQty > existing.qty)
           concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
@@ -1834,13 +1842,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const allSuppSlots = suppSlotResults.filter(Boolean) as (SuppSlot & { withinPhase: boolean })[]
   const activeSuppSlots = allSuppSlots.filter(s => s.withinPhase).sort((a, b) => a.deadlineMins - b.deadlineMins)
 
-  // Extend concurrent fallback map with ALL supplementary targets (even those outside this phase window)
-  // so that concurrent-group partner SKUs in ยอดล่วงหน้า get injected alongside their paired group.
-  if (concurrentSkuSet.size > 0) {
+  // Extend by-product fallback map with supplementary targets (ยอดล่วงหน้า)
+  if (byProductSkuSet.size > 0) {
     for (const slot of allSuppSlots) {
       for (const { sku, name, qty } of slot.skus) {
         if (qty <= 0.01) continue
-        if (!concurrentSkuSet.has(sku)) continue
+        if (!byProductSkuSet.has(sku)) continue
         const existing = concurrentSkuFallbackTargets.get(sku)
         if (!existing || qty > existing.qty)
           concurrentSkuFallbackTargets.set(sku, { qty, name: name ?? null, channel: 'เสริม' })
@@ -2128,183 +2135,132 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  // Concurrent group pairs: กลุ่มมัน ↔ กลุ่มหนัง (and similar).
-  // When ANY SKU in group A is produced, ALL SKUs in group B must also be produced — same team.
-  // Partner SKUs are distributed one-per-worker in priority order so each worker pair handles
-  // one มัน + one หนัง SKU, never two มัน SKUs on the same worker simultaneously.
-  if (concurrentGroupPairsMap.size > 0) {
-    type SkuData = { startMins: number; workerCode: string; workerName: string; taskRef: Record<string, unknown> }
+  // By-product scheduling: when a source SKU (Sap ตั้งต้น) is allocated, inject all its
+  // by-product SKUs (Sap ผลพลอยได้) on the SAME worker, sequential by priority.
+  // "ของที่เหลือ" gets the remaining quantity = source_qty × ratio − sum(planned by-product qtys).
+  if (sourceSkuSet.size > 0) {
+    type SourceData = { startMins: number; workerCode: string; workerName: string; taskRef: Record<string, unknown>; targetQty: number }
 
-    // Collect per-worker earliest-start info for each concurrent SKU
-    const concurrentSkuWorkerMap = new Map<string, Map<string, SkuData>>()
+    // Collect earliest-start info + quantity for each allocated source SKU
+    const sourceTaskMap = new Map<string, SourceData>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
-      if (!concurrentSkuSet.has(normSku)) continue
+      if (!sourceSkuSet.has(normSku)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
-      const workerCode = task.worker_code as string
-      if (!concurrentSkuWorkerMap.has(normSku)) concurrentSkuWorkerMap.set(normSku, new Map())
-      const workerMap = concurrentSkuWorkerMap.get(normSku)!
-      const cur = workerMap.get(workerCode)
+      const cur = sourceTaskMap.get(normSku)
       if (!cur || startMins < cur.startMins)
-        workerMap.set(workerCode, { startMins, workerCode, workerName: task.worker_name as string, taskRef: task })
+        sourceTaskMap.set(normSku, {
+          startMins,
+          workerCode: task.worker_code as string,
+          workerName: task.worker_name as string,
+          taskRef: task,
+          targetQty: Number(task.target_quantity ?? 0),
+        })
     }
 
-    const processedGroupPairs = new Set<string>()
+    // Collect already-allocated by-product tasks (normSku → qty on its current worker)
+    const allocatedByProducts = new Map<string, { workerCode: string; qty: number }>()
+    for (const task of resequenced) {
+      const normSku = (task.sku as string).replace(/^0+/, '')
+      if (!byProductSkuSet.has(normSku) || allocatedByProducts.has(normSku)) continue
+      allocatedByProducts.set(normSku, {
+        workerCode: task.worker_code as string,
+        qty: Number(task.target_quantity ?? 0),
+      })
+    }
+
     const injectedTasks: Record<string, unknown>[] = []
 
-    for (const [groupA, groupB] of Array.from(concurrentGroupPairsMap.entries())) {
-      const pairKey = [groupA, groupB].sort().join('|||')
-      if (processedGroupPairs.has(pairKey)) continue
-      processedGroupPairs.add(pairKey)
-
-      // All SKUs in each group
-      const skusA = Array.from(skuGroupMap.entries())
-        .filter(([, g]) => g === groupA).map(([sku]) => sku)
-      const skusB = Array.from(skuGroupMap.entries())
-        .filter(([, g]) => g === groupB).map(([sku]) => sku)
-
-      // Per-worker earliest-start for each group (any SKU in that group on that worker)
-      const workersInA = new Map<string, SkuData>()
-      const workersInB = new Map<string, SkuData>()
-      for (const sku of skusA) {
-        for (const [wCode, data] of Array.from((concurrentSkuWorkerMap.get(sku) ?? new Map<string, SkuData>()).entries())) {
-          const cur = workersInA.get(wCode)
-          if (!cur || data.startMins < cur.startMins) workersInA.set(wCode, data)
-        }
+    // Helper: find production plan qty for a by-product SKU
+    const getBpFallback = (sku: string) => {
+      const fb = concurrentSkuFallbackTargets.get(sku)
+      if (fb && fb.qty > 0.01) return fb
+      for (const slot of allSuppSlots) {
+        const found = slot.skus.find(s => s.sku === sku && s.qty > 0.01)
+        if (found) return { qty: found.qty, name: found.name ?? null, channel: 'เสริม' as string }
       }
-      for (const sku of skusB) {
-        for (const [wCode, data] of Array.from((concurrentSkuWorkerMap.get(sku) ?? new Map<string, SkuData>()).entries())) {
-          const cur = workersInB.get(wCode)
-          if (!cur || data.startMins < cur.startMins) workersInB.set(wCode, data)
-        }
+      return null
+    }
+
+    for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
+      const srcData = sourceTaskMap.get(sourceSku)
+      if (!srcData) continue // source SKU not in this plan — skip
+
+      const sourceQty = srcData.targetQty
+      // Use the first numeric ratio as the total by-product multiplier
+      let maxRatio = 0
+      for (const e of byProducts) {
+        if (typeof e.ratio === 'number' && e.ratio > maxRatio) maxRatio = e.ratio
       }
+      const totalByProductQty = maxRatio > 0 ? sourceQty * maxRatio : 0
 
-      const allWorkerCodes = Array.from(new Set([
-        ...Array.from(workersInA.keys()),
-        ...Array.from(workersInB.keys()),
-      ]))
-      if (allWorkerCodes.length === 0) continue
-
-      // Already-allocated SKUs in each group (don't double-inject)
-      const allocatedA = new Set(skusA.filter(s => concurrentSkuWorkerMap.has(s)))
-      const allocatedB = new Set(skusB.filter(s => concurrentSkuWorkerMap.has(s)))
-
-      // Helper: get fallback qty+channel for a partner SKU
-      const getFallback = (sku: string) => {
-        const fb = concurrentSkuFallbackTargets.get(sku)
-        if (fb && fb.qty > 0.01) return fb
-        for (const slot of allSuppSlots) {
-          const found = slot.skus.find(s => s.sku === sku && s.qty > 0.01)
-          if (found) return { qty: found.qty, name: found.name ?? null, channel: 'เสริม' as string }
-        }
-        return null
-      }
-
-      // Fallback lists sorted by channel priority for ordered distribution
-      const sortByPriority = (list: string[]) =>
-        list.slice().sort((a, b) => {
-          const fa = getFallback(a)
-          const fb2 = getFallback(b)
-          const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
-          const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
-          return pa - pb || a.localeCompare(b)
+      // Sort non-remainder by-products by channel priority (เสริม first, then normal channels)
+      const nonRemainder = byProducts
+        .filter(e => e.ratio !== 'remainder')
+        .sort((a, b) => {
+          const fa = getBpFallback(a.byProductSku) ?? allocatedByProducts.get(a.byProductSku)
+          const fb2 = getBpFallback(b.byProductSku) ?? allocatedByProducts.get(b.byProductSku)
+          const pa = fa ? ((fa as {channel: string}).channel === 'เสริม' ? 0 : (channelPriority[(fa as {channel: string}).channel] ?? 99)) : 99
+          const pb = fb2 ? ((fb2 as {channel: string}).channel === 'เสริม' ? 0 : (channelPriority[(fb2 as {channel: string}).channel] ?? 99)) : 99
+          return pa - pb
         })
 
-      const pendingA = sortByPriority(skusA.filter(s => !allocatedA.has(s))) // groupA SKUs not yet allocated
-      const pendingB = sortByPriority(skusB.filter(s => !allocatedB.has(s))) // groupB SKUs not yet allocated
-      let pendingAIdx = 0
-      let pendingBIdx = 0
+      let allocatedQtySum = 0
 
-      for (const wCode of allWorkerCodes) {
-        const dA = workersInA.get(wCode)
-        const dB = workersInB.get(wCode)
+      for (const entry of nonRemainder) {
+        const { byProductSku, name } = entry
+        const existing = allocatedByProducts.get(byProductSku)
 
-        if (dA && dB) {
-          // Worker has both groups — sync to min start, tag concurrent
-          const syncedStart = Math.min(dA.startMins, dB.startMins)
+        if (existing) {
+          // Already allocated — reassign to source's worker and tag concurrent
+          if (existing.workerCode !== srcData.workerCode) {
+            for (const task of resequenced) {
+              if ((task.sku as string).replace(/^0+/, '') !== byProductSku) continue
+              task.worker_code = srcData.workerCode
+              task.worker_name = srcData.workerName
+            }
+          }
           for (const task of resequenced) {
-            const normSku = (task.sku as string).replace(/^0+/, '')
-            if (String(task.worker_code) !== wCode) continue
-            const grp = skuGroupMap.get(normSku)
-            if (grp !== groupA && grp !== groupB) continue
-            task.deadline_time = minsToTimeStr(syncedStart)
+            if ((task.sku as string).replace(/^0+/, '') !== byProductSku) continue
             const en = String(task.note ?? '')
             if (!en.includes('concurrent')) task.note = en ? en + '|concurrent' : 'concurrent'
           }
-        } else if (dA && !dB) {
-          // Worker has groupA — tag it, inject next available groupB SKU
-          for (const task of resequenced) {
-            const normSku = (task.sku as string).replace(/^0+/, '')
-            if (String(task.worker_code) !== wCode || skuGroupMap.get(normSku) !== groupA) continue
-            const en = String(task.note ?? '')
-            if (!en.includes('concurrent')) task.note = en ? en + '|concurrent' : 'concurrent'
-          }
-          if (pendingBIdx < pendingB.length) {
-            const partnerSku = pendingB[pendingBIdx++]
-            const fb = getFallback(partnerSku)
-            if (fb) injectedTasks.push({
-              ...dA.taskRef, sku: partnerSku,
-              sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
-              target_quantity: Math.round(fb.qty * 100) / 100, channel: fb.channel,
-              worker_code: dA.workerCode, worker_name: dA.workerName,
-              deadline_time: minsToTimeStr(dA.startMins),
+          allocatedQtySum += existing.qty
+        } else {
+          // Not yet allocated — inject from production plan target
+          const fb = getBpFallback(byProductSku)
+          if (fb && fb.qty > 0.01) {
+            injectedTasks.push({
+              ...srcData.taskRef, sku: byProductSku,
+              sku_name: skuMap.get(byProductSku)?.sku_name ?? name ?? fb.name ?? null,
+              target_quantity: Math.round(fb.qty * 100) / 100,
+              channel: fb.channel,
+              worker_code: srcData.workerCode, worker_name: srcData.workerName,
+              deadline_time: minsToTimeStr(srcData.startMins),
               is_deficit: false, note: 'concurrent_group_follow',
             })
-          }
-        } else if (!dA && dB) {
-          // Worker has groupB — tag it, inject next available groupA SKU
-          for (const task of resequenced) {
-            const normSku = (task.sku as string).replace(/^0+/, '')
-            if (String(task.worker_code) !== wCode || skuGroupMap.get(normSku) !== groupB) continue
-            const en = String(task.note ?? '')
-            if (!en.includes('concurrent')) task.note = en ? en + '|concurrent' : 'concurrent'
-          }
-          if (pendingAIdx < pendingA.length) {
-            const partnerSku = pendingA[pendingAIdx++]
-            const fb = getFallback(partnerSku)
-            if (fb) injectedTasks.push({
-              ...dB.taskRef, sku: partnerSku,
-              sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
-              target_quantity: Math.round(fb.qty * 100) / 100, channel: fb.channel,
-              worker_code: dB.workerCode, worker_name: dB.workerName,
-              deadline_time: minsToTimeStr(dB.startMins),
-              is_deficit: false, note: 'concurrent_group_follow',
-            })
+            allocatedQtySum += fb.qty
           }
         }
       }
 
-      // If any pending partner SKUs remain (more SKUs than workers), inject on canonical worker
-      const canonicalWorker = workersInB.size > 0
-        ? Array.from(workersInB.entries()).sort((a, b) => a[1].startMins - b[1].startMins)[0][1]
-        : workersInA.size > 0
-        ? Array.from(workersInA.entries()).sort((a, b) => a[1].startMins - b[1].startMins)[0][1]
-        : null
-      if (canonicalWorker) {
-        while (pendingAIdx < pendingA.length) {
-          const partnerSku = pendingA[pendingAIdx++]
-          const fb = getFallback(partnerSku)
-          if (fb) injectedTasks.push({
-            ...canonicalWorker.taskRef, sku: partnerSku,
-            sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
-            target_quantity: Math.round(fb.qty * 100) / 100, channel: fb.channel,
-            worker_code: canonicalWorker.workerCode, worker_name: canonicalWorker.workerName,
-            deadline_time: minsToTimeStr(canonicalWorker.startMins),
-            is_deficit: false, note: 'concurrent_group_follow',
-          })
-        }
-        while (pendingBIdx < pendingB.length) {
-          const partnerSku = pendingB[pendingBIdx++]
-          const fb = getFallback(partnerSku)
-          if (fb) injectedTasks.push({
-            ...canonicalWorker.taskRef, sku: partnerSku,
-            sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
-            target_quantity: Math.round(fb.qty * 100) / 100, channel: fb.channel,
-            worker_code: canonicalWorker.workerCode, worker_name: canonicalWorker.workerName,
-            deadline_time: minsToTimeStr(canonicalWorker.startMins),
-            is_deficit: false, note: 'concurrent_group_follow',
-          })
+      // "ของที่เหลือ" — inject remainder quantity after all non-remainder by-products
+      const remainderEntries = byProducts.filter(e => e.ratio === 'remainder')
+      if (remainderEntries.length > 0 && totalByProductQty > 0) {
+        const remainderQty = Math.round(Math.max(0, totalByProductQty - allocatedQtySum) * 100) / 100
+        if (remainderQty > 0.01) {
+          for (const entry of remainderEntries) {
+            injectedTasks.push({
+              ...srcData.taskRef, sku: entry.byProductSku,
+              sku_name: skuMap.get(entry.byProductSku)?.sku_name ?? entry.name ?? null,
+              target_quantity: remainderQty,
+              channel: 'เสริม',
+              worker_code: srcData.workerCode, worker_name: srcData.workerName,
+              deadline_time: minsToTimeStr(srcData.startMins),
+              is_deficit: false, note: 'concurrent_remainder',
+            })
+          }
         }
       }
     }
@@ -2380,9 +2336,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .map(([sku, v]) => ({ sku, ...v }))
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
-    debug_concurrent_pairs: Array.from(new Set(
-      Array.from(concurrentGroupPairsMap.entries())
-        .map(([a, b]) => [a, b].sort().join('|||'))
-    )).map(s => { const [sap1, sap2] = s.split('|||'); return { sap1, sap2 } }),
+    debug_concurrent_pairs: Array.from(byProductMap.entries())
+      .flatMap(([src, bps]) => bps.map(e => ({ source: src, byProduct: e.byProductSku, ratio: e.ratio }))),
   }
 }
