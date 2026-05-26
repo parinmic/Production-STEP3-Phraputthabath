@@ -2199,10 +2199,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const nonRemainder = byProducts
         .filter(e => e.ratio !== 'remainder')
         .sort((a, b) => {
-          const fa = getBpFallback(a.byProductSku) ?? allocatedByProducts.get(a.byProductSku)
-          const fb2 = getBpFallback(b.byProductSku) ?? allocatedByProducts.get(b.byProductSku)
-          const pa = fa ? ((fa as {channel: string}).channel === 'เสริม' ? 0 : (channelPriority[(fa as {channel: string}).channel] ?? 99)) : 99
-          const pb = fb2 ? ((fb2 as {channel: string}).channel === 'เสริม' ? 0 : (channelPriority[(fb2 as {channel: string}).channel] ?? 99)) : 99
+          const fa = getBpFallback(a.byProductSku)
+          const fb2 = getBpFallback(b.byProductSku)
+          const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
+          const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
           return pa - pb
         })
 
