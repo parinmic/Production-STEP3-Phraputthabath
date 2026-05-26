@@ -1763,10 +1763,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
       if (Q_max < 0) Q_max = 0
 
-      if (Q_max > 0.01) {
+      // Align split to bag boundary: round stock DOWN, deficit = bag-total - stock
+      // Prevents each portion being rounded up independently (which inflates the total by up to 1 bag per portion)
+      const wpbLocal = item.channel === 'Makro' ? 1 : (bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1)
+      const bagAlignedTotal = wpbLocal > 0 ? Math.ceil(item.targetQty / wpbLocal) * wpbLocal : item.targetQty
+      const stockBagQty = wpbLocal > 0 ? Math.floor(Q_max / wpbLocal) * wpbLocal : Q_max
+
+      if (stockBagQty > 0.01) {
         for (const b of boms) {
           const yield_pct = b.yield_pct > 0 ? b.yield_pct : 1.0
-          let rawDeduct = Q_max / yield_pct
+          let rawDeduct = stockBagQty / yield_pct
           const lots = stockByMat2.get(b.raw_sap) ?? stockByName2.get(normMatNameLocal(b.raw_name ?? '')) ?? []
           for (const lot of lots) {
             if (rawDeduct <= 0.005 || lot.weight <= 0.005) break
@@ -1784,9 +1790,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         }
       }
 
-      if (Q_max > 0.01) splitAssignList.push({ ...item, targetQty: Q_max, isDeficit: false })
-      const deficitQty = item.targetQty - Q_max
-      if (deficitQty > 0.01) splitAssignList.push({ ...item, targetQty: deficitQty, isDeficit: true })
+      if (stockBagQty > 0.01) splitAssignList.push({ ...item, targetQty: stockBagQty, isDeficit: false })
+      const deficitBagQty = bagAlignedTotal - stockBagQty
+      if (deficitBagQty > 0.01) splitAssignList.push({ ...item, targetQty: deficitBagQty, isDeficit: true })
     }
     assignList = splitAssignList
   }
