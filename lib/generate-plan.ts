@@ -2128,18 +2128,23 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   if (concurrentSkuSet.size > 0) {
     type SkuData = { startMins: number; workerCode: string; workerName: string; taskRef: Record<string, unknown> }
 
-    // Collect earliest-start info per concurrent SKU that was actually allocated
-    const concurrentSkuInfoMap = new Map<string, SkuData>()
+    // Collect per-worker earliest-start info for each concurrent SKU.
+    // Map<normSku, Map<workerCode, SkuData>> — one entry per (sku, worker) combination
+    // so that if 2 workers produce หนัง M, both appear and both get มัน M injected.
+    const concurrentSkuWorkerMap = new Map<string, Map<string, SkuData>>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
       if (!concurrentSkuSet.has(normSku)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
-      const cur = concurrentSkuInfoMap.get(normSku)
+      const workerCode = task.worker_code as string
+      if (!concurrentSkuWorkerMap.has(normSku)) concurrentSkuWorkerMap.set(normSku, new Map())
+      const workerMap = concurrentSkuWorkerMap.get(normSku)!
+      const cur = workerMap.get(workerCode)
       if (!cur || startMins < cur.startMins)
-        concurrentSkuInfoMap.set(normSku, {
+        workerMap.set(workerCode, {
           startMins,
-          workerCode: task.worker_code as string,
+          workerCode,
           workerName: task.worker_name as string,
           taskRef: task,
         })
@@ -2148,88 +2153,94 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const processedPairs = new Set<string>()
     const injectedTasks: Record<string, unknown>[] = []
 
+    // Helper: inject partner SKU on a specific worker from fallback map or allSuppSlots
+    const injectPartner = (partnerSku: string, canonical: SkuData) => {
+      const fb = concurrentSkuFallbackTargets.get(partnerSku)
+      if (fb && fb.qty > 0.01) {
+        injectedTasks.push({
+          ...canonical.taskRef,
+          sku: partnerSku,
+          sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
+          target_quantity: Math.round(fb.qty * 100) / 100,
+          channel: fb.channel,
+          worker_code: canonical.workerCode,
+          worker_name: canonical.workerName,
+          deadline_time: minsToTimeStr(canonical.startMins),
+          is_deficit: false,
+          note: 'concurrent_group_follow',
+        })
+        return
+      }
+      // Safety-net: scan allSuppSlots directly
+      for (const slot of allSuppSlots) {
+        const found = slot.skus.find(s => s.sku === partnerSku && s.qty > 0.01)
+        if (!found) continue
+        injectedTasks.push({
+          ...canonical.taskRef,
+          sku: partnerSku,
+          sku_name: skuMap.get(partnerSku)?.sku_name ?? found.name ?? null,
+          target_quantity: Math.round(found.qty * 100) / 100,
+          channel: 'เสริม',
+          worker_code: canonical.workerCode,
+          worker_name: canonical.workerName,
+          deadline_time: minsToTimeStr(canonical.startMins),
+          is_deficit: false,
+          note: 'concurrent_group_follow',
+        })
+        return
+      }
+    }
+
     for (const [skuA, skuB] of Array.from(concurrentSkuPairsMap.entries())) {
       const pairKey = [skuA, skuB].sort().join('|||')
       if (processedPairs.has(pairKey)) continue
       processedPairs.add(pairKey)
 
-      const dataA = concurrentSkuInfoMap.get(skuA)
-      const dataB = concurrentSkuInfoMap.get(skuB)
+      const workersA = concurrentSkuWorkerMap.get(skuA) ?? new Map<string, SkuData>()
+      const workersB = concurrentSkuWorkerMap.get(skuB) ?? new Map<string, SkuData>()
 
-      // Helper: inject partner SKU from fallback map + allSuppSlots safety-net
-      const injectPartner = (partnerSku: string, canonical: SkuData) => {
-        const fb = concurrentSkuFallbackTargets.get(partnerSku)
-        if (fb && fb.qty > 0.01) {
-          injectedTasks.push({
-            ...canonical.taskRef,
-            sku: partnerSku,
-            sku_name: skuMap.get(partnerSku)?.sku_name ?? fb.name ?? null,
-            target_quantity: Math.round(fb.qty * 100) / 100,
-            channel: fb.channel,
-            worker_code: canonical.workerCode,
-            worker_name: canonical.workerName,
-            deadline_time: minsToTimeStr(canonical.startMins),
-            is_deficit: false,
-            note: 'concurrent_group_follow',
-          })
-          return
-        }
-        // Safety-net: scan allSuppSlots directly
-        for (const slot of allSuppSlots) {
-          const found = slot.skus.find(s => s.sku === partnerSku && s.qty > 0.01)
-          if (!found) continue
-          injectedTasks.push({
-            ...canonical.taskRef,
-            sku: partnerSku,
-            sku_name: skuMap.get(partnerSku)?.sku_name ?? found.name ?? null,
-            target_quantity: Math.round(found.qty * 100) / 100,
-            channel: 'เสริม',
-            worker_code: canonical.workerCode,
-            worker_name: canonical.workerName,
-            deadline_time: minsToTimeStr(canonical.startMins),
-            is_deficit: false,
-            note: 'concurrent_group_follow',
-          })
-          return
+      // Union all workers from both sides — each worker that touches either SKU must handle both
+      const allWorkerCodes = new Set([...workersA.keys(), ...workersB.keys()])
+
+      if (allWorkerCodes.size === 0) continue // neither SKU allocated — skip
+
+      for (const wCode of allWorkerCodes) {
+        const dA = workersA.get(wCode)
+        const dB = workersB.get(wCode)
+
+        if (dA && dB) {
+          // Both SKUs on this worker — sync to min start time
+          const syncedStart = Math.min(dA.startMins, dB.startMins)
+          for (const task of resequenced) {
+            const normSku = (task.sku as string).replace(/^0+/, '')
+            if ((normSku !== skuA && normSku !== skuB) || task.worker_code !== wCode) continue
+            task.deadline_time = minsToTimeStr(syncedStart)
+            const existingNote = String(task.note ?? '')
+            if (!existingNote.includes('concurrent'))
+              task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+          }
+        } else if (dA && !dB) {
+          // Only skuA on this worker — tag it, inject skuB here
+          for (const task of resequenced) {
+            const normSku = (task.sku as string).replace(/^0+/, '')
+            if (normSku !== skuA || task.worker_code !== wCode) continue
+            const existingNote = String(task.note ?? '')
+            if (!existingNote.includes('concurrent'))
+              task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+          }
+          injectPartner(skuB, dA)
+        } else if (!dA && dB) {
+          // Only skuB on this worker — tag it, inject skuA here
+          for (const task of resequenced) {
+            const normSku = (task.sku as string).replace(/^0+/, '')
+            if (normSku !== skuB || task.worker_code !== wCode) continue
+            const existingNote = String(task.note ?? '')
+            if (!existingNote.includes('concurrent'))
+              task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
+          }
+          injectPartner(skuA, dB)
         }
       }
-
-      if (dataA && dataB) {
-        // Both allocated — sync to min start time on the earlier worker
-        const syncedStart = Math.min(dataA.startMins, dataB.startMins)
-        const canonical = dataA.startMins <= dataB.startMins ? dataA : dataB
-        for (const task of resequenced) {
-          const normSku = (task.sku as string).replace(/^0+/, '')
-          if (normSku !== skuA && normSku !== skuB) continue
-          task.worker_code   = canonical.workerCode
-          task.worker_name   = canonical.workerName
-          task.deadline_time = minsToTimeStr(syncedStart)
-          const existingNote = String(task.note ?? '')
-          if (!existingNote.includes('concurrent'))
-            task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
-        }
-      } else if (dataA && !dataB) {
-        // Only A allocated — tag A and inject B on A's worker
-        for (const task of resequenced) {
-          const normSku = (task.sku as string).replace(/^0+/, '')
-          if (normSku !== skuA) continue
-          const existingNote = String(task.note ?? '')
-          if (!existingNote.includes('concurrent'))
-            task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
-        }
-        injectPartner(skuB, dataA)
-      } else if (!dataA && dataB) {
-        // Only B allocated — tag B and inject A on B's worker
-        for (const task of resequenced) {
-          const normSku = (task.sku as string).replace(/^0+/, '')
-          if (normSku !== skuB) continue
-          const existingNote = String(task.note ?? '')
-          if (!existingNote.includes('concurrent'))
-            task.note = existingNote ? existingNote + '|concurrent' : 'concurrent'
-        }
-        injectPartner(skuA, dataB)
-      }
-      // If neither allocated: no production planned for either — skip
     }
 
     resequenced.push(...injectedTasks)
