@@ -1566,7 +1566,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
       const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
-      return { sku, skuName: name, targetQty: roundUpToBag(sku, orderQty) * variance, channel: ch }
+      const baggedOrderQty = roundUpToBag(sku, orderQty)
+      // Cap at the order qty (rounded up to bag): never produce more than ordered from Makro
+      return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
   }
 
