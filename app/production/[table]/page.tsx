@@ -521,7 +521,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       {(() => {
                         const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
                         const bags = wpb && wpb > 0
-                          ? Object.values(stat.qtyByPeriod).reduce((sum, q) => sum + Math.ceil(q / wpb), 0)
+                          ? Math.ceil(stat.totalQty / wpb)
                           : 0
                         const displayQty = wpb && wpb > 0
                           ? bags * wpb
@@ -797,9 +797,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     if (!wpb || wpb <= 0) return s
-    // คำนวณถุงแยกตาม period แล้วบวกกัน ให้ตรงกับที่แสดงทีละ Phase
-    return s + Object.values(skuStats[sku].qtyByPeriod)
-      .reduce((sum, qty) => sum + Math.ceil(qty / wpb), 0)
+    return s + Math.ceil(skuStats[sku].totalQty / wpb)
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
@@ -848,7 +846,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           const stat    = skuStats[sku]
           const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
           const bags    = wpb && wpb > 0
-            ? Object.values(stat.qtyByPeriod).reduce((s, q) => s + Math.ceil(q / wpb), 0)
+            ? Math.ceil(stat.totalQty / wpb)
             : null
           const total   = skuTotal(sku)
           const hasData = total > 0
