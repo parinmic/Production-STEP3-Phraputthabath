@@ -41,7 +41,7 @@ export interface GeneratePlanResult {
   message: string
   count?: number
   debug_targets?: { sku: string; wm: number; makro: number; lotus: number; merged: number }[]
-  debug_concurrent_pairs?: { sap1: string; sap2: string }[]
+  debug_concurrent_pairs?: { source: string; byProduct: string; ratio: number | string }[]
 }
 
 // ========== Utilities ==========
@@ -1354,13 +1354,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
   }
 
-  // Map normSku → product_group for concurrent group-pair logic
-  const skuGroupMap = new Map<string, string>()
-  for (const [sku, prod] of Array.from(skuMap.entries())) {
-    if (prod.product_group) skuGroupMap.set(sku, prod.product_group)
-  }
-
-  // (skuGroupMap kept for reference; concurrent logic now uses byProductMap / sourceSkuSet / byProductSkuSet)
 
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
