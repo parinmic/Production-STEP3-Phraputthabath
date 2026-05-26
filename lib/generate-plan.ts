@@ -2200,9 +2200,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const workersB = concurrentSkuWorkerMap.get(skuB) ?? new Map<string, SkuData>()
 
       // Union all workers from both sides — each worker that touches either SKU must handle both
-      const allWorkerCodes = new Set([...workersA.keys(), ...workersB.keys()])
+      const allWorkerCodes = Array.from(new Set([
+        ...Array.from(workersA.keys()),
+        ...Array.from(workersB.keys()),
+      ]))
 
-      if (allWorkerCodes.size === 0) continue // neither SKU allocated — skip
+      if (allWorkerCodes.length === 0) continue // neither SKU allocated — skip
 
       for (const wCode of allWorkerCodes) {
         const dA = workersA.get(wCode)
