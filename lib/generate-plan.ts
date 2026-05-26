@@ -1522,9 +1522,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const ch = 'Wet Market'
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
-      return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => ({
-        sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, orderQty) - (p1.get(sku) ?? 0)), channel: ch,
-      })).filter(s => s.targetQty > 0)
+      return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
+        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        let targetQty: number
+        if (wpb > 0) {
+          const orderBags = Math.ceil(orderQty / wpb)
+          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+        } else {
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+        }
+        return { sku, skuName: name, targetQty, channel: ch }
+      }).filter(s => s.targetQty > 0)
     }
     const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     const lotusHistSkus = new Set(avgLotus.keys())
@@ -1537,7 +1546,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
         const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, roundUpToBag(sku, avg) * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
@@ -1576,9 +1585,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const ch = 'LOTUS'
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
-      return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => ({
-        sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, orderQty) - (p1.get(sku) ?? 0)), channel: ch,
-      })).filter(s => s.targetQty > 0)
+      return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
+        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        let targetQty: number
+        if (wpb > 0) {
+          const orderBags = Math.ceil(orderQty / wpb)
+          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+        } else {
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+        }
+        return { sku, skuName: name, targetQty, channel: ch }
+      }).filter(s => s.targetQty > 0)
     }
     const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     // Same rationale as WM: LOTUS uses historical avg, not actual orders.
@@ -1591,7 +1609,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const rawStation = prod ? normalizeStation(prod.station) : ''
         const station = STATION_TABLE[rawStation] ?? rawStation
         const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
+        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, roundUpToBag(sku, avg) * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
@@ -1633,7 +1651,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       for (const [ch, m] of Array.from(phase1ByChannel.entries())) {
         if (m.has(sku)) { channel = ch; break }
       }
-      return { sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, qty) - (phase1Assigned.get(sku) ?? 0)), channel }
+      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+      let targetQty: number
+      if (wpb > 0) {
+        const orderBags = Math.ceil(qty / wpb)
+        const p1Bags = Math.round((phase1Assigned.get(sku) ?? 0) / wpb)
+        targetQty = Math.max(0, orderBags - p1Bags) * wpb
+      } else {
+        targetQty = Math.max(0, qty - (phase1Assigned.get(sku) ?? 0))
+      }
+      return { sku, skuName: name, targetQty, channel }
     }).filter(t => t.targetQty > 0)
 
     const p3ChannelTargets: Record<string, SkuTarget[]> = {}
