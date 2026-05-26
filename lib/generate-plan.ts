@@ -2128,61 +2128,71 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  // By-product scheduling: when a source SKU (Sap ตั้งต้น) is allocated, inject all its
-  // by-product SKUs (Sap ผลพลอยได้) on the SAME worker, sequential by priority.
-  // "ของที่เหลือ" gets the remaining quantity = source_qty × ratio − sum(planned by-product qtys).
+  // By-product scheduling:
+  //   1. Each source worker produces ALL its by-products (1 task per source worker per by-product SKU)
+  //   2. By-products are sequential: no two by-product SKUs are produced simultaneously
+  //   3. "ของที่เหลือ" is produced last; its end time = source SKU end time
+  //
+  // deadline_time = task START time; end = wallClockFinish(start, workMins)
+  // Deadlines are chained backward from source_end so the last by-product ends exactly at source_end.
   if (sourceSkuSet.size > 0) {
-    type SourceData = { startMins: number; workerCode: string; workerName: string; taskRef: Record<string, unknown>; targetQty: number }
+    type SrcWorker = { workerCode: string; workerName: string; taskRef: Record<string, unknown>; startMins: number; qty: number }
 
-    // Collect earliest-start worker + SUM of all workers' qty for each source SKU.
-    // Using earliest-start worker so injected by-products align with the first production slot.
-    // Summing across workers gives the correct total for "ของที่เหลือ" calculation.
-    const sourceTaskMap = new Map<string, SourceData>()
+    // Compute task START given an END time and work-minutes (reverse of wallClockFinish)
+    const wallClockBackward = (endMins: number, workMins: number): number => {
+      if (workMins <= 0) return endMins
+      let pos = endMins
+      let remaining = workMins
+      for (let i = BREAKS.length - 1; i >= 0; i--) {
+        const [bs, be] = BREAKS[i]
+        if (pos <= be) continue
+        const gap = pos - be
+        if (remaining <= gap) return pos - remaining
+        remaining -= gap
+        pos = bs
+      }
+      return pos - remaining
+    }
+
+    // Work-minutes to produce qty of a SKU at its productivity rate
+    const getDurMins = (sku: string, qty: number): number => {
+      const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
+      const rate = prod?.rate ?? 0
+      return rate > 0 ? Math.round((qty / rate) * 60) : 0
+    }
+
+    // Track each source worker individually: normSku → Map<workerCode, SrcWorker>
+    const sourceWorkerMap = new Map<string, Map<string, SrcWorker>>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
       if (!sourceSkuSet.has(normSku)) continue
       const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
       const startMins = h * 60 + m
       const taskQty = Number(task.target_quantity ?? 0)
-      const cur = sourceTaskMap.get(normSku)
+      const wCode = task.worker_code as string
+      if (!sourceWorkerMap.has(normSku)) sourceWorkerMap.set(normSku, new Map())
+      const wMap = sourceWorkerMap.get(normSku)!
+      const cur = wMap.get(wCode)
       if (!cur) {
-        sourceTaskMap.set(normSku, {
-          startMins,
-          workerCode: task.worker_code as string,
-          workerName: task.worker_name as string,
-          taskRef: task,
-          targetQty: taskQty,
-        })
+        wMap.set(wCode, { workerCode: wCode, workerName: task.worker_name as string, taskRef: task, startMins, qty: taskQty })
       } else {
-        const isEarlier = startMins < cur.startMins
-        sourceTaskMap.set(normSku, {
-          startMins: isEarlier ? startMins : cur.startMins,
-          workerCode: isEarlier ? (task.worker_code as string) : cur.workerCode,
-          workerName: isEarlier ? (task.worker_name as string) : cur.workerName,
-          taskRef: isEarlier ? task : cur.taskRef,
-          targetQty: cur.targetQty + taskQty,  // accumulate total across all workers
-        })
+        wMap.set(wCode, { ...cur, startMins: Math.min(cur.startMins, startMins), qty: cur.qty + taskQty })
       }
     }
 
-    // Collect already-allocated by-product tasks — SUM qty across all workers per SKU.
-    const allocatedByProducts = new Map<string, { workerCode: string; qty: number }>()
+    // Already-allocated by-products: normSku → Map<workerCode, qty>
+    const allocatedBpWorkers = new Map<string, Map<string, number>>()
     for (const task of resequenced) {
       const normSku = (task.sku as string).replace(/^0+/, '')
       if (!byProductSkuSet.has(normSku)) continue
-      const taskQty = Number(task.target_quantity ?? 0)
-      const cur = allocatedByProducts.get(normSku)
-      if (!cur) {
-        allocatedByProducts.set(normSku, { workerCode: task.worker_code as string, qty: taskQty })
-      } else {
-        cur.qty += taskQty  // sum across workers
-      }
+      if (!allocatedBpWorkers.has(normSku)) allocatedBpWorkers.set(normSku, new Map())
+      const wMap = allocatedBpWorkers.get(normSku)!
+      const wCode = task.worker_code as string
+      wMap.set(wCode, (wMap.get(wCode) ?? 0) + Number(task.target_quantity ?? 0))
     }
 
-    const injectedTasks: Record<string, unknown>[] = []
-
-    // Helper: find production plan qty for a by-product SKU
-    const getBpFallback = (sku: string) => {
+    // Production-plan qty + channel for a by-product SKU
+    const getBpPlanInfo = (sku: string): { qty: number; name: string | null; channel: string } | null => {
       const fb = concurrentSkuFallbackTargets.get(sku)
       if (fb && fb.qty > 0.01) return fb
       for (const slot of allSuppSlots) {
@@ -2192,88 +2202,136 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       return null
     }
 
-    for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
-      const srcData = sourceTaskMap.get(sourceSku)
-      if (!srcData) continue // source SKU not in this plan — skip
+    const injectedTasks: Record<string, unknown>[] = []
 
-      const sourceQty = srcData.targetQty
-      // Use the first numeric ratio as the total by-product multiplier
+    for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
+      const srcWMap = sourceWorkerMap.get(sourceSku)
+      if (!srcWMap || srcWMap.size === 0) continue
+      const sourceWorkers = Array.from(srcWMap.values())
+      const numWorkers = sourceWorkers.length
+      const totalSourceQty = sourceWorkers.reduce((s, w) => s + w.qty, 0)
+
+      // Source end = latest end time among all source workers
+      const sourceEndMins = Math.max(...sourceWorkers.map(w =>
+        wallClockFinish(w.startMins, getDurMins(sourceSku, w.qty))
+      ))
+
+      // maxRatio → total by-product yield quantity (source_total × ratio)
       let maxRatio = 0
       for (const e of byProducts) {
         if (typeof e.ratio === 'number' && e.ratio > maxRatio) maxRatio = e.ratio
       }
-      const totalByProductQty = maxRatio > 0 ? sourceQty * maxRatio : 0
+      const totalByProductQty = maxRatio > 0 ? totalSourceQty * maxRatio : 0
 
-      // Sort non-remainder by-products by channel priority (เสริม first, then normal channels)
+      // Sort non-remainder by channel priority
       const nonRemainder = byProducts
         .filter(e => e.ratio !== 'remainder')
         .sort((a, b) => {
-          const fa = getBpFallback(a.byProductSku)
-          const fb2 = getBpFallback(b.byProductSku)
+          const fa = getBpPlanInfo(a.byProductSku)
+          const fb2 = getBpPlanInfo(b.byProductSku)
           const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
           const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
           return pa - pb
         })
 
+      // Collect total plan qty for each non-remainder SKU
       let allocatedQtySum = 0
-      // Offset counter so injected non-remainder tasks get sequential (non-overlapping) deadline_times
-      let injectSeq = 0
-
+      type BpInfo = { qty: number; channel: string; name: string | null }
+      const bpPlanQtys = new Map<string, BpInfo>()
       for (const entry of nonRemainder) {
-        const { byProductSku, name } = entry
-        const existing = allocatedByProducts.get(byProductSku)
-
-        if (existing) {
-          // Already allocated — reassign to source's worker and tag concurrent
-          if (existing.workerCode !== srcData.workerCode) {
-            for (const task of resequenced) {
-              if ((task.sku as string).replace(/^0+/, '') !== byProductSku) continue
-              task.worker_code = srcData.workerCode
-              task.worker_name = srcData.workerName
-            }
-          }
-          for (const task of resequenced) {
-            if ((task.sku as string).replace(/^0+/, '') !== byProductSku) continue
-            const en = String(task.note ?? '')
-            if (!en.includes('concurrent')) task.note = en ? en + '|concurrent' : 'concurrent'
-          }
-          allocatedQtySum += existing.qty
-        } else {
-          // Not yet allocated — inject from production plan target.
-          // Each injected task gets a +1 min offset so they appear sequentially in the Gantt.
-          const fb = getBpFallback(byProductSku)
-          if (fb && fb.qty > 0.01) {
-            injectedTasks.push({
-              ...srcData.taskRef, sku: byProductSku,
-              sku_name: skuMap.get(byProductSku)?.sku_name ?? name ?? fb.name ?? null,
-              target_quantity: Math.round(fb.qty * 100) / 100,
-              channel: fb.channel,
-              worker_code: srcData.workerCode, worker_name: srcData.workerName,
-              deadline_time: minsToTimeStr(srcData.startMins + injectSeq),
-              is_deficit: false, note: 'concurrent_group_follow',
-            })
-            allocatedQtySum += fb.qty
-            injectSeq++
-          }
+        const planInfo = getBpPlanInfo(entry.byProductSku)
+        // Fallback to sum of already-allocated tasks if not in plan
+        const allocTotal = allocatedBpWorkers.has(entry.byProductSku)
+          ? Array.from(allocatedBpWorkers.get(entry.byProductSku)!.values()).reduce((s, q) => s + q, 0)
+          : 0
+        const totalQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
+        if (totalQty > 0.01) {
+          bpPlanQtys.set(entry.byProductSku, { qty: totalQty, channel: planInfo?.channel ?? 'เสริม', name: planInfo?.name ?? null })
+          allocatedQtySum += totalQty
         }
       }
 
-      // "ของที่เหลือ" — remainder qty = total yield − sum of all other by-product quantities.
-      // Placed at phase end (phaseEndMins) so it sorts LAST for this worker.
       const remainderEntries = byProducts.filter(e => e.ratio === 'remainder')
-      if (remainderEntries.length > 0 && totalByProductQty > 0) {
-        const remainderQty = Math.round(Math.max(0, totalByProductQty - allocatedQtySum) * 100) / 100
-        if (remainderQty > 0.01) {
-          for (const entry of remainderEntries) {
+      const remainderQty = remainderEntries.length > 0 && totalByProductQty > 0
+        ? Math.round(Math.max(0, totalByProductQty - allocatedQtySum) * 100) / 100
+        : 0
+
+      // Ordered list: non-remainder (priority) → remainder last
+      type BpOrder = { sku: string; name: string | null; totalQty: number; channel: string; note: string }
+      const orderedBp: BpOrder[] = [
+        ...nonRemainder
+          .filter(e => (bpPlanQtys.get(e.byProductSku)?.qty ?? 0) > 0.01)
+          .map(e => {
+            const info = bpPlanQtys.get(e.byProductSku)!
+            return { sku: e.byProductSku, name: e.name, totalQty: info.qty, channel: info.channel, note: 'concurrent_group_follow' }
+          }),
+        ...(remainderQty > 0.01
+          ? remainderEntries.map(e => ({ sku: e.byProductSku, name: e.name, totalQty: remainderQty, channel: 'เสริม', note: 'concurrent_remainder' }))
+          : []),
+      ]
+
+      // Chain start times backward from sourceEndMins.
+      // All workers for the same by-product SKU start simultaneously → group finishes in
+      // (total_qty / numWorkers) / rate minutes. Last by-product (remainder) ends at sourceEndMins.
+      const bpStartMap = new Map<string, number>()
+      let chainEnd = sourceEndMins
+      for (let i = orderedBp.length - 1; i >= 0; i--) {
+        const entry = orderedBp[i]
+        const perWorkerQty = numWorkers > 0 ? entry.totalQty / numWorkers : entry.totalQty
+        const dur = getDurMins(entry.sku, perWorkerQty)
+        bpStartMap.set(entry.sku, dur > 0 ? wallClockBackward(chainEnd, dur) : chainEnd - 1)
+        chainEnd = bpStartMap.get(entry.sku)!
+      }
+
+      // Create / update tasks: one per source worker per by-product
+      for (const entry of orderedBp) {
+        const bpStart = bpStartMap.get(entry.sku) ?? chainEnd
+        const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
+
+        for (const srcWorker of sourceWorkers) {
+          const proportion = totalSourceQty > 0 ? srcWorker.qty / totalSourceQty : 1 / numWorkers
+          const workerQty = Math.round(entry.totalQty * proportion * 100) / 100
+          if (workerQty <= 0.01) continue
+
+          if (existingWMap.has(srcWorker.workerCode)) {
+            // Update existing task on this worker: fix timing, qty, worker identity, note
+            for (const task of resequenced) {
+              if ((task.sku as string).replace(/^0+/, '') !== entry.sku) continue
+              if (String(task.worker_code) !== srcWorker.workerCode) continue
+              task.target_quantity = workerQty
+              task.deadline_time = minsToTimeStr(bpStart)
+              task.worker_code = srcWorker.workerCode
+              task.worker_name = srcWorker.workerName
+              const en = String(task.note ?? '')
+              if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
+            }
+          } else {
             injectedTasks.push({
-              ...srcData.taskRef, sku: entry.byProductSku,
-              sku_name: skuMap.get(entry.byProductSku)?.sku_name ?? entry.name ?? null,
-              target_quantity: remainderQty,
-              channel: 'เสริม',
-              worker_code: srcData.workerCode, worker_name: srcData.workerName,
-              deadline_time: minsToTimeStr(phaseEndMins),
-              is_deficit: false, note: 'concurrent_remainder',
+              ...srcWorker.taskRef,
+              sku: entry.sku,
+              sku_name: skuMap.get(entry.sku)?.sku_name ?? entry.name ?? null,
+              target_quantity: workerQty,
+              channel: entry.channel,
+              worker_code: srcWorker.workerCode,
+              worker_name: srcWorker.workerName,
+              deadline_time: minsToTimeStr(bpStart),
+              is_deficit: false,
+              note: entry.note,
             })
+          }
+        }
+
+        // By-product tasks on workers outside the source group → reassign to first source worker
+        for (const [existingWCode] of Array.from(existingWMap.entries())) {
+          if (sourceWorkers.some(w => w.workerCode === existingWCode)) continue
+          for (const task of resequenced) {
+            if ((task.sku as string).replace(/^0+/, '') !== entry.sku) continue
+            if (String(task.worker_code) !== existingWCode) continue
+            task.worker_code = sourceWorkers[0].workerCode
+            task.worker_name = sourceWorkers[0].workerName
+            task.deadline_time = minsToTimeStr(bpStart)
+            const en = String(task.note ?? '')
+            if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
           }
         }
       }
@@ -2285,7 +2343,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
     const wCmp = String(a['worker_name'] ?? '').localeCompare(String(b['worker_name'] ?? ''))
     if (wCmp !== 0) return wCmp
-    // "ของที่เหลือ" must always be the last task for its worker in the phase
+    // concurrent_remainder always sorts last per worker (safety net when dur=0 makes times equal)
     const aIsRem = String(a['note'] ?? '').includes('concurrent_remainder')
     const bIsRem = String(b['note'] ?? '').includes('concurrent_remainder')
     if (aIsRem !== bIsRem) return aIsRem ? 1 : -1
