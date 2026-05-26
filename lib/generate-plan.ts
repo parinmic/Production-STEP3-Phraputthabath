@@ -1528,12 +1528,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     const lotusHistSkus = new Set(avgLotus.keys())
-    return Array.from(avgWM.entries()).map(([sku, avg]) => {
-      const isShared = lotusHistSkus.has(sku)
-      const quotaToday = quotaMap.get(sku) ?? avg
-      const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-      return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
-    }).filter(s => s.targetQty > 0)
+    // Exclude by-products: WM uses historical avg (not actual orders) so by-products
+    // would pick up stale targets here instead of using their actual Makro/advance order.
+    // Concurrent injection handles their production qty separately.
+    return Array.from(avgWM.entries())
+      .filter(([sku]) => !byProductSkuSet.has(sku))
+      .map(([sku, avg]) => {
+        const isShared = lotusHistSkus.has(sku)
+        const quotaToday = quotaMap.get(sku) ?? avg
+        const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
+      }).filter(s => s.targetQty > 0)
   }
 
   const buildMakroTargets = (): SkuTarget[] => {
@@ -1574,13 +1579,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       })).filter(s => s.targetQty > 0)
     }
     const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
-    return Array.from(avgLotus.entries()).map(([sku, avg]) => {
-      const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
-      const rawStation = prod ? normalizeStation(prod.station) : ''
-      const station = STATION_TABLE[rawStation] ?? rawStation
-      const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-      return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
-    }).filter(s => s.targetQty > 0)
+    // Same rationale as WM: LOTUS uses historical avg, not actual orders.
+    return Array.from(avgLotus.entries())
+      .filter(([sku]) => !byProductSkuSet.has(sku))
+      .map(([sku, avg]) => {
+        const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
+        const rawStation = prod ? normalizeStation(prod.station) : ''
+        const station = STATION_TABLE[rawStation] ?? rawStation
+        const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
+        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
+      }).filter(s => s.targetQty > 0)
   }
 
   const channelTargets: Record<string, SkuTarget[]> = {
@@ -2230,6 +2238,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const injectedTasks: Record<string, unknown>[] = []
 
     for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
+      const prevInjectedLen = injectedTasks.length
       const srcWMap = sourceWorkerMap.get(sourceSku)
       if (!srcWMap || srcWMap.size === 0) continue
       const sourceWorkers = Array.from(srcWMap.values())
@@ -2324,7 +2333,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           if (existingWMap.has(srcWorker.workerCode)) {
             // Update existing task on this worker: fix timing, qty, worker identity, note
-            for (const task of resequenced) {
+            // Search both resequenced (main allocation) and injectedTasks (prior source injections)
+            for (const task of [...resequenced, ...injectedTasks]) {
               if ((task.sku as string).replace(/^0+/, '') !== entry.sku) continue
               if (String(task.worker_code) !== srcWorker.workerCode) continue
               task.target_quantity = workerQty
@@ -2363,6 +2373,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
           }
         }
+      }
+
+      // After injecting for this source, update allocatedBpWorkers so the next source
+      // in the loop sees already-injected workers and updates them instead of duplicating.
+      for (let i = prevInjectedLen; i < injectedTasks.length; i++) {
+        const task = injectedTasks[i]
+        const normSku = (task.sku as string).replace(/^0+/, '')
+        if (!allocatedBpWorkers.has(normSku)) allocatedBpWorkers.set(normSku, new Map())
+        allocatedBpWorkers.get(normSku)!.set(task.worker_code as string, Number(task.target_quantity ?? 0))
       }
     }
 
