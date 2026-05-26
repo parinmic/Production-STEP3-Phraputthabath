@@ -1532,7 +1532,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const isShared = lotusHistSkus.has(sku)
       const quotaToday = quotaMap.get(sku) ?? avg
       const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-      return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
+      return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
 
@@ -1561,7 +1561,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
       const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
-      return { sku, skuName: name, targetQty: orderQty * variance, channel: ch }
+      return { sku, skuName: name, targetQty: roundUpToBag(sku, orderQty) * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
 
@@ -1579,7 +1579,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const rawStation = prod ? normalizeStation(prod.station) : ''
       const station = STATION_TABLE[rawStation] ?? rawStation
       const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-      return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: avg * variance, channel: ch }
+      return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, avg) * variance, channel: ch }
     }).filter(s => s.targetQty > 0)
   }
 
