@@ -2269,7 +2269,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const allocTotal = allocatedBpWorkers.has(entry.byProductSku)
           ? Array.from(allocatedBpWorkers.get(entry.byProductSku)!.values()).reduce((s, q) => s + q, 0)
           : 0
-        const totalQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
+        const rawQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
+        // Deduct what was already injected/allocated in previous phases so we only
+        // schedule the remaining portion (0 if fully done).
+        const prevAllocated = phase1Assigned.get(entry.byProductSku) ?? 0
+        const totalQty = Math.max(0, rawQty - prevAllocated)
         if (totalQty > 0.01) {
           bpPlanQtys.set(entry.byProductSku, { qty: totalQty, channel: planInfo?.channel ?? 'เสริม', name: planInfo?.name ?? null })
           allocatedQtySum += totalQty
