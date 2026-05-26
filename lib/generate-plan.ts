@@ -1633,7 +1633,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       for (const [ch, m] of Array.from(phase1ByChannel.entries())) {
         if (m.has(sku)) { channel = ch; break }
       }
-      return { sku, skuName: name, targetQty: Math.max(0, qty - (phase1Assigned.get(sku) ?? 0)), channel }
+      return { sku, skuName: name, targetQty: Math.max(0, roundUpToBag(sku, qty) - (phase1Assigned.get(sku) ?? 0)), channel }
     }).filter(t => t.targetQty > 0)
 
     const p3ChannelTargets: Record<string, SkuTarget[]> = {}
