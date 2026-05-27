@@ -2414,10 +2414,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           ? Array.from(allocatedBpWorkers.get(entry.byProductSku)!.values()).reduce((s, q) => s + q, 0)
           : 0
         const rawQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
-        // Deduct what was already injected/allocated in previous phases so we only
-        // schedule the remaining portion (0 if fully done).
+        // Deduct what was already injected/allocated in previous phases — use bag units.
         const prevAllocated = phase1Assigned.get(entry.byProductSku) ?? 0
-        const totalQty = Math.max(0, rawQty - prevAllocated)
+        const wpbBpEntry = wpbMap.get(entry.byProductSku) ?? wpbMap.get(`0${entry.byProductSku}`) ?? 0
+        const totalQty = wpbBpEntry > 0
+          ? Math.max(0, Math.ceil(rawQty / wpbBpEntry) - Math.floor(prevAllocated / wpbBpEntry)) * wpbBpEntry
+          : Math.max(0, rawQty - prevAllocated)
         if (totalQty > 0.01) {
           bpPlanQtys.set(entry.byProductSku, { qty: totalQty, channel: planInfo?.channel ?? 'เสริม', name: planInfo?.name ?? null })
           allocatedQtySum += totalQty
@@ -2425,8 +2427,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
 
       const remainderEntries = byProducts.filter(e => e.ratio === 'remainder')
-      const remainderQty = remainderEntries.length > 0 && totalByProductQty > 0
-        ? Math.round(Math.max(0, totalByProductQty - allocatedQtySum) * 100) / 100
+      const remainderRaw = remainderEntries.length > 0 && totalByProductQty > 0
+        ? Math.max(0, totalByProductQty - allocatedQtySum)
         : 0
 
       // Ordered list: non-remainder (priority) → remainder last
@@ -2438,8 +2440,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             const info = bpPlanQtys.get(e.byProductSku)!
             return { sku: e.byProductSku, name: e.name, totalQty: info.qty, channel: info.channel, note: 'concurrent_group_follow' }
           }),
-        ...(remainderQty > 0.01
-          ? remainderEntries.map(e => ({ sku: e.byProductSku, name: e.name, totalQty: remainderQty, channel: 'เสริม', note: 'concurrent_remainder' }))
+        ...(remainderRaw > 0.01
+          ? remainderEntries.map(e => {
+              const wpbRem = wpbMap.get(e.byProductSku) ?? wpbMap.get(`0${e.byProductSku}`) ?? 0
+              const remQty = wpbRem > 0 ? Math.floor(remainderRaw / wpbRem) * wpbRem : Math.round(remainderRaw * 100) / 100
+              return { sku: e.byProductSku, name: e.name, totalQty: remQty, channel: 'เสริม', note: 'concurrent_remainder' }
+            }).filter(e => e.totalQty > 0.01)
           : []),
       ]
 
@@ -2461,14 +2467,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const bpStart = bpStartMap.get(entry.sku) ?? chainEnd
         const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
 
+        const cleanBpSku = entry.sku.replace(/^0+/, '')
+        const wpbBp = wpbMap.get(cleanBpSku) ?? wpbMap.get(entry.sku) ?? 0
         for (const srcWorker of sourceWorkers) {
           // Distribute using the GLOBAL source qty across all sources, so that when
           // multiple source SKUs share a by-product, each worker only receives its
           // proportional fraction of the total plan qty (not the full qty independently).
           const allSrcQty = bpAllSrcQtyMap.get(entry.sku) ?? totalSourceQty
-          const workerQty = allSrcQty > 0
-            ? Math.round(entry.totalQty * (srcWorker.qty / allSrcQty) * 100) / 100
-            : Math.round(entry.totalQty / numWorkers * 100) / 100
+          const proportional = allSrcQty > 0
+            ? entry.totalQty * (srcWorker.qty / allSrcQty)
+            : entry.totalQty / numWorkers
+          const workerQty = wpbBp > 0
+            ? Math.floor(proportional / wpbBp) * wpbBp
+            : Math.round(proportional * 100) / 100
           if (workerQty <= 0.01) continue
 
           if (existingWMap.has(srcWorker.workerCode)) {
