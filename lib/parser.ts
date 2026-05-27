@@ -577,8 +577,6 @@ export function parseBKPFile(file: File): Promise<ParsedRow[]> {
             deliveryDate = d.toISOString().split('T')[0]
           } else if (typeof dateCellRaw === 'string' && dateCellRaw.trim()) {
             deliveryDate = thaiDateToISO(dateCellRaw.trim())
-          } else if (dateCellRaw instanceof Date) {
-            deliveryDate = (dateCellRaw as Date).toISOString().split('T')[0]
           }
           if (!deliveryDate || deliveryDate.length < 8) continue
 
