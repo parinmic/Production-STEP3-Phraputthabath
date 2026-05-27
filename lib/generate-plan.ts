@@ -1579,9 +1579,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          // Convert both order and Phase 1 actual to bags, then subtract
           const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
           targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
@@ -1605,9 +1604,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const ch = 'Makro'
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
-      return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => ({
-        sku, skuName: name, targetQty: Math.max(0, orderQty - (p1.get(sku) ?? 0)), channel: ch,
-      })).filter(s => s.targetQty > 0)
+      return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
+        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        let targetQty: number
+        if (wpb > 0) {
+          const orderBags = Math.ceil(orderQty / wpb)
+          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+        } else {
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+        }
+        return { sku, skuName: name, targetQty, channel: ch }
+      }).filter(s => s.targetQty > 0)
     }
     const getSkuGroup = (sku: string): string => {
       const clean = sku.replace(/^0+/, '')
@@ -1640,9 +1648,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          // Convert both order and Phase 1 actual to bags, then subtract
           const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
           targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
@@ -1713,7 +1720,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       let targetQty: number
       if (wpb > 0) {
         const orderBags = Math.ceil(qty / wpb)
-        const p1Bags = Math.round((phase1Assigned.get(sku) ?? 0) / wpb)
+        const p1Bags = Math.ceil((phase1Assigned.get(sku) ?? 0) / wpb)
         targetQty = Math.max(0, orderBags - p1Bags) * wpb
       } else {
         targetQty = Math.max(0, qty - (phase1Assigned.get(sku) ?? 0))
