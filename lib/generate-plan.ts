@@ -1728,6 +1728,30 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       return { sku, skuName: name, targetQty, channel }
     }).filter(t => t.targetQty > 0)
 
+    // Append remaining WM/LOTUS/Makro that Phase 1+2 didn't fully cover
+    if (wmToday.length || lotusToday.length || makroToday.length) {
+      const phase3Plan100Skus = new Set(allPhase3Targets.map(t => t.sku.replace(/^0+/, '')))
+      const appendRemaining = (orderMap: Record<string, { qty: number; name: string | null }>, ch: string) => {
+        for (const [sku, { qty: orderQty, name }] of Object.entries(orderMap)) {
+          if (phase3Plan100Skus.has(sku)) continue
+          const p12 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
+          const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+          let targetQty: number
+          if (wpb > 0) {
+            const orderBags = Math.ceil(orderQty / wpb)
+            const p12Bags  = Math.ceil((p12.get(sku) ?? 0) / wpb)
+            targetQty = Math.max(0, orderBags - p12Bags) * wpb
+          } else {
+            targetQty = Math.max(0, orderQty - (p12.get(sku) ?? 0))
+          }
+          if (targetQty > 0) allPhase3Targets.push({ sku, skuName: name, targetQty, channel: ch })
+        }
+      }
+      appendRemaining(wmMap, 'Wet Market')
+      appendRemaining(lotusMap, 'LOTUS')
+      appendRemaining(makroMap, 'Makro')
+    }
+
     const p3ChannelTargets: Record<string, SkuTarget[]> = {}
     for (const t of allPhase3Targets) { p3ChannelTargets[t.channel] ??= []; p3ChannelTargets[t.channel].push(t) }
 
