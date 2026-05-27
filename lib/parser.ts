@@ -515,6 +515,100 @@ export function parsePickingUnit(file: File): Promise<ParsedRow[]> {
  * Parser สำหรับไฟล์ Mas SKU ที่ไม่ต้องเบิกของ
  * คอลัมน์: จุดงาน, กลุ่มสินค้า, SAP, ชื่อสินค้า
  */
+/**
+ * Parser สำหรับไฟล์คำสั่งซื้อ BKP (รูปแบบ pivot)
+ * - แถวที่ 2 (index 1): ชื่อสินค้าที่มีรหัส SAP 8 หลัก
+ * - Column C (index 2): วันที่ส่งถึง → production date = date - 1
+ * - Sub-column "แผน" ของแต่ละสินค้า = ปริมาณ
+ */
+export function parseBKPFile(file: File): Promise<ParsedRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+
+        // แถวที่ 2 (index 1): หา SAP codes 8 หลักพร้อม column position
+        const productRow = raw[1] ?? []
+        type ProductInfo = { sku: string; name: string; colStart: number }
+        const products: ProductInfo[] = []
+        for (let c = 0; c < productRow.length; c++) {
+          const cell = String(productRow[c] ?? '').trim()
+          if (!cell) continue
+          const sapMatch = cell.match(/\b(\d{8})\b/)
+          if (sapMatch) {
+            const sku = sapMatch[1]
+            const name = cell.replace(sapMatch[0], '').replace(/^[-\s]+|[-\s]+$/g, '').trim()
+            products.push({ sku, name, colStart: c })
+          }
+        }
+        if (!products.length) throw new Error('ไม่พบรหัส SAP 8 หลักในแถวที่ 2')
+
+        // หา sub-header row ที่มี "แผน"
+        let subHeaderRowIdx = -1
+        const planColsByProduct: number[] = products.map(() => -1)
+        for (let r = 2; r < Math.min(raw.length, 8); r++) {
+          const row = raw[r] ?? []
+          if (!row.some(c => String(c ?? '').trim() === 'แผน')) continue
+          subHeaderRowIdx = r
+          for (let p = 0; p < products.length; p++) {
+            const nextCol = p + 1 < products.length ? products[p + 1].colStart : row.length
+            for (let c = products[p].colStart; c < nextCol; c++) {
+              if (String(row[c] ?? '').trim() === 'แผน') { planColsByProduct[p] = c; break }
+            }
+          }
+          break
+        }
+        if (subHeaderRowIdx < 0) throw new Error('ไม่พบ header "แผน" ในไฟล์ BKP')
+
+        // อ่านข้อมูล
+        const results: ParsedRow[] = []
+        for (let r = subHeaderRowIdx + 1; r < raw.length; r++) {
+          const row = raw[r] ?? []
+          const dateCellRaw = row[2]
+          if (!dateCellRaw) continue
+
+          let deliveryDate = ''
+          if (typeof dateCellRaw === 'number' && dateCellRaw > 40000) {
+            const d = new Date(Math.round((dateCellRaw - 25569) * 86400 * 1000))
+            deliveryDate = d.toISOString().split('T')[0]
+          } else if (typeof dateCellRaw === 'string' && dateCellRaw.trim()) {
+            deliveryDate = thaiDateToISO(dateCellRaw.trim())
+          } else if (dateCellRaw instanceof Date) {
+            deliveryDate = (dateCellRaw as Date).toISOString().split('T')[0]
+          }
+          if (!deliveryDate || deliveryDate.length < 8) continue
+
+          const productionDate = shiftISODate(deliveryDate, -1)
+
+          for (let p = 0; p < products.length; p++) {
+            const planCol = planColsByProduct[p]
+            if (planCol < 0) continue
+            const qty = Number(row[planCol] ?? 0)
+            if (!qty || qty <= 0) continue
+            results.push({
+              production_date: productionDate,
+              delivery_date:   deliveryDate,
+              sku:             products[p].sku,
+              sku_name:        products[p].name || null,
+              quantity:        qty,
+            })
+          }
+        }
+        if (!results.length) throw new Error('ไม่พบข้อมูลในไฟล์ BKP')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ BKP ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 export function parseNoWithdrawalSkus(file: File): Promise<ParsedRow[]> {
   const name = file.name.toLowerCase()
   if (name.endsWith('.csv')) return parseCsv(file)

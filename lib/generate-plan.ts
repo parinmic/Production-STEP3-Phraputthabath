@@ -1165,6 +1165,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
     { data: concurrentSkuRaw },
+    bkpOrdersRaw,
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', '0800'),
@@ -1222,6 +1223,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }),
+    fetchAll<{ sku: string; sku_name: string | null; quantity: number }>(
+      'bkp_orders', 'sku, sku_name, quantity',
+      [{ col: 'production_date', op: 'eq', val: productionDate }]),
   ])
 
   // Merge workforce
@@ -1258,12 +1262,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!(plan100Raw ?? []).length)
       return { success: false, message: 'ไม่พบแผนผลิต 100% วันนี้ — กรุณาอัพโหลดก่อน' }
   } else {
+    const hasBkpOrders = (bkpOrdersRaw ?? []).length > 0
     const hasOrders = isPhase2
-      ? (wmToday.length || lotusToday.length || makroToday.length)
-      : (wmHist.length  || lotusHist.length  || makroToday.length)
+      ? (wmToday.length || lotusToday.length || makroToday.length || hasBkpOrders)
+      : (wmHist.length  || lotusHist.length  || makroToday.length || hasBkpOrders)
     if (!hasOrders) return {
       success: false,
-      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro) — กรุณาอัพโหลดก่อน`,
+      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP) — กรุณาอัพโหลดก่อน`,
     }
   }
 
@@ -1360,6 +1365,27 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
   }
 
+  // Build BKP order map and inject station/group overrides into skuMap
+  const bkpOrderMap = new Map<string, { qty: number; name: string | null }>()
+  for (const r of (bkpOrdersRaw ?? []) as { sku: string; sku_name: string | null; quantity: number }[]) {
+    const sku = String(r.sku ?? '').replace(/^0+/, '')
+    if (!sku) continue
+    const cur = bkpOrderMap.get(sku) ?? { qty: 0, name: r.sku_name ?? null }
+    cur.qty += Number(r.quantity) || 0
+    bkpOrderMap.set(sku, cur)
+  }
+  for (const [sku, order] of Array.from(bkpOrderMap.entries())) {
+    const existing = skuMap.get(sku) ?? skuMap.get(sku.padStart(8, '0'))
+    const override: ProductivityRow = {
+      station:       'ไหล่พิเศษ',
+      product_group: 'กลุ่ม BKP',
+      sku,
+      sku_name:      order.name ?? existing?.sku_name ?? '',
+      rate:          existing?.rate ?? 27.0,
+    }
+    skuMap.set(sku, override)
+    skuMap.set(sku.padStart(8, '0'), override)
+  }
 
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
@@ -1609,10 +1635,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }).filter(s => s.targetQty > 0)
   }
 
+  function buildBKPTargets(): SkuTarget[] {
+    return Array.from(bkpOrderMap.entries()).map(([sku, { qty, name }]) => {
+      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+      const targetQty = wpb > 0 ? Math.ceil(qty / wpb) * wpb : qty
+      return { sku, skuName: name, targetQty, channel: 'BKP' }
+    }).filter(t => t.targetQty > 0)
+  }
+
   const channelTargets: Record<string, SkuTarget[]> = {
     'Wet Market': buildWetMarketTargets(),
     'Makro':      buildMakroTargets(),
     'LOTUS':      buildLotusTargets(),
+    'BKP':        buildBKPTargets(),
   }
 
   // Pre-capture target quantities for by-product SKUs before any station/stock filtering.
