@@ -801,6 +801,37 @@ async function fetchAll<T = Record<string, unknown>>(
   return all
 }
 
+// Fetch Phase 1 assignments from the latest batch only (avoids summing stale regenerated batches)
+async function fetchLatestBatchAssignments(
+  productionDate: string,
+  periods: string[],
+  deductMode: 'plan' | 'actual' | 'yield',
+): Promise<{ sku: string; target_quantity: number; channel: string | null }[]> {
+  const all: { sku: string; target_quantity: number; channel: string | null }[] = []
+  for (const period of periods) {
+    const { data: latest } = await supabase
+      .from('production_assignments')
+      .select('effective_from')
+      .eq('production_date', productionDate)
+      .eq('period', period)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!latest?.effective_from) continue
+    const filters: { col: string; op: 'eq' | 'in'; val: unknown }[] = [
+      { col: 'production_date', op: 'eq', val: productionDate },
+      { col: 'period',          op: 'eq', val: period },
+      { col: 'effective_from',  op: 'eq', val: latest.effective_from },
+    ]
+    if (deductMode === 'actual') filters.push({ col: 'status', op: 'eq', val: 'เสร็จแล้ว' })
+    const rows = await fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
+      'production_assignments', 'sku, target_quantity, channel', filters,
+    )
+    all.push(...rows)
+  }
+  return all
+}
+
 // ========== Checkpoint Scheduling ==========
 
 function getNextCheckpoint(t: Date): Date {
@@ -1191,12 +1222,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }),
     supabase.from('master_logic_manpower').select('row_data'),
     (isPhase2 || isPhase3) && deductMode !== 'yield'
-      ? fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
-          'production_assignments', 'sku, target_quantity, channel', [
-            { col: 'production_date', op: 'eq', val: productionDate },
-            { col: 'period', op: 'in', val: isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'] },
-            ...(deductMode === 'actual' ? [{ col: 'status', op: 'eq' as const, val: 'เสร็จแล้ว' }] : []),
-          ])
+      ? fetchLatestBatchAssignments(productionDate, isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'], deductMode)
       : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),
     (isPhase2 || isPhase3) && deductMode === 'yield'
       ? fetchAll<{ sap_code: string; bags: number }>('yield_bags', 'sap_code, bags',
