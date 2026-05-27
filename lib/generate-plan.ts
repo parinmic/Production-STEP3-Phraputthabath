@@ -414,9 +414,9 @@ function allocateBalanced(params: {
     const rate = prod.rate
     if (rate <= 0) continue
 
-    const wpb = t.channel === 'Makro' ? 1 : (wpbMap.get(cleanSku) ?? wpbMap.get(t.sku) ?? 1)
+    const wpb = wpbMap.get(cleanSku) ?? wpbMap.get(t.sku) ?? 1
     const unitQty = wpb > 0 ? wpb : 1
-    const numUnits = Math.round(t.targetQty / unitQty)
+    const numUnits = Math.floor(t.targetQty / unitQty)
 
     for (let i = 0; i < numUnits; i++) {
       units.push({
@@ -747,8 +747,8 @@ function allocateBalanced(params: {
         sku_name:        skuName,
         target_quantity: (() => {
           const normSku = String(sku).replace(/^0+/, '')
-          const wpb = String(channel) !== 'Makro' ? (wpbMap.get(normSku) ?? wpbMap.get(String(sku)) ?? 0) : 0
-          return wpb > 0 ? Math.round(qty / wpb) * wpb : Math.round(qty * 100) / 100
+          const wpb = wpbMap.get(normSku) ?? wpbMap.get(String(sku)) ?? 0
+          return wpb > 0 ? Math.floor(qty / wpb) * wpb : Math.round(qty * 100) / 100
         })(),
         unit:            'กก.',
         period,
@@ -1310,10 +1310,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const wpb = Number(r.weight_per_bag ?? 0)
     if (sap && wpb > 0) { bagSizeMap.set(sap, wpb); bagSizeMap.set(sap.replace(/^0+/, ''), wpb) }
   }
-  const roundUpToBag = (sku: string, qty: number): number => {
+  const roundDownToBag = (sku: string, qty: number): number => {
     const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
     if (!wpb || wpb <= 0) return qty
-    return Math.ceil(qty / wpb) * wpb
+    return Math.floor(qty / wpb) * wpb
   }
 
   // Parse Excel time
@@ -1583,8 +1583,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
+          const orderBags = Math.floor(orderQty / wpb)
+          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
           targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
@@ -1600,7 +1600,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
         const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, roundUpToBag(sku, avg) * variance), channel: ch }
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundDownToBag(sku, roundDownToBag(sku, avg) * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
@@ -1612,8 +1612,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
+          const orderBags = Math.floor(orderQty / wpb)
+          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
           targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
@@ -1638,7 +1638,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
       const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
-      const baggedOrderQty = roundUpToBag(sku, orderQty)
+      const baggedOrderQty = roundDownToBag(sku, orderQty)
       // Cap at the order qty (rounded up to bag): never produce more than ordered from Makro
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
@@ -1652,8 +1652,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.ceil((p1.get(sku) ?? 0) / wpb)
+          const orderBags = Math.floor(orderQty / wpb)
+          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
           targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
@@ -1669,14 +1669,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const rawStation = prod ? normalizeStation(prod.station) : ''
         const station = STATION_TABLE[rawStation] ?? rawStation
         const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundUpToBag(sku, roundUpToBag(sku, avg) * variance), channel: ch }
+        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundDownToBag(sku, roundDownToBag(sku, avg) * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
   function buildBKPTargets(): SkuTarget[] {
     return Array.from(bkpOrderMap.entries()).map(([sku, { qty, name }]) => {
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
-      const targetQty = wpb > 0 ? Math.ceil(qty / wpb) * wpb : qty
+      const targetQty = wpb > 0 ? Math.floor(qty / wpb) * wpb : qty
       return { sku, skuName: name, targetQty, channel: 'BKP' }
     }).filter(t => t.targetQty > 0)
   }
@@ -1723,8 +1723,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
       let targetQty: number
       if (wpb > 0) {
-        const orderBags = Math.ceil(qty / wpb)
-        const p1Bags = Math.ceil((phase1Assigned.get(sku) ?? 0) / wpb)
+        const orderBags = Math.floor(qty / wpb)
+        const p1Bags = Math.floor((phase1Assigned.get(sku) ?? 0) / wpb)
         targetQty = Math.max(0, orderBags - p1Bags) * wpb
       } else {
         targetQty = Math.max(0, qty - (phase1Assigned.get(sku) ?? 0))
@@ -1742,8 +1742,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
           let targetQty: number
           if (wpb > 0) {
-            const orderBags = Math.ceil(orderQty / wpb)
-            const p12Bags  = Math.ceil((p12.get(sku) ?? 0) / wpb)
+            const orderBags = Math.floor(orderQty / wpb)
+            const p12Bags  = Math.floor((p12.get(sku) ?? 0) / wpb)
             targetQty = Math.max(0, orderBags - p12Bags) * wpb
           } else {
             targetQty = Math.max(0, orderQty - (p12.get(sku) ?? 0))
@@ -1907,8 +1907,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
       // Align split to bag boundary: round stock DOWN, deficit = bag-total - stock
       // Prevents each portion being rounded up independently (which inflates the total by up to 1 bag per portion)
-      const wpbLocal = item.channel === 'Makro' ? 1 : (bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1)
-      const bagAlignedTotal = wpbLocal > 0 ? Math.ceil(item.targetQty / wpbLocal) * wpbLocal : item.targetQty
+      const wpbLocal = bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1
+      const bagAlignedTotal = wpbLocal > 0 ? Math.floor(item.targetQty / wpbLocal) * wpbLocal : item.targetQty
       const stockBagQty = wpbLocal > 0 ? Math.floor(Q_max / wpbLocal) * wpbLocal : Q_max
 
       if (stockBagQty > 0.01) {
@@ -2004,7 +2004,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!suppSlot) continue
     const suppByStation: Record<string, { sku: string; skuName: string | null; targetQty: number; channel: string }[]> = {}
     for (const { sku, name: skuName, qty: rawQty } of suppSlot.skus) {
-      const targetQty = roundUpToBag(sku, rawQty)
+      const targetQty = roundDownToBag(sku, rawQty)
       const prod = skuMap.get(sku) ?? skuMap.get(String(Number(sku) || sku))
       if (!prod) continue
       const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
@@ -2038,7 +2038,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // Both passes share the same worker state so deficit work only fills remaining capacity.
 
   const resolveTargetQty = (item: SkuTarget): number => {
-    let qty = item.channel === 'Makro' ? Math.round(item.targetQty) : roundUpToBag(item.sku, item.targetQty)
+    let qty = roundDownToBag(item.sku, item.targetQty)
     if (isPhase3) {
       const planItem = planMap.get(item.sku.replace(/^0+/, ''))
       if (planItem) {

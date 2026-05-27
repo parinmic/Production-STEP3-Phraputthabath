@@ -181,13 +181,13 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>): number {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return qty
-  return Math.ceil(qty / wpb) * wpb
+  return Math.floor(qty / wpb) * wpb
 }
 
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
-  const bags = Math.ceil(qty / wpb)
+  const bags = Math.floor(qty / wpb)
   return bags > 0 ? `${bags} ถุง · ` : ''
 }
 
@@ -521,7 +521,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       {(() => {
                         const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
                         const bags = wpb && wpb > 0
-                          ? Math.ceil(stat.totalQty / wpb)
+                          ? Math.floor(stat.totalQty / wpb)
                           : 0
                         const displayQty = wpb && wpb > 0
                           ? bags * wpb
@@ -797,7 +797,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     if (!wpb || wpb <= 0) return s
-    return s + Math.ceil(skuStats[sku].totalQty / wpb)
+    return s + Math.floor(skuStats[sku].totalQty / wpb)
   }, 0)
   const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
@@ -846,7 +846,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           const stat    = skuStats[sku]
           const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
           const bags    = wpb && wpb > 0
-            ? Math.ceil(stat.totalQty / wpb)
+            ? Math.floor(stat.totalQty / wpb)
             : null
           const total   = skuTotal(sku)
           const hasData = total > 0
