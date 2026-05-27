@@ -2387,19 +2387,25 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     // --- Concurrent by-product allocation pass ---
     // Target = min(channel_order, Σ(sourceQty × ratio per source group)), rounded down to bag.
     // By-products with own MAS productivity are allocated via allocateBalanced independently.
+    // Start time is overridden to match source start so production begins simultaneously.
     const bpDirectlyAllocated = new Set<string>()
     if (byProductSkuSet.size > 0) {
       const bpYieldMap = new Map<string, number>()
       const bpNameMap = new Map<string, string | null>()
+      // Earliest source start time per by-product (for concurrent start override)
+      const bpSourceStartMap = new Map<string, number>()
       for (const [src, byProductsAll] of Array.from(byProductMap.entries())) {
         const wm = sourceWorkerMap.get(src)
         if (!wm || wm.size === 0) continue
         const srcTotal = Array.from(wm.values()).reduce((s, w) => s + w.qty, 0)
         if (srcTotal <= 0) continue
+        const srcStart = Math.min(...Array.from(wm.values()).map(w => w.startMins))
         for (const entry of byProductsAll) {
           if (entry.ratio === 'remainder' || typeof entry.ratio !== 'number' || entry.ratio <= 0) continue
           bpYieldMap.set(entry.byProductSku, (bpYieldMap.get(entry.byProductSku) ?? 0) + srcTotal * entry.ratio)
           if (!bpNameMap.has(entry.byProductSku)) bpNameMap.set(entry.byProductSku, entry.name ?? null)
+          const cur = bpSourceStartMap.get(entry.byProductSku)
+          bpSourceStartMap.set(entry.byProductSku, cur !== undefined ? Math.min(cur, srcStart) : srcStart)
         }
       }
 
@@ -2448,7 +2454,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           wpbMap,
           specialTimeMap,
         })
-        for (const task of bpResult) bpDirectlyAllocated.add(String(task['sku'] ?? '').replace(/^0+/, ''))
+        for (const task of bpResult) {
+          const normSku = String(task['sku'] ?? '').replace(/^0+/, '')
+          bpDirectlyAllocated.add(normSku)
+          // Override start time to match source start — by-product begins simultaneously
+          const srcStart = bpSourceStartMap.get(normSku)
+          if (srcStart !== undefined) task['deadline_time'] = minsToTimeStr(srcStart)
+        }
         resequenced.push(...bpResult)
       }
     }
