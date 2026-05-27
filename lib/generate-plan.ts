@@ -1790,6 +1790,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return (workersByStation[station] ?? []).length > 0
   })
 
+  // Recalculate which order-based by-product SKUs actually survived the produceable filter.
+  // Those that didn't (no productivity rate or no workers) must fall back to concurrent injection.
+  const finalOrderBasedBpSkus = new Set(
+    assignList.map(i => i.sku.replace(/^0+/, '')).filter(s => orderBasedBpSkus.has(s))
+  )
+
   // Deduct kept assignments
   assignList = assignList.map(item => {
     const key = `${item.channel || ''}_${item.sku.replace(/^0+/, '')}`
@@ -2385,8 +2391,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const injectedTasks: Record<string, unknown>[] = []
 
     for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
-      // In Phase 2/3, order-based by-product SKUs are already allocated via allocateBalanced — skip them here.
-      const byProducts = byProductsAll.filter(e => !orderBasedBpSkus.has(e.byProductSku))
+      // In Phase 2/3, skip by-products that were successfully allocated via allocateBalanced.
+      // Those without productivity data/workers fall back here (finalOrderBasedBpSkus is the subset that made it through).
+      const byProducts = byProductsAll.filter(e => !finalOrderBasedBpSkus.has(e.byProductSku))
       if (!byProducts.length) continue
       const prevInjectedLen = injectedTasks.length
       const srcWMap = sourceWorkerMap.get(sourceSku)
