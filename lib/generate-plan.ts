@@ -866,7 +866,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     .from('master_logic_calculation').select('row_data')
     .eq('calculation_type', 'Mas Raw Material').order('uploaded_at', { ascending: false })
 
-  const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
+  const rules: RawMaterialRule[] = (rawMaterialRules ?? [] as { row_data: Record<string, unknown> }[]).map((r: { row_data: Record<string, unknown> }) => {
     const data = (r.row_data ?? {}) as Record<string, any>
     return {
       productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(),
@@ -944,8 +944,8 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (!assignments?.length) return
 
   const { data: noWithdrawalRows } = await supabase.from('no_withdrawal_skus').select('sap')
-  const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
-  const activeAssignments = assignments.filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
+  const noWithdrawalSaps = new Set((noWithdrawalRows ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
+  const activeAssignments = (assignments as { sku: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
   if (!activeAssignments.length) return
 
   const finRoundMap = new Map<string, Map<number, number>>()
@@ -1388,7 +1388,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   // Parse master data
   const productivity: ProductivityRow[] = masterProdRaw?.length
-    ? parseProductivity(masterProdRaw.map(r => r.row_data as Record<string, unknown>)) : []
+    ? parseProductivity((masterProdRaw as { row_data: Record<string, unknown> }[]).map(r => r.row_data)) : []
 
   const skuMap = new Map<string, ProductivityRow>()
   for (const p of productivity) {
@@ -1476,8 +1476,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const phaseEndMins   = phaseCfg.endH   * 60
 
   const dailyUploadedNames = new Set([
-    ...(workforceRaw0800 ?? []).map(w => normName(w.name)),
-    ...(workforceRaw1300 ?? []).map(w => normName(w.name)),
+    ...(workforceRaw0800 ?? [] as { name: string }[]).map((w: { name: string }) => normName(w.name)),
+    ...(workforceRaw1300 ?? [] as { name: string }[]).map((w: { name: string }) => normName(w.name)),
   ])
   const weeklyWorkforce = await fetchWeeklyWorkforce(productionDate)
   const weeklyWorkforceNames = new Set(weeklyWorkforce.map(w => normName(w.name)))
@@ -1806,7 +1806,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const stockWasUploaded = !!stockPlanLog
 
     const { data: noWithdrawalRows } = await supabase.from('no_withdrawal_skus').select('sap')
-    const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
+    const noWithdrawalSaps = new Set((noWithdrawalRows ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
 
     const skusPadded = Array.from(new Set([...assignList.map(i => i.sku), ...assignList.map(i => i.sku.replace(/^0+/, ''))]))
     const { data: bomRows } = await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', skusPadded)
@@ -1857,7 +1857,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     const { data: rawMaterialRules } = await supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Raw Material').order('uploaded_at', { ascending: false })
-    const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
+    const rules: RawMaterialRule[] = (rawMaterialRules ?? [] as { row_data: Record<string, unknown> }[]).map((r: { row_data: Record<string, unknown> }) => {
       const data = (r.row_data ?? {}) as Record<string, any>
       return { productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(), type: String(data['ประเภท'] ?? '').trim(), d16: String(data['D16'] ?? '').trim(), d17: String(data['D17'] ?? '').trim() }
     })
@@ -1989,7 +1989,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (!deadlineStr) return null
     const [dh, dm] = deadlineStr.split(':').map(Number)
     const deadlineMins = dh * 60 + dm
-    const skus = data.map(r => ({ sku: String(r.sku ?? '').replace(/^0+/, ''), name: r.sku_name as string | null, qty: Number(r.quantity) })).filter(s => s.qty > 0)
+    const skus = (data as { sku: unknown; sku_name: unknown; quantity: unknown }[]).map(r => ({ sku: String(r.sku ?? '').replace(/^0+/, ''), name: r.sku_name as string | null, qty: Number(r.quantity) })).filter(s => s.qty > 0)
     return { deadlineMins, skus, withinPhase: deadlineMins > phaseStartMins && deadlineMins <= phaseEndMins } as SuppSlot & { withinPhase: boolean }
   }))
   const allSuppSlots = suppSlotResults.filter(Boolean) as (SuppSlot & { withinPhase: boolean })[]
