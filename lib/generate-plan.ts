@@ -1583,7 +1583,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.floor(orderQty / wpb)
+          const orderBags = Math.ceil(orderQty / wpb)
           const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
@@ -1612,7 +1612,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.floor(orderQty / wpb)
+          const orderBags = Math.ceil(orderQty / wpb)
           const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
@@ -1652,7 +1652,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.floor(orderQty / wpb)
+          const orderBags = Math.ceil(orderQty / wpb)
           const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
           targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
@@ -1676,7 +1676,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   function buildBKPTargets(): SkuTarget[] {
     return Array.from(bkpOrderMap.entries()).map(([sku, { qty, name }]) => {
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
-      const targetQty = wpb > 0 ? Math.floor(qty / wpb) * wpb : qty
+      const targetQty = wpb > 0 ? Math.ceil(qty / wpb) * wpb : qty
       return { sku, skuName: name, targetQty, channel: 'BKP' }
     }).filter(t => t.targetQty > 0)
   }
@@ -1723,7 +1723,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
       let targetQty: number
       if (wpb > 0) {
-        const orderBags = Math.floor(qty / wpb)
+        const orderBags = Math.ceil(qty / wpb)
         const p1Bags = Math.floor((phase1Assigned.get(sku) ?? 0) / wpb)
         targetQty = Math.max(0, orderBags - p1Bags) * wpb
       } else {
@@ -1742,7 +1742,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
           let targetQty: number
           if (wpb > 0) {
-            const orderBags = Math.floor(orderQty / wpb)
+            const orderBags = Math.ceil(orderQty / wpb)
             const p12Bags  = Math.floor((p12.get(sku) ?? 0) / wpb)
             targetQty = Math.max(0, orderBags - p12Bags) * wpb
           } else {
