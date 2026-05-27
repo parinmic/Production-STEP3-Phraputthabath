@@ -1521,25 +1521,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const buildWetMarketTargets = (): SkuTarget[] => {
     const ch = 'Wet Market'
     if (isPhase2) {
-      const lotusHistSkusP2 = new Set(avgLotus.keys())
+      const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
-        // Rebuild Phase 1 WM plan for this SKU (same formula as Phase 1) and subtract in bags
-        let p1PlanKg = 0
-        const avg = avgWM.get(sku)
-        if (avg && avg > 0 && !byProductSkuSet.has(sku)) {
-          const isShared = lotusHistSkusP2.has(sku)
-          const quotaToday = quotaMap.get(sku) ?? avg
-          const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-          p1PlanKg = roundUpToBag(sku, roundUpToBag(sku, avg) * variance)
-        }
         let targetQty: number
         if (wpb > 0) {
+          // Convert both order and Phase 1 actual to bags, then subtract
           const orderBags = Math.ceil(orderQty / wpb)
-          const p1PlanBags = Math.ceil(p1PlanKg / wpb)
-          targetQty = Math.max(0, orderBags - p1PlanBags) * wpb
+          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - p1PlanKg)
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
         }
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
@@ -1593,25 +1585,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const buildLotusTargets = (): SkuTarget[] => {
     const ch = 'LOTUS'
     if (isPhase2) {
+      const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
-        // Rebuild Phase 1 LOTUS plan for this SKU (same formula as Phase 1) and subtract in bags
-        let p1PlanKg = 0
-        const avg = avgLotus.get(sku)
-        if (avg && avg > 0 && !byProductSkuSet.has(sku)) {
-          const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
-          const rawStation = prod ? normalizeStation(prod.station) : ''
-          const station = STATION_TABLE[rawStation] ?? rawStation
-          const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-          p1PlanKg = roundUpToBag(sku, roundUpToBag(sku, avg) * variance)
-        }
         let targetQty: number
         if (wpb > 0) {
+          // Convert both order and Phase 1 actual to bags, then subtract
           const orderBags = Math.ceil(orderQty / wpb)
-          const p1PlanBags = Math.ceil(p1PlanKg / wpb)
-          targetQty = Math.max(0, orderBags - p1PlanBags) * wpb
+          const p1Bags = Math.round((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - p1PlanKg)
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
         }
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
