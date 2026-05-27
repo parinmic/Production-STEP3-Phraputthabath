@@ -517,7 +517,7 @@ export function parsePickingUnit(file: File): Promise<ParsedRow[]> {
  */
 /**
  * Parser สำหรับไฟล์คำสั่งซื้อ BKP (รูปแบบ pivot)
- * - แถวที่ 2 (index 1): ชื่อสินค้าที่มีรหัส SAP 8 หลัก
+ * - Scan rows 0-7: หา row แรกที่มีรหัส SAP 8 หลัก → product header row
  * - Column C (index 2): วันที่ส่งถึง → production date = date - 1
  * - Sub-column "แผน" ของแต่ละสินค้า = ปริมาณ
  */
@@ -531,26 +531,32 @@ export function parseBKPFile(file: File): Promise<ParsedRow[]> {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
 
-        // แถวที่ 2 (index 1): หา SAP codes 8 หลักพร้อม column position
-        const productRow = raw[1] ?? []
+        // Scan rows 0-7 หา row ที่มี SAP 8 หลัก (flexible — รองรับ title row หลายบรรทัด)
         type ProductInfo = { sku: string; name: string; colStart: number }
-        const products: ProductInfo[] = []
-        for (let c = 0; c < productRow.length; c++) {
-          const cell = String(productRow[c] ?? '').trim()
-          if (!cell) continue
-          const sapMatch = cell.match(/\b(\d{8})\b/)
-          if (sapMatch) {
-            const sku = sapMatch[1]
-            const name = cell.replace(sapMatch[0], '').replace(/^[-\s]+|[-\s]+$/g, '').trim()
-            products.push({ sku, name, colStart: c })
-          }
-        }
-        if (!products.length) throw new Error('ไม่พบรหัส SAP 8 หลักในแถวที่ 2')
+        let productRowIdx = -1
+        let products: ProductInfo[] = []
 
-        // หา sub-header row ที่มี "แผน"
+        for (let r = 0; r < Math.min(raw.length, 8); r++) {
+          const row = raw[r] ?? []
+          const found: ProductInfo[] = []
+          for (let c = 0; c < row.length; c++) {
+            const cell = String(row[c] ?? '').trim()
+            if (!cell) continue
+            const sapMatch = cell.match(/(?<!\d)(\d{8})(?!\d)/)
+            if (sapMatch) {
+              const sku = sapMatch[1]
+              const name = cell.replace(sapMatch[0], '').replace(/^[-\s]+|[-\s]+$/g, '').trim()
+              found.push({ sku, name, colStart: c })
+            }
+          }
+          if (found.length > 0) { productRowIdx = r; products = found; break }
+        }
+        if (!products.length) throw new Error('ไม่พบรหัส SAP 8 หลักในไฟล์ (scan 8 แถวแรก)')
+
+        // หา sub-header row ที่มี "แผน" (ค้นหาจาก productRowIdx+1)
         let subHeaderRowIdx = -1
         const planColsByProduct: number[] = products.map(() => -1)
-        for (let r = 2; r < Math.min(raw.length, 8); r++) {
+        for (let r = productRowIdx + 1; r < Math.min(raw.length, productRowIdx + 6); r++) {
           const row = raw[r] ?? []
           if (!row.some(c => String(c ?? '').trim() === 'แผน')) continue
           subHeaderRowIdx = r
@@ -564,11 +570,18 @@ export function parseBKPFile(file: File): Promise<ParsedRow[]> {
         }
         if (subHeaderRowIdx < 0) throw new Error('ไม่พบ header "แผน" ในไฟล์ BKP')
 
+        // หา date column จาก sub-header row ("วันที่ส่งถึง") — fallback = index 2 (column C)
+        const subHeaderRow = raw[subHeaderRowIdx] ?? []
+        const dateColIdx = (() => {
+          const idx = subHeaderRow.findIndex((c: string | number | null) => String(c ?? '').includes('วันที่ส่งถึง') || String(c ?? '').includes('วันที่'))
+          return idx >= 0 ? idx : 2
+        })()
+
         // อ่านข้อมูล
         const results: ParsedRow[] = []
         for (let r = subHeaderRowIdx + 1; r < raw.length; r++) {
           const row = raw[r] ?? []
-          const dateCellRaw = row[2]
+          const dateCellRaw = row[dateColIdx]
           if (!dateCellRaw) continue
 
           let deliveryDate = ''
