@@ -1574,6 +1574,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
 
+  // In Phase 2/3: by-product SKUs that have explicit channel orders are treated as regular SKUs.
+  // They follow order-based allocation (allocateBalanced) and are skipped in concurrent injection.
+  const orderBasedBpSkus = new Set<string>()
+  if ((isPhase2 || isPhase3) && byProductSkuSet.size > 0) {
+    for (const sku of byProductSkuSet) {
+      if (sku in makroMap || sku in wmMap || sku in lotusMap || bkpOrderMap.has(sku))
+        orderBasedBpSkus.add(sku)
+    }
+  }
+
   // Build targets per channel
   const buildWetMarketTargets = (): SkuTarget[] => {
     const ch = 'Wet Market'
@@ -1714,6 +1724,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
       cur.qty += Number(r.weight_total)
       planMap.set(sap, cur)
+      // plan100 SKUs that are also by-products → treat as regular SKUs in Phase 3
+      if (byProductSkuSet.has(sap)) orderBasedBpSkus.add(sap)
     }
     const allPhase3Targets = Array.from(planMap.entries()).map(([sku, { name, qty }]) => {
       let channel = 'plan100'
@@ -1762,11 +1774,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const channelsToProcess = [...activeChannels]
     for (const ch of Object.keys(p3ChannelTargets)) { if (!channelsToProcess.includes(ch)) channelsToProcess.push(ch) }
     assignList = channelsToProcess.flatMap(ch => (p3ChannelTargets[ch] ?? [])
-      .filter(item => !byProductSkuSet.has(item.sku.replace(/^0+/, '')))
+      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   } else {
     assignList = activeChannels.flatMap(ch => (channelTargets[ch] ?? [])
-      .filter(item => !byProductSkuSet.has(item.sku.replace(/^0+/, '')))
+      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   }
 
@@ -2372,7 +2384,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     const injectedTasks: Record<string, unknown>[] = []
 
-    for (const [sourceSku, byProducts] of Array.from(byProductMap.entries())) {
+    for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
+      // In Phase 2/3, order-based by-product SKUs are already allocated via allocateBalanced — skip them here.
+      const byProducts = byProductsAll.filter(e => !orderBasedBpSkus.has(e.byProductSku))
+      if (!byProducts.length) continue
       const prevInjectedLen = injectedTasks.length
       const srcWMap = sourceWorkerMap.get(sourceSku)
       if (!srcWMap || srcWMap.size === 0) continue
