@@ -745,7 +745,11 @@ function allocateBalanced(params: {
         worker_name:     w.name,
         sku,
         sku_name:        skuName,
-        target_quantity: Math.round(qty * 100) / 100,
+        target_quantity: (() => {
+          const normSku = String(sku).replace(/^0+/, '')
+          const wpb = String(channel) !== 'Makro' ? (wpbMap.get(normSku) ?? wpbMap.get(String(sku)) ?? 0) : 0
+          return wpb > 0 ? Math.round(qty / wpb) * wpb : Math.round(qty * 100) / 100
+        })(),
         unit:            'กก.',
         period,
         deadline_time:   minsToTimeStr(earliestStart),
