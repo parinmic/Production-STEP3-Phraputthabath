@@ -1574,6 +1574,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
 
+  // By-product SKUs with explicit channel orders are treated as regular SKUs in Phase 2/3.
+  const orderBasedBpSkus = new Set<string>()
+  if ((isPhase2 || isPhase3) && byProductSkuSet.size > 0) {
+    for (const sku of byProductSkuSet) {
+      if (sku in makroMap || sku in wmMap || sku in lotusMap || bkpOrderMap.has(sku))
+        orderBasedBpSkus.add(sku)
+    }
+  }
+
   // Build targets per channel
   const buildWetMarketTargets = (): SkuTarget[] => {
     const ch = 'Wet Market'
@@ -1714,20 +1723,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
       cur.qty += Number(r.weight_total)
       planMap.set(sap, cur)
-    }
-    // Populate concurrentSkuFallbackTargets for plan100 by-products (deducted by Phase 1)
-    for (const [sap, { name, qty }] of Array.from(planMap.entries())) {
-      if (!byProductSkuSet.has(sap)) continue
-      const p1 = phase1Assigned.get(sap) ?? 0
-      const wpbBp = wpbMap.get(sap) ?? wpbMap.get(`0${sap}`) ?? 0
-      const deductedQty = wpbBp > 0
-        ? Math.max(0, Math.ceil(qty / wpbBp) - Math.floor(p1 / wpbBp)) * wpbBp
-        : Math.max(0, qty - p1)
-      if (deductedQty > 0.01) {
-        const existing = concurrentSkuFallbackTargets.get(sap)
-        if (!existing || deductedQty > existing.qty)
-          concurrentSkuFallbackTargets.set(sap, { qty: deductedQty, name: name ?? null, channel: 'plan100' })
-      }
+      if (byProductSkuSet.has(sap)) orderBasedBpSkus.add(sap)
     }
     const allPhase3Targets = Array.from(planMap.entries()).map(([sku, { name, qty }]) => {
       let channel = 'plan100'
@@ -1776,11 +1772,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const channelsToProcess = [...activeChannels]
     for (const ch of Object.keys(p3ChannelTargets)) { if (!channelsToProcess.includes(ch)) channelsToProcess.push(ch) }
     assignList = channelsToProcess.flatMap(ch => (p3ChannelTargets[ch] ?? [])
-      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) })
+      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   } else {
     assignList = activeChannels.flatMap(ch => (channelTargets[ch] ?? [])
-      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) })
+      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   }
 
@@ -1791,6 +1787,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
     return (workersByStation[station] ?? []).length > 0
   })
+
+  // Track which order-based by-products survived the produceable filter.
+  // Those that didn't fall back to concurrent injection.
+  const finalOrderBasedBpSkus = new Set(
+    assignList.map(i => i.sku.replace(/^0+/, '')).filter(s => orderBasedBpSkus.has(s))
+  )
 
   // Deduct kept assignments
   assignList = assignList.map(item => {
@@ -2384,93 +2386,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       for (const e of bps) bpAllSrcQtyMap.set(e.byProductSku, (bpAllSrcQtyMap.get(e.byProductSku) ?? 0) + srcTotal)
     }
 
-    // --- Concurrent by-product allocation pass ---
-    // Target = min(channel_order, Σ(sourceQty × ratio per source group)), rounded down to bag.
-    // By-products with own MAS productivity are allocated via allocateBalanced independently.
-    // Start time is overridden to match source start so production begins simultaneously.
-    const bpDirectlyAllocated = new Set<string>()
-    if (byProductSkuSet.size > 0) {
-      const bpYieldMap = new Map<string, number>()
-      const bpNameMap = new Map<string, string | null>()
-      // Earliest source start time per by-product (for concurrent start override)
-      const bpSourceStartMap = new Map<string, number>()
-      for (const [src, byProductsAll] of Array.from(byProductMap.entries())) {
-        const wm = sourceWorkerMap.get(src)
-        if (!wm || wm.size === 0) continue
-        const srcTotal = Array.from(wm.values()).reduce((s, w) => s + w.qty, 0)
-        if (srcTotal <= 0) continue
-        const srcStart = Math.min(...Array.from(wm.values()).map(w => w.startMins))
-        for (const entry of byProductsAll) {
-          if (entry.ratio === 'remainder' || typeof entry.ratio !== 'number' || entry.ratio <= 0) continue
-          bpYieldMap.set(entry.byProductSku, (bpYieldMap.get(entry.byProductSku) ?? 0) + srcTotal * entry.ratio)
-          if (!bpNameMap.has(entry.byProductSku)) bpNameMap.set(entry.byProductSku, entry.name ?? null)
-          const cur = bpSourceStartMap.get(entry.byProductSku)
-          bpSourceStartMap.set(entry.byProductSku, cur !== undefined ? Math.min(cur, srcStart) : srcStart)
-        }
-      }
-
-      const bpByStation: Record<string, { sku: string; skuName: string | null; targetQty: number; channel: string }[]> = {}
-      for (const [bpSku, rawYield] of Array.from(bpYieldMap.entries())) {
-        const wpbBp = wpbMap.get(bpSku) ?? wpbMap.get(`0${bpSku}`) ?? 0
-        const sourceYield = wpbBp > 0 ? Math.floor(rawYield / wpbBp) * wpbBp : rawYield
-        if (sourceYield <= 0.01) continue
-
-        const chanInfo = concurrentSkuFallbackTargets.get(bpSku)
-        const channelTarget = chanInfo?.qty ?? 0
-        const rawTarget = channelTarget > 0.01 ? Math.min(channelTarget, sourceYield) : sourceYield
-        const targetQty = wpbBp > 0 ? Math.floor(rawTarget / wpbBp) * wpbBp : Math.round(rawTarget * 100) / 100
-        if (targetQty <= 0.01) continue
-
-        const prod = skuMap.get(bpSku) ?? skuMap.get(`0${bpSku}`)
-        if (!prod) continue
-        const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
-        if (!(workersByStation[station] ?? []).length) continue
-
-        bpByStation[station] ??= []
-        bpByStation[station].push({
-          sku: bpSku,
-          skuName: prod.sku_name || bpNameMap.get(bpSku) || null,
-          targetQty,
-          channel: chanInfo?.channel ?? 'เสริม',
-        })
-      }
-
-      for (const [station, targets] of Object.entries(bpByStation)) {
-        const stationWorkers = workersByStation[station] ?? []
-        if (!stationWorkers.length) continue
-        const bpResult = allocateBalanced({
-          productionDate,
-          tableName: station,
-          targets,
-          workers: stationWorkers,
-          skuMap,
-          jobAssignMap,
-          workerHours,
-          workerFreeAtMins,
-          workerBusySegments,
-          phaseEndMins,
-          period: phaseCfg.period,
-          phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
-          wpbMap,
-          specialTimeMap,
-        })
-        for (const task of bpResult) {
-          const normSku = String(task['sku'] ?? '').replace(/^0+/, '')
-          bpDirectlyAllocated.add(normSku)
-          // Override start time to match source start — by-product begins simultaneously
-          const srcStart = bpSourceStartMap.get(normSku)
-          if (srcStart !== undefined) task['deadline_time'] = minsToTimeStr(srcStart)
-        }
-        resequenced.push(...bpResult)
-      }
-    }
-
     const injectedTasks: Record<string, unknown>[] = []
 
     for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
-      // Skip by-products allocated via the concurrent pass above.
-      // Those without MAS productivity or station workers fall through here.
-      const byProducts = byProductsAll.filter(e => !bpDirectlyAllocated.has(e.byProductSku))
+      // Skip by-products already allocated via allocateBalanced (went through assignList).
+      const byProducts = byProductsAll.filter(e => !finalOrderBasedBpSkus.has(e.byProductSku))
       if (!byProducts.length) continue
       const prevInjectedLen = injectedTasks.length
       const srcWMap = sourceWorkerMap.get(sourceSku)
