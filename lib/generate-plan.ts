@@ -1225,7 +1225,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }),
     fetchAll<{ sku: string; sku_name: string | null; quantity: number }>(
       'bkp_orders', 'sku, sku_name, quantity',
-      [{ col: 'production_date', op: 'eq', val: productionDate }]),
+      [{ col: 'production_date', op: 'eq', val: productionDate }])
+      .catch(() => [] as { sku: string; sku_name: string | null; quantity: number }[]),
   ])
 
   // Merge workforce
