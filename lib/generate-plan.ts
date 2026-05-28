@@ -1683,6 +1683,21 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   function buildBKPTargets(): SkuTarget[] {
+    if (isPhase2) {
+      const p1 = useChannelDeduct ? (phase1ByChannel.get('BKP') ?? new Map()) : phase1Assigned
+      return Array.from(bkpOrderMap.entries()).map(([sku, { qty: orderQty, name }]) => {
+        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        let targetQty: number
+        if (wpb > 0) {
+          const orderBags = Math.ceil(orderQty / wpb)
+          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
+          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+        } else {
+          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+        }
+        return { sku, skuName: name, targetQty, channel: 'BKP' }
+      }).filter(t => t.targetQty > 0)
+    }
     return Array.from(bkpOrderMap.entries()).map(([sku, { qty, name }]) => {
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
       const targetQty = wpb > 0 ? Math.ceil(qty / wpb) * wpb : qty
