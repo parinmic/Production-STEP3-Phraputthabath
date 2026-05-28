@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง' }, { status: 400 })
 
     // Replace all (master table — อัพโหลดใหม่ = แทนทั้งหมด)
-    await supabase.from('picking_unit_master').delete().gte('id', 1)
+    const { error: deleteError } = await supabase.from('picking_unit_master').delete().gte('id', 0)
+    if (deleteError) throw deleteError
 
     const { error } = await supabase.from('picking_unit_master').insert(records)
     if (error) throw error

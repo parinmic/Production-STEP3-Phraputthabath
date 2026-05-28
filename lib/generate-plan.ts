@@ -1221,10 +1221,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }),
-    supabase.from('master_logic_manpower').select('row_data'),
+      .eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }).limit(5000),
+    supabase.from('master_logic_manpower').select('row_data').limit(5000),
     (isPhase2 || isPhase3) && deductMode !== 'yield'
       ? fetchLatestBatchAssignments(productionDate, isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'], deductMode)
       : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),
@@ -1235,15 +1235,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     isPhase3
       ? supabase.from('production_plan_100').select('sap, product_name, weight_total').eq('plan_date', productionDate)
       : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
-    supabase.from('picking_unit_master').select('sap, weight_per_bag'),
+    supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas %Variance LOTUS').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas %Variance LOTUS').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas %Variance Wet Market').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas %Variance Wet Market').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas %Variance Makro').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas %Variance Makro').order('uploaded_at', { ascending: false }).limit(5000),
     useRegen
       ? supabase.from('production_assignments').select('*')
           .eq('production_date', productionDate).eq('period', phaseCfg.period)
@@ -1252,7 +1252,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
     supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }),
+      .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }).limit(5000),
     fetchAll<{ sku: string; sku_name: string | null; quantity: number }>(
       'bkp_orders', 'sku, sku_name, quantity',
       [{ col: 'production_date', op: 'eq', val: productionDate }])

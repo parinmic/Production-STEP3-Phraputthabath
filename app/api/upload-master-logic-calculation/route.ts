@@ -55,6 +55,11 @@ export async function POST(req: NextRequest) {
       source_file: filename ?? 'unknown',
     }))
 
+    // Replace all existing rows of this type before inserting new ones
+    const { error: delErr } = await supabase.from('master_logic_calculation')
+      .delete().eq('calculation_type', TYPE_LABEL[type])
+    if (delErr) throw delErr
+
     const { error } = await supabase.from('master_logic_calculation').insert(records)
     if (error) throw error
 
