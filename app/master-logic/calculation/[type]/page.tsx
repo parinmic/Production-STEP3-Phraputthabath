@@ -11,7 +11,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
   'mas-channel':             { label: 'Mas Channel',              desc: 'อัพโหลด Master Calculation — Channel', dot: 'border-orange-500' },
   'mas-trakra':              { label: 'Mas ตระกร้า',              desc: 'อัพโหลด Master Calculation — ตระกร้า', dot: 'border-yellow-500' },
   'mas-special':             { label: 'Mas Special',              desc: 'อัพโหลด Master Calculation — Special SKUs', dot: 'border-pink-500' },
-  'mas-sku-concurrent':      { label: 'Mas Sku ผลิตพร้อมกัน',    desc: 'อัพโหลด Master — กลุ่มสินค้าที่ผลิตพร้อมกัน (กลุ่มสินค้า 1, กลุ่มสินค้า 2)', dot: 'border-teal-500' },
+  'mas-sku-concurrent':      { label: 'Mas Sku ผลิตพร้อมกัน',    desc: 'อัพโหลด Master — กลุ่มสินค้าที่ผลิตพร้อมกัน (Sap ตั้งต้น, ชื่อสินค้าตั้งต้น, Sap ผลพลอยได้, ชื่อสินค้าผลพลอยได้)', dot: 'border-teal-500' },
   'mas-raw-material':        { label: 'Mas Raw Material',         desc: 'อัพโหลด Master Calculation — Raw Material (D16, D17)', dot: 'border-red-500' },
 }
 

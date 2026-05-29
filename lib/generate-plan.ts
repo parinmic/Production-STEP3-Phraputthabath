@@ -41,7 +41,7 @@ export interface GeneratePlanResult {
   message: string
   count?: number
   debug_targets?: { sku: string; wm: number; makro: number; lotus: number; merged: number }[]
-  debug_concurrent_pairs?: { source: string; byProduct: string; ratio: number | string }[]
+  debug_concurrent_pairs?: { source: string; byProduct: string }[]
 }
 
 // ========== Utilities ==========
@@ -1341,7 +1341,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // Build by-product map from mas-sku-concurrent:
   // sourceSku → [{byProductSku, ratio (numeric เท่า or 'remainder'), name}]
   // When a source SKU is produced, all its by-products are scheduled on the same worker.
-  type ByProductEntry = { byProductSku: string; ratio: number | 'remainder'; name: string | null }
+  type ByProductEntry = { byProductSku: string; name: string | null }
   const byProductMap = new Map<string, ByProductEntry[]>()
 
   const getConcCol = (r: Record<string, unknown>, name: string): string => {
@@ -1353,18 +1353,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const r = row.row_data as Record<string, unknown>
     const sourceSap    = getConcCol(r, 'Sap ตั้งต้น').replace(/^0+/, '')
     const byProductSap = getConcCol(r, 'Sap ผลพลอยได้').replace(/^0+/, '')
-    const qtyRaw       = getConcCol(r, 'ปริมาณผลพลอยได้')
     const bpName       = getConcCol(r, 'ชื่อสินค้าผลพลอยได้') || null
     if (!sourceSap || !byProductSap) continue
-    let ratio: number | 'remainder'
-    if (!qtyRaw || qtyRaw.includes('เหลือ') || qtyRaw.toLowerCase() === 'remainder') {
-      ratio = 'remainder'
-    } else {
-      const n = parseFloat(qtyRaw)
-      ratio = isNaN(n) ? 'remainder' : n
-    }
     if (!byProductMap.has(sourceSap)) byProductMap.set(sourceSap, [])
-    byProductMap.get(sourceSap)!.push({ byProductSku: byProductSap, ratio, name: bpName })
+    byProductMap.get(sourceSap)!.push({ byProductSku: byProductSap, name: bpName })
   }
   const sourceSkuSet = new Set(byProductMap.keys())
   const byProductSkuSet = new Set<string>()
@@ -2391,36 +2383,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const totalSourceQty = sourceWorkers.reduce((s, w) => s + w.qty, 0)
 
 
-      // maxRatio → total by-product yield quantity (source_total × ratio)
-      let maxRatio = 0
-      for (const e of byProducts) {
-        if (typeof e.ratio === 'number' && e.ratio > maxRatio) maxRatio = e.ratio
-      }
-      const totalByProductQty = maxRatio > 0 ? totalSourceQty * maxRatio : 0
-
-      // Sort non-remainder by channel priority
-      const nonRemainder = byProducts
-        .filter(e => e.ratio !== 'remainder')
-        .sort((a, b) => {
-          const fa = getBpPlanInfo(a.byProductSku)
-          const fb2 = getBpPlanInfo(b.byProductSku)
-          const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
-          const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
-          return pa - pb
-        })
-
-      // Collect total plan qty for each non-remainder SKU
-      let allocatedQtySum = 0
+      // Get plan qty for each by-product from the production plan
       type BpInfo = { qty: number; channel: string; name: string | null }
       const bpPlanQtys = new Map<string, BpInfo>()
-      for (const entry of nonRemainder) {
+      for (const entry of byProducts) {
         const planInfo = getBpPlanInfo(entry.byProductSku)
-        // Fallback to sum of already-allocated tasks if not in plan
         const allocTotal = allocatedBpWorkers.has(entry.byProductSku)
           ? Array.from(allocatedBpWorkers.get(entry.byProductSku)!.values()).reduce((s, q) => s + q, 0)
           : 0
         const rawQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
-        // Deduct what was already injected/allocated in previous phases — use bag units.
         const prevAllocated = phase1Assigned.get(entry.byProductSku) ?? 0
         const wpbBpEntry = wpbMap.get(entry.byProductSku) ?? wpbMap.get(`0${entry.byProductSku}`) ?? 0
         const totalQty = wpbBpEntry > 0
@@ -2428,32 +2399,23 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           : Math.max(0, rawQty - prevAllocated)
         if (totalQty > 0.01) {
           bpPlanQtys.set(entry.byProductSku, { qty: totalQty, channel: planInfo?.channel ?? 'เสริม', name: planInfo?.name ?? null })
-          allocatedQtySum += totalQty
         }
       }
 
-      const remainderEntries = byProducts.filter(e => e.ratio === 'remainder')
-      const remainderRaw = remainderEntries.length > 0 && totalByProductQty > 0
-        ? Math.max(0, totalByProductQty - allocatedQtySum)
-        : 0
-
-      // Ordered list: non-remainder (priority) → remainder last
       type BpOrder = { sku: string; name: string | null; totalQty: number; channel: string; note: string }
-      const orderedBp: BpOrder[] = [
-        ...nonRemainder
-          .filter(e => (bpPlanQtys.get(e.byProductSku)?.qty ?? 0) > 0.01)
-          .map(e => {
-            const info = bpPlanQtys.get(e.byProductSku)!
-            return { sku: e.byProductSku, name: e.name, totalQty: info.qty, channel: info.channel, note: 'concurrent_group_follow' }
-          }),
-        ...(remainderRaw > 0.01
-          ? remainderEntries.map(e => {
-              const wpbRem = wpbMap.get(e.byProductSku) ?? wpbMap.get(`0${e.byProductSku}`) ?? 0
-              const remQty = wpbRem > 0 ? Math.floor(remainderRaw / wpbRem) * wpbRem : Math.round(remainderRaw * 100) / 100
-              return { sku: e.byProductSku, name: e.name, totalQty: remQty, channel: 'เสริม', note: 'concurrent_remainder' }
-            }).filter(e => e.totalQty > 0.01)
-          : []),
-      ]
+      const orderedBp: BpOrder[] = byProducts
+        .filter(e => (bpPlanQtys.get(e.byProductSku)?.qty ?? 0) > 0.01)
+        .sort((a, b) => {
+          const fa = bpPlanQtys.get(a.byProductSku)
+          const fb2 = bpPlanQtys.get(b.byProductSku)
+          const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
+          const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
+          return pa - pb
+        })
+        .map(e => {
+          const info = bpPlanQtys.get(e.byProductSku)!
+          return { sku: e.byProductSku, name: e.name, totalQty: info.qty, channel: info.channel, note: 'concurrent_group_follow' }
+        })
 
       // Create / update tasks: one per source worker per by-product.
       // Each by-product task starts concurrently with that worker's source task (same start time).
@@ -2538,10 +2500,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
     const wCmp = String(a['worker_name'] ?? '').localeCompare(String(b['worker_name'] ?? ''))
     if (wCmp !== 0) return wCmp
-    // concurrent_remainder always sorts last per worker (safety net when dur=0 makes times equal)
-    const aIsRem = String(a['note'] ?? '').includes('concurrent_remainder')
-    const bIsRem = String(b['note'] ?? '').includes('concurrent_remainder')
-    if (aIsRem !== bIsRem) return aIsRem ? 1 : -1
     const getP = (ch: string) => ch === 'เสริม' ? 0 : (channelPriority[ch] ?? 99)
     const pCmp = getP(String(a['channel'] ?? '')) - getP(String(b['channel'] ?? ''))
     if (pCmp !== 0) return pCmp
@@ -2606,6 +2564,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
     debug_concurrent_pairs: Array.from(byProductMap.entries())
-      .flatMap(([src, bps]) => bps.map(e => ({ source: src, byProduct: e.byProductSku, ratio: e.ratio }))),
+      .flatMap(([src, bps]) => bps.map(e => ({ source: src, byProduct: e.byProductSku }))),
   }
 }
