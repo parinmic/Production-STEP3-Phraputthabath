@@ -38,9 +38,9 @@ export async function GET(req: NextRequest) {
     { data: plan100 },
     { data: pickingUnit },
   ] = await Promise.all([
-    supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }),
-    supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }),
-    supabase.from('master_logic_manpower').select('row_data'),
+    supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
+    supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }).limit(5000),
+    supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', date).eq('upload_round', '0800'),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', date).eq('upload_round', '1300'),
     // Order today (filtered by SKU — format usually consistent for today)

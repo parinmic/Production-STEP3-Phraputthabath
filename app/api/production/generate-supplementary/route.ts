@@ -399,10 +399,10 @@ export async function POST(req: NextRequest) {
     ] = await Promise.all([
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0800'),
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1300'),
-      supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }),
-      supabase.from('master_logic_manpower').select('row_data'),
-      supabase.from('picking_unit_master').select('sap, weight_per_bag'),
-      supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }),
+      supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
+      supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
+      supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
+      supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }).limit(5000),
     ])
 
     // Merge workforce (1300 overrides 0800)

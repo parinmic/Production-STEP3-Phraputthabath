@@ -1224,7 +1224,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }).limit(5000),
-    supabase.from('master_logic_manpower').select('row_data').limit(5000),
+    supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
     (isPhase2 || isPhase3) && deductMode !== 'yield'
       ? fetchLatestBatchAssignments(productionDate, isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'], deductMode)
       : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),

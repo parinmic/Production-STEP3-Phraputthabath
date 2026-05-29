@@ -40,6 +40,11 @@ export async function POST(req: NextRequest) {
       source_file: filename ?? 'unknown',
     }))
 
+    // Replace all existing rows of this product_type before inserting new ones
+    const { error: delErr } = await supabase.from('master_logic_manpower')
+      .delete().eq('product_type', productType)
+    if (delErr) throw delErr
+
     const { error } = await supabase.from('master_logic_manpower').insert(records)
     if (error) throw error
 
