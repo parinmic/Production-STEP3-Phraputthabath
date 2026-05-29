@@ -24,7 +24,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (Object.keys(maxEffective).length === 0) {
-    return NextResponse.json({ assignments: [] })
+    // Debug: check if there's data at all for this date (ignoring table)
+    const { count } = await supabase
+      .from('production_assignments')
+      .select('*', { count: 'exact', head: true })
+      .eq('production_date', date)
+    return NextResponse.json({ assignments: [], _debug: { table, period_rows_for_table: 0, total_rows_for_date: count } })
   }
 
   // Step 2: ดึง assignments เฉพาะ batch ที่มี effective_from ตรงกับ max ของแต่ละ period
