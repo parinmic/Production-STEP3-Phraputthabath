@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, Pencil, Trash2, Check, X } from 'lucide-react'
+import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, Pencil, Check, X } from 'lucide-react'
 
 interface AttendanceRow {
   emp_id: string
@@ -22,9 +22,21 @@ interface PlanEntry {
   upload_round: string
 }
 
+interface EditDraft {
+  name: string
+  dept: string
+  shift: string
+  scan_in: string
+  attendance_status: string
+  minutes_late: number
+  station: string
+}
+
 interface Summary { present: number; late: number; absent: number; total: number }
 
-const STATIONS = ['สามชั้นพิเศษ', 'สะโพกพิเศษ', 'ไหล่พิเศษ']
+const STATIONS   = ['สามชั้นพิเศษ', 'สะโพกพิเศษ', 'ไหล่พิเศษ']
+const SHIFTS     = ['กะ 1', 'กะ 2']
+const STATUSES   = ['Present', 'Late', 'Absent']
 const STATUS_LABEL: Record<string, string> = { Present: 'มาทำงาน', Late: 'มาสาย', Absent: 'ขาด' }
 const STATUS_COLOR: Record<string, string> = {
   Present: 'bg-green-100 text-green-700',
@@ -41,16 +53,18 @@ export default function WorkforcePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
-  // Filters
   const [filterStatus,  setFilterStatus]  = useState('all')
   const [filterShift,   setFilterShift]   = useState('all')
   const [filterStation, setFilterStation] = useState('all')
   const [filterName,    setFilterName]    = useState('')
 
-  // Inline edit state: emp_id → editing station value
-  const [editingId,      setEditingId]      = useState<string | null>(null)
-  const [editingStation, setEditingStation] = useState('')
-  const [saving,         setSaving]         = useState<string | null>(null)
+  // editingId → draft values
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft,     setDraft]     = useState<EditDraft | null>(null)
+  const [saving,    setSaving]    = useState(false)
+
+  // local overrides (for display; resets on page reload)
+  const [overrides, setOverrides] = useState<Map<string, Partial<AttendanceRow>>>(new Map())
 
   const loadAttendance = useCallback(async (d: string) => {
     setLoading(true); setError('')
@@ -60,6 +74,7 @@ export default function WorkforcePage() {
       if (json.error) throw new Error(json.error)
       setRows(json.data ?? [])
       setSummary(json.summary ?? null)
+      setOverrides(new Map())
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
     } finally { setLoading(false) }
@@ -81,51 +96,103 @@ export default function WorkforcePage() {
 
   useEffect(() => { reload(date) }, [date, reload])
 
-  // Save manual override (add or update station)
-  const saveOverride = async (row: AttendanceRow, station: string) => {
-    setSaving(row.emp_id)
-    await fetch('/api/workforce-daily', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date, emp_id: row.emp_id, name: row.name,
-        work_station: station, shift: row.shift,
-      }),
+  const startEdit = (r: AttendanceRow) => {
+    const plan = planMap.get(r.emp_id)
+    const ov   = overrides.get(r.emp_id) ?? {}
+    setEditingId(r.emp_id)
+    setDraft({
+      name:              ov.name              ?? r.name,
+      dept:              ov.dept              ?? r.dept,
+      shift:             ov.shift             ?? r.shift,
+      scan_in:           ov.scan_in           ?? r.scan_in,
+      attendance_status: ov.attendance_status ?? r.attendance_status,
+      minutes_late:      ov.minutes_late      ?? r.minutes_late,
+      station:           plan?.work_station   ?? r.station ?? STATIONS[0],
     })
-    setEditingId(null)
-    setSaving(null)
-    loadPlan(date)
   }
 
-  // Remove from plan
-  const removeFromPlan = async (emp_id: string) => {
-    setSaving(emp_id)
-    await fetch(`/api/workforce-daily?date=${date}&emp_id=${encodeURIComponent(emp_id)}`, { method: 'DELETE' })
-    setSaving(null)
-    loadPlan(date)
+  const cancelEdit = () => { setEditingId(null); setDraft(null) }
+
+  const saveEdit = async (r: AttendanceRow) => {
+    if (!draft) return
+    setSaving(true)
+    try {
+      const inPlan = draft.attendance_status !== 'Absent'
+      if (inPlan) {
+        await fetch('/api/workforce-daily', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date,
+            emp_id:       r.emp_id,
+            name:         draft.name,
+            work_station: draft.station,
+            shift:        draft.shift,
+          }),
+        })
+      } else {
+        await fetch(`/api/workforce-daily?date=${date}&emp_id=${encodeURIComponent(r.emp_id)}`, { method: 'DELETE' })
+      }
+      // store local display override
+      setOverrides(prev => {
+        const next = new Map(prev)
+        next.set(r.emp_id, {
+          name:              draft.name,
+          dept:              draft.dept,
+          shift:             draft.shift,
+          scan_in:           draft.scan_in,
+          attendance_status: draft.attendance_status,
+          minutes_late:      draft.minutes_late,
+          station:           inPlan ? draft.station : null,
+        })
+        return next
+      })
+      await loadPlan(date)
+      setEditingId(null); setDraft(null)
+    } finally { setSaving(false) }
+  }
+
+  const effectiveRow = (r: AttendanceRow): AttendanceRow => {
+    const ov = overrides.get(r.emp_id)
+    return ov ? { ...r, ...ov } : r
   }
 
   const stations = useMemo(() => [...new Set(rows.map(r => r.station).filter(Boolean) as string[])].sort(), [rows])
   const shifts   = useMemo(() => [...new Set(rows.map(r => r.shift).filter(Boolean))].sort(), [rows])
 
   const displayed = useMemo(() => {
-    let result = [...rows]
-    if (filterStatus  !== 'all') result = result.filter(r => r.attendance_status === filterStatus)
-    if (filterShift   !== 'all') result = result.filter(r => r.shift === filterShift)
-    if (filterStation === '__none__') result = result.filter(r => !r.station)
-    else if (filterStation !== 'all') result = result.filter(r => r.station === filterStation)
-    if (filterName.trim()) {
-      const q = filterName.trim().toUpperCase()
-      result = result.filter(r => r.name.toUpperCase().includes(q) || r.emp_id.includes(q))
-    }
-    return result
-  }, [rows, filterStatus, filterShift, filterStation, filterName])
+    return rows
+      .map(effectiveRow)
+      .filter(r => {
+        if (filterStatus  !== 'all' && r.attendance_status !== filterStatus) return false
+        if (filterShift   !== 'all' && r.shift !== filterShift) return false
+        if (filterStation === '__none__' && r.station) return false
+        if (filterStation !== 'all' && filterStation !== '__none__' && r.station !== filterStation) return false
+        if (filterName.trim()) {
+          const q = filterName.trim().toUpperCase()
+          if (!r.name.toUpperCase().includes(q) && !r.emp_id.includes(q)) return false
+        }
+        return true
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, overrides, filterStatus, filterShift, filterStation, filterName])
 
   const planCount = (summary?.present ?? 0) + (summary?.late ?? 0)
 
+  const sel = (val: string, opts: string[], onChange: (v: string) => void, cls = '') => (
+    <select value={val} onChange={e => onChange(e.target.value)}
+      className={`border border-blue-300 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 w-full ${cls}`}>
+      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
+
+  const inp = (val: string, onChange: (v: string) => void, cls = '') => (
+    <input value={val} onChange={e => onChange(e.target.value)}
+      className={`border border-blue-300 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 w-full ${cls}`} />
+  )
+
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">สถานะกำลังคนประจำวัน</h1>
@@ -137,7 +204,6 @@ export default function WorkforcePage() {
         </button>
       </div>
 
-      {/* Date + filters */}
       <div className="card flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-blue-500 shrink-0" />
@@ -166,14 +232,13 @@ export default function WorkforcePage() {
         </div>
       )}
 
-      {/* Summary cards */}
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { key: 'Present', label: 'มาทำงาน',    value: summary.present, icon: CheckCircle2, color: 'text-green-500',  bold: 'text-green-600' },
-            { key: 'Late',    label: 'มาสาย',       value: summary.late,    icon: Clock,        color: 'text-yellow-500', bold: 'text-yellow-600' },
-            { key: 'Absent',  label: 'ขาด',          value: summary.absent,  icon: XCircle,      color: 'text-red-500',    bold: 'text-red-600' },
-            { key: 'all',     label: 'ใช้ใน Plan',  value: planCount,       icon: Users,        color: 'text-blue-500',   bold: 'text-blue-600' },
+            { key: 'Present', label: 'มาทำงาน',   value: summary.present, icon: CheckCircle2, color: 'text-green-500',  bold: 'text-green-600' },
+            { key: 'Late',    label: 'มาสาย',      value: summary.late,    icon: Clock,        color: 'text-yellow-500', bold: 'text-yellow-600' },
+            { key: 'Absent',  label: 'ขาด',         value: summary.absent,  icon: XCircle,      color: 'text-red-500',    bold: 'text-red-600' },
+            { key: 'all',     label: 'ใช้ใน Plan', value: planCount,       icon: Users,        color: 'text-blue-500',   bold: 'text-blue-600' },
           ].map(({ key, label, value, icon: Icon, color, bold }) => (
             <button key={key}
               onClick={() => setFilterStatus(filterStatus === key ? 'all' : key)}
@@ -189,7 +254,6 @@ export default function WorkforcePage() {
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
         <div className="card text-center py-12 text-gray-400">
           <RefreshCw size={24} className="animate-spin mx-auto mb-3" />กำลังโหลด...
@@ -205,98 +269,81 @@ export default function WorkforcePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b">
-                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">รหัส</th>
-                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">ชื่อ</th>
-                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">แผนก</th>
-                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">กะ</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Scan In</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สถานะ</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Station ในแผน</th>
+                  <th className="px-3 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">รหัส</th>
+                  <th className="px-3 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">ชื่อ</th>
+                  <th className="px-3 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">แผนก</th>
+                  <th className="px-3 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">กะ</th>
+                  <th className="px-3 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Scan In</th>
+                  <th className="px-3 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สถานะ</th>
+                  <th className="px-3 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Station ในแผน</th>
+                  <th className="px-3 py-2.5 text-center text-gray-600 font-medium w-16"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayed.map((r) => {
+                  const origRow = rows.find(x => x.emp_id === r.emp_id) ?? r
                   const plan    = planMap.get(r.emp_id)
                   const isEdit  = editingId === r.emp_id
-                  const isSaving = saving === r.emp_id
-                  const isManual = plan?.upload_round === 'manual'
+                  const isOv    = overrides.has(r.emp_id)
+
+                  if (isEdit && draft) {
+                    return (
+                      <tr key={r.emp_id} className="bg-blue-50">
+                        <td className="px-3 py-2 text-gray-500 font-mono text-xs">{r.emp_id}</td>
+                        <td className="px-3 py-2">{inp(draft.name, v => setDraft(d => d && ({ ...d, name: v })), 'min-w-[120px]')}</td>
+                        <td className="px-3 py-2">{inp(draft.dept, v => setDraft(d => d && ({ ...d, dept: v })), 'min-w-[120px]')}</td>
+                        <td className="px-3 py-2">{sel(draft.shift, SHIFTS, v => setDraft(d => d && ({ ...d, shift: v })), 'min-w-[70px]')}</td>
+                        <td className="px-3 py-2">{inp(draft.scan_in, v => setDraft(d => d && ({ ...d, scan_in: v })), 'min-w-[60px] text-center')}</td>
+                        <td className="px-3 py-2">
+                          {sel(draft.attendance_status, STATUSES, v => setDraft(d => d && ({ ...d, attendance_status: v })), 'min-w-[80px]')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {draft.attendance_status !== 'Absent'
+                            ? sel(draft.station, STATIONS, v => setDraft(d => d && ({ ...d, station: v })), 'min-w-[110px]')
+                            : <span className="text-xs text-gray-300">ไม่ใช้</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => saveEdit(origRow)} disabled={saving}
+                              className="text-green-600 hover:text-green-800 disabled:opacity-40" title="บันทึก">
+                              <Check size={16} />
+                            </button>
+                            <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600" title="ยกเลิก">
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  const stationDisplay = plan?.work_station ?? null
+                  const isManual = plan?.upload_round === 'manual' || isOv
 
                   return (
-                    <tr key={r.emp_id} className={`transition-colors ${isEdit ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.emp_id}</td>
-                      <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[160px] truncate" title={r.dept}>{r.dept}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{r.shift}</td>
-                      <td className="px-4 py-2.5 text-center font-mono text-gray-700">{r.scan_in || '—'}</td>
-                      <td className="px-4 py-2.5 text-center">
+                    <tr key={r.emp_id} className={`transition-colors hover:bg-gray-50 ${isOv ? 'bg-orange-50/40' : ''}`}>
+                      <td className="px-3 py-2.5 text-gray-500 font-mono text-xs">{r.emp_id}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-800">{r.name}</td>
+                      <td className="px-3 py-2.5 text-gray-600 text-xs max-w-[160px] truncate" title={r.dept}>{r.dept}</td>
+                      <td className="px-3 py-2.5 text-gray-600">{r.shift}</td>
+                      <td className="px-3 py-2.5 text-center font-mono text-gray-700">{r.scan_in || '—'}</td>
+                      <td className="px-3 py-2.5 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[r.attendance_status] ?? 'bg-gray-100 text-gray-600'}`}>
                           {STATUS_LABEL[r.attendance_status] ?? r.attendance_status}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {isEdit ? (
-                          /* ── Inline edit mode ── */
-                          <div className="flex items-center justify-center gap-2">
-                            <select
-                              value={editingStation}
-                              onChange={e => setEditingStation(e.target.value)}
-                              className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
-                            >
-                              {STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <button
-                              onClick={() => saveOverride(r, editingStation)}
-                              disabled={isSaving}
-                              className="text-green-600 hover:text-green-800 disabled:opacity-40"
-                              title="บันทึก"
-                            >
-                              <Check size={15} />
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="text-gray-400 hover:text-gray-600"
-                              title="ยกเลิก"
-                            >
-                              <X size={15} />
-                            </button>
-                          </div>
-                        ) : plan ? (
-                          /* ── Has plan entry ── */
-                          <div className="flex items-center justify-center gap-2">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isManual ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {plan.work_station}
-                              {isManual && <span className="ml-1 opacity-60">✎</span>}
+                      <td className="px-3 py-2.5 text-center">
+                        {stationDisplay
+                          ? <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isManual ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {stationDisplay}{isManual && ' ✎'}
                             </span>
-                            <button
-                              onClick={() => { setEditingId(r.emp_id); setEditingStation(plan.work_station) }}
-                              className="text-gray-300 hover:text-blue-500 transition-colors"
-                              title="แก้ไข Station"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => removeFromPlan(r.emp_id)}
-                              disabled={isSaving}
-                              className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
-                              title="ถอดออกจากแผน"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          /* ── Not in plan ── */
-                          <button
-                            onClick={() => {
-                              setEditingId(r.emp_id)
-                              setEditingStation(r.station ?? STATIONS[0])
-                            }}
-                            className="text-xs text-gray-300 hover:text-blue-500 transition-colors flex items-center gap-1 mx-auto"
-                            title="เพิ่มเข้าแผน"
-                          >
-                            <span>—</span>
-                            <Pencil size={11} />
-                          </button>
-                        )}
+                          : <span className="text-xs text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button onClick={() => startEdit(r)}
+                          className="text-gray-300 hover:text-blue-500 transition-colors" title="แก้ไข">
+                          <Pencil size={14} />
+                        </button>
                       </td>
                     </tr>
                   )
@@ -305,7 +352,7 @@ export default function WorkforcePage() {
             </table>
           </div>
           <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center justify-between">
-            <span className="text-orange-500">✎ = แก้ไขด้วยมือ</span>
+            <span className="text-orange-500">✎ = แก้ไขด้วยมือ (รีเซ็ตเมื่อรีเฟรช)</span>
             <span>แสดง {displayed.length} จาก {rows.length} รายการ</span>
           </div>
         </div>
