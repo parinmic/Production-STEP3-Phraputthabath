@@ -1704,25 +1704,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'BKP':        buildBKPTargets(),
   }
 
-  // Pre-capture target quantities for by-product SKUs before any station/stock filtering.
-  // Used when a by-product SKU has no allocated task yet — inject from these targets.
+  // Pre-capture target quantities for by-product SKUs.
+  // Always use actual order qty (not variance-adjusted channelTargets) so that Phase 1 injection
+  // uses the real order and Phase 2 can correctly deduct Phase 1 production.
   const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
   if (byProductSkuSet.size > 0) {
-    for (const [ch, targets] of Object.entries(channelTargets)) {
-      for (const t of targets) {
-        const normSku = t.sku.replace(/^0+/, '')
-        if (!byProductSkuSet.has(normSku)) continue
-        const existing = concurrentSkuFallbackTargets.get(normSku)
-        if (!existing || t.targetQty > existing.qty)
-          concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
-      }
-    }
-    // Also cover by-products that appear in today's actual orders but not in channel-target averages (e.g. Phase 1)
     const rawOrderMaps: Array<[Record<string, { qty: number; name: string | null }>, string]> = [
       [wmMap, 'Wet Market'], [makroMap, 'Makro'], [lotusMap, 'LOTUS'],
     ]
     for (const sku of byProductSkuSet) {
-      if (concurrentSkuFallbackTargets.has(sku)) continue
       for (const [om, ch] of rawOrderMaps) {
         if (om[sku]) {
           concurrentSkuFallbackTargets.set(sku, { qty: om[sku].qty, name: om[sku].name ?? null, channel: ch })
