@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const { date, emp_id, name, work_station, shift } = await req.json()
-    if (!date || !emp_id || !name || !work_station)
+    if (!date || !emp_id || !name)
       return NextResponse.json({ error: 'missing fields' }, { status: 400 })
 
     await supabase.from('daily_workforce').delete()
@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest) {
       work_date:    date,
       emp_id,
       name,
-      work_station,
+      work_station: work_station || null,
       shift:        shift ?? 'กะ 1',
       upload_round: 'manual',
     })

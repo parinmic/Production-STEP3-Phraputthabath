@@ -107,7 +107,7 @@ export default function WorkforcePage() {
       scan_in:           ov.scan_in           ?? r.scan_in,
       attendance_status: ov.attendance_status ?? r.attendance_status,
       minutes_late:      ov.minutes_late      ?? r.minutes_late,
-      station:           plan?.work_station   ?? r.station ?? STATIONS[0],
+      station:           plan?.work_station   ?? r.station ?? '',
     })
   }
 
@@ -143,7 +143,7 @@ export default function WorkforcePage() {
           scan_in:           draft.scan_in,
           attendance_status: draft.attendance_status,
           minutes_late:      draft.minutes_late,
-          station:           inPlan ? draft.station : null,
+          station:           inPlan ? (draft.station || null) : null,
         })
         return next
       })
@@ -182,7 +182,7 @@ export default function WorkforcePage() {
   const sel = (val: string, opts: string[], onChange: (v: string) => void, cls = '') => (
     <select value={val} onChange={e => onChange(e.target.value)}
       className={`border border-blue-300 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 w-full ${cls}`}>
-      {opts.map(o => <option key={o} value={o}>{o}</option>)}
+      {opts.map(o => <option key={o} value={o}>{o || 'ว่าง'}</option>)}
     </select>
   )
 
@@ -299,7 +299,7 @@ export default function WorkforcePage() {
                         </td>
                         <td className="px-3 py-2">
                           {draft.attendance_status !== 'Absent'
-                            ? sel(draft.station, STATIONS, v => setDraft(d => d && ({ ...d, station: v })), 'min-w-[110px]')
+                            ? sel(draft.station, ['', ...STATIONS], v => setDraft(d => d && ({ ...d, station: v })), 'min-w-[110px]')
                             : <span className="text-xs text-gray-300">ไม่ใช้</span>}
                         </td>
                         <td className="px-3 py-2">
