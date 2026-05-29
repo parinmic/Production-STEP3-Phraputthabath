@@ -415,7 +415,7 @@ export async function POST(req: NextRequest) {
     }
     if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
     if (!workforce.length)
-      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:45 หรือตั้งค่า Workforce Weekly' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly' }, { status: 400 })
 
     // Bag size map
     const bagSizeMap = new Map<string, number>()

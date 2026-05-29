@@ -196,7 +196,7 @@ export default function WorkforcePage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">สถานะกำลังคนประจำวัน</h1>
-          <p className="text-gray-500 mt-1 text-sm">ข้อมูลจากระบบสแกนเข้างาน — Sync อัตโนมัติ 9:45 และ 15:45</p>
+          <p className="text-gray-500 mt-1 text-sm">ข้อมูลจากระบบสแกนเข้างาน — Sync อัตโนมัติ 9:30 และ 15:30</p>
         </div>
         <button onClick={() => reload(date)} disabled={loading}
           className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
