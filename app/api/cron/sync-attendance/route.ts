@@ -99,7 +99,34 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 4. Replace old records for this round, insert new ones
+    // 4. Fallback: match unmatched attendance workers against Mas Job Assign
+    const unmatched = [...presentMap.keys()].filter(k => !seen.has(k))
+    if (unmatched.length > 0) {
+      const { data: manpowerRows } = await supabase
+        .from('master_logic_manpower')
+        .select('product_type, row_data')
+
+      for (const row of manpowerRows ?? []) {
+        const rd = (row.row_data ?? {}) as Record<string, any>
+        const name = String(rd['รายชื่อพนักงาน'] ?? '').trim()
+        if (!name) continue
+        const key = normName(name)
+        if (seen.has(key) || !unmatched.includes(key)) continue
+        const info = presentMap.get(key)
+        if (!info) continue
+        seen.add(key)
+        records.push({
+          work_date:    today,
+          emp_id:       info.empId,
+          name,
+          work_station: String(row.product_type ?? ''),
+          shift:        info.shift === 'กะ 2' ? 'กะ 2' : 'กะ 1',
+          upload_round: uploadRound,
+        })
+      }
+    }
+
+    // 5. Replace old records for this round, insert new ones
     await supabase.from('daily_workforce')
       .delete().eq('work_date', today).eq('upload_round', uploadRound)
 

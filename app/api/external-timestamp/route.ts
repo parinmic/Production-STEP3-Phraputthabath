@@ -10,16 +10,23 @@ function toThaiDate(iso: string): string {
 const normName = (s: string) =>
   s ? s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase() : ''
 
-const STATION_MAP: Record<string, string> = {
+const WEEKLY_STATION_MAP: Record<string, string> = {
   'sa-phok-special': 'สะโพก',
   'sam-chan-special': 'สามชั้น',
   'lai-special':     'ไหล่',
+}
+
+const PRODUCT_TYPE_STATION: Record<string, string> = {
+  'สะโพกพิเศษ':  'สะโพก',
+  'สามชั้นพิเศษ': 'สามชั้น',
+  'ไหล่พิเศษ':   'ไหล่',
 }
 
 async function buildStationLookup(): Promise<Map<string, string>> {
   const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
   const lookup = new Map<string, string>()
 
+  // Primary: workforce_weekly
   for (const type of types) {
     const logTable = `workforce_weekly_${type.replace(/-/g, '_')}`
     const { data: latestLog } = await supabase
@@ -33,7 +40,7 @@ async function buildStationLookup(): Promise<Map<string, string>> {
       .eq('weekly_type', type).eq('source_file', latestLog.source_file)
     if (!weeklyData) continue
 
-    const station = STATION_MAP[type] ?? type
+    const station = WEEKLY_STATION_MAP[type] ?? type
     for (const row of weeklyData) {
       const rd = (row.row_data ?? {}) as Record<string, any>
       for (const key of ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name']) {
@@ -41,6 +48,21 @@ async function buildStationLookup(): Promise<Map<string, string>> {
         if (val) { lookup.set(normName(String(val)), station); break }
       }
     }
+  }
+
+  // Fallback: Mas Job Assign (master_logic_manpower)
+  const { data: manpowerRows } = await supabase
+    .from('master_logic_manpower')
+    .select('product_type, row_data')
+
+  for (const row of manpowerRows ?? []) {
+    const rd = (row.row_data ?? {}) as Record<string, any>
+    const name = String(rd['รายชื่อพนักงาน'] ?? '').trim()
+    if (!name) continue
+    const key = normName(name)
+    if (lookup.has(key)) continue  // weekly มีแล้ว ไม่ override
+    const station = PRODUCT_TYPE_STATION[String(row.product_type ?? '')] ?? null
+    if (station) lookup.set(key, station)
   }
 
   return lookup
