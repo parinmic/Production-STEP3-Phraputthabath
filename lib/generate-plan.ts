@@ -1200,7 +1200,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: masterVarMakroRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
-    { data: concurrentSkuRaw },
     bkpOrdersRaw,
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
@@ -1252,8 +1251,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
-    supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }).limit(5000),
     fetchAll<{ sku: string; sku_name: string | null; quantity: number }>(
       'bkp_orders', 'sku, sku_name, quantity',
       [{ col: 'production_date', op: 'eq', val: productionDate }])
@@ -1337,32 +1334,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const num = Number(val)
     return isNaN(num) ? null : Math.round(num * 24 * 60)
-  }
-
-  // Build by-product map from mas-sku-concurrent:
-  // sourceSku → [{byProductSku, name}]
-  // When a source SKU is produced, all its by-products are scheduled on the same worker concurrently.
-  type ByProductEntry = { byProductSku: string; name: string | null }
-  const byProductMap = new Map<string, ByProductEntry[]>()
-
-  const getConcCol = (r: Record<string, unknown>, name: string): string => {
-    if (r[name] !== undefined) return String(r[name] ?? '').trim()
-    const key = Object.keys(r).find(k => k.trim() === name || k.replace(/\s+/g, ' ').trim() === name)
-    return key ? String(r[key] ?? '').trim() : ''
-  }
-  for (const row of concurrentSkuRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
-    const sourceSap    = getConcCol(r, 'Sap ตั้งต้น').replace(/^0+/, '')
-    const byProductSap = getConcCol(r, 'Sap ผลพลอยได้').replace(/^0+/, '')
-    const bpName       = getConcCol(r, 'ชื่อสินค้าผลพลอยได้') || null
-    if (!sourceSap || !byProductSap) continue
-    if (!byProductMap.has(sourceSap)) byProductMap.set(sourceSap, [])
-    byProductMap.get(sourceSap)!.push({ byProductSku: byProductSap, name: bpName })
-  }
-  const sourceSkuSet = new Set(byProductMap.keys())
-  const byProductSkuSet = new Set<string>()
-  for (const entries of Array.from(byProductMap.values())) {
-    for (const e of entries) byProductSkuSet.add(e.byProductSku)
   }
 
   const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
@@ -1567,15 +1538,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
 
-  // By-product SKUs with explicit channel orders enter assignList like regular SKUs in all phases.
-  const orderBasedBpSkus = new Set<string>()
-  if (byProductSkuSet.size > 0) {
-    for (const sku of byProductSkuSet) {
-      if (sku in makroMap || sku in wmMap || sku in lotusMap || bkpOrderMap.has(sku))
-        orderBasedBpSkus.add(sku)
-    }
-  }
-
   // Build targets per channel
   const buildWetMarketTargets = (): SkuTarget[] => {
     const ch = 'Wet Market'
@@ -1597,7 +1559,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const wmHistNames = new Map(wmHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     const lotusHistSkus = new Set(avgLotus.keys())
     return Array.from(avgWM.entries())
-      .filter(([sku]) => !byProductSkuSet.has(sku))
       .map(([sku, avg]) => {
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
@@ -1666,7 +1627,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
     const lotusHistNames = new Map(lotusHist.map(r => [r.sku.replace(/^0+/, ''), r.sku_name]))
     return Array.from(avgLotus.entries())
-      .filter(([sku]) => !byProductSkuSet.has(sku))
       .map(([sku, avg]) => {
         const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
         const rawStation = prod ? normalizeStation(prod.station) : ''
@@ -1718,7 +1678,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const cur = planMap.get(sap) ?? { name: r.product_name ?? null, qty: 0 }
       cur.qty += Number(r.weight_total)
       planMap.set(sap, cur)
-      if (byProductSkuSet.has(sap)) orderBasedBpSkus.add(sap)
+
     }
     const allPhase3Targets = Array.from(planMap.entries()).map(([sku, { name, qty }]) => {
       let channel = 'plan100'
@@ -1767,11 +1727,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const channelsToProcess = [...activeChannels]
     for (const ch of Object.keys(p3ChannelTargets)) { if (!channelsToProcess.includes(ch)) channelsToProcess.push(ch) }
     assignList = channelsToProcess.flatMap(ch => (p3ChannelTargets[ch] ?? [])
-      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   } else {
     assignList = activeChannels.flatMap(ch => (channelTargets[ch] ?? [])
-      .filter(item => { const n = item.sku.replace(/^0+/, ''); return !byProductSkuSet.has(n) || orderBasedBpSkus.has(n) })
       .sort((a, b) => b.targetQty - a.targetQty))
   }
 
@@ -2119,32 +2077,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Snapshot worker state before source SKU allocation.
-  // By-products run concurrently with source SKUs — each gets an independent time budget.
-  const bpWorkerHours = new Map(workerHours)
-  const bpWorkerFreeAtMins = new Map(workerFreeAtMins)
-  const bpWorkerBusySegments = new Map(
-    Array.from(workerBusySegments.entries()).map(([k, segs]) => [k, segs.slice()])
-  )
-
-  const bpNorms = new Set(Array.from(orderBasedBpSkus))
-  const srcStockList   = stockAssignList.filter(i => !bpNorms.has(i.sku.replace(/^0+/, '')))
-  const srcDeficitList = deficitAssignList.filter(i => !bpNorms.has(i.sku.replace(/^0+/, '')))
-  const bpStockList    = stockAssignList.filter(i => bpNorms.has(i.sku.replace(/^0+/, '')))
-  const bpDeficitList  = deficitAssignList.filter(i => bpNorms.has(i.sku.replace(/^0+/, '')))
-
-  runChannelPass(srcStockList)   // Pass 2a: regular SKUs (stock)
-  runChannelPass(srcDeficitList) // Pass 2b: regular SKUs (deficit)
+  runChannelPass(stockAssignList)
+  runChannelPass(deficitAssignList)
   assignments.push(...keptAssignments)
-
-  // Pass 3: by-products with restored (full) worker time budget — concurrent with source
-  if (bpStockList.length || bpDeficitList.length) {
-    for (const [k, v] of bpWorkerHours) workerHours.set(k, v)
-    for (const [k, v] of bpWorkerFreeAtMins) workerFreeAtMins.set(k, v)
-    for (const [k, v] of bpWorkerBusySegments) workerBusySegments.set(k, v.slice())
-    runChannelPass(bpStockList)   // Pass 3a: by-products (stock)
-    runChannelPass(bpDeficitList) // Pass 3b: by-products (deficit)
-  }
 
   if (!assignments.length) {
     const prodMatchCount = assignList.filter(t => skuMap.has(t.sku) || skuMap.has(t.sku.replace(/^0+/, ''))).length
@@ -2301,54 +2236,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     resequenced.push(...keptTasks)
   }
 
-  // By-product scheduling:
-  //   1. Each source worker produces ALL its by-products (1 task per source worker per by-product SKU)
-  //   2. By-products are sequential: no two by-product SKUs are produced simultaneously
-  //   3. "ของที่เหลือ" is produced last; its end time = source SKU end time
-  //
-  // deadline_time = task START time; end = wallClockFinish(start, workMins)
-  if (sourceSkuSet.size > 0) {
-    type SrcWorker = { workerCode: string; workerName: string; taskRef: Record<string, unknown>; startMins: number; qty: number }
-
-    // Track each source worker individually: normSku → Map<workerCode, SrcWorker>
-    const sourceWorkerMap = new Map<string, Map<string, SrcWorker>>()
-    for (const task of resequenced) {
-      const normSku = (task.sku as string).replace(/^0+/, '')
-      if (!sourceSkuSet.has(normSku)) continue
-      const [h, m] = ((task.deadline_time as string) || '00:00:00').split(':').map(Number)
-      const startMins = h * 60 + m
-      const taskQty = Number(task.target_quantity ?? 0)
-      const wCode = task.worker_code as string
-      if (!sourceWorkerMap.has(normSku)) sourceWorkerMap.set(normSku, new Map())
-      const wMap = sourceWorkerMap.get(normSku)!
-      const cur = wMap.get(wCode)
-      if (!cur) {
-        wMap.set(wCode, { workerCode: wCode, workerName: task.worker_name as string, taskRef: task, startMins, qty: taskQty })
-      } else {
-        wMap.set(wCode, { ...cur, startMins: Math.min(cur.startMins, startMins), qty: cur.qty + taskQty })
-      }
-    }
-
-    // Update deadline_time for by-product tasks to match their source worker's start time (concurrent).
-    // Qty and everything else stays as allocated by allocateBalanced — same logic as regular SKUs.
-    for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
-      const srcWMap = sourceWorkerMap.get(sourceSku)
-      if (!srcWMap || srcWMap.size === 0) continue
-      for (const entry of byProductsAll) {
-        const cleanBpSku = entry.byProductSku
-        for (const [wCode, srcWorker] of srcWMap.entries()) {
-          for (const task of resequenced) {
-            if ((task.sku as string).replace(/^0+/, '') !== cleanBpSku) continue
-            if (String(task.worker_code) !== wCode) continue
-            task.deadline_time = minsToTimeStr(srcWorker.startMins)
-            const en = String(task.note ?? '')
-            if (!en.includes('concurrent_group_follow')) task.note = en ? en + '|concurrent_group_follow' : 'concurrent_group_follow'
-          }
-        }
-      }
-    }
-  }
-
   resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
     const wCmp = String(a['worker_name'] ?? '').localeCompare(String(b['worker_name'] ?? ''))
     if (wCmp !== 0) return wCmp
@@ -2415,7 +2302,5 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .map(([sku, v]) => ({ sku, ...v }))
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
-    debug_concurrent_pairs: Array.from(byProductMap.entries())
-      .flatMap(([src, bps]) => bps.map(e => ({ source: src, byProduct: e.byProductSku }))),
   }
 }
