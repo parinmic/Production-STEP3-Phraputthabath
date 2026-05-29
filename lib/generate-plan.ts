@@ -1639,8 +1639,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
       const baggedOrderQty = roundDownToBag(sku, orderQty)
-      // Makro = ยอดล่วงหน้า: SKUs with no historical avg (e.g. new SKUs, by-products) use full order qty
-      if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
+      // Makro = ยอดล่วงหน้า: no-avg SKUs AND by-product SKUs always use full order qty (no variance)
+      if (avgBL3 === 0 || orderBasedBpSkus.has(sku)) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
       const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
