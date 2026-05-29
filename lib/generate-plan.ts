@@ -1566,9 +1566,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
 
-  // By-product SKUs with explicit channel orders are treated as regular SKUs in Phase 2/3.
+  // By-product SKUs with explicit channel orders enter assignList like regular SKUs in all phases.
   const orderBasedBpSkus = new Set<string>()
-  if ((isPhase2 || isPhase3) && byProductSkuSet.size > 0) {
+  if (byProductSkuSet.size > 0) {
     for (const sku of byProductSkuSet) {
       if (sku in makroMap || sku in wmMap || sku in lotusMap || bkpOrderMap.has(sku))
         orderBasedBpSkus.add(sku)
@@ -1705,38 +1705,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'BKP':        buildBKPTargets(),
   }
 
-  // Pre-capture target quantities for by-product SKUs.
-  // By-products enter the same channel logic as regular SKUs via channelTargets.
-  // Fallback to raw order maps for by-products filtered out by LOTUS/WM targets (no avg data).
-  const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
-  if (byProductSkuSet.size > 0) {
-    for (const [ch, targets] of Object.entries(channelTargets)) {
-      for (const t of targets) {
-        const normSku = t.sku.replace(/^0+/, '')
-        if (!byProductSkuSet.has(normSku)) continue
-        const existing = concurrentSkuFallbackTargets.get(normSku)
-        if (!existing || t.targetQty > existing.qty)
-          concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
-      }
-    }
-    // Fallback: by-products not in channelTargets (LOTUS/WM filter them out) → use raw order qty
-    const rawOrderMaps: Array<[Record<string, { qty: number; name: string | null }>, string]> = [
-      [wmMap, 'Wet Market'], [makroMap, 'Makro'], [lotusMap, 'LOTUS'],
-    ]
-    for (const sku of byProductSkuSet) {
-      if (concurrentSkuFallbackTargets.has(sku)) continue
-      for (const [om, ch] of rawOrderMaps) {
-        if (om[sku]) {
-          concurrentSkuFallbackTargets.set(sku, { qty: om[sku].qty, name: om[sku].name ?? null, channel: ch })
-          break
-        }
-      }
-      if (!concurrentSkuFallbackTargets.has(sku) && bkpOrderMap.has(sku)) {
-        const b = bkpOrderMap.get(sku)!
-        concurrentSkuFallbackTargets.set(sku, { qty: b.qty, name: b.name ?? null, channel: 'BKP' })
-      }
-    }
-  }
 
   // Build assignment list
   let assignList: SkuTarget[]
@@ -1814,11 +1782,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return (workersByStation[station] ?? []).length > 0
   })
 
-  // Track which order-based by-products survived the produceable filter.
-  // Those that didn't fall back to concurrent injection.
-  const finalOrderBasedBpSkus = new Set(
-    assignList.map(i => i.sku.replace(/^0+/, '')).filter(s => orderBasedBpSkus.has(s))
-  )
 
   // Deduct kept assignments
   assignList = assignList.map(item => {
@@ -2025,18 +1988,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const allSuppSlots = suppSlotResults.filter(Boolean) as (SuppSlot & { withinPhase: boolean })[]
   const activeSuppSlots = allSuppSlots.filter(s => s.withinPhase).sort((a, b) => a.deadlineMins - b.deadlineMins)
 
-  // Extend by-product fallback map with supplementary targets (ยอดล่วงหน้า)
-  if (byProductSkuSet.size > 0) {
-    for (const slot of allSuppSlots) {
-      for (const { sku, name, qty } of slot.skus) {
-        if (qty <= 0.01) continue
-        if (!byProductSkuSet.has(sku)) continue
-        const existing = concurrentSkuFallbackTargets.get(sku)
-        if (!existing || qty > existing.qty)
-          concurrentSkuFallbackTargets.set(sku, { qty, name: name ?? null, channel: 'เสริม' })
-      }
-    }
-  }
 
   // Assign workers
   const assignments: Record<string, unknown>[] = []
@@ -2355,25 +2306,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
 
-    // Already-allocated by-products: normSku → Map<workerCode, qty>
-    const allocatedBpWorkers = new Map<string, Map<string, number>>()
-    for (const task of resequenced) {
-      const normSku = (task.sku as string).replace(/^0+/, '')
-      if (!byProductSkuSet.has(normSku)) continue
-      if (!allocatedBpWorkers.has(normSku)) allocatedBpWorkers.set(normSku, new Map())
-      const wMap = allocatedBpWorkers.get(normSku)!
-      const wCode = task.worker_code as string
-      wMap.set(wCode, (wMap.get(wCode) ?? 0) + Number(task.target_quantity ?? 0))
-    }
-
-    // Pass 1: Update deadline_time for by-products already allocated via allocateBalanced
-    // (e.g. Phase 2/3 by-products that have channel orders → went through normal allocation).
-    // We only adjust timing to be concurrent — qty stays as-is.
+    // Update deadline_time for by-product tasks to match their source worker's start time (concurrent).
+    // Qty and everything else stays as allocated by allocateBalanced — same logic as regular SKUs.
     for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
       const srcWMap = sourceWorkerMap.get(sourceSku)
       if (!srcWMap || srcWMap.size === 0) continue
       for (const entry of byProductsAll) {
-        if (!finalOrderBasedBpSkus.has(entry.byProductSku)) continue
         const cleanBpSku = entry.byProductSku
         for (const [wCode, srcWorker] of srcWMap.entries()) {
           for (const task of resequenced) {
@@ -2386,155 +2324,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         }
       }
     }
-
-    // Production-plan qty + channel for a by-product SKU
-    const getBpPlanInfo = (sku: string): { qty: number; name: string | null; channel: string } | null => {
-      const fb = concurrentSkuFallbackTargets.get(sku)
-      if (fb && fb.qty > 0.01) return fb
-      for (const slot of allSuppSlots) {
-        const found = slot.skus.find(s => s.sku === sku && s.qty > 0.01)
-        if (found) return { qty: found.qty, name: found.name ?? null, channel: 'เสริม' as string }
-      }
-      return null
-    }
-
-    // Pre-compute total source production qty per by-product SKU across ALL source groups.
-    // When multiple sources share a by-product, the by-product qty must be split
-    // proportionally (not given in full to each source independently).
-    const bpAllSrcQtyMap = new Map<string, number>()
-    for (const [src, bps] of Array.from(byProductMap.entries())) {
-      const wm = sourceWorkerMap.get(src)
-      if (!wm || wm.size === 0) continue
-      const srcTotal = Array.from(wm.values()).reduce((s, w) => s + w.qty, 0)
-      for (const e of bps) bpAllSrcQtyMap.set(e.byProductSku, (bpAllSrcQtyMap.get(e.byProductSku) ?? 0) + srcTotal)
-    }
-
-    const injectedTasks: Record<string, unknown>[] = []
-
-    for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
-      // Skip by-products already allocated via allocateBalanced (went through assignList).
-      const byProducts = byProductsAll.filter(e => !finalOrderBasedBpSkus.has(e.byProductSku))
-      if (!byProducts.length) continue
-      const prevInjectedLen = injectedTasks.length
-      const srcWMap = sourceWorkerMap.get(sourceSku)
-      if (!srcWMap || srcWMap.size === 0) continue
-      const sourceWorkers = Array.from(srcWMap.values())
-      const numWorkers = sourceWorkers.length
-      const totalSourceQty = sourceWorkers.reduce((s, w) => s + w.qty, 0)
-
-
-      // Get plan qty for each by-product from the production plan
-      type BpInfo = { qty: number; channel: string; name: string | null }
-      const bpPlanQtys = new Map<string, BpInfo>()
-      for (const entry of byProducts) {
-        const planInfo = getBpPlanInfo(entry.byProductSku)
-        const allocTotal = allocatedBpWorkers.has(entry.byProductSku)
-          ? Array.from(allocatedBpWorkers.get(entry.byProductSku)!.values()).reduce((s, q) => s + q, 0)
-          : 0
-        const rawQty = (planInfo?.qty ?? 0) > 0.01 ? planInfo!.qty : allocTotal
-        const prevAllocated = phase1Assigned.get(entry.byProductSku) ?? 0
-        const wpbBpEntry = wpbMap.get(entry.byProductSku) ?? wpbMap.get(`0${entry.byProductSku}`) ?? 0
-        const totalQty = wpbBpEntry > 0
-          ? Math.max(0, Math.ceil(rawQty / wpbBpEntry) - Math.floor(prevAllocated / wpbBpEntry)) * wpbBpEntry
-          : Math.max(0, rawQty - prevAllocated)
-        if (totalQty > 0.01) {
-          bpPlanQtys.set(entry.byProductSku, { qty: totalQty, channel: planInfo?.channel ?? 'เสริม', name: planInfo?.name ?? null })
-        }
-      }
-
-      type BpOrder = { sku: string; name: string | null; totalQty: number; channel: string; note: string }
-      const orderedBp: BpOrder[] = byProducts
-        .filter(e => (bpPlanQtys.get(e.byProductSku)?.qty ?? 0) > 0.01)
-        .sort((a, b) => {
-          const fa = bpPlanQtys.get(a.byProductSku)
-          const fb2 = bpPlanQtys.get(b.byProductSku)
-          const pa = fa ? (fa.channel === 'เสริม' ? 0 : (channelPriority[fa.channel] ?? 99)) : 99
-          const pb = fb2 ? (fb2.channel === 'เสริม' ? 0 : (channelPriority[fb2.channel] ?? 99)) : 99
-          return pa - pb
-        })
-        .map(e => {
-          const info = bpPlanQtys.get(e.byProductSku)!
-          return { sku: e.byProductSku, name: e.name, totalQty: info.qty, channel: info.channel, note: 'concurrent_group_follow' }
-        })
-
-      // Create / update tasks: one per source worker per by-product.
-      // Each by-product task starts concurrently with that worker's source task (same start time).
-      for (const entry of orderedBp) {
-        const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
-
-        const cleanBpSku = entry.sku.replace(/^0+/, '')
-        const wpbBp = wpbMap.get(cleanBpSku) ?? wpbMap.get(entry.sku) ?? 0
-        for (const srcWorker of sourceWorkers) {
-          // Each worker's by-product starts at the same time as their source task (concurrent)
-          const bpStart = srcWorker.startMins
-          // Distribute using the GLOBAL source qty across all sources, so that when
-          // multiple source SKUs share a by-product, each worker only receives its
-          // proportional fraction of the total plan qty (not the full qty independently).
-          const allSrcQty = bpAllSrcQtyMap.get(entry.sku) ?? totalSourceQty
-          const proportional = allSrcQty > 0
-            ? entry.totalQty * (srcWorker.qty / allSrcQty)
-            : entry.totalQty / numWorkers
-          const workerQty = wpbBp > 0
-            ? Math.floor(proportional / wpbBp) * wpbBp
-            : Math.round(proportional * 100) / 100
-          if (workerQty <= 0.01) continue
-
-          if (existingWMap.has(srcWorker.workerCode)) {
-            // Update existing task on this worker: fix timing, qty, worker identity, note
-            // Search both resequenced (main allocation) and injectedTasks (prior source injections)
-            for (const task of [...resequenced, ...injectedTasks]) {
-              if ((task.sku as string).replace(/^0+/, '') !== entry.sku) continue
-              if (String(task.worker_code) !== srcWorker.workerCode) continue
-              task.target_quantity = workerQty
-              task.deadline_time = minsToTimeStr(bpStart)
-              task.worker_code = srcWorker.workerCode
-              task.worker_name = srcWorker.workerName
-              const en = String(task.note ?? '')
-              if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
-            }
-          } else {
-            injectedTasks.push({
-              ...srcWorker.taskRef,
-              sku: entry.sku,
-              sku_name: skuMap.get(entry.sku)?.sku_name ?? entry.name ?? null,
-              target_quantity: workerQty,
-              channel: entry.channel,
-              worker_code: srcWorker.workerCode,
-              worker_name: srcWorker.workerName,
-              deadline_time: minsToTimeStr(bpStart),
-              is_deficit: false,
-              note: entry.note,
-            })
-          }
-        }
-
-        // By-product tasks on workers outside the source group → reassign to first source worker
-        const firstSrcStart = sourceWorkers[0]?.startMins ?? 0
-        for (const [existingWCode] of Array.from(existingWMap.entries())) {
-          if (sourceWorkers.some(w => w.workerCode === existingWCode)) continue
-          for (const task of resequenced) {
-            if ((task.sku as string).replace(/^0+/, '') !== entry.sku) continue
-            if (String(task.worker_code) !== existingWCode) continue
-            task.worker_code = sourceWorkers[0].workerCode
-            task.worker_name = sourceWorkers[0].workerName
-            task.deadline_time = minsToTimeStr(firstSrcStart)
-            const en = String(task.note ?? '')
-            if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
-          }
-        }
-      }
-
-      // After injecting for this source, update allocatedBpWorkers so the next source
-      // in the loop sees already-injected workers and updates them instead of duplicating.
-      for (let i = prevInjectedLen; i < injectedTasks.length; i++) {
-        const task = injectedTasks[i]
-        const normSku = (task.sku as string).replace(/^0+/, '')
-        if (!allocatedBpWorkers.has(normSku)) allocatedBpWorkers.set(normSku, new Map())
-        allocatedBpWorkers.get(normSku)!.set(task.worker_code as string, Number(task.target_quantity ?? 0))
-      }
-    }
-
-    resequenced.push(...injectedTasks)
   }
 
   resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
