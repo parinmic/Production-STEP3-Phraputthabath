@@ -11,15 +11,9 @@ const normName = (s: string) =>
   s ? s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase() : ''
 
 const WEEKLY_STATION_MAP: Record<string, string> = {
-  'sa-phok-special': 'สะโพก',
-  'sam-chan-special': 'สามชั้น',
-  'lai-special':     'ไหล่',
-}
-
-const PRODUCT_TYPE_STATION: Record<string, string> = {
-  'สะโพกพิเศษ':  'สะโพก',
-  'สามชั้นพิเศษ': 'สามชั้น',
-  'ไหล่พิเศษ':   'ไหล่',
+  'sa-phok-special': 'สะโพกพิเศษ',
+  'sam-chan-special': 'สามชั้นพิเศษ',
+  'lai-special':     'ไหล่พิเศษ',
 }
 
 async function buildStationLookup(): Promise<Map<string, string>> {
@@ -61,7 +55,7 @@ async function buildStationLookup(): Promise<Map<string, string>> {
     if (!name) continue
     const key = normName(name)
     if (lookup.has(key)) continue  // weekly มีแล้ว ไม่ override
-    const station = PRODUCT_TYPE_STATION[String(row.product_type ?? '')] ?? null
+    const station = String(row.product_type ?? '') || null
     if (station) lookup.set(key, station)
   }
 

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle } from 'lucide-react'
 
 interface AttendanceRow {
   emp_id: string
@@ -21,20 +21,11 @@ interface Summary {
   total: number
 }
 
-type SortDir = 'asc' | 'desc' | null
-type SortCol = keyof AttendanceRow | null
-
 const STATUS_LABEL: Record<string, string> = { Present: 'มาทำงาน', Late: 'มาสาย', Absent: 'ขาด' }
 const STATUS_COLOR: Record<string, string> = {
   Present: 'bg-green-100 text-green-700',
   Late:    'bg-yellow-100 text-yellow-700',
   Absent:  'bg-red-100 text-red-700',
-}
-
-function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol; sortDir: SortDir }) {
-  if (sortCol !== col) return <ChevronsUpDown size={13} className="text-gray-300 ml-1 shrink-0" />
-  if (sortDir === 'asc')  return <ChevronUp   size={13} className="text-blue-500 ml-1 shrink-0" />
-  return <ChevronDown size={13} className="text-blue-500 ml-1 shrink-0" />
 }
 
 export default function WorkforcePage() {
@@ -45,15 +36,10 @@ export default function WorkforcePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
-  // Filters
   const [filterStatus,  setFilterStatus]  = useState<string>('all')
   const [filterShift,   setFilterShift]   = useState<string>('all')
   const [filterStation, setFilterStation] = useState<string>('all')
   const [filterName,    setFilterName]    = useState('')
-
-  // Sort
-  const [sortCol, setSortCol] = useState<SortCol>(null)
-  const [sortDir, setSortDir] = useState<SortDir>(null)
 
   const load = useCallback(async (d: string) => {
     setLoading(true); setError('')
@@ -70,14 +56,8 @@ export default function WorkforcePage() {
 
   useEffect(() => { load(date) }, [date, load])
 
-  const handleSort = (col: SortCol) => {
-    if (sortCol !== col) { setSortCol(col); setSortDir('asc') }
-    else if (sortDir === 'asc')  setSortDir('desc')
-    else { setSortCol(null); setSortDir(null) }
-  }
-
-  const stations  = useMemo(() => [...new Set(rows.map(r => r.station).filter(Boolean) as string[])].sort(), [rows])
-  const shifts    = useMemo(() => [...new Set(rows.map(r => r.shift).filter(Boolean))].sort(), [rows])
+  const stations = useMemo(() => [...new Set(rows.map(r => r.station).filter(Boolean) as string[])].sort(), [rows])
+  const shifts   = useMemo(() => [...new Set(rows.map(r => r.shift).filter(Boolean))].sort(), [rows])
 
   const displayed = useMemo(() => {
     let result = [...rows]
@@ -89,31 +69,10 @@ export default function WorkforcePage() {
       const q = filterName.trim().toUpperCase()
       result = result.filter(r => r.name.toUpperCase().includes(q) || r.emp_id.includes(q))
     }
-    if (sortCol && sortDir) {
-      result.sort((a, b) => {
-        const av = a[sortCol] ?? ''
-        const bv = b[sortCol] ?? ''
-        const cmp = typeof av === 'number' && typeof bv === 'number'
-          ? av - bv
-          : String(av).localeCompare(String(bv), 'th')
-        return sortDir === 'asc' ? cmp : -cmp
-      })
-    }
     return result
-  }, [rows, filterStatus, filterShift, filterStation, filterName, sortCol, sortDir])
+  }, [rows, filterStatus, filterShift, filterStation, filterName])
 
   const planCount = (summary?.present ?? 0) + (summary?.late ?? 0)
-
-  const Th = ({ col, label, className = '' }: { col: SortCol; label: string; className?: string }) => (
-    <th
-      className={`px-4 py-2.5 text-left text-gray-600 font-medium cursor-pointer select-none hover:bg-gray-100 whitespace-nowrap ${className}`}
-      onClick={() => handleSort(col)}
-    >
-      <span className="flex items-center gap-0.5">
-        {label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
-      </span>
-    </th>
-  )
 
   return (
     <div className="space-y-5">
@@ -129,8 +88,8 @@ export default function WorkforcePage() {
         </button>
       </div>
 
-      {/* Date + search row */}
-      <div className="card flex flex-wrap items-center gap-4">
+      {/* Date + filters */}
+      <div className="card flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Calendar size={18} className="text-blue-500 shrink-0" />
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -139,7 +98,7 @@ export default function WorkforcePage() {
         <input
           type="text" placeholder="ค้นหาชื่อ / รหัส..." value={filterName}
           onChange={e => setFilterName(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
         />
         <select value={filterShift} onChange={e => setFilterShift(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -150,7 +109,7 @@ export default function WorkforcePage() {
           className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="all">ทุก Station</option>
           {stations.map(s => <option key={s} value={s}>{s}</option>)}
-          <option value="__none__">ไม่พบใน Weekly</option>
+          <option value="__none__">ไม่พบใน Weekly/Job Assign</option>
         </select>
       </div>
 
@@ -165,10 +124,10 @@ export default function WorkforcePage() {
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { key: 'Present', label: 'มาทำงาน', value: summary.present, icon: CheckCircle2, color: 'text-green-500', bold: 'text-green-600' },
-            { key: 'Late',    label: 'มาสาย',   value: summary.late,    icon: Clock,         color: 'text-yellow-500', bold: 'text-yellow-600' },
-            { key: 'Absent',  label: 'ขาด',      value: summary.absent,  icon: XCircle,       color: 'text-red-500',    bold: 'text-red-600' },
-            { key: 'all',     label: 'ใช้ใน Plan', value: planCount, icon: Users, color: 'text-blue-500', bold: 'text-blue-600' },
+            { key: 'Present', label: 'มาทำงาน',   value: summary.present, icon: CheckCircle2, color: 'text-green-500',  bold: 'text-green-600' },
+            { key: 'Late',    label: 'มาสาย',      value: summary.late,    icon: Clock,        color: 'text-yellow-500', bold: 'text-yellow-600' },
+            { key: 'Absent',  label: 'ขาด',         value: summary.absent,  icon: XCircle,      color: 'text-red-500',    bold: 'text-red-600' },
+            { key: 'all',     label: 'ใช้ใน Plan', value: planCount,       icon: Users,        color: 'text-blue-500',   bold: 'text-blue-600' },
           ].map(({ key, label, value, icon: Icon, color, bold }) => (
             <button key={key}
               onClick={() => setFilterStatus(filterStatus === key ? 'all' : key)}
@@ -200,15 +159,15 @@ export default function WorkforcePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b">
-                  <Th col="emp_id"           label="รหัส" />
-                  <Th col="name"             label="ชื่อ" />
-                  <Th col="dept"             label="แผนก" />
-                  <Th col="shift"            label="กะ" />
-                  <Th col="shift_start"      label="เริ่มกะ" className="text-center" />
-                  <Th col="scan_in"          label="Scan In" className="text-center" />
-                  <Th col="attendance_status" label="สถานะ" className="text-center" />
-                  <Th col="minutes_late"     label="สาย (นาที)" className="text-center" />
-                  <Th col="station"          label="Station (Weekly)" className="text-center" />
+                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">รหัส</th>
+                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">ชื่อ</th>
+                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">แผนก</th>
+                  <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">กะ</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">เริ่มกะ</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Scan In</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สถานะ</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สาย (นาที)</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Station</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
