@@ -1276,7 +1276,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
   if (!workforce.length) return {
     success: false,
-    message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly',
+    message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:45 หรือตั้งค่า Workforce Weekly',
   }
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
