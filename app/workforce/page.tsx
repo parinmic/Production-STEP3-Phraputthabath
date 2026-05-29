@@ -1,235 +1,213 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
-import { Upload, AlertCircle, CheckCircle2, X, Calendar, Download } from 'lucide-react'
-import * as XLSX from 'xlsx'
-import { parseFile, ParsedRow } from '@/lib/parser'
+import { useState, useEffect, useCallback } from 'react'
+import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle } from 'lucide-react'
 
-interface UploadRecord {
-  source_file: string
-  record_count: number
-  uploaded_at: string
+interface AttendanceRow {
+  emp_id: string
+  name: string
+  dept: string
+  shift: string
+  shift_start: string
+  scan_in: string
+  attendance_status: string
+  minutes_late: number
 }
 
-const PREVIEW_COLS = ['plan_id', 'emp_id', 'name', 'home_dept', 'target_dept', 'work_station', 'shift', 'required_skill']
-
-interface RoundUploadProps {
-  round: string
-  label: string
-  color: string
-  workDate: string
+interface Summary {
+  present: number
+  late: number
+  absent: number
+  total: number
 }
 
-function RoundUpload({ round, label, color, workDate }: RoundUploadProps) {
-  const [status, setStatus] = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
-  const [message, setMessage] = useState('')
-  const [preview, setPreview] = useState<ParsedRow[]>([])
-  const [filename, setFilename] = useState('')
-  const [history, setHistory] = useState<UploadRecord[]>([])
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+const STATUS_LABEL: Record<string, string> = {
+  Present: 'มาทำงาน',
+  Late:    'มาสาย',
+  Absent:  'ขาด',
+}
 
-  const fetchHistory = async () => {
+const STATUS_COLOR: Record<string, string> = {
+  Present: 'bg-green-100 text-green-700',
+  Late:    'bg-yellow-100 text-yellow-700',
+  Absent:  'bg-red-100 text-red-700',
+}
+
+export default function WorkforcePage() {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const [date, setDate] = useState(today)
+  const [rows, setRows] = useState<AttendanceRow[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [filter, setFilter] = useState<'all' | 'Present' | 'Late' | 'Absent'>('all')
+
+  const load = useCallback(async (d: string) => {
+    setLoading(true)
+    setError('')
     try {
-      const res = await fetch(`/api/upload-workforce?round=${round}`)
-      const data = await res.json()
-      setHistory(data.uploads ?? [])
-    } catch { /* silent */ }
-  }
-
-  useEffect(() => { fetchHistory() }, [round])
-
-  const handleDelete = async (sourceFile: string) => {
-    if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
-    setDeleting(sourceFile)
-    try {
-      const res = await fetch(`/api/upload-workforce?round=${round}&file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (data.success) fetchHistory()
-      else alert(data.message ?? 'ลบไม่สำเร็จ')
-    } catch { alert('เกิดข้อผิดพลาด') }
-    finally { setDeleting(null) }
-  }
-
-  const handleDownload = async (sourceFile: string) => {
-    try {
-      const res  = await fetch(`/api/download-upload?table=daily_workforce&file=${encodeURIComponent(sourceFile)}`)
+      const res = await fetch(`/api/external-timestamp?date=${d}`)
       const json = await res.json()
-      if (!json.data?.length) { alert('ไม่มีข้อมูล'); return }
-      const headers: Record<string, string> = json.headers
-      const keys = Object.keys(headers)
-      const ws = XLSX.utils.aoa_to_sheet([keys.map(k => headers[k]), ...(json.data as Record<string, unknown>[]).map(row => keys.map(k => row[k] ?? ''))])
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'กำลังคน')
-      XLSX.writeFile(wb, `${sourceFile.replace(/\.[^.]+$/, '')}_export.xlsx`)
-    } catch { alert('ดาวน์โหลดไม่สำเร็จ') }
-  }
-
-  const handleFile = async (file: File) => {
-    setStatus('parsing'); setMessage(''); setPreview([]); setFilename(file.name)
-    try {
-      const rows = await parseFile(file)
-      if (!rows.length) throw new Error('ไฟล์ไม่มีข้อมูล')
-      setPreview(rows.slice(0, 5)); setStatus('idle')
+      if (json.error) throw new Error(json.error)
+      setRows(json.data ?? [])
+      setSummary(json.summary ?? null)
     } catch (e: unknown) {
-      setStatus('error'); setMessage(e instanceof Error ? e.message : 'อ่านไฟล์ไม่ได้')
+      setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
+    } finally {
+      setLoading(false)
     }
-  }
+  }, [])
 
-  const handleSubmit = async () => {
-    if (!preview.length) return
-    if (!workDate) { setStatus('error'); setMessage('กรุณาเลือกวันที่ก่อน'); return }
-    setStatus('uploading')
-    try {
-      const file = (inputRef.current!.files as FileList)[0]
-      const rows = await parseFile(file)
-      const res = await fetch(`/api/upload-workforce?round=${round}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, filename: file.name, workDate }),
-      })
-      const result = await res.json()
-      setStatus(result.success ? 'success' : 'error')
-      setMessage(result.message)
-      if (result.success) {
-        setPreview([]); setFilename(''); inputRef.current!.value = ''
-        fetchHistory()
-      }
-    } catch (e: unknown) {
-      setStatus('error'); setMessage(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
-    }
-  }
+  useEffect(() => { load(date) }, [date, load])
 
-  const cols = preview.length ? PREVIEW_COLS.filter(c => c in preview[0]) : []
-  const borderColor = color === 'blue' ? 'border-blue-500' : 'border-orange-500'
-  const btnColor = color === 'blue' ? 'btn-primary' : 'bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50'
+  const displayed = filter === 'all' ? rows : rows.filter(r => r.attendance_status === filter)
+  const planCount = (summary?.present ?? 0) + (summary?.late ?? 0)
 
   return (
-    <div className={`border-t-4 ${borderColor} pt-4 rounded-t-sm space-y-4`}>
-      <div>
-        <h2 className="text-xl font-bold text-gray-900">{label}</h2>
-        <p className="text-gray-500 text-sm mt-0.5">อัพโหลดไฟล์ Allocation Result</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">สถานะกำลังคนประจำวัน</h1>
+          <p className="text-gray-500 mt-1 text-sm">ข้อมูลจากระบบสแกนเข้างาน — อัพเดตอัตโนมัติ</p>
+        </div>
+        <button
+          onClick={() => load(date)}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          รีเฟรช
+        </button>
       </div>
 
-      <div className="card border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors cursor-pointer text-center"
-        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-        onDragOver={e => e.preventDefault()}
-        onClick={() => inputRef.current?.click()}>
-        <Upload className="mx-auto text-gray-400 mb-3" size={36} />
-        <p className="font-medium text-gray-700">{filename || 'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
-        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv</p>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-          onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
+      {/* Date picker */}
+      <div className="card flex items-center gap-4">
+        <Calendar size={20} className="text-blue-500 shrink-0" />
+        <label className="font-medium text-gray-700 whitespace-nowrap">วันที่</label>
+        <input
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
-      {status === 'error' && (
-        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
-          <AlertCircle size={20} />{message}
-        </div>
-      )}
-      {status === 'success' && (
-        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-green-700">
-          <CheckCircle2 size={20} />{message}
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
+          <AlertCircle size={18} />{error}
         </div>
       )}
 
-      {preview.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="font-semibold text-gray-800">ตัวอย่างข้อมูล (5 แถวแรก)</p>
-              <p className="text-xs text-gray-500 mt-0.5">วันที่: {workDate || '—'}</p>
+      {/* Summary cards */}
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <button
+            onClick={() => setFilter(filter === 'Present' ? 'all' : 'Present')}
+            className={`card text-left transition-all ${filter === 'Present' ? 'ring-2 ring-green-400' : 'hover:shadow-md'}`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 size={18} className="text-green-500" />
+              <span className="text-sm text-gray-500">มาทำงาน</span>
             </div>
-            <button onClick={() => { setPreview([]); setFilename(''); inputRef.current!.value = '' }}
-              className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-          </div>
+            <p className="text-3xl font-bold text-green-600">{summary.present}</p>
+            <p className="text-xs text-gray-400 mt-1">คน</p>
+          </button>
+
+          <button
+            onClick={() => setFilter(filter === 'Late' ? 'all' : 'Late')}
+            className={`card text-left transition-all ${filter === 'Late' ? 'ring-2 ring-yellow-400' : 'hover:shadow-md'}`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Clock size={18} className="text-yellow-500" />
+              <span className="text-sm text-gray-500">มาสาย</span>
+            </div>
+            <p className="text-3xl font-bold text-yellow-600">{summary.late}</p>
+            <p className="text-xs text-gray-400 mt-1">คน</p>
+          </button>
+
+          <button
+            onClick={() => setFilter(filter === 'Absent' ? 'all' : 'Absent')}
+            className={`card text-left transition-all ${filter === 'Absent' ? 'ring-2 ring-red-400' : 'hover:shadow-md'}`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <XCircle size={18} className="text-red-500" />
+              <span className="text-sm text-gray-500">ขาด</span>
+            </div>
+            <p className="text-3xl font-bold text-red-600">{summary.absent}</p>
+            <p className="text-xs text-gray-400 mt-1">คน</p>
+          </button>
+
+          <button
+            onClick={() => setFilter('all')}
+            className={`card text-left transition-all ${filter === 'all' ? 'ring-2 ring-blue-400' : 'hover:shadow-md'}`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Users size={18} className="text-blue-500" />
+              <span className="text-sm text-gray-500">ใช้ใน Plan</span>
+            </div>
+            <p className="text-3xl font-bold text-blue-600">{planCount}</p>
+            <p className="text-xs text-gray-400 mt-1">Present + Late</p>
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? (
+        <div className="card text-center py-12 text-gray-400">
+          <RefreshCw size={24} className="animate-spin mx-auto mb-3" />
+          กำลังโหลด...
+        </div>
+      ) : displayed.length === 0 && !error ? (
+        <div className="card text-center py-12 text-gray-400">
+          <Users size={36} className="mx-auto mb-3 opacity-30" />
+          {rows.length === 0 ? 'ยังไม่มีข้อมูล Attendance วันนี้' : 'ไม่มีรายการที่ตรงกับตัวกรอง'}
+        </div>
+      ) : (
+        <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50">
-                  {cols.map(c => <th key={c} className="px-3 py-2 text-left text-gray-600 font-medium border-b whitespace-nowrap">{c}</th>)}
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-4 py-3 text-left text-gray-600 font-medium">รหัส</th>
+                  <th className="px-4 py-3 text-left text-gray-600 font-medium">ชื่อ</th>
+                  <th className="px-4 py-3 text-left text-gray-600 font-medium">แผนก</th>
+                  <th className="px-4 py-3 text-left text-gray-600 font-medium">กะ</th>
+                  <th className="px-4 py-3 text-center text-gray-600 font-medium">เริ่มกะ</th>
+                  <th className="px-4 py-3 text-center text-gray-600 font-medium">Scan In</th>
+                  <th className="px-4 py-3 text-center text-gray-600 font-medium">สถานะ</th>
+                  <th className="px-4 py-3 text-center text-gray-600 font-medium">สาย (นาที)</th>
                 </tr>
               </thead>
-              <tbody>
-                {preview.map((row, i) => (
-                  <tr key={i} className="border-b hover:bg-gray-50">
-                    {cols.map(c => <td key={c} className="px-3 py-2 text-gray-700 whitespace-nowrap">{String(row[c] ?? '-')}</td>)}
+              <tbody className="divide-y divide-gray-100">
+                {displayed.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.emp_id}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[180px] truncate">{r.dept}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{r.shift}</td>
+                    <td className="px-4 py-2.5 text-center text-gray-500">{r.shift_start}</td>
+                    <td className="px-4 py-2.5 text-center font-mono text-gray-700">{r.scan_in || '—'}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[r.attendance_status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {STATUS_LABEL[r.attendance_status] ?? r.attendance_status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-center text-gray-500">
+                      {r.minutes_late > 0 ? (
+                        <span className="text-yellow-600 font-medium">{r.minutes_late}</span>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <button onClick={handleSubmit} disabled={status === 'uploading'} className={`${btnColor} mt-4`}>
-            {status === 'uploading' ? 'กำลังบันทึก...' : 'ยืนยันอัพโหลด'}
-          </button>
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div className="card">
-          <p className="font-semibold text-gray-800 mb-3">ประวัติการอัพโหลด</p>
-          <div className="space-y-0 divide-y divide-gray-100">
-            {history.map((h, i) => (
-              <div key={i} className="flex items-center gap-3 py-2.5 hover:bg-gray-50 -mx-1 px-1 rounded-lg">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-gray-700 truncate">{h.source_file}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {h.record_count.toLocaleString()} รายการ
-                    <span className="mx-1.5">·</span>
-                    {new Date(h.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDownload(h.source_file)}
-                  className="shrink-0 text-gray-300 hover:text-blue-500 transition-colors p-1"
-                  title="ดาวน์โหลด Excel"
-                >
-                  <Download size={14} />
-                </button>
-                <button
-                  onClick={() => handleDelete(h.source_file)}
-                  disabled={deleting === h.source_file}
-                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
-                  title="ลบ"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 text-right">
+            แสดง {displayed.length} จาก {rows.length} รายการ
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-export default function WorkforcePage() {
-  const today = new Date().toISOString().split('T')[0]
-  const [workDate, setWorkDate] = useState(today)
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">อัพโหลดกำลังคนประจำวัน</h1>
-        <p className="text-gray-500 mt-1">อัพโหลดรายชื่อพนักงานแยกตาม Station และกะการผลิต</p>
-      </div>
-
-      {/* Shared date picker */}
-      <div className="card flex items-center gap-4">
-        <Calendar size={20} className="text-blue-500 shrink-0" />
-        <label className="font-medium text-gray-700 whitespace-nowrap">วันที่ผลิต</label>
-        <input
-          type="date"
-          value={workDate}
-          onChange={e => setWorkDate(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <span className="text-sm text-gray-500">ใช้ร่วมกันทั้งสองรอบ</span>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <RoundUpload round="0800" label="รอบ 8.00 น." color="blue" workDate={workDate} />
-        <RoundUpload round="1300" label="รอบ 13.00 น." color="orange" workDate={workDate} />
-      </div>
     </div>
   )
 }

@@ -1,14 +1,21 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, externalSupabase } from '@/lib/supabase'
 import { Users, ClipboardList } from 'lucide-react'
 import Link from 'next/link'
 
 async function getStats() {
-  const today = new Date().toISOString().split('T')[0]
-  const [w, p] = await Promise.all([
-    supabase.from('daily_workforce').select('id', { count: 'exact' }).eq('work_date', today),
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const [yr, mo, dy] = today.split('-')
+  const thaiDate = `${Number(dy)}/${Number(mo)}/${Number(yr) + 543}`
+
+  const [attendance, p] = await Promise.all([
+    externalSupabase
+      .from('timestamp_with_dept')
+      .select('attendance_status', { count: 'exact' })
+      .eq('target_date', thaiDate)
+      .in('attendance_status', ['Present', 'Late']),
     supabase.from('production_assignments').select('sku', { count: 'exact' }).eq('production_date', today),
   ])
-  return { workforce: w.count ?? 0, plan: p.count ?? 0 }
+  return { workforce: attendance.count ?? 0, plan: p.count ?? 0 }
 }
 
 export default async function DashboardPage() {
