@@ -955,10 +955,10 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   for (const a of activeAssignments) {
     const key = `${a.table_name}|||${a.sku}`
     if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
-    finNameMap.set(key, a.sku_name ?? null)
-    skuSet.add(a.sku)
+    finNameMap.set(key, (a.sku_name as string | null) ?? null)
+    skuSet.add(a.sku as string)
     const roundQtys = finRoundMap.get(key)!
-    const noteRounds = parseRoundNote(a.note)
+    const noteRounds = parseRoundNote(a.note as string | null)
     if (noteRounds.size > 0) {
       for (const [rm, q] of Array.from(noteRounds.entries())) {
         const mappedRm = getRoundMins(rm, roundMins)
@@ -2322,16 +2322,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   //   3. "ของที่เหลือ" is produced last; its end time = source SKU end time
   //
   // deadline_time = task START time; end = wallClockFinish(start, workMins)
-  // Deadlines are chained backward from source_end so the last by-product ends exactly at source_end.
   if (sourceSkuSet.size > 0) {
     type SrcWorker = { workerCode: string; workerName: string; taskRef: Record<string, unknown>; startMins: number; qty: number }
-
-// Work-minutes to produce qty of a SKU at its productivity rate
-    const getDurMins = (sku: string, qty: number): number => {
-      const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
-      const rate = prod?.rate ?? 0
-      return rate > 0 ? Math.round((qty / rate) * 60) : 0
-    }
 
     // Track each source worker individually: normSku → Map<workerCode, SrcWorker>
     const sourceWorkerMap = new Map<string, Map<string, SrcWorker>>()
@@ -2398,8 +2390,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const numWorkers = sourceWorkers.length
       const totalSourceQty = sourceWorkers.reduce((s, w) => s + w.qty, 0)
 
-      // Source start = earliest start among all source workers (by-products begin simultaneously)
-      const sourceStartMins = Math.min(...sourceWorkers.map(w => w.startMins))
 
       // maxRatio → total by-product yield quantity (source_total × ratio)
       let maxRatio = 0
@@ -2465,26 +2455,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           : []),
       ]
 
-      // Chain start times forward from sourceStartMins.
-      // First by-product starts at the same time as the source SKU.
-      // Subsequent by-products start after the previous one finishes.
-      const bpStartMap = new Map<string, number>()
-      let chainStart = sourceStartMins
+      // Create / update tasks: one per source worker per by-product.
+      // Each by-product task starts concurrently with that worker's source task (same start time).
       for (const entry of orderedBp) {
-        bpStartMap.set(entry.sku, chainStart)
-        const perWorkerQty = numWorkers > 0 ? entry.totalQty / numWorkers : entry.totalQty
-        const dur = getDurMins(entry.sku, perWorkerQty)
-        chainStart = dur > 0 ? wallClockFinish(chainStart, dur) : chainStart + 1
-      }
-
-      // Create / update tasks: one per source worker per by-product
-      for (const entry of orderedBp) {
-        const bpStart = bpStartMap.get(entry.sku) ?? sourceStartMins
         const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
 
         const cleanBpSku = entry.sku.replace(/^0+/, '')
         const wpbBp = wpbMap.get(cleanBpSku) ?? wpbMap.get(entry.sku) ?? 0
         for (const srcWorker of sourceWorkers) {
+          // Each worker's by-product starts at the same time as their source task (concurrent)
+          const bpStart = srcWorker.startMins
           // Distribute using the GLOBAL source qty across all sources, so that when
           // multiple source SKUs share a by-product, each worker only receives its
           // proportional fraction of the total plan qty (not the full qty independently).
@@ -2527,6 +2507,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         }
 
         // By-product tasks on workers outside the source group → reassign to first source worker
+        const firstSrcStart = sourceWorkers[0]?.startMins ?? 0
         for (const [existingWCode] of Array.from(existingWMap.entries())) {
           if (sourceWorkers.some(w => w.workerCode === existingWCode)) continue
           for (const task of resequenced) {
@@ -2534,7 +2515,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             if (String(task.worker_code) !== existingWCode) continue
             task.worker_code = sourceWorkers[0].workerCode
             task.worker_name = sourceWorkers[0].workerName
-            task.deadline_time = minsToTimeStr(bpStart)
+            task.deadline_time = minsToTimeStr(firstSrcStart)
             const en = String(task.note ?? '')
             if (!en.includes(entry.note)) task.note = en ? en + '|' + entry.note : entry.note
           }
