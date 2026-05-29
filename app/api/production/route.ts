@@ -6,13 +6,13 @@ export async function GET(req: NextRequest) {
   const table = req.nextUrl.searchParams.get('table') ?? ''
 
   // Step 1: หา effective_from ล่าสุดต่อ period (รวม future batch — แผนใหม่แสดงทันทีไม่รอ checkpoint)
-  const periodQuery = supabase
+  let periodQuery = supabase
     .from('production_assignments')
     .select('period, effective_from')
     .eq('production_date', date)
     .order('effective_from', { ascending: false })
 
-  if (table) periodQuery.eq('table_name', table)
+  if (table) periodQuery = periodQuery.eq('table_name', table)
   const { data: periodRows } = await periodQuery
 
   // หา max effective_from ต่อ period
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   // Step 2: ดึง assignments เฉพาะ batch ที่มี effective_from ตรงกับ max ของแต่ละ period
   const allAssignments: any[] = []
   for (const [period, effectiveFrom] of Object.entries(maxEffective)) {
-    const q = supabase
+    let q = supabase
       .from('production_assignments')
       .select('*')
       .eq('production_date', date)
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       .eq('effective_from', effectiveFrom)
       .order('worker_name')
       .order('seq', { nullsFirst: false })
-    if (table) q.eq('table_name', table)
+    if (table) q = q.eq('table_name', table)
     const { data } = await q
     if (data) allAssignments.push(...data)
   }
