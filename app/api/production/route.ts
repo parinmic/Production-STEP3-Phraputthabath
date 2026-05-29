@@ -23,13 +23,14 @@ export async function GET(req: NextRequest) {
     if (!maxEffective[p] || e > maxEffective[p]) maxEffective[p] = e
   }
 
+  // Debug: count total rows for this date (ignoring table filter)
+  const { count: totalForDate } = await supabase
+    .from('production_assignments')
+    .select('*', { count: 'exact', head: true })
+    .eq('production_date', date)
+
   if (Object.keys(maxEffective).length === 0) {
-    // Debug: check if there's data at all for this date (ignoring table)
-    const { count } = await supabase
-      .from('production_assignments')
-      .select('*', { count: 'exact', head: true })
-      .eq('production_date', date)
-    return NextResponse.json({ assignments: [], _debug: { table, period_rows_for_table: 0, total_rows_for_date: count } })
+    return NextResponse.json({ assignments: [], _debug: { table, step: 'period_rows_empty', period_rows_for_table: 0, total_rows_for_date: totalForDate, maxEffective } })
   }
 
   // Step 2: ดึง assignments เฉพาะ batch ที่มี effective_from ตรงกับ max ของแต่ละ period
@@ -48,5 +49,5 @@ export async function GET(req: NextRequest) {
     if (data) allAssignments.push(...data)
   }
 
-  return NextResponse.json({ assignments: allAssignments })
+  return NextResponse.json({ assignments: allAssignments, _debug: { table, step: 'ok', period_rows_for_table: periodRows?.length, maxEffective, total_rows_for_date: totalForDate, assignments_returned: allAssignments.length } })
 }
