@@ -1200,6 +1200,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: masterVarMakroRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
+    { data: concurrentSkuRaw },
     bkpOrdersRaw,
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
@@ -1251,6 +1252,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
+    supabase.from('master_logic_calculation').select('row_data')
+      .eq('calculation_type', 'Mas Sku ผลิตพร้อมกัน').order('uploaded_at', { ascending: false }).limit(5000),
     fetchAll<{ sku: string; sku_name: string | null; quantity: number }>(
       'bkp_orders', 'sku, sku_name, quantity',
       [{ col: 'production_date', op: 'eq', val: productionDate }])
@@ -1347,6 +1350,35 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const entry = { startMins, stopMins }
       specialTimeMap.set(sap, entry)
       specialTimeMap.set(sap.replace(/^0+/, ''), entry)
+    }
+  }
+
+  // Concurrent SKU pairs: Sap ที่ 1 (primary) runs simultaneously with Sap ที่ 2 (secondary).
+  // primaryMap: primary_sku → Set<secondary_sku>
+  const primaryMap = new Map<string, Set<string>>()
+  const primarySkuSet = new Set<string>()
+  const secondarySkuSet = new Set<string>()
+  const getConcCol = (r: Record<string, unknown>, name: string): string => {
+    if (r[name] !== undefined) return String(r[name] ?? '').trim()
+    const key = Object.keys(r).find(k => k.trim() === name || k.replace(/\s+/g, ' ').trim() === name)
+    return key ? String(r[key] ?? '').trim() : ''
+  }
+  for (const row of concurrentSkuRaw ?? []) {
+    const r = row.row_data as Record<string, unknown>
+    const sap1 = getConcCol(r, 'Sap ที่ 1').replace(/^0+/, '')
+    const sap2 = getConcCol(r, 'Sap ที่ 2').replace(/^0+/, '')
+    if (!sap1 || !sap2) continue
+    if (!primaryMap.has(sap1)) primaryMap.set(sap1, new Set())
+    primaryMap.get(sap1)!.add(sap2)
+    primarySkuSet.add(sap1)
+    secondarySkuSet.add(sap2)
+  }
+  // Reverse map: secondary → Set<primary> (for lookup)
+  const secondaryToPrimaries = new Map<string, Set<string>>()
+  for (const [pSku, sSkus] of Array.from(primaryMap.entries())) {
+    for (const sSku of sSkus) {
+      if (!secondaryToPrimaries.has(sSku)) secondaryToPrimaries.set(sSku, new Set())
+      secondaryToPrimaries.get(sSku)!.add(pSku)
     }
   }
 
@@ -2077,9 +2109,29 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  runChannelPass(stockAssignList)
-  runChannelPass(deficitAssignList)
+  // Snapshot worker hours before allocation — secondary SKUs get an independent time budget.
+  const secWorkerHours = new Map(workerHours)
+  const secWorkerFreeAtMins = new Map(workerFreeAtMins)
+  const secWorkerBusySegments = new Map(
+    Array.from(workerBusySegments.entries()).map(([k, segs]) => [k, segs.slice()])
+  )
+
+  const primaryStockList   = stockAssignList.filter(i => !secondarySkuSet.has(i.sku.replace(/^0+/, '')))
+  const primaryDeficitList = deficitAssignList.filter(i => !secondarySkuSet.has(i.sku.replace(/^0+/, '')))
+  const secStockList       = stockAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
+  const secDeficitList     = deficitAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
+
+  runChannelPass(primaryStockList)
+  runChannelPass(primaryDeficitList)
   assignments.push(...keptAssignments)
+
+  if (secStockList.length || secDeficitList.length) {
+    for (const [k, v] of secWorkerHours) workerHours.set(k, v)
+    for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
+    for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
+    runChannelPass(secStockList)
+    runChannelPass(secDeficitList)
+  }
 
   if (!assignments.length) {
     const prodMatchCount = assignList.filter(t => skuMap.has(t.sku) || skuMap.has(t.sku.replace(/^0+/, ''))).length
@@ -2234,6 +2286,80 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
     resequenced.push(...keptTasks)
+  }
+
+  // Concurrent SKU timing: secondary SKUs start at the same time as the primary SKU.
+  // If a worker has multiple secondaries for the same primary, they run sequentially
+  // (B starts when primary starts, C starts when B ends — concurrent with primary throughout).
+  if (primarySkuSet.size > 0) {
+    const toMins = (s: string) => { const p = (s || '00:00').split(':').map(Number); return (p[0] ?? 0) * 60 + (p[1] ?? 0) }
+
+    // Group tasks by worker
+    const tasksByWorker = new Map<string, Record<string, unknown>[]>()
+    for (const task of resequenced) {
+      const wCode = String(task['worker_code'] ?? '')
+      if (!tasksByWorker.has(wCode)) tasksByWorker.set(wCode, [])
+      tasksByWorker.get(wCode)!.push(task)
+    }
+
+    for (const [, tasks] of Array.from(tasksByWorker.entries())) {
+      // Find primary SKUs this worker has, and their earliest start time
+      const workerPrimaryStart = new Map<string, number>()
+      for (const task of tasks) {
+        const normSku = (task['sku'] as string).replace(/^0+/, '')
+        if (!primarySkuSet.has(normSku)) continue
+        const startMins = toMins(task['deadline_time'] as string)
+        const cur = workerPrimaryStart.get(normSku)
+        if (cur === undefined || startMins < cur) workerPrimaryStart.set(normSku, startMins)
+      }
+      if (workerPrimaryStart.size === 0) continue
+
+      // For each secondary task, find which primary it pairs with (prefer earliest-starting primary)
+      const primaryToSecTasks = new Map<string, Record<string, unknown>[]>()
+      for (const task of tasks) {
+        const normSku = (task['sku'] as string).replace(/^0+/, '')
+        if (!secondarySkuSet.has(normSku)) continue
+        const linkedPrimaries = secondaryToPrimaries.get(normSku)
+        if (!linkedPrimaries) continue
+        const matchedPrimary = Array.from(linkedPrimaries)
+          .filter(p => workerPrimaryStart.has(p))
+          .sort((a, b) => (workerPrimaryStart.get(a) ?? 0) - (workerPrimaryStart.get(b) ?? 0))[0]
+        if (!matchedPrimary) continue
+        if (!primaryToSecTasks.has(matchedPrimary)) primaryToSecTasks.set(matchedPrimary, [])
+        primaryToSecTasks.get(matchedPrimary)!.push(task)
+      }
+
+      // Stagger secondary tasks sequentially, starting at the primary's start time
+      for (const [primarySku, secTasks] of Array.from(primaryToSecTasks.entries())) {
+        const primaryStart = workerPrimaryStart.get(primarySku)!
+
+        // Sort secondaries by channel priority then current start time (preserves allocation order)
+        secTasks.sort((a, b) => {
+          const getPrio = (t: Record<string, unknown>) => {
+            const ch = String(t['channel'] ?? '')
+            return ch === 'เสริม' ? 0 : (channelPriority[ch] ?? 99)
+          }
+          const pDiff = getPrio(a) - getPrio(b)
+          if (pDiff !== 0) return pDiff
+          return toMins(a['deadline_time'] as string) - toMins(b['deadline_time'] as string)
+        })
+
+        let curTime = primaryStart
+        for (const secTask of secTasks) {
+          const qty = Number(secTask['target_quantity'] ?? 0)
+          const normSku = (secTask['sku'] as string).replace(/^0+/, '')
+          const prod = skuMap.get(normSku) ?? skuMap.get(secTask['sku'] as string)
+          const rate = prod?.rate ?? 0
+          const durationMins = rate > 0 ? (qty / rate) * 60 : 0
+
+          secTask['deadline_time'] = minsToTimeStr(curTime)
+          const note = String(secTask['note'] ?? '')
+          if (!note.includes('|concurrent')) secTask['note'] = note ? note + '|concurrent' : 'concurrent'
+
+          curTime += durationMins
+        }
+      }
+    }
   }
 
   resequenced.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
