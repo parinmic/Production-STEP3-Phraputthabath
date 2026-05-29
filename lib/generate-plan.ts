@@ -2326,23 +2326,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   if (sourceSkuSet.size > 0) {
     type SrcWorker = { workerCode: string; workerName: string; taskRef: Record<string, unknown>; startMins: number; qty: number }
 
-    // Compute task START given an END time and work-minutes (reverse of wallClockFinish)
-    const wallClockBackward = (endMins: number, workMins: number): number => {
-      if (workMins <= 0) return endMins
-      let pos = endMins
-      let remaining = workMins
-      for (let i = BREAKS.length - 1; i >= 0; i--) {
-        const [bs, be] = BREAKS[i]
-        if (pos <= be) continue
-        const gap = pos - be
-        if (remaining <= gap) return pos - remaining
-        remaining -= gap
-        pos = bs
-      }
-      return pos - remaining
-    }
-
-    // Work-minutes to produce qty of a SKU at its productivity rate
+// Work-minutes to produce qty of a SKU at its productivity rate
     const getDurMins = (sku: string, qty: number): number => {
       const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
       const rate = prod?.rate ?? 0
@@ -2414,10 +2398,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const numWorkers = sourceWorkers.length
       const totalSourceQty = sourceWorkers.reduce((s, w) => s + w.qty, 0)
 
-      // Source end = latest end time among all source workers
-      const sourceEndMins = Math.max(...sourceWorkers.map(w =>
-        wallClockFinish(w.startMins, getDurMins(sourceSku, w.qty))
-      ))
+      // Source start = earliest start among all source workers (by-products begin simultaneously)
+      const sourceStartMins = Math.min(...sourceWorkers.map(w => w.startMins))
 
       // maxRatio → total by-product yield quantity (source_total × ratio)
       let maxRatio = 0
@@ -2483,22 +2465,21 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           : []),
       ]
 
-      // Chain start times backward from sourceEndMins.
-      // All workers for the same by-product SKU start simultaneously → group finishes in
-      // (total_qty / numWorkers) / rate minutes. Last by-product (remainder) ends at sourceEndMins.
+      // Chain start times forward from sourceStartMins.
+      // First by-product starts at the same time as the source SKU.
+      // Subsequent by-products start after the previous one finishes.
       const bpStartMap = new Map<string, number>()
-      let chainEnd = sourceEndMins
-      for (let i = orderedBp.length - 1; i >= 0; i--) {
-        const entry = orderedBp[i]
+      let chainStart = sourceStartMins
+      for (const entry of orderedBp) {
+        bpStartMap.set(entry.sku, chainStart)
         const perWorkerQty = numWorkers > 0 ? entry.totalQty / numWorkers : entry.totalQty
         const dur = getDurMins(entry.sku, perWorkerQty)
-        bpStartMap.set(entry.sku, dur > 0 ? wallClockBackward(chainEnd, dur) : chainEnd - 1)
-        chainEnd = bpStartMap.get(entry.sku)!
+        chainStart = dur > 0 ? wallClockFinish(chainStart, dur) : chainStart + 1
       }
 
       // Create / update tasks: one per source worker per by-product
       for (const entry of orderedBp) {
-        const bpStart = bpStartMap.get(entry.sku) ?? chainEnd
+        const bpStart = bpStartMap.get(entry.sku) ?? sourceStartMins
         const existingWMap = allocatedBpWorkers.get(entry.sku) ?? new Map<string, number>()
 
         const cleanBpSku = entry.sku.replace(/^0+/, '')
