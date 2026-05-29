@@ -2118,10 +2118,32 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  runChannelPass(stockAssignList)   // Pass 2a: stock-supported
-  runChannelPass(deficitAssignList) // Pass 2b: deficit (remaining worker time)
+  // Snapshot worker state before source SKU allocation.
+  // By-products run concurrently with source SKUs — each gets an independent time budget.
+  const bpWorkerHours = new Map(workerHours)
+  const bpWorkerFreeAtMins = new Map(workerFreeAtMins)
+  const bpWorkerBusySegments = new Map(
+    Array.from(workerBusySegments.entries()).map(([k, segs]) => [k, segs.slice()])
+  )
 
+  const bpNorms = new Set(Array.from(orderBasedBpSkus))
+  const srcStockList   = stockAssignList.filter(i => !bpNorms.has(i.sku.replace(/^0+/, '')))
+  const srcDeficitList = deficitAssignList.filter(i => !bpNorms.has(i.sku.replace(/^0+/, '')))
+  const bpStockList    = stockAssignList.filter(i => bpNorms.has(i.sku.replace(/^0+/, '')))
+  const bpDeficitList  = deficitAssignList.filter(i => bpNorms.has(i.sku.replace(/^0+/, '')))
+
+  runChannelPass(srcStockList)   // Pass 2a: regular SKUs (stock)
+  runChannelPass(srcDeficitList) // Pass 2b: regular SKUs (deficit)
   assignments.push(...keptAssignments)
+
+  // Pass 3: by-products with restored (full) worker time budget — concurrent with source
+  if (bpStockList.length || bpDeficitList.length) {
+    for (const [k, v] of bpWorkerHours) workerHours.set(k, v)
+    for (const [k, v] of bpWorkerFreeAtMins) workerFreeAtMins.set(k, v)
+    for (const [k, v] of bpWorkerBusySegments) workerBusySegments.set(k, v.slice())
+    runChannelPass(bpStockList)   // Pass 3a: by-products (stock)
+    runChannelPass(bpDeficitList) // Pass 3b: by-products (deficit)
+  }
 
   if (!assignments.length) {
     const prodMatchCount = assignList.filter(t => skuMap.has(t.sku) || skuMap.has(t.sku.replace(/^0+/, ''))).length
