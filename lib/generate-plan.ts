@@ -1638,9 +1638,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const groupQty = groupQtyMap.get(grp) ?? 0
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
-      const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
       const baggedOrderQty = roundDownToBag(sku, orderQty)
-      // Cap at the order qty (rounded up to bag): never produce more than ordered from Makro
+      // Makro = ยอดล่วงหน้า: SKUs with no historical avg (e.g. new SKUs, by-products) use full order qty
+      if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
+      const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
   }
@@ -1705,14 +1706,25 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   // Pre-capture target quantities for by-product SKUs.
-  // Always use actual order qty (not variance-adjusted channelTargets) so that Phase 1 injection
-  // uses the real order and Phase 2 can correctly deduct Phase 1 production.
+  // By-products enter the same channel logic as regular SKUs via channelTargets.
+  // Fallback to raw order maps for by-products filtered out by LOTUS/WM targets (no avg data).
   const concurrentSkuFallbackTargets = new Map<string, { qty: number; name: string | null; channel: string }>()
   if (byProductSkuSet.size > 0) {
+    for (const [ch, targets] of Object.entries(channelTargets)) {
+      for (const t of targets) {
+        const normSku = t.sku.replace(/^0+/, '')
+        if (!byProductSkuSet.has(normSku)) continue
+        const existing = concurrentSkuFallbackTargets.get(normSku)
+        if (!existing || t.targetQty > existing.qty)
+          concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
+      }
+    }
+    // Fallback: by-products not in channelTargets (LOTUS/WM filter them out) → use raw order qty
     const rawOrderMaps: Array<[Record<string, { qty: number; name: string | null }>, string]> = [
       [wmMap, 'Wet Market'], [makroMap, 'Makro'], [lotusMap, 'LOTUS'],
     ]
     for (const sku of byProductSkuSet) {
+      if (concurrentSkuFallbackTargets.has(sku)) continue
       for (const [om, ch] of rawOrderMaps) {
         if (om[sku]) {
           concurrentSkuFallbackTargets.set(sku, { qty: om[sku].qty, name: om[sku].name ?? null, channel: ch })
