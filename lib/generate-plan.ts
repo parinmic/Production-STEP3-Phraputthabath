@@ -47,8 +47,9 @@ export interface GeneratePlanResult {
 // ========== Utilities ==========
 
 function minsToTimeStr(mins: number): string {
-  const h = Math.floor(mins / 60)
-  const m = Math.floor(mins % 60)
+  const wrapped = ((mins % 1440) + 1440) % 1440
+  const h = Math.floor(wrapped / 60)
+  const m = Math.floor(wrapped % 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`
 }
 
