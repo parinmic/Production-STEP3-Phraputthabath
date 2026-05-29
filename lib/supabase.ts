@@ -8,8 +8,8 @@ export const supabase = createClient(
 )
 
 export const externalSupabase = createClient(
-  process.env.EXTERNAL_SUPABASE_URL!,
-  process.env.EXTERNAL_SUPABASE_ANON_KEY!,
+  process.env.EXTERNAL_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+  process.env.EXTERNAL_SUPABASE_ANON_KEY ?? 'placeholder-key',
 )
 
 export type TableName = 'สามชั้น' | 'สะโพก' | 'ไหล่'
