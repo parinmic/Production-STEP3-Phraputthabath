@@ -393,10 +393,11 @@ export async function POST(req: NextRequest) {
 
     // Load workforce + master data in parallel
     const [
-      { data: wf0930 }, { data: wf1530 },
+      { data: wfManual }, { data: wf0930 }, { data: wf1530 },
       { data: masterProdRaw }, { data: jobAssignRaw },
       { data: pickingUnitRaw }, { data: masterSpecialRaw },
     ] = await Promise.all([
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', 'manual'),
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0930'),
       supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1530'),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
@@ -407,7 +408,7 @@ export async function POST(req: NextRequest) {
 
     const seenWf = new Set<string>()
     let workforce: WorkforceRow[] = []
-    for (const w of [...(wf1530 ?? []), ...(wf0930 ?? [])] as WorkforceRow[]) {
+    for (const w of [...(wfManual ?? []), ...(wf1530 ?? []), ...(wf0930 ?? [])] as WorkforceRow[]) {
       const k = normName(w.name)
       if (seenWf.has(k)) continue
       seenWf.add(k); workforce.push(w)

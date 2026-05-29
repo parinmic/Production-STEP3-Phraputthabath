@@ -1183,6 +1183,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const orderRound = isPhase2 ? '1400' : '0800'
 
   const [
+    { data: workforceRawManual },
     { data: workforceRaw0930 },
     { data: workforceRaw1530 },
     wmTodayRaw, wmHistRaw,
@@ -1203,6 +1204,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: concurrentSkuRaw },
     bkpOrdersRaw,
   ] = await Promise.all([
+    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
+      .eq('work_date', productionDate).eq('upload_round', 'manual'),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', '0930'),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
@@ -1258,10 +1261,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .catch(() => [] as { sku: string; sku_name: string | null; quantity: number }[]),
   ])
 
-  // Merge cron-synced attendance (1530 > 0930); fall back to weekly schedule
+  // Merge: manual overrides > 1530 > 0930; fall back to weekly schedule
   const seenWf = new Set<string>()
   let workforce: WorkforceRow[] = []
-  for (const w of [...(workforceRaw1530 ?? []), ...(workforceRaw0930 ?? [])] as WorkforceRow[]) {
+  for (const w of [
+    ...(workforceRawManual ?? []),
+    ...(workforceRaw1530   ?? []),
+    ...(workforceRaw0930   ?? []),
+  ] as WorkforceRow[]) {
     const k = normName(w.name)
     if (seenWf.has(k)) continue
     seenWf.add(k); workforce.push(w)

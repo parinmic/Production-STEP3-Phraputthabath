@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle } from 'lucide-react'
+import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, Pencil, Trash2, Check, X } from 'lucide-react'
 
 interface AttendanceRow {
   emp_id: string
@@ -14,13 +14,17 @@ interface AttendanceRow {
   station: string | null
 }
 
-interface Summary {
-  present: number
-  late: number
-  absent: number
-  total: number
+interface PlanEntry {
+  emp_id: string
+  name: string
+  work_station: string
+  shift: string
+  upload_round: string
 }
 
+interface Summary { present: number; late: number; absent: number; total: number }
+
+const STATIONS = ['สามชั้นพิเศษ', 'สะโพกพิเศษ', 'ไหล่พิเศษ']
 const STATUS_LABEL: Record<string, string> = { Present: 'มาทำงาน', Late: 'มาสาย', Absent: 'ขาด' }
 const STATUS_COLOR: Record<string, string> = {
   Present: 'bg-green-100 text-green-700',
@@ -32,16 +36,23 @@ export default function WorkforcePage() {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]       = useState(today)
   const [rows, setRows]       = useState<AttendanceRow[]>([])
+  const [planMap, setPlanMap] = useState<Map<string, PlanEntry>>(new Map())
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
-  const [filterStatus,  setFilterStatus]  = useState<string>('all')
-  const [filterShift,   setFilterShift]   = useState<string>('all')
-  const [filterStation, setFilterStation] = useState<string>('all')
+  // Filters
+  const [filterStatus,  setFilterStatus]  = useState('all')
+  const [filterShift,   setFilterShift]   = useState('all')
+  const [filterStation, setFilterStation] = useState('all')
   const [filterName,    setFilterName]    = useState('')
 
-  const load = useCallback(async (d: string) => {
+  // Inline edit state: emp_id → editing station value
+  const [editingId,      setEditingId]      = useState<string | null>(null)
+  const [editingStation, setEditingStation] = useState('')
+  const [saving,         setSaving]         = useState<string | null>(null)
+
+  const loadAttendance = useCallback(async (d: string) => {
     setLoading(true); setError('')
     try {
       const res  = await fetch(`/api/external-timestamp?date=${d}`)
@@ -54,7 +65,45 @@ export default function WorkforcePage() {
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load(date) }, [date, load])
+  const loadPlan = useCallback(async (d: string) => {
+    try {
+      const res  = await fetch(`/api/workforce-daily?date=${d}`)
+      const json = await res.json()
+      const map  = new Map<string, PlanEntry>()
+      for (const e of (json.data ?? []) as PlanEntry[]) map.set(e.emp_id, e)
+      setPlanMap(map)
+    } catch { /* silent */ }
+  }, [])
+
+  const reload = useCallback((d: string) => {
+    loadAttendance(d); loadPlan(d)
+  }, [loadAttendance, loadPlan])
+
+  useEffect(() => { reload(date) }, [date, reload])
+
+  // Save manual override (add or update station)
+  const saveOverride = async (row: AttendanceRow, station: string) => {
+    setSaving(row.emp_id)
+    await fetch('/api/workforce-daily', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date, emp_id: row.emp_id, name: row.name,
+        work_station: station, shift: row.shift,
+      }),
+    })
+    setEditingId(null)
+    setSaving(null)
+    loadPlan(date)
+  }
+
+  // Remove from plan
+  const removeFromPlan = async (emp_id: string) => {
+    setSaving(emp_id)
+    await fetch(`/api/workforce-daily?date=${date}&emp_id=${encodeURIComponent(emp_id)}`, { method: 'DELETE' })
+    setSaving(null)
+    loadPlan(date)
+  }
 
   const stations = useMemo(() => [...new Set(rows.map(r => r.station).filter(Boolean) as string[])].sort(), [rows])
   const shifts   = useMemo(() => [...new Set(rows.map(r => r.shift).filter(Boolean))].sort(), [rows])
@@ -82,7 +131,7 @@ export default function WorkforcePage() {
           <h1 className="text-2xl font-bold text-gray-900">สถานะกำลังคนประจำวัน</h1>
           <p className="text-gray-500 mt-1 text-sm">ข้อมูลจากระบบสแกนเข้างาน — Sync อัตโนมัติ 9:30 และ 15:30</p>
         </div>
-        <button onClick={() => load(date)} disabled={loading}
+        <button onClick={() => reload(date)} disabled={loading}
           className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีเฟรช
         </button>
@@ -95,11 +144,9 @@ export default function WorkforcePage() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
-        <input
-          type="text" placeholder="ค้นหาชื่อ / รหัส..." value={filterName}
+        <input type="text" placeholder="ค้นหาชื่อ / รหัส..." value={filterName}
           onChange={e => setFilterName(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-        />
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48" />
         <select value={filterShift} onChange={e => setFilterShift(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="all">ทุกกะ</option>
@@ -113,7 +160,6 @@ export default function WorkforcePage() {
         </select>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
           <AlertCircle size={18} />{error}
@@ -124,10 +170,10 @@ export default function WorkforcePage() {
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { key: 'Present', label: 'มาทำงาน',   value: summary.present, icon: CheckCircle2, color: 'text-green-500',  bold: 'text-green-600' },
-            { key: 'Late',    label: 'มาสาย',      value: summary.late,    icon: Clock,        color: 'text-yellow-500', bold: 'text-yellow-600' },
-            { key: 'Absent',  label: 'ขาด',         value: summary.absent,  icon: XCircle,      color: 'text-red-500',    bold: 'text-red-600' },
-            { key: 'all',     label: 'ใช้ใน Plan', value: planCount,       icon: Users,        color: 'text-blue-500',   bold: 'text-blue-600' },
+            { key: 'Present', label: 'มาทำงาน',    value: summary.present, icon: CheckCircle2, color: 'text-green-500',  bold: 'text-green-600' },
+            { key: 'Late',    label: 'มาสาย',       value: summary.late,    icon: Clock,        color: 'text-yellow-500', bold: 'text-yellow-600' },
+            { key: 'Absent',  label: 'ขาด',          value: summary.absent,  icon: XCircle,      color: 'text-red-500',    bold: 'text-red-600' },
+            { key: 'all',     label: 'ใช้ใน Plan',  value: planCount,       icon: Users,        color: 'text-blue-500',   bold: 'text-blue-600' },
           ].map(({ key, label, value, icon: Icon, color, bold }) => (
             <button key={key}
               onClick={() => setFilterStatus(filterStatus === key ? 'all' : key)}
@@ -163,42 +209,104 @@ export default function WorkforcePage() {
                   <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">ชื่อ</th>
                   <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">แผนก</th>
                   <th className="px-4 py-2.5 text-left text-gray-600 font-medium whitespace-nowrap">กะ</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">เริ่มกะ</th>
                   <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Scan In</th>
                   <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สถานะ</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">สาย (นาที)</th>
-                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Station</th>
+                  <th className="px-4 py-2.5 text-center text-gray-600 font-medium whitespace-nowrap">Station ในแผน</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {displayed.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.emp_id}</td>
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
-                    <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[180px] truncate" title={r.dept}>{r.dept}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{r.shift}</td>
-                    <td className="px-4 py-2.5 text-center text-gray-500">{r.shift_start}</td>
-                    <td className="px-4 py-2.5 text-center font-mono text-gray-700">{r.scan_in || '—'}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[r.attendance_status] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {STATUS_LABEL[r.attendance_status] ?? r.attendance_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center text-gray-500">
-                      {r.minutes_late > 0 ? <span className="text-yellow-600 font-medium">{r.minutes_late}</span> : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {r.station
-                        ? <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{r.station}</span>
-                        : <span className="text-xs text-gray-300">ไม่พบ</span>}
-                    </td>
-                  </tr>
-                ))}
+                {displayed.map((r) => {
+                  const plan    = planMap.get(r.emp_id)
+                  const isEdit  = editingId === r.emp_id
+                  const isSaving = saving === r.emp_id
+                  const isManual = plan?.upload_round === 'manual'
+
+                  return (
+                    <tr key={r.emp_id} className={`transition-colors ${isEdit ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.emp_id}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs max-w-[160px] truncate" title={r.dept}>{r.dept}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{r.shift}</td>
+                      <td className="px-4 py-2.5 text-center font-mono text-gray-700">{r.scan_in || '—'}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[r.attendance_status] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {STATUS_LABEL[r.attendance_status] ?? r.attendance_status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {isEdit ? (
+                          /* ── Inline edit mode ── */
+                          <div className="flex items-center justify-center gap-2">
+                            <select
+                              value={editingStation}
+                              onChange={e => setEditingStation(e.target.value)}
+                              className="border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            >
+                              {STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <button
+                              onClick={() => saveOverride(r, editingStation)}
+                              disabled={isSaving}
+                              className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                              title="บันทึก"
+                            >
+                              <Check size={15} />
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="text-gray-400 hover:text-gray-600"
+                              title="ยกเลิก"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        ) : plan ? (
+                          /* ── Has plan entry ── */
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isManual ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {plan.work_station}
+                              {isManual && <span className="ml-1 opacity-60">✎</span>}
+                            </span>
+                            <button
+                              onClick={() => { setEditingId(r.emp_id); setEditingStation(plan.work_station) }}
+                              className="text-gray-300 hover:text-blue-500 transition-colors"
+                              title="แก้ไข Station"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => removeFromPlan(r.emp_id)}
+                              disabled={isSaving}
+                              className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                              title="ถอดออกจากแผน"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          /* ── Not in plan ── */
+                          <button
+                            onClick={() => {
+                              setEditingId(r.emp_id)
+                              setEditingStation(r.station ?? STATIONS[0])
+                            }}
+                            className="text-xs text-gray-300 hover:text-blue-500 transition-colors flex items-center gap-1 mx-auto"
+                            title="เพิ่มเข้าแผน"
+                          >
+                            <span>—</span>
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 text-right">
-            แสดง {displayed.length} จาก {rows.length} รายการ
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center justify-between">
+            <span className="text-orange-500">✎ = แก้ไขด้วยมือ</span>
+            <span>แสดง {displayed.length} จาก {rows.length} รายการ</span>
           </div>
         </div>
       )}
