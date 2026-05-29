@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, externalSupabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 // ── Shared helpers (mirrors generate/route.ts) ──────────────────────────────
 
@@ -346,82 +346,6 @@ function assignWorkers(params: {
   return result
 }
 
-async function fetchExternalAttendanceWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const parts = productionDate.split('-')
-  if (parts.length !== 3) return []
-  const buddhistYear = Number(parts[0]) + 543
-  const targetDate = `${Number(parts[2])}/${Number(parts[1])}/${buddhistYear}`
-
-  const { data: attendance } = await externalSupabase
-    .from('timestamp_with_dept')
-    .select('emp_id, name, shift, attendance_status')
-    .eq('target_date', targetDate)
-    .in('attendance_status', ['Present', 'Late'])
-
-  if (!attendance?.length) return []
-
-  const presentMap = new Map<string, { empId: string; shift: string }>()
-  for (const a of attendance) {
-    const key = normName(String(a.name ?? ''))
-    if (key) presentMap.set(key, { empId: String(a.emp_id ?? a.name), shift: String(a.shift ?? '') })
-  }
-
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
-  const stationMap: Record<string, string> = {
-    'sa-phok-special': 'สะโพกพิเศษ',
-    'sam-chan-special': 'สามชั้นพิเศษ',
-    'lai-special':     'ไหล่พิเศษ',
-  }
-
-  const getFieldVal = (rowData: Record<string, any>, prefixes: string[]): string => {
-    for (const p of prefixes) {
-      if (rowData[p] != null) return String(rowData[p]).trim()
-    }
-    const keys = Object.keys(rowData)
-    for (const p of prefixes) {
-      const k = keys.find(k => k.toLowerCase().includes(p.toLowerCase()))
-      if (k && rowData[k] != null) return String(rowData[k]).trim()
-    }
-    return ''
-  }
-
-  const workforce: WorkforceRow[] = []
-  const seen = new Set<string>()
-
-  for (const type of types) {
-    const logTable = `workforce_weekly_${type.replace(/-/g, '_')}`
-    const { data: latestLog } = await supabase
-      .from('upload_log').select('source_file')
-      .eq('table_name', logTable)
-      .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
-    if (!latestLog) continue
-
-    const { data: weeklyData } = await supabase
-      .from('workforce_weekly').select('row_data')
-      .eq('weekly_type', type).eq('source_file', latestLog.source_file)
-    if (!weeklyData) continue
-
-    for (const row of weeklyData) {
-      const rd = (row.row_data ?? {}) as Record<string, any>
-      const name = getFieldVal(rd, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
-      if (!name) continue
-      const key = normName(name)
-      if (seen.has(key)) continue
-      const info = presentMap.get(key)
-      if (!info) continue
-      seen.add(key)
-      workforce.push({
-        emp_id:       info.empId,
-        name,
-        work_station: stationMap[type] ?? type,
-        shift:        info.shift === 'กะ 2' ? 'กะ 2' : 'กะ 1',
-      })
-    }
-  }
-
-  return workforce
-}
-
 // ── Main ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -469,19 +393,28 @@ export async function POST(req: NextRequest) {
 
     // Load workforce + master data in parallel
     const [
+      { data: wf0930 }, { data: wf1530 },
       { data: masterProdRaw }, { data: jobAssignRaw },
       { data: pickingUnitRaw }, { data: masterSpecialRaw },
     ] = await Promise.all([
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0930'),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1530'),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
       supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
       supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }).limit(5000),
     ])
 
-    let workforce: WorkforceRow[] = await fetchExternalAttendanceWorkforce(productionDate)
+    const seenWf = new Set<string>()
+    let workforce: WorkforceRow[] = []
+    for (const w of [...(wf1530 ?? []), ...(wf0930 ?? [])] as WorkforceRow[]) {
+      const k = normName(w.name)
+      if (seenWf.has(k)) continue
+      seenWf.add(k); workforce.push(w)
+    }
     if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
     if (!workforce.length)
-      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลกำลังคนวันนี้ — ยังไม่มีข้อมูล Attendance หรือตาราง Workforce Weekly' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly' }, { status: 400 })
 
     // Bag size map
     const bagSizeMap = new Map<string, number>()

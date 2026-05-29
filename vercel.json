@@ -1,8 +1,7 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/withdrawal-phase1",
-      "schedule": "0 1 * * *"
-    }
+    { "path": "/api/cron/withdrawal-phase1",  "schedule": "0 1 * * *"  },
+    { "path": "/api/cron/sync-attendance",     "schedule": "30 2 * * *" },
+    { "path": "/api/cron/sync-attendance",     "schedule": "30 8 * * *" }
   ]
 }

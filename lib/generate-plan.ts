@@ -1,4 +1,4 @@
-import { supabase, externalSupabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule, getLotType, LotEntry } from '@/lib/withdrawal-rules'
 
 // ========== Types ==========
@@ -209,82 +209,6 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
       workforce.push({ emp_id: name, name, work_station: stationMap[type] ?? type, shift })
     }
   }
-  return workforce
-}
-
-async function fetchExternalAttendanceWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const parts = productionDate.split('-')
-  if (parts.length !== 3) return []
-  const buddhistYear = Number(parts[0]) + 543
-  const targetDate = `${Number(parts[2])}/${Number(parts[1])}/${buddhistYear}`
-
-  const { data: attendance } = await externalSupabase
-    .from('timestamp_with_dept')
-    .select('emp_id, name, shift, attendance_status')
-    .eq('target_date', targetDate)
-    .in('attendance_status', ['Present', 'Late'])
-
-  if (!attendance?.length) return []
-
-  const presentMap = new Map<string, { empId: string; shift: string }>()
-  for (const a of attendance) {
-    const key = normName(String(a.name ?? ''))
-    if (key) presentMap.set(key, { empId: String(a.emp_id ?? a.name), shift: String(a.shift ?? '') })
-  }
-
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
-  const stationMap: Record<string, string> = {
-    'sa-phok-special': 'สะโพกพิเศษ',
-    'sam-chan-special': 'สามชั้นพิเศษ',
-    'lai-special':     'ไหล่พิเศษ',
-  }
-
-  const getFieldVal = (rowData: Record<string, any>, prefixes: string[]): string => {
-    for (const p of prefixes) {
-      if (rowData[p] != null) return String(rowData[p]).trim()
-    }
-    const keys = Object.keys(rowData)
-    for (const p of prefixes) {
-      const k = keys.find(k => k.toLowerCase().includes(p.toLowerCase()))
-      if (k && rowData[k] != null) return String(rowData[k]).trim()
-    }
-    return ''
-  }
-
-  const workforce: WorkforceRow[] = []
-  const seen = new Set<string>()
-
-  for (const type of types) {
-    const logTable = `workforce_weekly_${type.replace(/-/g, '_')}`
-    const { data: latestLog } = await supabase
-      .from('upload_log').select('source_file')
-      .eq('table_name', logTable)
-      .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
-    if (!latestLog) continue
-
-    const { data: weeklyData } = await supabase
-      .from('workforce_weekly').select('row_data')
-      .eq('weekly_type', type).eq('source_file', latestLog.source_file)
-    if (!weeklyData) continue
-
-    for (const row of weeklyData) {
-      const rd = (row.row_data ?? {}) as Record<string, any>
-      const name = getFieldVal(rd, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
-      if (!name) continue
-      const key = normName(name)
-      if (seen.has(key)) continue
-      const info = presentMap.get(key)
-      if (!info) continue
-      seen.add(key)
-      workforce.push({
-        emp_id:       info.empId,
-        name,
-        work_station: stationMap[type] ?? type,
-        shift:        info.shift === 'กะ 2' ? 'กะ 2' : 'กะ 1',
-      })
-    }
-  }
-
   return workforce
 }
 
@@ -1259,6 +1183,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const orderRound = isPhase2 ? '1400' : '0800'
 
   const [
+    { data: workforceRaw0930 },
+    { data: workforceRaw1530 },
     wmTodayRaw, wmHistRaw,
     lotusTodayRaw, lotusHistRaw,
     makroTodayRaw, makroHistRaw,
@@ -1277,6 +1203,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: concurrentSkuRaw },
     bkpOrdersRaw,
   ] = await Promise.all([
+    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
+      .eq('work_date', productionDate).eq('upload_round', '0930'),
+    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
+      .eq('work_date', productionDate).eq('upload_round', '1530'),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
@@ -1328,12 +1258,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .catch(() => [] as { sku: string; sku_name: string | null; quantity: number }[]),
   ])
 
-  // Fetch workforce from external attendance; fall back to weekly schedule
-  let workforce: WorkforceRow[] = await fetchExternalAttendanceWorkforce(productionDate)
+  // Merge cron-synced attendance (1530 > 0930); fall back to weekly schedule
+  const seenWf = new Set<string>()
+  let workforce: WorkforceRow[] = []
+  for (const w of [...(workforceRaw1530 ?? []), ...(workforceRaw0930 ?? [])] as WorkforceRow[]) {
+    const k = normName(w.name)
+    if (seenWf.has(k)) continue
+    seenWf.add(k); workforce.push(w)
+  }
   if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
   if (!workforce.length) return {
     success: false,
-    message: 'ไม่พบข้อมูลกำลังคนวันนี้ — ยังไม่มีข้อมูล Attendance หรือตาราง Workforce Weekly',
+    message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly',
   }
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
@@ -1530,7 +1466,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const phaseStartMins = phaseCfg.startH * 60
   const phaseEndMins   = phaseCfg.endH   * 60
 
-  const currentWorkforceNames = new Set(workforce.map(w => normName(w.name)))
+  const currentWorkforceNames = new Set(workforce.map((w: WorkforceRow) => normName(w.name)))
 
   const keptAssignments: any[] = []
   const keptChannelQtyMap = new Map<string, number>()
