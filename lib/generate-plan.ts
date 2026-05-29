@@ -1339,8 +1339,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   // Build by-product map from mas-sku-concurrent:
-  // sourceSku → [{byProductSku, ratio (numeric เท่า or 'remainder'), name}]
-  // When a source SKU is produced, all its by-products are scheduled on the same worker.
+  // sourceSku → [{byProductSku, name}]
+  // When a source SKU is produced, all its by-products are scheduled on the same worker concurrently.
   type ByProductEntry = { byProductSku: string; name: string | null }
   const byProductMap = new Map<string, ByProductEntry[]>()
 
@@ -1715,6 +1715,23 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const existing = concurrentSkuFallbackTargets.get(normSku)
         if (!existing || t.targetQty > existing.qty)
           concurrentSkuFallbackTargets.set(normSku, { qty: t.targetQty, name: t.skuName ?? null, channel: ch })
+      }
+    }
+    // Also cover by-products that appear in today's actual orders but not in channel-target averages (e.g. Phase 1)
+    const rawOrderMaps: Array<[Record<string, { qty: number; name: string | null }>, string]> = [
+      [wmMap, 'Wet Market'], [makroMap, 'Makro'], [lotusMap, 'LOTUS'],
+    ]
+    for (const sku of byProductSkuSet) {
+      if (concurrentSkuFallbackTargets.has(sku)) continue
+      for (const [om, ch] of rawOrderMaps) {
+        if (om[sku]) {
+          concurrentSkuFallbackTargets.set(sku, { qty: om[sku].qty, name: om[sku].name ?? null, channel: ch })
+          break
+        }
+      }
+      if (!concurrentSkuFallbackTargets.has(sku) && bkpOrderMap.has(sku)) {
+        const b = bkpOrderMap.get(sku)!
+        concurrentSkuFallbackTargets.set(sku, { qty: b.qty, name: b.name ?? null, channel: 'BKP' })
       }
     }
   }
@@ -2345,6 +2362,27 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const wMap = allocatedBpWorkers.get(normSku)!
       const wCode = task.worker_code as string
       wMap.set(wCode, (wMap.get(wCode) ?? 0) + Number(task.target_quantity ?? 0))
+    }
+
+    // Pass 1: Update deadline_time for by-products already allocated via allocateBalanced
+    // (e.g. Phase 2/3 by-products that have channel orders → went through normal allocation).
+    // We only adjust timing to be concurrent — qty stays as-is.
+    for (const [sourceSku, byProductsAll] of Array.from(byProductMap.entries())) {
+      const srcWMap = sourceWorkerMap.get(sourceSku)
+      if (!srcWMap || srcWMap.size === 0) continue
+      for (const entry of byProductsAll) {
+        if (!finalOrderBasedBpSkus.has(entry.byProductSku)) continue
+        const cleanBpSku = entry.byProductSku
+        for (const [wCode, srcWorker] of srcWMap.entries()) {
+          for (const task of resequenced) {
+            if ((task.sku as string).replace(/^0+/, '') !== cleanBpSku) continue
+            if (String(task.worker_code) !== wCode) continue
+            task.deadline_time = minsToTimeStr(srcWorker.startMins)
+            const en = String(task.note ?? '')
+            if (!en.includes('concurrent_group_follow')) task.note = en ? en + '|concurrent_group_follow' : 'concurrent_group_follow'
+          }
+        }
+      }
     }
 
     // Production-plan qty + channel for a by-product SKU
