@@ -107,7 +107,7 @@ export default function WorkforcePage() {
       scan_in:           ov.scan_in           ?? r.scan_in,
       attendance_status: ov.attendance_status ?? r.attendance_status,
       minutes_late:      ov.minutes_late      ?? r.minutes_late,
-      station:           plan?.work_station   ?? r.station ?? '',
+      station:           planMap.has(r.emp_id) ? (plan?.work_station ?? '') : (r.station ?? ''),
     })
   }
 
@@ -317,7 +317,8 @@ export default function WorkforcePage() {
                     )
                   }
 
-                  const stationDisplay = plan?.work_station ?? null
+                  const hasPlan = planMap.has(r.emp_id)
+                  const stationDisplay = hasPlan ? (plan?.work_station ?? null) : (r.station ?? null)
                   const isManual = plan?.upload_round === 'manual' || isOv
 
                   return (
