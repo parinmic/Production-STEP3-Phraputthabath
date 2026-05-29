@@ -1573,13 +1573,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        const p1Actual = p1.get(sku) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
-          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+          targetQty = Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+          targetQty = Math.max(0, orderQty - p1Actual)
         }
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
@@ -1601,13 +1600,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        const p1Actual = p1.get(sku) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
-          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+          targetQty = Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+          targetQty = Math.max(0, orderQty - p1Actual)
         }
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
@@ -1642,13 +1640,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        const p1Actual = p1.get(sku) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
-          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+          targetQty = Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+          targetQty = Math.max(0, orderQty - p1Actual)
         }
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
@@ -1669,13 +1666,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const p1 = useChannelDeduct ? (phase1ByChannel.get('BKP') ?? new Map()) : phase1Assigned
       return Array.from(bkpOrderMap.entries()).map(([sku, { qty: orderQty, name }]) => {
         const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        const p1Actual = p1.get(sku) ?? 0
         let targetQty: number
         if (wpb > 0) {
-          const orderBags = Math.ceil(orderQty / wpb)
-          const p1Bags = Math.floor((p1.get(sku) ?? 0) / wpb)
-          targetQty = Math.max(0, orderBags - p1Bags) * wpb
+          targetQty = Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
         } else {
-          targetQty = Math.max(0, orderQty - (p1.get(sku) ?? 0))
+          targetQty = Math.max(0, orderQty - p1Actual)
         }
         return { sku, skuName: name, targetQty, channel: 'BKP' }
       }).filter(t => t.targetQty > 0)
@@ -1714,13 +1710,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         if (m.has(sku)) { channel = ch; break }
       }
       const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+      const p12Actual = phase1Assigned.get(sku) ?? 0
       let targetQty: number
       if (wpb > 0) {
-        const orderBags = Math.ceil(qty / wpb)
-        const p1Bags = Math.floor((phase1Assigned.get(sku) ?? 0) / wpb)
-        targetQty = Math.max(0, orderBags - p1Bags) * wpb
+        targetQty = Math.floor(Math.max(0, qty - p12Actual) / wpb) * wpb
       } else {
-        targetQty = Math.max(0, qty - (phase1Assigned.get(sku) ?? 0))
+        targetQty = Math.max(0, qty - p12Actual)
       }
       return { sku, skuName: name, targetQty, channel }
     }).filter(t => t.targetQty > 0)
@@ -1733,13 +1728,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           if (phase3Plan100Skus.has(sku)) continue
           const p12 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
           const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+          const p12Actual = p12.get(sku) ?? 0
           let targetQty: number
           if (wpb > 0) {
-            const orderBags = Math.ceil(orderQty / wpb)
-            const p12Bags  = Math.floor((p12.get(sku) ?? 0) / wpb)
-            targetQty = Math.max(0, orderBags - p12Bags) * wpb
+            targetQty = Math.floor(Math.max(0, orderQty - p12Actual) / wpb) * wpb
           } else {
-            targetQty = Math.max(0, orderQty - (p12.get(sku) ?? 0))
+            targetQty = Math.max(0, orderQty - p12Actual)
           }
           if (targetQty > 0) allPhase3Targets.push({ sku, skuName: name, targetQty, channel: ch })
         }
@@ -2105,12 +2099,24 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Snapshot worker hours before allocation — secondary SKUs get an independent time budget.
-  const secWorkerHours = new Map(workerHours)
-  const secWorkerFreeAtMins = new Map(workerFreeAtMins)
-  const secWorkerBusySegments = new Map(
-    Array.from(workerBusySegments.entries()).map(([k, segs]) => [k, segs.slice()])
-  )
+  // Build independent time budget for secondary SKUs — full shift hours, no keptMaxEnd reduction.
+  // Secondary SKUs run concurrently with primary SKUs so they share the same wall-clock window.
+  const secWorkerHours = new Map<string, number>()
+  const secWorkerFreeAtMins = new Map<string, number>()
+  const secWorkerBusySegments = new Map<string, { start: number; end: number }[]>()
+  for (const w of workforce) {
+    let shiftStartMins = phaseCfg.startH * 60
+    let shiftEndMins = phaseEndMins
+    if (w.shift === 'กะ 1') { shiftStartMins = 8.5 * 60; shiftEndMins = isPhase3 ? phaseEndMins : 17.5 * 60 }
+    else if (w.shift === 'กะ 2') { shiftStartMins = 14.5 * 60; shiftEndMins = isPhase3 ? phaseEndMins : 23.5 * 60 }
+    const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
+    const nameKey = normName(w.name)
+    // No keptMaxEnd here — secondary runs alongside primary, not after it
+    const startFreeMins = Math.max(checkpointMins, shiftStartMins)
+    secWorkerHours.set(nameKey, Math.max(0, actualEndMins - startFreeMins) / 60)
+    secWorkerFreeAtMins.set(nameKey, startFreeMins)
+    secWorkerBusySegments.set(nameKey, [])
+  }
 
   const primaryStockList   = stockAssignList.filter(i => !secondarySkuSet.has(i.sku.replace(/^0+/, '')))
   const primaryDeficitList = deficitAssignList.filter(i => !secondarySkuSet.has(i.sku.replace(/^0+/, '')))
