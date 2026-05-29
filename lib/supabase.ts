@@ -7,6 +7,11 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 )
 
+export const externalSupabase = createClient(
+  process.env.EXTERNAL_SUPABASE_URL!,
+  process.env.EXTERNAL_SUPABASE_ANON_KEY!,
+)
+
 export type TableName = 'สามชั้น' | 'สะโพก' | 'ไหล่'
 export type Shift = 'เช้า' | 'บ่าย' | 'ค่ำ'
 export type AssignmentStatus = 'รอดำเนินการ' | 'กำลังผลิต' | 'เสร็จแล้ว'
