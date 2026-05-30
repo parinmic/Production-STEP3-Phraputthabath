@@ -144,10 +144,14 @@ export default function WorkforcePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             date,
-            emp_id:       r.emp_id,
-            name:         draft.name,
-            work_station: draft.station,
-            shift:        draft.shift,
+            emp_id:            r.emp_id,
+            name:              draft.name,
+            work_station:      draft.station,
+            shift:             draft.shift,
+            dept:              draft.dept,
+            scan_in:           draft.scan_in,
+            attendance_status: draft.attendance_status,
+            minutes_late:      draft.minutes_late,
           }),
         })
       } else {
@@ -390,7 +394,7 @@ export default function WorkforcePage() {
             </table>
           </div>
           <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 flex items-center justify-between">
-            <span className="text-orange-500">✎ = แก้ไขด้วยมือ (รีเซ็ตเมื่อรีเฟรช)</span>
+            <span className="text-orange-500">✎ = แก้ไขด้วยมือ</span>
             <span>แสดง {displayed.length} จาก {rows.length} รายการ</span>
           </div>
         </div>

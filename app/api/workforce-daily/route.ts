@@ -12,11 +12,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ data: data ?? [] })
 }
 
-// PUT  body: { date, emp_id, name, work_station, shift }
-// Upsert a manual override — deletes all existing rows for this emp_id+date, inserts new one
+// PUT  body: { date, emp_id, name, work_station, shift, dept, scan_in, attendance_status, minutes_late }
 export async function PUT(req: NextRequest) {
   try {
-    const { date, emp_id, name, work_station, shift } = await req.json()
+    const { date, emp_id, name, work_station, shift, dept, scan_in, attendance_status, minutes_late } = await req.json()
     if (!date || !emp_id || !name)
       return NextResponse.json({ error: 'missing fields' }, { status: 400 })
 
@@ -24,12 +23,14 @@ export async function PUT(req: NextRequest) {
       .eq('work_date', date).eq('emp_id', emp_id)
 
     const { error } = await supabase.from('daily_workforce').insert({
-      work_date:    date,
+      work_date:      date,
       emp_id,
       name,
-      work_station: work_station || null,
-      shift:        shift ?? 'กะ 1',
-      upload_round: 'manual',
+      work_station:   work_station || null,
+      shift:          shift ?? 'กะ 1',
+      home_dept:      dept || null,
+      required_skill: `${scan_in ?? ''}|${attendance_status ?? ''}|${minutes_late ?? 0}|`,
+      upload_round:   'manual',
     })
     if (error) throw error
     return NextResponse.json({ success: true })

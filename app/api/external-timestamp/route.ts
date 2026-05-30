@@ -62,7 +62,12 @@ export async function GET(req: NextRequest) {
 
   const rows = (wfRows ?? []).map(r => {
     const override = manualMap.get(r.emp_id)
-    return parseRow(override ?? r)
+    if (!override) return parseRow(r)
+    // Merge: manual fields take priority; fall back to cron row for any empty manual fields
+    const merged = { ...r, ...override }
+    if (!override.home_dept)      merged.home_dept      = r.home_dept
+    if (!override.required_skill) merged.required_skill = r.required_skill
+    return parseRow(merged)
   })
 
   const summary = {
