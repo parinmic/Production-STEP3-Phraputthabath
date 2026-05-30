@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, Pencil, Check, X } from 'lucide-react'
+import { Users, Clock, AlertCircle, RefreshCw, Calendar, CheckCircle2, XCircle, Pencil, Check, X, Download } from 'lucide-react'
 
 interface AttendanceRow {
   emp_id: string
@@ -62,6 +62,8 @@ export default function WorkforcePage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft,     setDraft]     = useState<EditDraft | null>(null)
   const [saving,    setSaving]    = useState(false)
+  const [syncing,   setSyncing]   = useState(false)
+  const [syncMsg,   setSyncMsg]   = useState('')
 
   // local overrides (for display; resets on page reload)
   const [overrides, setOverrides] = useState<Map<string, Partial<AttendanceRow>>>(new Map())
@@ -93,6 +95,22 @@ export default function WorkforcePage() {
   const reload = useCallback((d: string) => {
     loadAttendance(d); loadPlan(d)
   }, [loadAttendance, loadPlan])
+
+  const handleSync = async () => {
+    setSyncing(true); setSyncMsg('')
+    try {
+      const res  = await fetch('/api/cron/sync-attendance', { method: 'POST' })
+      const json = await res.json()
+      if (json.success) {
+        setSyncMsg(`ดึงข้อมูลสำเร็จ — รอบ ${json.round} (${json.inserted} คน)`)
+        reload(date)
+      } else {
+        setSyncMsg(`ผิดพลาด: ${json.error ?? json.message ?? 'unknown'}`)
+      }
+    } catch (e: unknown) {
+      setSyncMsg(`ผิดพลาด: ${e instanceof Error ? e.message : String(e)}`)
+    } finally { setSyncing(false) }
+  }
 
   useEffect(() => { reload(date) }, [date, reload])
 
@@ -198,11 +216,23 @@ export default function WorkforcePage() {
           <h1 className="text-2xl font-bold text-gray-900">สถานะกำลังคนประจำวัน</h1>
           <p className="text-gray-500 mt-1 text-sm">ข้อมูลจากระบบสแกนเข้างาน — Sync อัตโนมัติ 9:30 และ 15:30</p>
         </div>
-        <button onClick={() => reload(date)} disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีเฟรช
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleSync} disabled={syncing || loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-40 transition-colors">
+            <Download size={14} className={syncing ? 'animate-bounce' : ''} />
+            {syncing ? 'กำลังดึง...' : 'ดึงข้อมูล'}
+          </button>
+          <button onClick={() => reload(date)} disabled={loading || syncing}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีเฟรช
+          </button>
+        </div>
       </div>
+      {syncMsg && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm ${syncMsg.startsWith('ผิดพลาด') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {syncMsg}
+        </div>
+      )}
 
       <div className="card flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">

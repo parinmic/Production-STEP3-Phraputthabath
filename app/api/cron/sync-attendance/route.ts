@@ -18,14 +18,8 @@ const getFieldVal = (rowData: Record<string, any>, prefixes: string[]): string =
   return ''
 }
 
-export async function GET(req: NextRequest) {
+async function runSync() {
   try {
-    const authHeader = req.headers.get('Authorization')
-    const cronSecret = process.env.CRON_SECRET
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
     const bangkokHour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok', hour: 'numeric', hour12: false }))
     const uploadRound = bangkokHour < 12 ? '0930' : '1530'
@@ -144,4 +138,19 @@ export async function GET(req: NextRequest) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }
+}
+
+// Called by Vercel cron (requires CRON_SECRET if set)
+export async function GET(req: NextRequest) {
+  const authHeader = req.headers.get('Authorization')
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  return runSync()
+}
+
+// Called manually from UI (no auth required)
+export async function POST() {
+  return runSync()
 }
