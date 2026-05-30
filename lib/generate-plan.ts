@@ -2128,6 +2128,22 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   assignments.push(...keptAssignments)
 
   if (secStockList.length || secDeficitList.length) {
+    // Cap secondary budget to each worker's primary production hours.
+    // Secondary is a byproduct of primary — it only runs while primary is running.
+    // Workers with no primary tasks get 0 secondary capacity.
+    const workerPrimaryHrs = new Map<string, number>()
+    for (const a of assignments) {
+      const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+      if (secondarySkuSet.has(normSku)) continue
+      const nameKey = normName(String(a['worker_name'] ?? ''))
+      const qty = Number(a['target_quantity'] ?? 0)
+      const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+      const rate = prod?.rate ?? 0
+      workerPrimaryHrs.set(nameKey, (workerPrimaryHrs.get(nameKey) ?? 0) + (rate > 0 ? qty / rate : 0))
+    }
+    for (const [nameKey, fullHrs] of secWorkerHours) {
+      secWorkerHours.set(nameKey, Math.min(fullHrs, workerPrimaryHrs.get(nameKey) ?? 0))
+    }
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
