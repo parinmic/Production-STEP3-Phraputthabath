@@ -33,26 +33,33 @@ export async function GET(req: NextRequest) {
     const [yr, mo, dy] = today.split('-')
     const thaiDate = `${Number(dy)}/${Number(mo)}/${Number(yr) + 543}`
 
-    // 1. Fetch Present + Late from external Supabase
-    const { data: attendance, error: extErr } = await externalSupabase
+    // 1. Fetch ALL attendance records (all statuses) for display
+    const { data: allAttendance, error: extErr } = await externalSupabase
       .from('timestamp_with_dept')
-      .select('emp_id, name, shift, attendance_status')
+      .select('emp_id, name, dept, shift, shift_start, scan_in, attendance_status, minutes_late')
       .eq('target_date', thaiDate)
-      .in('attendance_status', ['Present', 'Late'])
 
     if (extErr) throw new Error(`External fetch: ${extErr.message}`)
-    if (!attendance?.length) {
+    if (!allAttendance?.length) {
       return NextResponse.json({ success: true, round: uploadRound, inserted: 0, message: 'ไม่มีข้อมูล Attendance วันนี้' })
     }
 
-    // 2. Build present-worker map
-    const presentMap = new Map<string, { empId: string; shift: string }>()
-    for (const a of attendance) {
+    // 2. Build map of Present+Late workers for station resolution
+    const presentMap = new Map<string, { empId: string; shift: string; dept: string; scanIn: string; status: string; minsLate: number }>()
+    for (const a of allAttendance) {
+      if (a.attendance_status !== 'Present' && a.attendance_status !== 'Late') continue
       const key = normName(String(a.name ?? ''))
-      if (key) presentMap.set(key, { empId: String(a.emp_id ?? a.name), shift: String(a.shift ?? '') })
+      if (key) presentMap.set(key, {
+        empId:    String(a.emp_id ?? a.name),
+        shift:    String(a.shift ?? ''),
+        dept:     String(a.dept ?? ''),
+        scanIn:   String(a.scan_in ?? ''),
+        status:   String(a.attendance_status ?? ''),
+        minsLate: Number(a.minutes_late ?? 0),
+      })
     }
 
-    // 3. Match with workforce_weekly to resolve stations
+    // 3. Resolve station for Present+Late via workforce_weekly
     const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
     const stationMap: Record<string, string> = {
       'sa-phok-special': 'สะโพกพิเศษ',
@@ -60,10 +67,8 @@ export async function GET(req: NextRequest) {
       'lai-special':     'ไหล่พิเศษ',
     }
 
-    const records: {
-      work_date: string; emp_id: string; name: string
-      work_station: string; shift: string; upload_round: string
-    }[] = []
+    // stationResolved: normName → work_station
+    const stationResolved = new Map<string, string>()
     const seen = new Set<string>()
 
     for (const type of types) {
@@ -85,27 +90,17 @@ export async function GET(req: NextRequest) {
         if (!name) continue
         const key = normName(name)
         if (seen.has(key)) continue
-        const info = presentMap.get(key)
-        if (!info) continue
+        if (!presentMap.has(key)) continue
         seen.add(key)
-        records.push({
-          work_date:    today,
-          emp_id:       info.empId,
-          name,
-          work_station: stationMap[type] ?? type,
-          shift:        info.shift === 'กะ 2' ? 'กะ 2' : 'กะ 1',
-          upload_round: uploadRound,
-        })
+        stationResolved.set(key, stationMap[type] ?? type)
       }
     }
 
-    // 4. Fallback: match unmatched attendance workers against Mas Job Assign
+    // 4. Fallback: Mas Job Assign for unmatched Present+Late
     const unmatched = [...presentMap.keys()].filter(k => !seen.has(k))
     if (unmatched.length > 0) {
       const { data: manpowerRows } = await supabase
-        .from('master_logic_manpower')
-        .select('product_type, row_data')
-
+        .from('master_logic_manpower').select('product_type, row_data')
       for (const row of manpowerRows ?? []) {
         const rd = (row.row_data ?? {}) as Record<string, any>
         const name = String(rd['รายชื่อพนักงาน'] ?? '').trim()
@@ -115,18 +110,27 @@ export async function GET(req: NextRequest) {
         const info = presentMap.get(key)
         if (!info) continue
         seen.add(key)
-        records.push({
-          work_date:    today,
-          emp_id:       info.empId,
-          name,
-          work_station: String(row.product_type ?? ''),
-          shift:        info.shift === 'กะ 2' ? 'กะ 2' : 'กะ 1',
-          upload_round: uploadRound,
-        })
+        stationResolved.set(key, String(row.product_type ?? ''))
       }
     }
 
-    // 5. Replace old records for this round, insert new ones
+    // 5. Build records for ALL attendance rows
+    const records = allAttendance.map(a => {
+      const key     = normName(String(a.name ?? ''))
+      const station = stationResolved.get(key) ?? null
+      return {
+        work_date:      today,
+        emp_id:         String(a.emp_id ?? a.name),
+        name:           String(a.name ?? ''),
+        home_dept:      String(a.dept ?? ''),
+        work_station:   station ?? '',
+        shift:          String(a.shift ?? ''),
+        required_skill: `${a.scan_in ?? ''}|${a.attendance_status ?? ''}|${a.minutes_late ?? 0}|${a.shift_start ?? ''}`,
+        upload_round:   uploadRound,
+      }
+    }).filter(r => r.name)
+
+    // 6. Replace old records for this round, insert new ones
     await supabase.from('daily_workforce')
       .delete().eq('work_date', today).eq('upload_round', uploadRound)
 

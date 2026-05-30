@@ -397,9 +397,9 @@ export async function POST(req: NextRequest) {
       { data: masterProdRaw }, { data: jobAssignRaw },
       { data: pickingUnitRaw }, { data: masterSpecialRaw },
     ] = await Promise.all([
-      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', 'manual'),
-      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0930'),
-      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1530'),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0930').neq('work_station', ''),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1530').neq('work_station', ''),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
       supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
       supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),

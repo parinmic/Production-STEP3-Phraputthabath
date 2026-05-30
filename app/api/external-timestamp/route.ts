@@ -1,89 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, externalSupabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
-function toThaiDate(iso: string): string {
-  const parts = iso.split('-')
-  if (parts.length !== 3) return iso
-  return `${Number(parts[2])}/${Number(parts[1])}/${Number(parts[0]) + 543}`
-}
+function activeRound(dateStr: string): string {
+  // Determine which cron round is active for a given date (Bangkok time)
+  const now = new Date()
+  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+  const today = bangkokNow.toLocaleDateString('sv-SE')
 
-const normName = (s: string) =>
-  s ? s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase() : ''
+  // For past dates always return 1530 (latest)
+  if (dateStr < today) return '1530'
 
-const WEEKLY_STATION_MAP: Record<string, string> = {
-  'sa-phok-special': 'สะโพกพิเศษ',
-  'sam-chan-special': 'สามชั้นพิเศษ',
-  'lai-special':     'ไหล่พิเศษ',
-}
+  const h = bangkokNow.getHours()
+  const m = bangkokNow.getMinutes()
+  const totalMins = h * 60 + m
 
-async function buildStationLookup(): Promise<Map<string, string>> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
-  const lookup = new Map<string, string>()
-
-  // Primary: workforce_weekly
-  for (const type of types) {
-    const logTable = `workforce_weekly_${type.replace(/-/g, '_')}`
-    const { data: latestLog } = await supabase
-      .from('upload_log').select('source_file')
-      .eq('table_name', logTable)
-      .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
-    if (!latestLog) continue
-
-    const { data: weeklyData } = await supabase
-      .from('workforce_weekly').select('row_data')
-      .eq('weekly_type', type).eq('source_file', latestLog.source_file)
-    if (!weeklyData) continue
-
-    const station = WEEKLY_STATION_MAP[type] ?? type
-    for (const row of weeklyData) {
-      const rd = (row.row_data ?? {}) as Record<string, any>
-      for (const key of ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name']) {
-        const val = rd[key]
-        if (val) { lookup.set(normName(String(val)), station); break }
-      }
-    }
-  }
-
-  // Fallback: Mas Job Assign (master_logic_manpower)
-  const { data: manpowerRows } = await supabase
-    .from('master_logic_manpower')
-    .select('product_type, row_data')
-
-  for (const row of manpowerRows ?? []) {
-    const rd = (row.row_data ?? {}) as Record<string, any>
-    const name = String(rd['รายชื่อพนักงาน'] ?? '').trim()
-    if (!name) continue
-    const key = normName(name)
-    if (lookup.has(key)) continue  // weekly มีแล้ว ไม่ override
-    const station = String(row.product_type ?? '') || null
-    if (station) lookup.set(key, station)
-  }
-
-  return lookup
+  if (totalMins >= 15 * 60 + 30) return '1530'
+  if (totalMins >= 9 * 60 + 30)  return '0930'
+  return '' // before first sync
 }
 
 export async function GET(req: NextRequest) {
-  const dateParam = req.nextUrl.searchParams.get('date')
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-  const targetDate = toThaiDate(dateParam ?? today)
+  const dateParam = req.nextUrl.searchParams.get('date') ?? today
+  const round = activeRound(dateParam)
 
-  const [attendanceResult, stationLookup] = await Promise.all([
-    externalSupabase
-      .from('timestamp_with_dept')
-      .select('emp_id, name, dept, shift, shift_start, scan_in, attendance_status, minutes_late')
-      .eq('target_date', targetDate)
-      .order('dept')
-      .order('name'),
-    buildStationLookup(),
-  ])
+  if (!round) {
+    return NextResponse.json({ data: [], summary: { present: 0, late: 0, absent: 0, total: 0 }, message: 'ยังไม่ถึงเวลา Sync (9:30)' })
+  }
 
-  if (attendanceResult.error)
-    return NextResponse.json({ error: attendanceResult.error.message }, { status: 500 })
+  // Read from daily_workforce snapshot (cron-synced)
+  const { data: wfRows, error } = await supabase
+    .from('daily_workforce')
+    .select('emp_id, name, home_dept, work_station, shift, required_skill')
+    .eq('work_date', dateParam)
+    .eq('upload_round', round)
+    .order('home_dept')
+    .order('name')
 
-  const rows = (attendanceResult.data ?? []).map(r => ({
-    ...r,
-    station: stationLookup.get(normName(String(r.name ?? ''))) ?? null,
-  }))
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const rows = (wfRows ?? []).map(r => {
+    const parts = String(r.required_skill ?? '').split('|')
+    return {
+      emp_id:            r.emp_id,
+      name:              r.name,
+      dept:              r.home_dept ?? '',
+      shift:             r.shift ?? '',
+      shift_start:       parts[3] ?? '',
+      scan_in:           parts[0] ?? '',
+      attendance_status: parts[1] ?? '',
+      minutes_late:      Number(parts[2] ?? 0),
+      station:           r.work_station || null,
+    }
+  })
 
   const summary = {
     present: rows.filter(r => r.attendance_status === 'Present').length,
@@ -92,5 +61,5 @@ export async function GET(req: NextRequest) {
     total:   rows.length,
   }
 
-  return NextResponse.json({ data: rows, summary })
+  return NextResponse.json({ data: rows, summary, round })
 }

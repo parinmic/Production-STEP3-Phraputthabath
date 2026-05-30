@@ -1205,11 +1205,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     bkpOrdersRaw,
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', 'manual'),
+      .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', '0930'),
+      .eq('work_date', productionDate).eq('upload_round', '0930').neq('work_station', ''),
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', '1530'),
+      .eq('work_date', productionDate).eq('upload_round', '1530').neq('work_station', ''),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
