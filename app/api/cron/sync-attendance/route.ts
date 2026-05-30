@@ -27,11 +27,26 @@ async function runSync() {
     const [yr, mo, dy] = today.split('-')
     const thaiDate = `${Number(dy)}/${Number(mo)}/${Number(yr) + 543}`
 
-    // 1. Fetch ALL attendance records (all statuses) for display
+    // 1. Find latest run_id for this date
+    const { data: latestRun, error: runErr } = await externalSupabase
+      .from('timestamp_with_dept')
+      .select('run_id')
+      .eq('target_date', thaiDate)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (runErr) throw new Error(`External fetch run_id: ${runErr.message}`)
+    if (!latestRun?.run_id) {
+      return NextResponse.json({ success: true, round: uploadRound, inserted: 0, message: 'ไม่มีข้อมูล Attendance วันนี้' })
+    }
+
+    // 2. Fetch ALL attendance records from latest run only
     const { data: allAttendance, error: extErr } = await externalSupabase
       .from('timestamp_with_dept')
       .select('emp_id, name, dept, shift, shift_start, scan_in, attendance_status, minutes_late')
       .eq('target_date', thaiDate)
+      .eq('run_id', latestRun.run_id)
 
     if (extErr) throw new Error(`External fetch: ${extErr.message}`)
     if (!allAttendance?.length) {
