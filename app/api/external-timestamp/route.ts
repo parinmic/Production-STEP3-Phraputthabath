@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   // Read cron snapshot + manual overrides in parallel
   const [{ data: wfRows, error }, { data: manualRows }] = await Promise.all([
     supabase.from('daily_workforce')
-      .select('emp_id, name, home_dept, work_station, shift, required_skill')
+      .select('emp_id, name, home_dept, work_station, shift, required_skill, uploaded_at')
       .eq('work_date', dateParam).eq('upload_round', round)
       .order('home_dept').order('name'),
     supabase.from('daily_workforce')
@@ -72,5 +72,11 @@ export async function GET(req: NextRequest) {
     total:   rows.length,
   }
 
-  return NextResponse.json({ data: rows, summary, round })
+  const syncedAt = (wfRows ?? []).reduce<string | null>((latest, r) => {
+    const t = (r as any).uploaded_at as string | null
+    if (!t) return latest
+    return !latest || t > latest ? t : latest
+  }, null)
+
+  return NextResponse.json({ data: rows, summary, round, syncedAt })
 }

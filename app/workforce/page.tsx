@@ -50,8 +50,9 @@ export default function WorkforcePage() {
   const [rows, setRows]       = useState<AttendanceRow[]>([])
   const [planMap, setPlanMap] = useState<Map<string, PlanEntry>>(new Map())
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [syncedAt, setSyncedAt] = useState<string | null>(null)
 
   const [filterStatus,  setFilterStatus]  = useState('all')
   const [filterShift,   setFilterShift]   = useState('all')
@@ -76,6 +77,7 @@ export default function WorkforcePage() {
       if (json.error) throw new Error(json.error)
       setRows(json.data ?? [])
       setSummary(json.summary ?? null)
+      setSyncedAt(json.syncedAt ?? null)
       setOverrides(new Map())
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
@@ -222,6 +224,11 @@ export default function WorkforcePage() {
             <Download size={14} className={syncing ? 'animate-bounce' : ''} />
             {syncing ? 'กำลังดึง...' : 'ดึงข้อมูล'}
           </button>
+          {syncedAt && (
+            <span className="text-xs text-gray-400">
+              ดึงล่าสุด {new Date(syncedAt).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
           <button onClick={() => reload(date)} disabled={loading || syncing}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีเฟรช
