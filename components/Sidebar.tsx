@@ -108,6 +108,10 @@ export default function Sidebar() {
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
           </Link>
+          <Link href="/executive-dashboard" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/executive-dashboard')}`} title="Dashboard บริหาร">
+            <BarChart3 size={18} className="shrink-0" />
+            <span className={labelCls}>Dashboard บริหาร</span>
+          </Link>
 
           <p className={sectionCls}>คำสั่งเบิกและผลิต</p>
           <div className={dividerCls} />
