@@ -2312,10 +2312,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   if (primarySkuSet.size > 0) {
     const toMins = (s: string) => { const p = (s || '00:00').split(':').map(Number); return (p[0] ?? 0) * 60 + (p[1] ?? 0) }
 
-    // Group tasks by worker
+    // Group tasks by worker (use worker_name — same key as resequencing; worker_code may be null for kept assignments)
     const tasksByWorker = new Map<string, Record<string, unknown>[]>()
     for (const task of resequenced) {
-      const wCode = String(task['worker_code'] ?? '')
+      const wCode = String(task['worker_name'] ?? '')
       if (!tasksByWorker.has(wCode)) tasksByWorker.set(wCode, [])
       tasksByWorker.get(wCode)!.push(task)
     }
