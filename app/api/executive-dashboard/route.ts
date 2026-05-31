@@ -29,15 +29,15 @@ export async function GET(req: NextRequest) {
       .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่']),
     supabase
       .from('wet_market_orders')
-      .select('sku, sku_name, quantity')
+      .select('sku, sku_name, quantity, upload_round')
       .eq('delivery_date', date),
     supabase
       .from('lotus_orders')
-      .select('sku, sku_name, quantity')
+      .select('sku, sku_name, quantity, upload_round')
       .eq('delivery_date', date),
     supabase
       .from('makro_orders')
-      .select('sku, sku_name, quantity')
+      .select('sku, sku_name, quantity, upload_round')
       .eq('delivery_date', date),
     supabase
       .from('production_plan_100')
@@ -61,9 +61,24 @@ export async function GET(req: NextRequest) {
     wpbMap.set(norm, Number(r.weight_per_bag))
   }
 
-  // ── Order: normSku → total kg across all channels for delivery_date
+  // ── Order: normSku → total kg, latest upload_round only per channel
+  const latestRound = (rows: { upload_round?: string | null }[]): string | null => {
+    const rounds = [...new Set(rows.map(r => r.upload_round).filter(Boolean) as string[])]
+    return rounds.sort((a, b) => b.localeCompare(a))[0] ?? null
+  }
+  const wmRound    = latestRound(wmOrders    ?? [])
+  const lotusRound = latestRound(lotusOrders ?? [])
+  const makroRound = latestRound(makroOrders ?? [])
+
+  const filterLatest = <T extends { upload_round?: string | null }>(rows: T[], round: string | null) =>
+    round ? rows.filter(r => r.upload_round === round) : rows
+
   const orderMap = new Map<string, { qty: number; sku_name: string }>()
-  for (const row of [...(wmOrders ?? []), ...(lotusOrders ?? []), ...(makroOrders ?? [])]) {
+  for (const row of [
+    ...filterLatest(wmOrders    ?? [], wmRound),
+    ...filterLatest(lotusOrders ?? [], lotusRound),
+    ...filterLatest(makroOrders ?? [], makroRound),
+  ]) {
     const norm = (row.sku ?? '').replace(/^0+/, '')
     const cur = orderMap.get(norm) ?? { qty: 0, sku_name: row.sku_name ?? '' }
     cur.qty += Number(row.quantity ?? 0)
