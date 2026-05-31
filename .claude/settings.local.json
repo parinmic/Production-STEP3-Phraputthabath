@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node -e ' *)",
+      "PowerShell($env:NODE_PATH = \"\"; node --version 2>&1; Get-Command node -ErrorAction SilentlyContinue | Select-Object Source)",
+      "Bash(node node_modules/.bin/tsc --noEmit)",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command npx -ErrorAction SilentlyContinue)",
+      "PowerShell($env:PATH -split ';' | Where-Object { $_ -match 'node' -or $_ -match 'npm' })",
+      "PowerShell(& \"C:\\\\Users\\\\chayuth.rue\\\\Production-STEP3-Phraputthabath\\\\node_modules\\\\.bin\\\\tsc.cmd\" --noEmit 2>&1)",
+      "PowerShell(Get-Command node 2>&1)",
+      "PowerShell(Get-Command tsc 2>&1)",
+      "Bash(npm run *)",
+      "PowerShell($cmd = Get-Command node -ErrorAction SilentlyContinue; if \\($cmd\\) { $cmd.Source } else { \"node not found\" })",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue; Get-ChildItem \"$env:APPDATA\\\\npm\" -ErrorAction SilentlyContinue | Select-Object -First 5)",
+      "PowerShell($env:PATH += \";C:\\\\Program Files\\\\nodejs\"; cd \"c:\\\\Users\\\\chayuth.rue\\\\Production-STEP3-Phraputthabath\"; npm run build 2>&1 | Select-Object -Last 25)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\chayuth.rue\" -Directory | Where-Object { $_.Name -match \"node|nvm|fnm\" } | Select-Object Name)",
+      "PowerShell($paths = $env:PATH -split \";\"; $paths | Where-Object { $_ -match \"node|npm\" })",
+      "PowerShell($drives = @\\(\"C:\\\\\"\\); foreach \\($d in $drives\\) { Get-ChildItem \"$d\" -Recurse -Filter \"node.exe\" -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName })"
+    ]
+  }
+}
