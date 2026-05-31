@@ -238,7 +238,7 @@ function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
       if (!key.startsWith('กลุ่ม')) continue
       if (val === null || val === undefined) continue
       const level = Number(val)
-      const cleanKey = key.replace(/_\d+$/, '')
+      const cleanKey = key.replace(/_\d+$/, '').trim()
       if (!groups.has(cleanKey) || level < (groups.get(cleanKey) ?? 99))
         groups.set(cleanKey, level)
     }
@@ -506,11 +506,19 @@ function allocateBalanced(params: {
     const assignedForSku = skuAssignedWorkers.get(normUnitSku) ?? new Set<string>()
 
     // Filter to eligible workers, also enforce per-SKU worker cap
-    const eligible = workers.filter(w => {
+    let eligible = workers.filter(w => {
       if (!isWorkerEligible(w, unit.productGroup)) return false
       if (maxW !== Infinity && assignedForSku.size >= maxW && !assignedForSku.has(normName(w.name))) return false
       return true
     })
+    // Fallback: if no worker is explicitly assigned to this group in Mas ตำแหน่ง,
+    // allow all station workers (group exists in Mas Productivity but not yet in job-assign master)
+    if (!eligible.length) {
+      eligible = workers.filter(w => {
+        if (maxW !== Infinity && assignedForSku.size >= maxW && !assignedForSku.has(normName(w.name))) return false
+        return true
+      })
+    }
     if (!eligible.length) continue
 
     const specialTime = specialTimeMap.get(unit.sku) ?? specialTimeMap.get(unit.sku.replace(/^0+/, ''))

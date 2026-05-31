@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
     const isWeigher = Number(r['ชั่งน้ำหนัก'] ?? 0) === 1
     if (isWeigher) continue  // ชั่งน้ำหนัก ไม่นับเป็น production worker
     for (const grp of skuProductGroups) {
-      const key = Object.keys(r).find(k => k.replace(/_\d+$/, '') === grp)
+      const key = Object.keys(r).find(k => k.replace(/_\d+$/, '').trim() === grp)
       if (key && (Number(r[key]) === 1 || Number(r[key]) === 2)) { eligibleWorkers.push(name); break }
     }
   }
