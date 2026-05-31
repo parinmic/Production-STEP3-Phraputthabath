@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
     { data: wmOrders },
     { data: lotusOrders },
     { data: makroOrders },
-    { data: plan100 },
+    { data: plan100Hist },
+    { data: plan100Today },
     { data: yieldData },
     { data: pickingUnit },
   ] = await Promise.all([
@@ -44,6 +45,10 @@ export async function GET(req: NextRequest) {
       .select('plan_date, sap, makro_weight, cpft_weight, lotus_weight')
       .in('plan_date', histDates),
     supabase
+      .from('production_plan_100')
+      .select('sap, product_name, weight_total')
+      .eq('plan_date', date),
+    supabase
       .from('yield_bags')
       .select('sap_code, bags')
       .eq('work_date', date),
@@ -61,36 +66,60 @@ export async function GET(req: NextRequest) {
     wpbMap.set(norm, Number(r.weight_per_bag))
   }
 
-  // ── Order: normSku → total kg, latest upload_round only per channel
-  const latestRound = (rows: { upload_round?: string | null }[]): string | null => {
-    const rounds = [...new Set(rows.map(r => r.upload_round).filter(Boolean) as string[])]
-    return rounds.sort((a, b) => b.localeCompare(a))[0] ?? null
-  }
-  const wmRound    = latestRound(wmOrders    ?? [])
-  const lotusRound = latestRound(lotusOrders ?? [])
-  const makroRound = latestRound(makroOrders ?? [])
+  // ── Determine highest phase generated today
+  const periodsGenerated = new Set((assignments ?? []).map(a => a.period))
+  const hasPhase3 = periodsGenerated.has('ค่ำ')
+  const hasPhase2 = periodsGenerated.has('บ่าย')
 
-  const filterLatest = <T extends { upload_round?: string | null }>(rows: T[], round: string | null) =>
-    round ? rows.filter(r => r.upload_round === round) : rows
-
+  // ── Order: logic depends on which phases have been generated
+  //   Phase 3: Plan 100% (today) + Makro '1400' for SKUs not in Plan 100%
+  //   Phase 2: Makro '1400' + LOTUS '1400' + WM '1400'
+  //   Phase 1 only: Makro '0800'
   const orderMap = new Map<string, { qty: number; sku_name: string }>()
-  for (const row of [
-    ...filterLatest(wmOrders    ?? [], wmRound),
-    ...filterLatest(lotusOrders ?? [], lotusRound),
-    ...filterLatest(makroOrders ?? [], makroRound),
-  ]) {
-    const norm = (row.sku ?? '').replace(/^0+/, '')
-    const cur = orderMap.get(norm) ?? { qty: 0, sku_name: row.sku_name ?? '' }
-    cur.qty += Number(row.quantity ?? 0)
-    if (!cur.sku_name && row.sku_name) cur.sku_name = row.sku_name
+
+  const addOrder = (sku: string, qty: number, name: string) => {
+    const norm = sku.replace(/^0+/, '')
+    const cur = orderMap.get(norm) ?? { qty: 0, sku_name: name }
+    cur.qty += qty
+    if (!cur.sku_name && name) cur.sku_name = name
     orderMap.set(norm, cur)
   }
 
+  const byRound = <T extends { upload_round?: string | null }>(rows: T[], round: string) =>
+    rows.filter(r => r.upload_round === round)
+
+  if (hasPhase3) {
+    // Plan 100% (today) is the primary order source
+    const plan100Skus = new Set<string>()
+    for (const r of plan100Today ?? []) {
+      const norm = (r.sap ?? '').replace(/^0+/, '')
+      plan100Skus.add(norm)
+      addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
+    }
+    // Makro '1400' for SKUs not already covered by Plan 100%
+    for (const r of byRound(makroOrders ?? [], '1400')) {
+      const norm = (r.sku ?? '').replace(/^0+/, '')
+      if (!plan100Skus.has(norm))
+        addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
+    }
+  } else if (hasPhase2) {
+    for (const r of [
+      ...byRound(makroOrders ?? [], '1400'),
+      ...byRound(lotusOrders ?? [], '1400'),
+      ...byRound(wmOrders    ?? [], '1400'),
+    ]) {
+      addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
+    }
+  } else {
+    // Phase 1 only
+    for (const r of byRound(makroOrders ?? [], '0800')) {
+      addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
+    }
+  }
+
   // ── Baseline: avg of last-3-days plan_100 per normSku
-  // Makro uses makro_weight, Lotus/WM uses lotus_weight + cpft_weight
-  // Sum per (plan_date, normSku) across stations, then average across dates
-  const planByDateSku = new Map<string, number>() // "date|||normSku" → total kg
-  for (const r of plan100 ?? []) {
+  const planByDateSku = new Map<string, number>()
+  for (const r of plan100Hist ?? []) {
     const norm = (r.sap ?? '').replace(/^0+/, '')
     const key = `${r.plan_date}|||${norm}`
     const kg = Number(r.makro_weight ?? 0) + Number(r.lotus_weight ?? 0) + Number(r.cpft_weight ?? 0)
