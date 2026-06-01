@@ -1375,8 +1375,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
   for (const row of concurrentSkuRaw ?? []) {
     const r = row.row_data as Record<string, unknown>
-    const sap1 = getConcCol(r, 'Sap ที่ 1').replace(/^0+/, '')
-    const sap2 = getConcCol(r, 'Sap ที่ 2').replace(/^0+/, '')
+    // Column names: "Sap ตั้งต้น" (primary) / "Sap ผลพลอยได้" (secondary)
+    // Fallback to legacy names "Sap ที่ 1" / "Sap ที่ 2" for backwards compatibility
+    const sap1 = (getConcCol(r, 'Sap ตั้งต้น') || getConcCol(r, 'Sap ที่ 1')).replace(/^0+/, '')
+    const sap2 = (getConcCol(r, 'Sap ผลพลอยได้') || getConcCol(r, 'Sap ที่ 2')).replace(/^0+/, '')
     if (!sap1 || !sap2) continue
     if (!primaryMap.has(sap1)) primaryMap.set(sap1, new Set())
     primaryMap.get(sap1)!.add(sap2)
