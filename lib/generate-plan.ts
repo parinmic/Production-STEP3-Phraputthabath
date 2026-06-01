@@ -2039,6 +2039,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const k = item.sku.replace(/^0+/, '')
       globalSkuTotalQty.set(k, (globalSkuTotalQty.get(k) ?? 0) + item.targetQty)
     }
+    // Secondary SKUs: ALL primary workers must participate — bypass qty-based worker cap
+    for (const k of Array.from(globalSkuTotalQty.keys())) {
+      if (secondarySkuSet.has(k)) globalSkuTotalQty.set(k, Number.MAX_SAFE_INTEGER)
+    }
 
     const chsInPass = activeChannels.filter(ch => passList.some(item => item.channel === ch))
     for (const item of passList) {
@@ -2265,6 +2269,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         keptTasks.push(task)
       } else {
         if (curMins < checkpointMins) curMins = checkpointMins
+
+        // Concurrent secondary SKUs: pass through without advancing the sequential queue.
+        // The concurrent-timing block below sets the final deadline_time to primary's start.
+        if (secondarySkuSet.has(cleanSku)) {
+          keptTasks.push(task)
+          continue
+        }
 
         const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku as string)?.startMins ?? null
 
