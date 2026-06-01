@@ -1197,7 +1197,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return h.toISOString().split('T')[0]
   })
 
-  const orderRound = isPhase2 ? '1400' : '0800'
+  const orderRound = (isPhase2 || isPhase3) ? '1400' : '0800'
 
   const [
     { data: workforceRawManual },
