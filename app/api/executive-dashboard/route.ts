@@ -105,6 +105,12 @@ export async function GET(req: NextRequest) {
   const byRound = <T extends { upload_round?: string | number | null }>(rows: T[], round: string) =>
     rows.filter(r => String(r.upload_round ?? '') === round)
 
+  // Makro: '1400' is the updated afternoon round; fall back to '0800' for SKUs not in '1400'
+  const makro1400 = byRound(makroOrders ?? [], '1400')
+  const makro0800 = byRound(makroOrders ?? [], '0800')
+  const makro1400Skus = new Set(makro1400.map(r => (r.sku ?? '').replace(/^0+/, '')))
+  const makro0800Fallback = makro0800.filter(r => !makro1400Skus.has((r.sku ?? '').replace(/^0+/, '')))
+
   if (hasPhase3) {
     // Primary: Plan 100% covers all planned SKUs
     const plan100Skus = new Set<string>()
@@ -113,9 +119,10 @@ export async function GET(req: NextRequest) {
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    // Remainder: SKUs not in Plan 100% come from all channels (mirrors generate-plan Phase 3 append logic)
+    // Remainder: SKUs not in Plan 100% — Makro prefers '1400' then falls back to '0800'
     for (const r of [
-      ...byRound(makroOrders ?? [], '1400'),
+      ...makro1400,
+      ...makro0800Fallback,
       ...byRound(lotusOrders ?? [], '1400'),
       ...byRound(wmOrders    ?? [], '1400'),
     ]) {
@@ -124,15 +131,17 @@ export async function GET(req: NextRequest) {
         addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   } else if (hasPhase2) {
+    // Makro: prefer '1400', fallback to '0800' for SKUs not updated in afternoon round
     for (const r of [
-      ...byRound(makroOrders ?? [], '1400'),
+      ...makro1400,
+      ...makro0800Fallback,
       ...byRound(lotusOrders ?? [], '1400'),
       ...byRound(wmOrders    ?? [], '1400'),
     ]) {
       addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   } else {
-    for (const r of byRound(makroOrders ?? [], '0800')) {
+    for (const r of makro0800) {
       addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   }
