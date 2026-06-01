@@ -2107,11 +2107,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Build independent time budget for secondary SKUs — full shift hours, no keptMaxEnd reduction.
-  // Secondary SKUs run concurrently with primary SKUs so they share the same wall-clock window.
+  // Build independent time budget for secondary SKUs.
+  // Secondary SKUs run concurrently with primary — they start at the same time as primary.
   const secWorkerHours = new Map<string, number>()
   const secWorkerFreeAtMins = new Map<string, number>()
   const secWorkerBusySegments = new Map<string, { start: number; end: number }[]>()
+  const secWorkerShiftEnd = new Map<string, number>() // nameKey → shift end (mins)
   for (const w of workforce) {
     let shiftStartMins = phaseCfg.startH * 60
     let shiftEndMins = phaseEndMins
@@ -2119,11 +2120,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     else if (w.shift === 'กะ 2') { shiftStartMins = 14.5 * 60; shiftEndMins = isPhase3 ? phaseEndMins : 23.5 * 60 }
     const actualEndMins = Math.min(phaseEndMins, shiftEndMins)
     const nameKey = normName(w.name)
-    // No keptMaxEnd here — secondary runs alongside primary, not after it
     const startFreeMins = Math.max(checkpointMins, shiftStartMins)
     secWorkerHours.set(nameKey, Math.max(0, actualEndMins - startFreeMins) / 60)
     secWorkerFreeAtMins.set(nameKey, startFreeMins)
     secWorkerBusySegments.set(nameKey, [])
+    secWorkerShiftEnd.set(nameKey, actualEndMins)
   }
 
   const primaryStockList   = stockAssignList.filter(i => !secondarySkuSet.has(i.sku.replace(/^0+/, '')))
@@ -2136,22 +2137,37 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   assignments.push(...keptAssignments)
 
   if (secStockList.length || secDeficitList.length) {
-    // Cap secondary budget to each worker's primary production hours.
-    // Secondary is a byproduct of primary — it only runs while primary is running.
-    // Workers with no primary tasks get 0 secondary capacity.
-    const workerPrimaryHrs = new Map<string, number>()
+    // Concurrent mode: secondary runs alongside primary, starting at the SAME TIME.
+    // Target quantity is order-driven (normal SKU logic), not capped by primary hours.
+    // Only workers who received primary assignments participate in secondary.
+
+    // Find earliest primary start time per worker
+    const workerPrimaryStart = new Map<string, number>()
     for (const a of assignments) {
       const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
       if (secondarySkuSet.has(normSku)) continue
       const nameKey = normName(String(a['worker_name'] ?? ''))
-      const qty = Number(a['target_quantity'] ?? 0)
-      const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
-      const rate = prod?.rate ?? 0
-      workerPrimaryHrs.set(nameKey, (workerPrimaryHrs.get(nameKey) ?? 0) + (rate > 0 ? qty / rate : 0))
+      const deadlineStr = String(a['deadline_time'] ?? '')
+      if (!deadlineStr.includes(':')) continue
+      const [h, m] = deadlineStr.split(':').map(Number)
+      const startMins = h * 60 + m
+      const cur = workerPrimaryStart.get(nameKey)
+      if (cur === undefined || startMins < cur) workerPrimaryStart.set(nameKey, startMins)
     }
-    for (const [nameKey, fullHrs] of secWorkerHours) {
-      secWorkerHours.set(nameKey, Math.min(fullHrs, workerPrimaryHrs.get(nameKey) ?? 0))
+
+    // Update secondary budget: concurrent start, full remaining shift capacity;
+    // workers without any primary assignment get 0 capacity.
+    for (const [nameKey] of secWorkerHours) {
+      const primaryStart = workerPrimaryStart.get(nameKey)
+      if (primaryStart === undefined) {
+        secWorkerHours.set(nameKey, 0)
+      } else {
+        secWorkerFreeAtMins.set(nameKey, primaryStart)
+        const shiftEnd = secWorkerShiftEnd.get(nameKey) ?? phaseEndMins
+        secWorkerHours.set(nameKey, Math.max(0, shiftEnd - primaryStart) / 60)
+      }
     }
+
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
