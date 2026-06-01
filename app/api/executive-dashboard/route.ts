@@ -106,13 +106,19 @@ export async function GET(req: NextRequest) {
     rows.filter(r => String(r.upload_round ?? '') === round)
 
   if (hasPhase3) {
+    // Primary: Plan 100% covers all planned SKUs
     const plan100Skus = new Set<string>()
     for (const r of plan100Today ?? []) {
       const norm = (r.sap ?? '').replace(/^0+/, '')
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    for (const r of byRound(makroOrders ?? [], '1400')) {
+    // Remainder: SKUs not in Plan 100% come from all channels (mirrors generate-plan Phase 3 append logic)
+    for (const r of [
+      ...byRound(makroOrders ?? [], '1400'),
+      ...byRound(lotusOrders ?? [], '1400'),
+      ...byRound(wmOrders    ?? [], '1400'),
+    ]) {
       const norm = (r.sku ?? '').replace(/^0+/, '')
       if (!plan100Skus.has(norm))
         addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
