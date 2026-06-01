@@ -104,6 +104,15 @@ function getRoundMins(t: number, roundMins: number[]): number {
   return round
 }
 
+// ========== Row key normalizer ==========
+// Trims whitespace from every key in a row_data object so exact-key lookups
+// are resilient to accidental leading/trailing spaces in Excel column headers.
+function normalizeRow(r: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(r)) out[k.trim()] = v
+  return out
+}
+
 // ========== Station Mapping ==========
 
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
@@ -216,20 +225,20 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
 
 function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
   return rows
-    .map(r => ({
-      station:       String(r['จุดงาน'] ?? '').trim(),
-      product_group: String(r['กลุ่มสินค้า'] ?? '').trim(),
-      sku:           String(r['SAP'] ?? '').trim(),
-      sku_name:      String(r['ชื่อสินค้า'] ?? '').trim(),
-      rate:          Number(r['กำลังการผลิต (กก./ชม./คน)'] ?? 0),
-    }))
+    .map(r => { const n = normalizeRow(r); return ({
+      station:       String(n['จุดงาน'] ?? '').trim(),
+      product_group: String(n['กลุ่มสินค้า'] ?? '').trim(),
+      sku:           String(n['SAP'] ?? '').trim(),
+      sku_name:      String(n['ชื่อสินค้า'] ?? '').trim(),
+      rate:          Number(n['กำลังการผลิต (กก./ชม./คน)'] ?? 0),
+    })})
     .filter(r => r.station && r.sku && r.rate > 0)
 }
 
 function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
   const map = new Map<string, { isWeigher: boolean; groups: Map<string, number> }>()
   for (const row of rows) {
-    const r = row.row_data
+    const r = normalizeRow(row.row_data)
     const fullName = normName(String(r['รายชื่อพนักงาน'] ?? ''))
     if (!fullName) continue
     const isWeigher = Number(r['ชั่งน้ำหนัก'] ?? 0) === 1
@@ -1351,7 +1360,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   const specialTimeMap = new Map<string, { startMins: number | null; stopMins: number | null }>()
   for (const row of masterSpecialRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
     const sap = String(r['SAP'] ?? '').trim()
     if (!sap) continue
     const startMins = parseExcelTime(r['ช่วงเวลาเริ่มผลิต'])
@@ -1428,15 +1437,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
     const rawStation = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? '').trim())
     const station = STATION_TABLE[rawStation] ?? rawStation
-    // Flexible key search: handles trailing spaces, % prefix, case variations
-    const varKey = Object.keys(r).find(k => {
-      const kn = k.trim().toLowerCase()
-      return kn === '%variance' || kn === '% variance' || kn === 'variance' || kn.startsWith('%')
-    })
-    let pct = Number((varKey ? r[varKey] : r['%Variance']) ?? 0)
+    let pct = Number(r['%Variance'] ?? 0)
     if (pct > 1) pct = pct / 100
     if (station && pct > 0) lotusVarianceMap.set(station, pct)
   }
@@ -1466,7 +1470,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   const channelPriority: Record<string, number> = {}
   for (const row of masterChannelRaw ?? []) {
-    const r = row.row_data as Record<string, unknown>
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
     if (Number(r['Phase']) === selectedPhase) {
       const ch = String(r['Channel'])
       if (!(ch in channelPriority)) channelPriority[ch] = Number(r['Priority'])
