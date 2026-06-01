@@ -102,8 +102,8 @@ export async function GET(req: NextRequest) {
     orderMap.set(norm, cur)
   }
 
-  const byRound = <T extends { upload_round?: string | null }>(rows: T[], round: string) =>
-    rows.filter(r => r.upload_round === round)
+  const byRound = <T extends { upload_round?: string | number | null }>(rows: T[], round: string) =>
+    rows.filter(r => String(r.upload_round ?? '') === round)
 
   if (hasPhase3) {
     const plan100Skus = new Set<string>()
