@@ -1431,7 +1431,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const r = row.row_data as Record<string, unknown>
     const rawStation = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? '').trim())
     const station = STATION_TABLE[rawStation] ?? rawStation
-    let pct = Number(r['%Variance'] ?? 0)
+    // Flexible key search: handles trailing spaces, % prefix, case variations
+    const varKey = Object.keys(r).find(k => {
+      const kn = k.trim().toLowerCase()
+      return kn === '%variance' || kn === '% variance' || kn === 'variance' || kn.startsWith('%')
+    })
+    let pct = Number((varKey ? r[varKey] : r['%Variance']) ?? 0)
     if (pct > 1) pct = pct / 100
     if (station && pct > 0) lotusVarianceMap.set(station, pct)
   }
