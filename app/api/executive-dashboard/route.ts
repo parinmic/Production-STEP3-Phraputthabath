@@ -18,8 +18,10 @@ export async function GET(req: NextRequest) {
     { data: wmOrders },
     { data: lotusOrders },
     { data: makroOrders },
-    { data: plan100Hist },
     { data: plan100Today },
+    { data: wmHist },
+    { data: lotusHist },
+    { data: makroHist },
     { data: yieldData },
     { data: pickingUnit },
   ] = await Promise.all([
@@ -40,14 +42,29 @@ export async function GET(req: NextRequest) {
       .from('makro_orders')
       .select('sku, sku_name, quantity, upload_round')
       .eq('delivery_date', date),
-    supabase
-      .from('production_plan_100')
-      .select('plan_date, sap, makro_weight, cpft_weight, lotus_weight')
-      .in('plan_date', histDates),
+    // Plan 100% today — used for Phase 3 Order
     supabase
       .from('production_plan_100')
       .select('sap, product_name, weight_total')
       .eq('plan_date', date),
+    // BL3 history — Wet Market round 1600
+    supabase
+      .from('wet_market_orders')
+      .select('sku, quantity, delivery_date')
+      .in('delivery_date', histDates)
+      .eq('upload_round', '1600'),
+    // BL3 history — LOTUS round 1600
+    supabase
+      .from('lotus_orders')
+      .select('sku, quantity, delivery_date')
+      .in('delivery_date', histDates)
+      .eq('upload_round', '1600'),
+    // BL3 history — Makro round 1400 (แผน Makro 100%)
+    supabase
+      .from('makro_orders')
+      .select('sku, quantity, delivery_date')
+      .in('delivery_date', histDates)
+      .eq('upload_round', '1400'),
     supabase
       .from('yield_bags')
       .select('sap_code, bags')
@@ -89,14 +106,12 @@ export async function GET(req: NextRequest) {
     rows.filter(r => r.upload_round === round)
 
   if (hasPhase3) {
-    // Plan 100% (today) is the primary order source
     const plan100Skus = new Set<string>()
     for (const r of plan100Today ?? []) {
       const norm = (r.sap ?? '').replace(/^0+/, '')
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    // Makro '1400' for SKUs not already covered by Plan 100%
     for (const r of byRound(makroOrders ?? [], '1400')) {
       const norm = (r.sku ?? '').replace(/^0+/, '')
       if (!plan100Skus.has(norm))
@@ -111,25 +126,30 @@ export async function GET(req: NextRequest) {
       addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   } else {
-    // Phase 1 only
     for (const r of byRound(makroOrders ?? [], '0800')) {
       addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   }
 
-  // ── Baseline: avg of last-3-days plan_100 per normSku
-  const planByDateSku = new Map<string, number>()
-  for (const r of plan100Hist ?? []) {
-    const norm = (r.sap ?? '').replace(/^0+/, '')
-    const key = `${r.plan_date}|||${norm}`
-    const kg = Number(r.makro_weight ?? 0) + Number(r.lotus_weight ?? 0) + Number(r.cpft_weight ?? 0)
-    planByDateSku.set(key, (planByDateSku.get(key) ?? 0) + kg)
+  // ── Baseline: avg of last-3-days orders per SKU (WM round 1600 + LOTUS round 1600 + Makro round 1400)
+  // Sum per (date, normSku) across all channels first, then average across dates
+  const baselineByDateSku = new Map<string, number>() // "date|||normSku" → total qty that day
+
+  const addBaseline = (sku: string, qty: number, deliveryDate: string) => {
+    const norm = sku.replace(/^0+/, '')
+    const key  = `${deliveryDate}|||${norm}`
+    baselineByDateSku.set(key, (baselineByDateSku.get(key) ?? 0) + qty)
   }
+
+  for (const r of wmHist    ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
+  for (const r of lotusHist ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
+  for (const r of makroHist ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
+
   const baselineSumMap = new Map<string, number>()
   const baselineCntMap = new Map<string, number>()
-  for (const [key, kg] of planByDateSku) {
+  for (const [key, qty] of baselineByDateSku) {
     const norm = key.split('|||')[1]
-    baselineSumMap.set(norm, (baselineSumMap.get(norm) ?? 0) + kg)
+    baselineSumMap.set(norm, (baselineSumMap.get(norm) ?? 0) + qty)
     baselineCntMap.set(norm, (baselineCntMap.get(norm) ?? 0) + 1)
   }
   const baselineMap = new Map<string, number>()
@@ -159,7 +179,7 @@ export async function GET(req: NextRequest) {
     prodMap.set(key, cur)
   }
 
-  // ── Build result rows
+  // ── Build result rows (sorted by station then sku_name)
   const round1 = (n: number) => Math.round(n * 10) / 10
   const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
 
@@ -177,7 +197,7 @@ export async function GET(req: NextRequest) {
       sku: normSku,
       sku_name: prod.sku_name || orderMap.get(normSku)?.sku_name || normSku,
       order_qty: round1(orderMap.get(normSku)?.qty ?? 0),
-      baseline: round1(baselineMap.get(normSku) ?? 0),
+      baseline:  round1(baselineMap.get(normSku) ?? 0),
       ph1,
       ph2,
       ph3,

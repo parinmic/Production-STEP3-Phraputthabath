@@ -30,8 +30,10 @@ function fmt(n: number): string {
 }
 
 // When "ทั้งหมด" is selected, collapse rows to one per SKU so Order/Baseline aren't counted twice
+// Sort by station (STATION_ORDER) then by sku_name within each station
 function aggregateBysku(rows: DashRow[]): DashRow[] {
-  const map = new Map<string, DashRow>()
+  const map      = new Map<string, DashRow>()
+  const skuPrimStation = new Map<string, string>() // sku → primary station (first in STATION_ORDER)
   for (const r of rows) {
     const cur = map.get(r.sku)
     if (!cur) {
@@ -41,12 +43,17 @@ function aggregateBysku(rows: DashRow[]): DashRow[] {
       cur.ph2        += r.ph2
       cur.ph3        += r.ph3
       cur.total_prod += r.total_prod
-      // order_qty / baseline / yield are per-SKU — keep as-is (don't add again)
     }
+    const prev = skuPrimStation.get(r.sku)
+    if (!prev || STATION_ORDER.indexOf(r.station) < STATION_ORDER.indexOf(prev))
+      skuPrimStation.set(r.sku, r.station)
   }
-  return Array.from(map.values()).sort((a, b) =>
-    a.sku_name.localeCompare(b.sku_name, 'th')
-  )
+  return Array.from(map.values()).sort((a, b) => {
+    const stA = STATION_ORDER.indexOf(skuPrimStation.get(a.sku) ?? '')
+    const stB = STATION_ORDER.indexOf(skuPrimStation.get(b.sku) ?? '')
+    if (stA !== stB) return stA - stB
+    return a.sku_name.localeCompare(b.sku_name, 'th')
+  })
 }
 
 export default function ExecutiveDashboardPage() {
