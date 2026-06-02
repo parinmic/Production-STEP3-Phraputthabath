@@ -21,8 +21,9 @@ const getFieldVal = (rowData: Record<string, any>, prefixes: string[]): string =
 async function runSync() {
   try {
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-    const bangkokHour = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok', hour: 'numeric', hour12: false }))
-    const uploadRound = bangkokHour < 12 ? '0930' : '1530'
+    const bangkokDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }))
+    const totalMins   = bangkokDate.getHours() * 60 + bangkokDate.getMinutes()
+    const uploadRound = totalMins >= 15 * 60 + 30 ? '1530' : '0930'
 
     const [yr, mo, dy] = today.split('-')
     const thaiDate = `${Number(mo)}/${Number(dy)}/${Number(yr) + 543}`
