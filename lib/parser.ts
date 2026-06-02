@@ -115,11 +115,22 @@ function thaiDateToISO(s: string): string {
   return t
 }
 
+// แปลงค่าจาก cell (Date object จาก cellDates:true, serial number, หรือ text) → ISO date string
+function cellToISO(v: string | number | Date | null | undefined): string {
+  if (v instanceof Date) {
+    const y = v.getFullYear()
+    const m = String(v.getMonth() + 1).padStart(2, '0')
+    const d = String(v.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+  return thaiDateToISO(String(v ?? ''))
+}
+
 /**
  * ประมวลผล sheet "แผน Makro 100%" จาก raw array-of-arrays
  * รองรับ rReq_date ที่ col A หรือ col B, รหัสสินค้าที่เป็น number หรือ string
  */
-function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[] {
+function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): ParsedRow[] {
   // หาวันส่ง: rReq_date อาจอยู่ col A (index 0) หรือ col B (index 1)
   let deliveryDate = ''
   for (let i = 0; i < 10; i++) {
@@ -127,8 +138,8 @@ function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[
     if (!row) continue
     const a = String(row[0] ?? '').trim()
     const b = String(row[1] ?? '').trim()
-    if (a === 'rReq_date') { deliveryDate = shiftISODate(thaiDateToISO(b), -1); break }
-    if (b === 'rReq_date') { deliveryDate = shiftISODate(thaiDateToISO(String(row[2] ?? '')), -1); break }
+    if (a === 'rReq_date') { deliveryDate = shiftISODate(cellToISO(row[1]), -1); break }
+    if (b === 'rReq_date') { deliveryDate = shiftISODate(cellToISO(row[2]), -1); break }
   }
 
   // หา header row (col 1 = 'rProduct_code')
@@ -189,10 +200,10 @@ export function parseMakroPlan100(file: File): Promise<ParsedRow[]> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
+        const wb = XLSX.read(data, { type: 'array', cellDates: true })
         const ws = wb.Sheets['แผน Makro 100%']
         if (!ws) throw new Error('ไม่พบชีท "แผน Makro 100%"')
-        const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+        const raw = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null })
         resolve(processMakroPlan100Sheet(raw))
       } catch (e) {
         reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ แผน Makro 100% ได้'))
@@ -217,10 +228,10 @@ export function parseMakroAuto(file: File): Promise<ParsedRow[]> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
+        const wb = XLSX.read(data, { type: 'array', cellDates: true })
         if (wb.SheetNames.includes('แผน Makro 100%')) {
           const ws = wb.Sheets['แผน Makro 100%']
-          const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+          const raw = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null })
           resolve(processMakroPlan100Sheet(raw))
         } else {
           // rXxx format: ข้อมูลอยู่ sheet 2, Row 1 = ชื่อบริษัท → range:1
