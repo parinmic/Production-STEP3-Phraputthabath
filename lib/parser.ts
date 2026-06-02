@@ -139,6 +139,10 @@ function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[
   const totalCol = hRow.findIndex(c =>
     String(c ?? '').includes('ผลรวม') || String(c ?? '').toLowerCase().includes('grand total')
   )
+  // Branch cols = all numeric cols between col 3 and totalCol (exclusive), or all from col 3 if no totalCol
+  const branchCols = hRow
+    .map((_, i) => i)
+    .filter(i => i >= 3 && i !== totalCol && typeof hRow[i] !== 'string')
 
   const results: ParsedRow[] = []
   let currentStation = ''
@@ -154,10 +158,15 @@ function processMakroPlan100Sheet(raw: (string | number | null)[][]): ParsedRow[
     const stationVal = String(row[0] ?? '').trim()
     if (stationVal) currentStation = stationVal
 
-    // ถ้าหาคอลัมน์ผลรวมไม่เจอ ให้รวมค่าสาขาทั้งหมด (col 3 เป็นต้นไป)
-    const qty = totalCol >= 0
-      ? (Number(row[totalCol]) || 0)
-      : (row.slice(3) as (string | number | null)[]).reduce<number>((s, v) => s + (Number(v) || 0), 0)
+    // ใช้ totalCol ถ้ามีและมีค่า; ถ้า null/undefined (formula ไม่มี cached value) ให้ sum branch cols แทน
+    let qty = 0
+    if (totalCol >= 0 && row[totalCol] != null && row[totalCol] !== '') {
+      qty = Number(row[totalCol]) || 0
+    }
+    if (!qty) {
+      qty = (branchCols.length > 0 ? branchCols : hRow.map((_, i) => i).filter(i => i >= 3))
+        .reduce<number>((s, ci) => s + (Number(row[ci]) || 0), 0)
+    }
     if (!qty) continue
 
     results.push({
