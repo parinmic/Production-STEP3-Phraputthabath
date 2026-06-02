@@ -118,12 +118,26 @@ function thaiDateToISO(s: string): string {
 // แปลงค่าจาก cell (Date object จาก cellDates:true, serial number, หรือ text) → ISO date string
 function cellToISO(v: string | number | Date | null | undefined): string {
   if (v instanceof Date) {
-    const y = v.getFullYear()
-    const m = String(v.getMonth() + 1).padStart(2, '0')
-    const d = String(v.getDate()).padStart(2, '0')
+    const y = v.getUTCFullYear()
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(v.getUTCDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }
   return thaiDateToISO(String(v ?? ''))
+}
+
+// ถ้า Excel ใช้ M/D/Y format จะทำให้ "3/6/2569" หมายถึง มี.ค. 6 ไม่ใช่ มิ.ย. 3
+// ตรวจ: ถ้าวันที่ที่ได้อยู่ในอดีต (> 20 วันที่แล้ว) ให้ลอง swap เดือน/วัน
+function resolveDeliveryDate(raw: string | number | Date | null | undefined): string {
+  const iso = cellToISO(raw)
+  if (!iso || iso.includes('NaN')) return ''
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const cutoff = shiftISODate(todayStr, -20)
+  if (iso >= cutoff) return iso
+  // วันที่ในอดีตเกิน 20 วัน → ลอง swap เดือน/วัน (M/D → D/M)
+  const [y, mo, dd] = iso.split('-')
+  const swapped = `${y}-${dd}-${mo}`
+  return swapped >= cutoff ? swapped : iso
 }
 
 /**
@@ -138,8 +152,8 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
     if (!row) continue
     const a = String(row[0] ?? '').trim()
     const b = String(row[1] ?? '').trim()
-    if (a === 'rReq_date') { deliveryDate = shiftISODate(cellToISO(row[1]), -1); break }
-    if (b === 'rReq_date') { deliveryDate = shiftISODate(cellToISO(row[2]), -1); break }
+    if (a === 'rReq_date') { deliveryDate = shiftISODate(resolveDeliveryDate(row[1]), -1); break }
+    if (b === 'rReq_date') { deliveryDate = shiftISODate(resolveDeliveryDate(row[2]), -1); break }
   }
 
   // หา header row (col 1 = 'rProduct_code')
