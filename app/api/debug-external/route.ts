@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [yr, mo, dy] = today.split('-')
-  const thaiDateNoPad  = `${Number(dy)}/${Number(mo)}/${Number(yr) + 543}`
-  const thaiDatePadded = `${dy}/${mo}/${Number(yr) + 543}`
+  const thaiDateNoPad  = `${Number(mo)}/${Number(dy)}/${Number(yr) + 543}`
+  const thaiDatePadded = `${mo}/${dy}/${Number(yr) + 543}`
 
   // 1. ลอง query โดยไม่ filter date ก่อน — ดูว่า connect ได้ไหม
   const { data: sample, error: sampleErr } = await externalSupabase

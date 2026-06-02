@@ -25,7 +25,7 @@ async function runSync() {
     const uploadRound = bangkokHour < 12 ? '0930' : '1530'
 
     const [yr, mo, dy] = today.split('-')
-    const thaiDate = `${Number(dy)}/${Number(mo)}/${Number(yr) + 543}`
+    const thaiDate = `${Number(mo)}/${Number(dy)}/${Number(yr) + 543}`
 
     // 1. Find latest run_id for this date
     const { data: latestRun, error: runErr } = await externalSupabase
