@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+type ChOrder = { sku?: string | null; sku_name?: string | null; quantity?: number | null; upload_round?: string | number | null }
+
 function subDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T00:00:00')
   d.setDate(d.getDate() - n)
@@ -119,14 +121,21 @@ export async function GET(req: NextRequest) {
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    for (const r of [
-      ...makro1400,
-      ...makro0800Fallback,
-      ...byRound(lotusOrders ?? [], '1400'),
-      ...byRound(wmOrders    ?? [], '1400'),
-    ]) {
+    // Makro SKUs ที่มีใน '1400' — จะรวมเสมอแม้อยู่ใน plan100 (plan100 ครอบคลุม LOTUS+WM เท่านั้น)
+    const allCh = [
+      ...(makro1400      as ChOrder[]),
+      ...(makro0800Fallback as ChOrder[]),
+      ...(byRound(lotusOrders ?? [], '1400') as ChOrder[]),
+      ...(byRound(wmOrders    ?? [], '1400') as ChOrder[]),
+    ]
+    const makroNorms = new Set(
+      [...(makro1400 as ChOrder[]), ...(makro0800Fallback as ChOrder[])]
+        .map(r => (r.sku ?? '').replace(/^0+/, ''))
+    )
+    for (const r of allCh) {
       const norm = (r.sku ?? '').replace(/^0+/, '')
-      if (!plan100Skus.has(norm))
+      // Makro: รวมเสมอ | LOTUS+WM: เพิ่มเฉพาะ SKU ที่ไม่อยู่ใน plan100
+      if (makroNorms.has(norm) || !plan100Skus.has(norm))
         addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   }
