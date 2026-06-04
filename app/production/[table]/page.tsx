@@ -1350,7 +1350,7 @@ export default function TablePage() {
   const tableSlug = params.table as string
   const cfg       = CFG[tableSlug]
 
-  const [date, setDate]             = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate]             = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
   const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})

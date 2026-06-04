@@ -45,7 +45,7 @@ const EMPTY_FORM = {
 }
 
 export default function AdminProductionPlanPage() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]           = useState(today)
   const [period, setPeriod]       = useState<string>('')
   const [rows, setRows]           = useState<SkuRow[]>([])

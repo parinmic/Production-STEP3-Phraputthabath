@@ -28,7 +28,7 @@ interface PlanRow {
 }
 
 export default function ProductionPlanPage() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]         = useState(today)
   const [rows, setRows]         = useState<PlanRow[]>([])
   const [bagMap, setBagMap]     = useState<Record<string, number>>({})

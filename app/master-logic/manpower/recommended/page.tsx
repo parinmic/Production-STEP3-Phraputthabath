@@ -27,7 +27,7 @@ interface ApiResult {
 }
 
 export default function RecommendedManpowerPage() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate] = useState(today)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')

@@ -33,10 +33,10 @@ function addMinutes(time: string, delta: number): string {
 
 export default function SupplementaryPlanPage() {
   const [productMaster, setProductMaster] = useState<Record<string, string>>({})
-  const [productionDate, setProductionDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [productionDate, setProductionDate] = useState(() => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
   const [items, setItems] = useState<SupplementaryEntry[]>([
     {
-      deliveryDate: new Date().toISOString().split('T')[0],
+      deliveryDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
       loadingTime: '10:00',
       channel: 'LOTUS',
       sku: '',
@@ -98,7 +98,7 @@ export default function SupplementaryPlanPage() {
     setItems([
       ...items,
       {
-        deliveryDate: lastItem ? lastItem.deliveryDate : new Date().toISOString().split('T')[0],
+        deliveryDate: lastItem ? lastItem.deliveryDate : new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
         loadingTime: lastItem ? lastItem.loadingTime : '10:00',
         channel: lastItem ? lastItem.channel : 'LOTUS',
         sku: '',
@@ -112,7 +112,7 @@ export default function SupplementaryPlanPage() {
     if (items.length === 1) {
       setItems([
         {
-          deliveryDate: new Date().toISOString().split('T')[0],
+          deliveryDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
           loadingTime: '10:00',
           channel: 'LOTUS',
           sku: '',
@@ -212,7 +212,7 @@ export default function SupplementaryPlanPage() {
         // Reset items list
         setItems([
           {
-            deliveryDate: new Date().toISOString().split('T')[0],
+            deliveryDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }),
             loadingTime: '10:00',
             channel: 'LOTUS',
             sku: '',

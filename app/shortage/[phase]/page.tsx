@@ -63,7 +63,7 @@ function parseDeficit(note: string | null): number | null {
 
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]     = useState(today)
   const [rows, setRows]     = useState<ShortageRow[]>([])
   const [loading, setLoad]  = useState(false)

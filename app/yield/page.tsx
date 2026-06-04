@@ -45,7 +45,7 @@ function parseYieldFile(file: File): Promise<SapResult[]> {
 }
 
 export default function YieldPage() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [workDate, setWorkDate]     = useState(today)
   const [status, setStatus]         = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
   const [message, setMessage]       = useState('')

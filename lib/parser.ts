@@ -245,16 +245,10 @@ export function parseMakroAuto(file: File): Promise<ParsedRow[]> {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array', cellDates: true })
-        if (wb.SheetNames.includes('แผน Makro 100%')) {
-          const ws = wb.Sheets['แผน Makro 100%']
-          const raw = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null })
-          resolve(processMakroPlan100Sheet(raw))
-        } else {
-          // rXxx format: ข้อมูลอยู่ sheet 2, Row 1 = ชื่อบริษัท → range:1
-          const sheetName = wb.SheetNames[1] ?? wb.SheetNames[0]
-          const sheet = wb.Sheets[sheetName]
-          resolve(XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null, range: 1 }))
-        }
+        if (!wb.SheetNames.includes('แผน Makro 100%')) throw new Error('ไม่พบชีท "แผน Makro 100%" ในไฟล์')
+        const ws = wb.Sheets['แผน Makro 100%']
+        const raw = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(ws, { header: 1, defval: null })
+        resolve(processMakroPlan100Sheet(raw))
       } catch (e) {
         reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ Makro ได้'))
       }
