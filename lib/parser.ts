@@ -118,9 +118,11 @@ function thaiDateToISO(s: string): string {
 // แปลงค่าจาก cell (Date object จาก cellDates:true, serial number, หรือ text) → ISO date string
 function cellToISO(v: string | number | Date | null | undefined): string {
   if (v instanceof Date) {
-    const y = v.getUTCFullYear()
-    const m = String(v.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(v.getUTCDate()).padStart(2, '0')
+    // ใช้ local time (ไม่ใช่ UTC) เพราะ XLSX cellDates สร้าง Date ที่ local midnight
+    // UTC+7: June 4 00:00 local = June 3 17:00 UTC → getUTCDate() ผิด
+    const y = v.getFullYear()
+    const m = String(v.getMonth() + 1).padStart(2, '0')
+    const d = String(v.getDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }
   return thaiDateToISO(String(v ?? ''))
