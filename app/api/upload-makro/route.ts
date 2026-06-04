@@ -12,8 +12,8 @@ function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
   if (!s || s === 'null') return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  if (s.includes('T')) return s.split('T')[0]
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const y = parseInt(s); return y > 2400 ? `${y - 543}${s.slice(4)}` : s }
+  if (s.includes('T')) { const d = s.split('T')[0]; const y = parseInt(d); return y > 2400 ? `${y - 543}${d.slice(4)}` : d }
   const parts = s.split('/')
   if (parts.length === 3) {
     const [d, m, y] = parts
