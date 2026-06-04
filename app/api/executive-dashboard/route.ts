@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Determine highest phase generated today
-  const periodsGenerated = new Set((assignments ?? []).map(a => a.period))
+  const periodsGenerated = new Set((assignments as {period?: string|null}[] ?? []).map(a => a.period))
   const hasPhase3 = periodsGenerated.has('ค่ำ')
   const hasPhase2 = periodsGenerated.has('บ่าย')
 
@@ -105,12 +105,14 @@ export async function GET(req: NextRequest) {
     orderMap.set(norm, cur)
   }
 
-  const byRound = <T extends { upload_round?: string | number | null }>(rows: T[], round: string) =>
+  const byRound = (rows: ChOrder[], round: string): ChOrder[] =>
     rows.filter(r => String(r.upload_round ?? '') === round)
 
+  const toChOrders = (data: unknown[] | null | undefined): ChOrder[] => (data ?? []) as ChOrder[]
+
   // Makro: '1400' is the updated afternoon round; fall back to '0800' for SKUs not in '1400'
-  const makro1400 = byRound(makroOrders ?? [], '1400')
-  const makro0800 = byRound(makroOrders ?? [], '0800')
+  const makro1400 = byRound(toChOrders(makroOrders), '1400')
+  const makro0800 = byRound(toChOrders(makroOrders), '0800')
   const makro1400Skus = new Set(makro1400.map(r => (r.sku ?? '').replace(/^0+/, '')))
   const makro0800Fallback = makro0800.filter(r => !makro1400Skus.has((r.sku ?? '').replace(/^0+/, '')))
 
@@ -121,21 +123,17 @@ export async function GET(req: NextRequest) {
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    // Makro SKUs ที่มีใน '1400' — จะรวมเสมอแม้อยู่ใน plan100 (plan100 ครอบคลุม LOTUS+WM เท่านั้น)
-    const allCh = [
-      ...(makro1400      as ChOrder[]),
-      ...(makro0800Fallback as ChOrder[]),
-      ...(byRound(lotusOrders ?? [], '1400') as ChOrder[]),
-      ...(byRound(wmOrders    ?? [], '1400') as ChOrder[]),
-    ]
-    const makroNorms = new Set(
-      [...(makro1400 as ChOrder[]), ...(makro0800Fallback as ChOrder[])]
-        .map(r => (r.sku ?? '').replace(/^0+/, ''))
-    )
-    for (const r of allCh) {
+    // Makro '1400': รวมเสมอ แม้ SKU จะอยู่ใน plan100 (plan100 ครอบคลุม LOTUS+WM)
+    for (const r of [...makro1400, ...makro0800Fallback]) {
+      addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
+    }
+    // LOTUS + WM '1400': เพิ่มเฉพาะ SKU ที่ไม่อยู่ใน plan100
+    for (const r of [
+      ...byRound(toChOrders(lotusOrders), '1400'),
+      ...byRound(toChOrders(wmOrders),    '1400'),
+    ]) {
       const norm = (r.sku ?? '').replace(/^0+/, '')
-      // Makro: รวมเสมอ | LOTUS+WM: เพิ่มเฉพาะ SKU ที่ไม่อยู่ใน plan100
-      if (makroNorms.has(norm) || !plan100Skus.has(norm))
+      if (!plan100Skus.has(norm))
         addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
   }
@@ -148,8 +146,8 @@ export async function GET(req: NextRequest) {
     for (const r of [
       ...makro1400,
       ...makro0800Fallback,
-      ...byRound(lotusOrders ?? [], '1400'),
-      ...byRound(wmOrders    ?? [], '1400'),
+      ...byRound(toChOrders(lotusOrders), '1400'),
+      ...byRound(toChOrders(wmOrders),    '1400'),
     ]) {
       addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
