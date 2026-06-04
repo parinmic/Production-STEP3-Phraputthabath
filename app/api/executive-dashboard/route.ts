@@ -21,9 +21,10 @@ export async function GET(req: NextRequest) {
     { data: lotusOrders },
     { data: makroOrders },
     { data: plan100Today },
-    { data: wmHist },
-    { data: lotusHist },
-    { data: makroHist },
+    { data: histPlan100 },
+    { data: histMakro },
+    { data: histLotus },
+    { data: histWm },
     { data: yieldData },
     { data: pickingUnit },
   ] = await Promise.all([
@@ -49,22 +50,26 @@ export async function GET(req: NextRequest) {
       .from('production_plan_100')
       .select('sap, product_name, weight_total')
       .eq('plan_date', date),
-    // BL3 history — Wet Market round 1600
+    // BL3 — plan100 ย้อนหลัง 3 วัน
     supabase
-      .from('wet_market_orders')
-      .select('sku, quantity, delivery_date')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1600'),
-    // BL3 history — LOTUS round 1600
-    supabase
-      .from('lotus_orders')
-      .select('sku, quantity, delivery_date')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1600'),
-    // BL3 history — Makro round 1400 (แผน Makro 100%)
+      .from('production_plan_100')
+      .select('plan_date, sap, weight_total')
+      .in('plan_date', histDates),
+    // BL3 — makro ย้อนหลัง 3 วัน (ทุก round เพื่อ fallback 0800)
     supabase
       .from('makro_orders')
-      .select('sku, quantity, delivery_date')
+      .select('delivery_date, sku, quantity, upload_round')
+      .in('delivery_date', histDates),
+    // BL3 — lotus round 1400 ย้อนหลัง 3 วัน
+    supabase
+      .from('lotus_orders')
+      .select('delivery_date, sku, quantity')
+      .in('delivery_date', histDates)
+      .eq('upload_round', '1400'),
+    // BL3 — wet market round 1400 ย้อนหลัง 3 วัน
+    supabase
+      .from('wet_market_orders')
+      .select('delivery_date, sku, quantity')
       .in('delivery_date', histDates)
       .eq('upload_round', '1400'),
     supabase
@@ -157,31 +162,50 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Baseline: avg of last-3-days orders per SKU (WM round 1600 + LOTUS round 1600 + Makro round 1400)
-  // Sum per (date, normSku) across all channels first, then average across dates
-  const baselineByDateSku = new Map<string, number>() // "date|||normSku" → total qty that day
-
-  const addBaseline = (sku: string, qty: number, deliveryDate: string) => {
-    const norm = sku.replace(/^0+/, '')
-    const key  = `${deliveryDate}|||${norm}`
-    baselineByDateSku.set(key, (baselineByDateSku.get(key) ?? 0) + qty)
-  }
-
-  for (const r of wmHist    ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
-  for (const r of lotusHist ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
-  for (const r of makroHist ?? []) addBaseline(r.sku, Number(r.quantity), r.delivery_date)
+  // ── Baseline: avg Order ย้อนหลัง 3 วัน ใช้ logic เดียวกับ Order column (buildPhase3Order)
+  // หาร 3 เสมอ (fixed denominator)
+  type HP = { plan_date: string; sap: string | null; weight_total: number | null }
+  type HO = { delivery_date: string; sku: string | null; quantity: number | null; upload_round?: string | number | null }
 
   const baselineSumMap = new Map<string, number>()
-  const baselineCntMap = new Map<string, number>()
-  for (const [key, qty] of baselineByDateSku) {
-    const norm = key.split('|||')[1]
-    baselineSumMap.set(norm, (baselineSumMap.get(norm) ?? 0) + qty)
-    baselineCntMap.set(norm, (baselineCntMap.get(norm) ?? 0) + 1)
+
+  for (const histDate of histDates) {
+    const p100 = (histPlan100 as HP[]   ?? []).filter(r => r.plan_date === histDate)
+    const mAll = (histMakro   as HO[]   ?? []).filter(r => r.delivery_date === histDate)
+    const lot  = (histLotus   as HO[]   ?? []).filter(r => r.delivery_date === histDate)
+    const wm   = (histWm      as HO[]   ?? []).filter(r => r.delivery_date === histDate)
+
+    const dayOrder = new Map<string, number>()
+    const p100Skus = new Set<string>()
+
+    for (const r of p100) {
+      const norm = (r.sap ?? '').replace(/^0+/, '')
+      p100Skus.add(norm)
+      dayOrder.set(norm, (dayOrder.get(norm) ?? 0) + Number(r.weight_total ?? 0))
+    }
+
+    const hm1400     = mAll.filter(r => String(r.upload_round) === '1400')
+    const hm0800     = mAll.filter(r => String(r.upload_round) === '0800')
+    const hm1400Skus = new Set(hm1400.map(r => (r.sku ?? '').replace(/^0+/, '')))
+
+    for (const r of [...hm1400, ...hm0800.filter(r => !hm1400Skus.has((r.sku ?? '').replace(/^0+/, '')))]) {
+      const norm = (r.sku ?? '').replace(/^0+/, '')
+      dayOrder.set(norm, (dayOrder.get(norm) ?? 0) + Number(r.quantity ?? 0))
+    }
+
+    for (const r of [...lot, ...wm]) {
+      const norm = (r.sku ?? '').replace(/^0+/, '')
+      if (!p100Skus.has(norm))
+        dayOrder.set(norm, (dayOrder.get(norm) ?? 0) + Number(r.quantity ?? 0))
+    }
+
+    for (const [norm, qty] of dayOrder)
+      baselineSumMap.set(norm, (baselineSumMap.get(norm) ?? 0) + qty)
   }
+
   const baselineMap = new Map<string, number>()
-  for (const [norm, sum] of baselineSumMap) {
-    baselineMap.set(norm, sum / (baselineCntMap.get(norm) ?? 1))
-  }
+  for (const [norm, sum] of baselineSumMap)
+    baselineMap.set(norm, sum / 3)
 
   // ── Yield: normSku → bags count
   const yieldMap = new Map<string, number>()
