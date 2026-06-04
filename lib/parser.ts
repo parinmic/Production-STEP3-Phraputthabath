@@ -154,8 +154,9 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
     if (!row) continue
     const a = String(row[0] ?? '').trim()
     const b = String(row[1] ?? '').trim()
-    if (a === 'rReq_date') { deliveryDate = shiftISODate(resolveDeliveryDate(row[1]), -1); break }
-    if (b === 'rReq_date') { deliveryDate = shiftISODate(resolveDeliveryDate(row[2]), -1); break }
+    // rReq_date ในแผน Makro 100% = วันผลิต (ไม่ใช่วันส่งลูกค้า) → ไม่ต้อง shift -1
+    if (a === 'rReq_date') { deliveryDate = resolveDeliveryDate(row[1]); break }
+    if (b === 'rReq_date') { deliveryDate = resolveDeliveryDate(row[2]); break }
   }
 
   // หา header row (col 1 = 'rProduct_code')
