@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { BarChart3, Calendar, RefreshCw } from 'lucide-react'
+import { BarChart3, Calendar, RefreshCw, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
 const STATION_COLORS: Record<string, string> = {
@@ -89,10 +90,36 @@ export default function ExecutiveDashboardPage() {
       ph2:        acc.ph2        + r.ph2,
       ph3:        acc.ph3        + r.ph3,
       total_prod: acc.total_prod + r.total_prod,
-      yield_bags: acc.yield_bags + r.yield_bags,
+      yield_kg:   acc.yield_kg   + (r.yield_kg ?? 0),
     }),
-    { order_qty: 0, baseline: 0, ph1: 0, ph2: 0, ph3: 0, total_prod: 0, yield_bags: 0 }
+    { order_qty: 0, baseline: 0, ph1: 0, ph2: 0, ph3: 0, total_prod: 0, yield_kg: 0 }
   )
+
+  const exportExcel = () => {
+    const headers = [
+      ...(station === 'ทั้งหมด' ? ['Station'] : []),
+      'ชื่อสินค้า', 'Order (กก.)', 'Baseline avg 3 วัน (กก.)',
+      'Phase 1 (กก.)', 'Phase 2 (กก.)', 'Phase 3 (กก.)',
+      'รวมผลิต (กก.)', 'รับผลได้ (กก.)',
+    ]
+    const dataRows = displayed.map(r => [
+      ...(station === 'ทั้งหมด'
+        ? [rows.filter(rr => rr.sku === r.sku).map(rr => rr.station).join(', ')]
+        : []),
+      r.sku_name,
+      r.order_qty || '',
+      r.baseline  || '',
+      r.ph1       || '',
+      r.ph2       || '',
+      r.ph3       || '',
+      r.total_prod || '',
+      r.yield_kg ?? '',
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Dashboard')
+    XLSX.writeFile(wb, `dashboard-${date}.xlsx`)
+  }
 
   const dateDisplay = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', {
     day: 'numeric', month: 'long', year: 'numeric',
@@ -134,14 +161,24 @@ export default function ExecutiveDashboardPage() {
           ))}
         </div>
 
-        <button
-          onClick={load}
-          disabled={loading}
-          className="ml-auto flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          รีโหลด
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            รีโหลด
+          </button>
+          <button
+            onClick={exportExcel}
+            disabled={displayed.length === 0}
+            className="flex items-center gap-2 text-green-700 border border-green-300 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <Download size={14} />
+            Export Excel
+          </button>
+        </div>
 
         {displayed.length > 0 && !loading && (
           <span className="text-sm text-gray-400 whitespace-nowrap">
@@ -203,7 +240,7 @@ export default function ExecutiveDashboardPage() {
                   </th>
                   <th className="px-4 py-3 text-right font-semibold text-orange-700 whitespace-nowrap">
                     <div>รับผลได้</div>
-                    <div className="font-normal text-orange-400">(ถุง)</div>
+                    <div className="font-normal text-orange-400">(กก.)</div>
                   </th>
                 </tr>
               </thead>
@@ -231,8 +268,8 @@ export default function ExecutiveDashboardPage() {
                     <td className="px-4 py-2.5 text-right text-violet-700">{fmt(r.ph3)}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-emerald-700">{fmt(r.total_prod)}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-orange-700">
-                      {r.yield_bags > 0
-                        ? r.yield_bags.toLocaleString('th-TH')
+                      {r.yield_kg != null && r.yield_kg > 0
+                        ? fmt(r.yield_kg)
                         : <span className="text-gray-300">—</span>}
                     </td>
                   </tr>
@@ -250,7 +287,7 @@ export default function ExecutiveDashboardPage() {
                   <td className="px-4 py-3 text-right text-violet-700">{fmt(totals.ph3)}</td>
                   <td className="px-4 py-3 text-right text-emerald-700">{fmt(totals.total_prod)}</td>
                   <td className="px-4 py-3 text-right text-orange-700">
-                    {totals.yield_bags > 0 ? totals.yield_bags.toLocaleString('th-TH') : '—'}
+                    {totals.yield_kg > 0 ? fmt(totals.yield_kg) : '—'}
                   </td>
                 </tr>
               </tfoot>

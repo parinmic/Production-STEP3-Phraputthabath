@@ -88,10 +88,11 @@ export async function GET(req: NextRequest) {
   const hasPhase3 = periodsGenerated.has('ค่ำ')
   const hasPhase2 = periodsGenerated.has('บ่าย')
 
-  // ── Order: logic depends on which phases have been generated
-  //   Phase 3: Plan 100% (today) + Makro '1400' for SKUs not in Plan 100%
-  //   Phase 2: Makro '1400' + LOTUS '1400' + WM '1400'
-  //   Phase 1 only: Makro '0800'
+  // วันที่ย้อนหลัง → แสดง Order แบบ Phase 3 เสมอ (Plan 100% + channel orders)
+  const todayBKK = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const isHistorical = date !== todayBKK
+
+  // ── Order
   const orderMap = new Map<string, { qty: number; sku_name: string }>()
 
   const addOrder = (sku: string, qty: number, name: string) => {
@@ -111,15 +112,13 @@ export async function GET(req: NextRequest) {
   const makro1400Skus = new Set(makro1400.map(r => (r.sku ?? '').replace(/^0+/, '')))
   const makro0800Fallback = makro0800.filter(r => !makro1400Skus.has((r.sku ?? '').replace(/^0+/, '')))
 
-  if (hasPhase3) {
-    // Primary: Plan 100% covers all planned SKUs
+  const buildPhase3Order = () => {
     const plan100Skus = new Set<string>()
     for (const r of plan100Today ?? []) {
       const norm = (r.sap ?? '').replace(/^0+/, '')
       plan100Skus.add(norm)
       addOrder(r.sap ?? '', Number(r.weight_total ?? 0), r.product_name ?? '')
     }
-    // Remainder: SKUs not in Plan 100% — Makro prefers '1400' then falls back to '0800'
     for (const r of [
       ...makro1400,
       ...makro0800Fallback,
@@ -130,8 +129,13 @@ export async function GET(req: NextRequest) {
       if (!plan100Skus.has(norm))
         addOrder(r.sku ?? '', Number(r.quantity ?? 0), r.sku_name ?? '')
     }
+  }
+
+  if (isHistorical) {
+    buildPhase3Order()
+  } else if (hasPhase3) {
+    buildPhase3Order()
   } else if (hasPhase2) {
-    // Makro: prefer '1400', fallback to '0800' for SKUs not updated in afternoon round
     for (const r of [
       ...makro1400,
       ...makro0800Fallback,
