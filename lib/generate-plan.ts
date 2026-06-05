@@ -403,32 +403,44 @@ function allocateBalanced(params: {
 
   if (!targets.length || !workers.length) return []
 
-  // 1. Group targets into SKU blocks — one block per (sku, channel), sorted LPT
+  // 1. Merge all channels of the same normSku into one block (sorted LPT)
+  //    → one continuous time block per SKU, worker doesn't split across channels
+  interface ChEntry { channel: string; qty: number; isDeficit: boolean }
   interface SkuBlock {
-    sku: string
-    channel: string
+    normSku: string
+    rawSku: string
     skuName: string | null
     totalQty: number
     isDeficit: boolean
     productGroup: string
     rate: number
     wpb: number
+    channels: ChEntry[]
   }
 
-  const skuBlocks: SkuBlock[] = []
+  const skuBlockMap = new Map<string, SkuBlock>()
   for (const t of targets) {
     const cleanSku = t.sku.replace(/^0+/, '')
     const prod = skuMap.get(cleanSku) ?? skuMap.get(t.sku)
     if (!prod || prod.rate <= 0) continue
     const rawWpb = wpbMap.get(cleanSku) ?? wpbMap.get(t.sku) ?? 1
     const wpb = rawWpb > 0 ? rawWpb : 1
-    skuBlocks.push({
-      sku: t.sku, channel: t.channel,
-      skuName: prod.sku_name || t.skuName || null,
-      totalQty: t.targetQty, isDeficit: t.isDeficit || false,
-      productGroup: prod.product_group, rate: prod.rate, wpb,
-    })
+    const existing = skuBlockMap.get(cleanSku)
+    if (existing) {
+      existing.totalQty += t.targetQty
+      existing.channels.push({ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false })
+      if (t.isDeficit) existing.isDeficit = true
+    } else {
+      skuBlockMap.set(cleanSku, {
+        normSku: cleanSku, rawSku: t.sku,
+        skuName: prod.sku_name || t.skuName || null,
+        totalQty: t.targetQty, isDeficit: t.isDeficit || false,
+        productGroup: prod.product_group, rate: prod.rate, wpb,
+        channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
+      })
+    }
   }
+  const skuBlocks = Array.from(skuBlockMap.values())
   skuBlocks.sort((a, b) => (b.totalQty / b.rate) - (a.totalQty / a.rate))
 
   // 2. Helper to check if a worker is eligible for a product group
@@ -500,17 +512,12 @@ function allocateBalanced(params: {
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
 
-    // Eligible workers sorted: workers already assigned to this normSku first (same SKU, diff channel),
-    // then skill ASC → freeAt ASC
+    // Eligible workers sorted: skill ASC → freeAt ASC
     let eligible = workers.filter(w => isWorkerEligible(w, block.productGroup))
     if (!eligible.length) eligible = [...workers]
     if (!eligible.length) continue
 
-    const prevAssigned = skuAssignedWorkers.get(normSku) ?? new Set<string>()
     eligible.sort((a, b) => {
-      const aPrev = prevAssigned.has(normName(a.name)) ? 0 : 1
-      const bPrev = prevAssigned.has(normName(b.name)) ? 0 : 1
-      if (aPrev !== bPrev) return aPrev - bPrev
       const la = getWorkerSkillLevel(a, block.productGroup)
       const lb = getWorkerSkillLevel(b, block.productGroup)
       if (la !== lb) return la - lb
@@ -519,7 +526,6 @@ function allocateBalanced(params: {
       return fa - fb
     })
 
-    // Cap: maxW, numBags, eligible.length — prevAssigned sorted first → reuses same workers across channels
     const numSelect = Math.min(maxW === Infinity ? numBags : maxW, eligible.length, numBags)
     const selected  = eligible.slice(0, numSelect)
 
@@ -531,9 +537,9 @@ function allocateBalanced(params: {
     if (blockStart >= limitEnd) continue
 
     // Distribute bags equally; remainder goes to last worker
+    // key = normSku (channels merged → one continuous block per worker)
     const base     = Math.floor(numBags / selected.length)
     const extra    = numBags - base * selected.length
-    const skuChKey = `${block.channel}|||${block.sku}`
     const segRound = getRoundMins(blockStart, phaseRoundMins)
     let overflow   = 0
 
@@ -556,29 +562,29 @@ function allocateBalanced(params: {
       workerHours.set(nameKey, Math.max(0, (workerHours.get(nameKey) ?? 0) - qty / block.rate))
 
       const sqMap = workerSkuQty.get(nameKey) ?? new Map<string, number>()
-      sqMap.set(skuChKey, (sqMap.get(skuChKey) ?? 0) + qty)
+      sqMap.set(normSku, (sqMap.get(normSku) ?? 0) + qty)
       workerSkuQty.set(nameKey, sqMap)
 
       const sdMap = workerSkuDeficit.get(nameKey) ?? new Map<string, boolean>()
-      if (block.isDeficit) sdMap.set(skuChKey, true)
+      if (block.isDeficit) sdMap.set(normSku, true)
       workerSkuDeficit.set(nameKey, sdMap)
 
       const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
-      const rMap  = srMap.get(skuChKey) ?? new Map<number, number>()
+      const rMap  = srMap.get(normSku) ?? new Map<number, number>()
       rMap.set(segRound, (rMap.get(segRound) ?? 0) + qty)
-      srMap.set(skuChKey, rMap)
+      srMap.set(normSku, rMap)
       workerSkuRoundQty.set(nameKey, srMap)
 
       const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
-      if (!seMap.has(skuChKey) || blockStart < (seMap.get(skuChKey) ?? Infinity))
-        seMap.set(skuChKey, blockStart)
+      if (!seMap.has(normSku) || blockStart < (seMap.get(normSku) ?? Infinity))
+        seMap.set(normSku, blockStart)
       workerSkuEarliestStart.set(nameKey, seMap)
 
       if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
       skuAssignedWorkers.get(normSku)!.add(nameKey)
     }
 
-    // Fallback: assign overflow bags to first eligible worker that can take them
+    // Fallback: assign overflow to first eligible worker that can take it
     if (overflow > 0) {
       for (const w of eligible) {
         const nameKey      = normName(w.name)
@@ -595,19 +601,18 @@ function allocateBalanced(params: {
         workerHours.set(nameKey, Math.max(0, (workerHours.get(nameKey) ?? 0) - qty / block.rate))
 
         const sqMap = workerSkuQty.get(nameKey) ?? new Map<string, number>()
-        sqMap.set(skuChKey, (sqMap.get(skuChKey) ?? 0) + qty)
+        sqMap.set(normSku, (sqMap.get(normSku) ?? 0) + qty)
         workerSkuQty.set(nameKey, sqMap)
 
         const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
-        const rMap  = srMap.get(skuChKey) ?? new Map<number, number>()
-        const fbRound = getRoundMins(startAt, phaseRoundMins)
-        rMap.set(fbRound, (rMap.get(fbRound) ?? 0) + qty)
-        srMap.set(skuChKey, rMap)
+        const rMap  = srMap.get(normSku) ?? new Map<number, number>()
+        rMap.set(getRoundMins(startAt, phaseRoundMins), (rMap.get(getRoundMins(startAt, phaseRoundMins)) ?? 0) + qty)
+        srMap.set(normSku, rMap)
         workerSkuRoundQty.set(nameKey, srMap)
 
         const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
-        if (!seMap.has(skuChKey) || startAt < (seMap.get(skuChKey) ?? Infinity))
-          seMap.set(skuChKey, startAt)
+        if (!seMap.has(normSku) || startAt < (seMap.get(normSku) ?? Infinity))
+          seMap.set(normSku, startAt)
         workerSkuEarliestStart.set(nameKey, seMap)
 
         if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
@@ -617,31 +622,34 @@ function allocateBalanced(params: {
     }
   }
 
-  // 5. Build assignment records
+  // 5. Build assignment records — one record per (worker, normSku), primary channel = largest qty
   const result: Record<string, unknown>[] = []
   for (const w of workers) {
     const nameKey = normName(w.name)
     const sqMap = workerSkuQty.get(nameKey)
     if (!sqMap) continue
 
-    for (const [skuChKey, qty] of Array.from(sqMap.entries())) {
+    for (const [key, qty] of Array.from(sqMap.entries())) {
       if (qty < 0.1) continue
-      const sepIdx = skuChKey.indexOf('|||')
-      const channel = sepIdx >= 0 ? skuChKey.slice(0, sepIdx) : ''
-      const sku     = sepIdx >= 0 ? skuChKey.slice(sepIdx + 3) : skuChKey
-      const isDeficit = workerSkuDeficit.get(nameKey)?.get(skuChKey) ?? false
+      const normSkuKey = key
+      const block = skuBlockMap.get(normSkuKey)
+      const sku       = block?.rawSku ?? normSkuKey
+      const channel   = (block?.channels ?? []).reduce(
+        (best, c) => c.qty > best.qty ? c : best,
+        { channel: '', qty: -1, isDeficit: false }
+      ).channel
+      const isDeficit = workerSkuDeficit.get(nameKey)?.get(normSkuKey) ?? false
       const srMap = workerSkuRoundQty.get(nameKey)
-      const rMap = srMap?.get(skuChKey)
+      const rMap = srMap?.get(normSkuKey)
 
       const roundsNote = 'rounds:' + (rMap
         ? Array.from(rMap.entries())
             .map(([rm, q]) => `${rm}=${Math.round(q * 100) / 100}`).join(';')
         : '')
 
-      const skuName = targets.find(t => t.sku === sku && t.channel === channel)?.skuName ?? null
+      const skuName = block?.skuName ?? targets.find(t => t.sku === sku)?.skuName ?? null
 
-      // Estimate starting time of the first unit for this SKU+channel
-      const earliestStart = workerSkuEarliestStart.get(nameKey)?.get(skuChKey) ?? phaseStartMins
+      const earliestStart = workerSkuEarliestStart.get(nameKey)?.get(normSkuKey) ?? phaseStartMins
 
       result.push({
         production_date: productionDate,
