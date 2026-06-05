@@ -668,7 +668,7 @@ function allocateBalanced(params: {
         unit:            'กก.',
         period,
         deadline_time:   minsToTimeStr(earliestStart),
-        note:            roundsNote,
+        note:            roundsNote + '|concurrent',
         status:          'รอดำเนินการ',
         channel,
         is_deficit:      isDeficit,
