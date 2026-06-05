@@ -71,7 +71,7 @@ export default function ProductionPlanPage() {
             sku,
             sku_name,
             totalQty: Math.round(qty * 100) / 100,
-            bags:     wpb && wpb > 0 ? Math.round(qty / wpb) : null,
+            bags:     wpb && wpb > 0 ? Math.floor(qty / wpb) : null,
             channel,
             minSeq,
           }
