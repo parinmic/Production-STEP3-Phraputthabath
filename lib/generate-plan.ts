@@ -2084,8 +2084,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
-    runChannelPass(secStockList)
-    runChannelPass(secDeficitList)
+    runChannelPass([...secStockList, ...secDeficitList])
   }
 
   if (!assignments.length) {
