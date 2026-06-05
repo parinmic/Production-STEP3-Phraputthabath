@@ -441,6 +441,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       const startA = skuStats[a].minStart
       const startB = skuStats[b].minStart
       if (startA !== startB) return startA - startB
+      const endA = skuStats[a].maxEnd
+      const endB = skuStats[b].maxEnd
+      if (endA !== endB) return endA - endB
       const seqA = skuStats[a].minSeq
       const seqB = skuStats[b].minSeq
       if (seqA !== seqB) return seqA - seqB
@@ -785,6 +788,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       const startA = skuStats[a].minStart
       const startB = skuStats[b].minStart
       if (startA !== startB) return startA - startB
+      const endA = skuStats[a].maxEnd
+      const endB = skuStats[b].maxEnd
+      if (endA !== endB) return endA - endB
       const seqA = skuStats[a].minSeq
       const seqB = skuStats[b].minSeq
       if (seqA !== seqB) return seqA - seqB
