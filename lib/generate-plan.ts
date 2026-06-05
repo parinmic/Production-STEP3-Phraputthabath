@@ -2045,8 +2045,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const secStockList       = stockAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
   const secDeficitList     = deficitAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
 
-  runChannelPass(primaryStockList)
-  runChannelPass(primaryDeficitList)
+  // Merge stock + deficit into one pass so same-SKU produces one continuous block
+  runChannelPass([...primaryStockList, ...primaryDeficitList])
   assignments.push(...keptAssignments)
 
   if (secStockList.length || secDeficitList.length) {
