@@ -420,6 +420,7 @@ function allocateBalanced(params: {
 
   const skuBlockMap = new Map<string, SkuBlock>()
   for (const t of targets) {
+    if (!t.sku) continue
     const cleanSku = t.sku.replace(/^0+/, '')
     const prod = skuMap.get(cleanSku) ?? skuMap.get(t.sku)
     if (!prod || prod.rate <= 0) continue
@@ -485,6 +486,7 @@ function allocateBalanced(params: {
   const skuTotalQty: Map<string, number> = skuTotalQtyOverride ?? (() => {
     const m = new Map<string, number>()
     for (const t of targets) {
+      if (!t.sku) continue
       const k = t.sku.replace(/^0+/, '')
       m.set(k, (m.get(k) ?? 0) + t.targetQty)
     }
@@ -681,6 +683,7 @@ function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
   const merged = new Map<string, SkuTarget>()
   const order: string[] = []
   for (const item of list) {
+    if (!item.sku) continue
     const skuClean = item.sku.replace(/^0+/, '')
     const key = item.isDeficit ? `${item.channel}_${skuClean}_deficit` : `${item.channel}_${skuClean}`
     if (merged.has(key)) {
