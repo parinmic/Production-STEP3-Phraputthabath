@@ -504,12 +504,12 @@ function allocateBalanced(params: {
 
   // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
   for (const block of skuBlocks) {
-    const normSku  = block.sku.replace(/^0+/, '')
+    const normSku  = block.normSku
     const numBags  = Math.floor(block.totalQty / block.wpb)
     if (numBags < 1) continue
 
     const maxW         = getMaxWorkers(normSku)
-    const specialTime  = specialTimeMap.get(block.sku) ?? specialTimeMap.get(normSku)
+    const specialTime  = specialTimeMap.get(block.rawSku) ?? specialTimeMap.get(normSku)
     const specialStart = specialTime?.startMins ?? null
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
