@@ -528,8 +528,11 @@ function allocateBalanced(params: {
       return fa - fb
     })
 
-    const numSelect = Math.min(maxW === Infinity ? numBags : maxW, eligible.length, numBags)
-    const selected  = eligible.slice(0, numSelect)
+    // Only include workers who can start before this phase ends (exclude e.g. กะ 2 in Phase 1)
+    const canWork    = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
+    const selectPool = canWork.length > 0 ? canWork : eligible
+    const numSelect  = Math.min(maxW === Infinity ? numBags : maxW, selectPool.length, numBags)
+    const selected   = selectPool.slice(0, numSelect)
 
     // blockStart = latest freeAt among selected workers (synchronized start)
     let blockStart = phaseStartMins
