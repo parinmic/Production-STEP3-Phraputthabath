@@ -500,12 +500,17 @@ function allocateBalanced(params: {
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
 
-    // Eligible workers sorted: skill ASC → freeAt ASC
+    // Eligible workers sorted: workers already assigned to this normSku first (same SKU, diff channel),
+    // then skill ASC → freeAt ASC
     let eligible = workers.filter(w => isWorkerEligible(w, block.productGroup))
     if (!eligible.length) eligible = [...workers]
     if (!eligible.length) continue
 
+    const prevAssigned = skuAssignedWorkers.get(normSku) ?? new Set<string>()
     eligible.sort((a, b) => {
+      const aPrev = prevAssigned.has(normName(a.name)) ? 0 : 1
+      const bPrev = prevAssigned.has(normName(b.name)) ? 0 : 1
+      if (aPrev !== bPrev) return aPrev - bPrev
       const la = getWorkerSkillLevel(a, block.productGroup)
       const lb = getWorkerSkillLevel(b, block.productGroup)
       if (la !== lb) return la - lb
@@ -514,7 +519,7 @@ function allocateBalanced(params: {
       return fa - fb
     })
 
-    // Cap: maxW, numBags, eligible.length
+    // Cap: maxW, numBags, eligible.length — prevAssigned sorted first → reuses same workers across channels
     const numSelect = Math.min(maxW === Infinity ? numBags : maxW, eligible.length, numBags)
     const selected  = eligible.slice(0, numSelect)
 
