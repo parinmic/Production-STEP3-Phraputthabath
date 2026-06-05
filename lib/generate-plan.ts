@@ -1470,6 +1470,45 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
+  // Cross-channel over-production cap
+  // If Phase 1 produced for channels with no Phase 2/3 order, that production is credited
+  // against other channels so we don't over-produce in the aggregate.
+  const crossChannelCap = (
+    targetsMap: Record<string, SkuTarget[]>,
+    rawOrderBySku: Map<string, number>,
+    priorityChannels: string[],
+  ): void => {
+    const allSkus = new Set(Object.values(targetsMap).flatMap(arr => arr.map(t => t.sku)))
+    for (const sku of allSkus) {
+      const p1Total = phase1Assigned.get(sku) ?? 0
+      if (p1Total === 0) continue
+      const rawTotal = rawOrderBySku.get(sku) ?? 0
+      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+      const budget = wpb > 0
+        ? Math.floor(Math.max(0, rawTotal - p1Total) / wpb) * wpb
+        : Math.max(0, rawTotal - p1Total)
+
+      let currentTotal = 0
+      for (const arr of Object.values(targetsMap))
+        for (const t of arr) if (t.sku === sku) currentTotal += t.targetQty
+
+      if (currentTotal <= budget) continue
+
+      let excess = currentTotal - budget
+      for (const ch of [...priorityChannels].reverse()) {
+        if (excess <= 0) break
+        const arr = targetsMap[ch] ?? []
+        const idx = arr.findIndex(t => t.sku === sku)
+        if (idx === -1) continue
+        const cut = Math.min(excess, arr[idx].targetQty)
+        arr[idx].targetQty -= cut
+        if (wpb > 0) arr[idx].targetQty = Math.floor(arr[idx].targetQty / wpb) * wpb
+        excess -= cut
+        if (arr[idx].targetQty <= 0) arr.splice(idx, 1)
+      }
+    }
+  }
+
   // Aggregate today's orders
   const aggregateToday = (rows: OrderRow[]): Record<string, { qty: number; name: string | null }> => {
     const m: Record<string, { qty: number; name: string | null }> = {}
@@ -1607,6 +1646,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     'BKP':        buildBKPTargets(),
   }
 
+  // Phase 2: cap each SKU's total target across all channels so it doesn't exceed
+  // (total raw order - phase 1 total produced), preventing over-production when Phase 1
+  // assigned a channel that has no Phase 2 order (e.g. LOTUS in P1 but no LOTUS P2 order).
+  if (isPhase2) {
+    const p2RawBySku = new Map<string, number>()
+    for (const [sku, { qty }] of Object.entries(wmMap))    p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
+    for (const [sku, { qty }] of Object.entries(makroMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
+    for (const [sku, { qty }] of Object.entries(lotusMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
+    for (const [sku, { qty }] of bkpOrderMap)              p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
+    crossChannelCap(channelTargets, p2RawBySku, activeChannels)
+  }
 
   // Build assignment list
   let assignList: SkuTarget[]
@@ -1658,6 +1708,25 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       appendRemaining(wmMap, 'Wet Market')
       appendRemaining(lotusMap, 'LOTUS')
       appendRemaining(makroMap, 'Makro')
+
+      // Phase 3: same cross-channel cap for appended (non-plan100) SKUs
+      const p3RawBySku = new Map<string, number>()
+      for (const [sku, { qty }] of Object.entries(wmMap))    p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
+      for (const [sku, { qty }] of Object.entries(makroMap)) p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
+      for (const [sku, { qty }] of Object.entries(lotusMap)) p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
+      const appendMap: Record<string, SkuTarget[]> = {}
+      for (const t of allPhase3Targets) {
+        if (phase3Plan100Skus.has(t.sku)) continue
+        appendMap[t.channel] ??= []
+        appendMap[t.channel].push(t)
+      }
+      if (Object.keys(appendMap).length > 0) {
+        crossChannelCap(appendMap, p3RawBySku, activeChannels)
+        for (let i = allPhase3Targets.length - 1; i >= 0; i--) {
+          if (!phase3Plan100Skus.has(allPhase3Targets[i].sku) && allPhase3Targets[i].targetQty <= 0)
+            allPhase3Targets.splice(i, 1)
+        }
+      }
     }
 
     const p3ChannelTargets: Record<string, SkuTarget[]> = {}
