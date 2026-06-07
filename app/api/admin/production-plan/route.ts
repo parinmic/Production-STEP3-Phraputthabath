@@ -57,9 +57,9 @@ export async function GET(req: NextRequest) {
 
   if (skusList.length > 0) {
     const [makroRes, wetRes, lotusRes] = await Promise.all([
-      supabase.from('makro_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1400'),
-      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('lotus_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600')
+      supabase.from('makro_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1400').limit(5000),
+      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600').limit(5000),
+      supabase.from('lotus_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600').limit(5000)
     ])
     if (makroRes.data) makroOrders = makroRes.data
     if (wetRes.data) wetOrders = wetRes.data
