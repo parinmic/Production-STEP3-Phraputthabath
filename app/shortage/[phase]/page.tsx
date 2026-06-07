@@ -86,7 +86,7 @@ export default function ShortagePage() {
           .select('sku, deadline_time, table_name')
           .eq('production_date', date)
           .eq('period', period)
-          .like('note', '%|deficit%')
+          .eq('is_deficit', true)
           .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่']),
       ])
 
