@@ -56,14 +56,21 @@ export async function GET(req: NextRequest) {
   let lotusOrders: any[] = []
 
   if (skusList.length > 0) {
-    const [makroRes, wetRes, lotusRes] = await Promise.all([
-      supabase.from('makro_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1400').limit(5000),
-      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600').limit(5000),
-      supabase.from('lotus_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600').limit(5000)
+    // Query per-date to avoid server-side row cap (each date ~500 rows, combined 1600+ exceeds default limit)
+    const [mD3, mD2, mD1, wD3, wD2, wD1, lD3, lD2, lD1] = await Promise.all([
+      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1400'),
+      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1400'),
+      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1400'),
+      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1600'),
+      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1600'),
+      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1600'),
+      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1600'),
+      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1600'),
+      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1600'),
     ])
-    if (makroRes.data) makroOrders = makroRes.data
-    if (wetRes.data) wetOrders = wetRes.data
-    if (lotusRes.data) lotusOrders = lotusRes.data
+    makroOrders = [...(mD3.data ?? []), ...(mD2.data ?? []), ...(mD1.data ?? [])]
+    wetOrders   = [...(wD3.data ?? []), ...(wD2.data ?? []), ...(wD1.data ?? [])]
+    lotusOrders = [...(lD3.data ?? []), ...(lD2.data ?? []), ...(lD1.data ?? [])]
   }
 
   const orderMap = new Map<string, number>()
