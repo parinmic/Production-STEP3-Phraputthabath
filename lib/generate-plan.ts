@@ -1093,7 +1093,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     : (phaseCfg.startH * 60)
 
   const d = new Date(productionDate)
-  const histDates = [1, 2, 3].map(n => {
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => {
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
