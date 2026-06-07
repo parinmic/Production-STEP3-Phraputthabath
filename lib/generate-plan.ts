@@ -2411,7 +2411,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (a.is_deficit && !a.note?.includes('|deficit')) {
       a.note = (a.note ?? '') + '|deficit'
     }
-    delete a.is_deficit 
+    a['is_deficit'] = !!a.is_deficit
   })
   assignments.length = 0
   assignments.push(...resequenced)
