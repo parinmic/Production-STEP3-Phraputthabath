@@ -870,6 +870,18 @@ export default function WeeklyWorkforcePage() {
           theme={themes['lai-special']}
           onUploadSuccess={handleUploadChange}
         />
+        <WeeklyUploader
+          type="moo-chod-special"
+          label="หมูบดพิเศษ"
+          theme={themes['moo-chod-special']}
+          onUploadSuccess={handleUploadChange}
+        />
+        <WeeklyUploader
+          type="slide-special"
+          label="สไลด์พิเศษ"
+          theme={themes['slide-special']}
+          onUploadSuccess={handleUploadChange}
+        />
       </div>
     </div>
   )
