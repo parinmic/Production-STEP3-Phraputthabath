@@ -121,7 +121,18 @@ export default function ShortagePage() {
             work_station: i.work_station,
           }
         })
-        .sort((a, b) => {
+        .reduce((acc, row) => {
+          const key = `${row.work_station}|||${row.sku.replace(/^0+/, '')}|||${row.productionTime ?? ''}`
+          const existing = acc.get(key)
+          if (existing) {
+            existing.deficit = (existing.deficit ?? 0) + (row.deficit ?? 0)
+          } else {
+            acc.set(key, { ...row })
+          }
+          return acc
+        }, new Map<string, ShortageRow>())
+
+      const merged = Array.from(shortage.values()).sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')
           const sb = STATION_ORDER.indexOf(b.work_station ?? '')
           if (sa !== sb) return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb)
@@ -131,7 +142,7 @@ export default function ShortagePage() {
           return (a.sku_name ?? a.sku).localeCompare(b.sku_name ?? b.sku)
         })
 
-      setRows(shortage)
+      setRows(merged)
     } finally {
       setLoad(false)
     }
