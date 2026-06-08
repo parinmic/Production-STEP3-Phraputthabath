@@ -3,9 +3,11 @@ import FileUpload from '@/components/FileUpload'
 import { ParsedRow } from '@/lib/parser'
 
 const TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
-  'sa-phok-special':  { label: 'สะโพกพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สะโพกพิเศษ' },
-  'lai-special':      { label: 'ไหล่พิเศษ',    desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์ไหล่พิเศษ' },
-  'sam-chan-special':  { label: 'สามชั้นพิเศษ', desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สามชั้นพิเศษ' },
+  'sa-phok-special':   { label: 'สะโพกพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สะโพกพิเศษ' },
+  'lai-special':       { label: 'ไหล่พิเศษ',    desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์ไหล่พิเศษ' },
+  'sam-chan-special':   { label: 'สามชั้นพิเศษ', desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สามชั้นพิเศษ' },
+  'moo-chod-special':  { label: 'หมูบดพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์หมูบดพิเศษ' },
+  'slide-special':     { label: 'สไลด์พิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สไลด์พิเศษ' },
 }
 
 export default function ManpowerTypePage({ params }: { params: { type: string } }) {

@@ -394,13 +394,31 @@ export default function WeeklyWorkforcePage() {
       bg: 'bg-emerald-600',
       hoverBg: 'hover:bg-emerald-700',
       badgeColor: 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    },
+    'moo-chod-special': {
+      border: 'border-t-4 border-red-500',
+      hoverBorder: 'hover:border-red-400',
+      text: 'text-red-500',
+      bg: 'bg-red-600',
+      hoverBg: 'hover:bg-red-700',
+      badgeColor: 'border-red-200 bg-red-50 text-red-700'
+    },
+    'slide-special': {
+      border: 'border-t-4 border-purple-500',
+      hoverBorder: 'hover:border-purple-400',
+      text: 'text-purple-500',
+      bg: 'bg-purple-600',
+      hoverBg: 'hover:bg-purple-700',
+      badgeColor: 'border-purple-200 bg-purple-50 text-purple-700'
     }
   }
 
   const stations = [
-    { value: 'sa-phok-special', label: 'สะโพกพิเศษ' },
-    { value: 'sam-chan-special', label: 'สามชั้นพิเศษ' },
-    { value: 'lai-special', label: 'ไหล่พิเศษ' }
+    { value: 'sa-phok-special',  label: 'สะโพกพิเศษ' },
+    { value: 'sam-chan-special',  label: 'สามชั้นพิเศษ' },
+    { value: 'lai-special',      label: 'ไหล่พิเศษ' },
+    { value: 'moo-chod-special', label: 'หมูบดพิเศษ' },
+    { value: 'slide-special',    label: 'สไลด์พิเศษ' },
   ]
 
   // Fetch the latest uploaded workforce records whenever the selected station or refresh trigger changes

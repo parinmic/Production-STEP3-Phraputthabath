@@ -4,13 +4,15 @@ import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check } fr
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
-const STATIONS  = ['สามชั้น', 'สะโพก', 'ไหล่']
+const STATIONS  = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
 const CHANNELS  = ['Makro', 'Wet Market', 'LOTUS']
 
 const STATION_COLOR: Record<string, string> = {
   สามชั้น: 'bg-blue-50 text-blue-700',
   สะโพก:   'bg-orange-50 text-orange-700',
   ไหล่:    'bg-green-50 text-green-700',
+  หมูบด:   'bg-red-50 text-red-700',
+  สไลด์:   'bg-purple-50 text-purple-700',
 }
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']

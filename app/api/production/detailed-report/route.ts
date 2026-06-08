@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     .from('production_assignments')
     .select('period, effective_from')
     .eq('production_date', date)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
     .order('effective_from', { ascending: false })
 
   const maxEffective: Record<string, string> = {}
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       .eq('production_date', date)
       .eq('period', period)
       .eq('effective_from', effectiveFrom)
-      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
     if (data) allAssignments.push(...data)
   }
 

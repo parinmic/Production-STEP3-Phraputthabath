@@ -6,9 +6,11 @@ import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
-  'sam-chan': { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
-  'sa-phok':  { label: 'สะโพก',  accent: 'border-orange-500', light: 'bg-orange-50' },
-  'lai':      { label: 'ไหล่',   accent: 'border-green-500',  light: 'bg-green-50'  },
+  'sam-chan':  { label: 'สามชั้น', accent: 'border-blue-500',   light: 'bg-blue-50'   },
+  'sa-phok':   { label: 'สะโพก',  accent: 'border-orange-500', light: 'bg-orange-50' },
+  'lai':       { label: 'ไหล่',   accent: 'border-green-500',  light: 'bg-green-50'  },
+  'moo-chod':  { label: 'หมูบด',  accent: 'border-red-500',    light: 'bg-red-50'    },
+  'slide':     { label: 'สไลด์',  accent: 'border-purple-500', light: 'bg-purple-50' },
 }
 
 const PHASES = [

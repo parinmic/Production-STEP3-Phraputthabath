@@ -44,9 +44,11 @@ export default function ProductionMenuPage() {
       </div>
       <div className="grid grid-cols-3 gap-6">
         {[
-          { label: 'Station สามชั้น', slug: 'sam-chan', cls: 'border-blue-500 bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500' },
+          { label: 'Station สามชั้น', slug: 'sam-chan',  cls: 'border-blue-500 bg-blue-50',     text: 'text-blue-700',   dot: 'bg-blue-500' },
           { label: 'Station สะโพก',  slug: 'sa-phok',  cls: 'border-orange-500 bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500' },
-          { label: 'Station ไหล่',   slug: 'lai',      cls: 'border-green-500 bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500' },
+          { label: 'Station ไหล่',   slug: 'lai',      cls: 'border-green-500 bg-green-50',   text: 'text-green-700',  dot: 'bg-green-500' },
+          { label: 'Station หมูบด',  slug: 'moo-chod', cls: 'border-red-500 bg-red-50',       text: 'text-red-700',    dot: 'bg-red-500' },
+          { label: 'Station สไลด์',  slug: 'slide',    cls: 'border-purple-500 bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-500' },
         ].map(t => (
           <Link key={t.slug} href={`/production/${t.slug}?date=${date}`} className={`border-2 ${t.cls} rounded-xl p-6 hover:opacity-80 transition-opacity`}>
             <div className={`w-4 h-4 rounded-full ${t.dot} mb-3`}/>
