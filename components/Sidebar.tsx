@@ -38,7 +38,7 @@ export default function Sidebar() {
   const [openWorkforce, setOpenWorkforce] = useState(p.startsWith('/workforce'))
   const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
-  const [collapsed, setCollapsed]         = useState(false)
+  const [collapsed, setCollapsed]         = useState(true)
   const [mobileOpen, setMobileOpen]       = useState(false)
 
   // Close mobile drawer on route change
