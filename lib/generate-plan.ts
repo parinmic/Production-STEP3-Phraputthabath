@@ -121,6 +121,8 @@ const STATION_TABLE: Record<string, string> = {
   'สามชั้นพิเศษ': 'สามชั้น',
   'ไหล่พิเศษ':    'ไหล่',
   'สะโพกพิเศษ':   'สะโพก',
+  'หมูบดพิเศษ':   'หมูบด',
+  'สไลด์พิเศษ':   'สไลด์',
 }
 
 const normName = (s: string) => {
@@ -131,7 +133,7 @@ const normName = (s: string) => {
 // ========== Workforce ==========
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
   const workforce: WorkforceRow[] = []
 
   const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
@@ -171,9 +173,11 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
   }
 
   const stationMap: Record<string, string> = {
-    'sa-phok-special': 'สะโพกพิเศษ',
-    'sam-chan-special': 'สามชั้นพิเศษ',
-    'lai-special':     'ไหล่พิเศษ',
+    'sa-phok-special':  'สะโพกพิเศษ',
+    'sam-chan-special':  'สามชั้นพิเศษ',
+    'lai-special':      'ไหล่พิเศษ',
+    'moo-chod-special': 'หมูบดพิเศษ',
+    'slide-special':    'สไลด์พิเศษ',
   }
 
   const { data: statusOverrides } = await supabase
@@ -858,7 +862,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     .from('production_assignments')
     .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
     .eq('production_date', productionDate).eq('period', period)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 

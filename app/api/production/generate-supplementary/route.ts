@@ -18,7 +18,7 @@ const normName       = (s: string) => {
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special']
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
   const workforce: WorkforceRow[] = []
 
   const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
@@ -64,9 +64,11 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
   }
 
   const stationMap: Record<string, string> = {
-    'sa-phok-special': 'สะโพกพิเศษ',
-    'sam-chan-special': 'สามชั้นพิเศษ',
-    'lai-special': 'ไหล่พิเศษ'
+    'sa-phok-special':  'สะโพกพิเศษ',
+    'sam-chan-special':  'สามชั้นพิเศษ',
+    'lai-special':      'ไหล่พิเศษ',
+    'moo-chod-special': 'หมูบดพิเศษ',
+    'slide-special':    'สไลด์พิเศษ',
   }
 
   // Fetch status overrides for the production date

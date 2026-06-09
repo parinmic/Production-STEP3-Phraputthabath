@@ -5,16 +5,20 @@ import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, Chevron
 import { useState, useEffect } from 'react'
 
 const TABLES = [
-  { label: 'Station สามชั้น', slug: 'sam-chan', dot: 'bg-blue-500' },
-  { label: 'Station สะโพก',   slug: 'sa-phok', dot: 'bg-orange-500' },
-  { label: 'Station ไหล่',    slug: 'lai',     dot: 'bg-green-500' },
+  { label: 'Station สามชั้น', slug: 'sam-chan',  dot: 'bg-blue-500' },
+  { label: 'Station สะโพก',   slug: 'sa-phok',  dot: 'bg-orange-500' },
+  { label: 'Station ไหล่',    slug: 'lai',      dot: 'bg-green-500' },
+  { label: 'Station หมูบด',   slug: 'moo-chod', dot: 'bg-red-500' },
+  { label: 'Station สไลด์',   slug: 'slide',    dot: 'bg-purple-500' },
 ]
 
 const MANPOWER_TYPES = [
-  { label: 'สะโพกพิเศษ',   slug: 'sa-phok-special', dot: 'bg-orange-500' },
-  { label: 'ไหล่พิเศษ',    slug: 'lai-special',     dot: 'bg-green-500' },
-  { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special', dot: 'bg-blue-500' },
-  { label: 'กำลังคนแนะนำ', slug: 'recommended',     dot: 'bg-pink-500' },
+  { label: 'สะโพกพิเศษ',   slug: 'sa-phok-special',  dot: 'bg-orange-500' },
+  { label: 'ไหล่พิเศษ',    slug: 'lai-special',      dot: 'bg-green-500' },
+  { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special',  dot: 'bg-blue-500' },
+  { label: 'หมูบดพิเศษ',   slug: 'moo-chod-special', dot: 'bg-red-500' },
+  { label: 'สไลด์พิเศษ',   slug: 'slide-special',    dot: 'bg-purple-500' },
+  { label: 'กำลังคนแนะนำ', slug: 'recommended',      dot: 'bg-pink-500' },
 ]
 
 const CALCULATION_TYPES = [
@@ -38,7 +42,7 @@ export default function Sidebar() {
   const [openWorkforce, setOpenWorkforce] = useState(p.startsWith('/workforce'))
   const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
-  const [collapsed, setCollapsed]         = useState(false)
+  const [collapsed, setCollapsed]         = useState(true)
   const [mobileOpen, setMobileOpen]       = useState(false)
 
   // Close mobile drawer on route change

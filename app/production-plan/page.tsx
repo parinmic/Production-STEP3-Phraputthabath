@@ -7,14 +7,18 @@ const STATION_DISPLAY: Record<string, string> = {
   'สามชั้น': 'สามชั้นพิเศษ',
   'สะโพก':   'สะโพกพิเศษ',
   'ไหล่':    'ไหล่พิเศษ',
+  'หมูบด':   'หมูบดพิเศษ',
+  'สไลด์':   'สไลด์พิเศษ',
 }
 
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
 
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
+  'หมูบด':   'bg-red-100 text-red-700',
+  'สไลด์':   'bg-purple-100 text-purple-700',
 }
 
 interface PlanRow {
@@ -50,7 +54,7 @@ export default function ProductionPlanPage() {
         .from('production_assignments')
         .select('table_name, sku, sku_name, target_quantity, channel, seq')
         .eq('production_date', date)
-        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
 
       const map = new Map<string, { sku_name: string | null; qty: number; channel: string | null; minSeq: number }>()
       for (const r of data ?? []) {

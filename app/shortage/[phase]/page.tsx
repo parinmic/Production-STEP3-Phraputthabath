@@ -32,18 +32,22 @@ const PHASE_CONFIG = {
   '3': { label: 'Phase 3 — แผน 100%', dotColor: 'bg-purple-500' },
 } as const
 
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
 
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
+  'หมูบด':   'bg-red-100 text-red-700',
+  'สไลด์':   'bg-purple-100 text-purple-700',
 }
 
 const STATION_DISPLAY: Record<string, string> = {
   'สามชั้น': 'สามชั้นพิเศษ',
   'สะโพก':   'สะโพกพิเศษ',
   'ไหล่':    'ไหล่พิเศษ',
+  'หมูบด':   'หมูบดพิเศษ',
+  'สไลด์':   'สไลด์พิเศษ',
 }
 
 function parseFPSkus(note: string | null): string[] {
@@ -87,7 +91,7 @@ export default function ShortagePage() {
           .eq('production_date', date)
           .eq('period', period)
           .like('note', '%|deficit%')
-          .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่']),
+          .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']),
       ])
 
       const items: WithdrawalItem[] = withdrawalRes.items ?? []
@@ -121,7 +125,18 @@ export default function ShortagePage() {
             work_station: i.work_station,
           }
         })
-        .sort((a, b) => {
+        .reduce((acc, row) => {
+          const key = `${row.work_station}|||${row.sku.replace(/^0+/, '')}|||${row.productionTime ?? ''}`
+          const existing = acc.get(key)
+          if (existing) {
+            existing.deficit = (existing.deficit ?? 0) + (row.deficit ?? 0)
+          } else {
+            acc.set(key, { ...row })
+          }
+          return acc
+        }, new Map<string, ShortageRow>())
+
+      const merged = Array.from(shortage.values()).sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')
           const sb = STATION_ORDER.indexOf(b.work_station ?? '')
           if (sa !== sb) return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb)
@@ -131,7 +146,7 @@ export default function ShortagePage() {
           return (a.sku_name ?? a.sku).localeCompare(b.sku_name ?? b.sku)
         })
 
-      setRows(shortage)
+      setRows(merged)
     } finally {
       setLoad(false)
     }

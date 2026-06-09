@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
     .eq('production_date', date)
     .eq('period', period)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
 
   if (e1) return NextResponse.json({ error: e1.message }, { status: 500 })
   if (!assignments?.length) {

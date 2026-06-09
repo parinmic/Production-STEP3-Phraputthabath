@@ -3,11 +3,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Calendar, RefreshCw, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
+  'หมูบด':   'bg-red-100 text-red-700',
+  'สไลด์':   'bg-purple-100 text-purple-700',
 }
 const FILTER_STATIONS = ['ทั้งหมด', ...STATION_ORDER]
 
@@ -242,6 +244,7 @@ export default function ExecutiveDashboardPage() {
                     <div>รับผลได้</div>
                     <div className="font-normal text-orange-400">(กก.)</div>
                   </th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-500 whitespace-nowrap">หมายเหตุ</th>
                 </tr>
               </thead>
 
@@ -272,6 +275,15 @@ export default function ExecutiveDashboardPage() {
                         ? fmt(r.yield_kg)
                         : <span className="text-gray-300">—</span>}
                     </td>
+                    <td className="px-4 py-2.5 text-center whitespace-nowrap">
+                      {!(r.order_qty > 0)
+                        ? <span className="text-gray-400 text-xs">-</span>
+                        : r.yield_kg != null && r.yield_kg > r.order_qty
+                          ? <span className="text-red-600 text-xs font-medium">ผลิต &gt; order</span>
+                          : r.total_prod > r.order_qty
+                            ? <span className="text-amber-600 text-xs font-medium">แผน &gt; order</span>
+                            : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -289,6 +301,7 @@ export default function ExecutiveDashboardPage() {
                   <td className="px-4 py-3 text-right text-orange-700">
                     {totals.yield_kg > 0 ? fmt(totals.yield_kg) : '—'}
                   </td>
+                  <td className="px-4 py-3" />
                 </tr>
               </tfoot>
             </table>
