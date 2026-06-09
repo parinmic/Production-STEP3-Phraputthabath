@@ -519,8 +519,12 @@ function allocateBalanced(params: {
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
 
     // Eligible workers sorted: skill ASC → freeAt ASC
-    let eligible = workers.filter(w => isWorkerEligible(w, block.productGroup))
-    if (!eligible.length) eligible = [...workers]
+    // Exclude workers whose shift starts at or after limitEnd (e.g. กะ 2 in Phase 1)
+    let eligible = workers.filter(w => {
+      const freeAt = workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins
+      return freeAt < limitEnd && isWorkerEligible(w, block.productGroup)
+    })
+    if (!eligible.length) eligible = workers.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
     if (!eligible.length) continue
 
     eligible.sort((a, b) => {
