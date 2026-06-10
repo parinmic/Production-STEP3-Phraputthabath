@@ -354,6 +354,14 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />Mas SKU ไม่ต้องเบิก
               </Link>
+              <Link href="/master-logic/moo-chod"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/moo-chod' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-red-500" />Mas หมูบด (%ไขมัน)
+              </Link>
+              <Link href="/master-logic/moo-chod-withdrawal"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/moo-chod-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-red-400" />Mas เบิกหมูบด
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -379,6 +387,16 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas SKU ไม่ต้องเบิก">
                 <Ban size={14} />
+              </Link>
+              <Link href="/master-logic/moo-chod"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/moo-chod' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas หมูบด (%ไขมัน)">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              </Link>
+              <Link href="/master-logic/moo-chod-withdrawal"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/moo-chod-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas เบิกหมูบด">
+                <span className="w-2 h-2 rounded-full bg-red-400" />
               </Link>
             </div>
           )}

@@ -691,3 +691,137 @@ export function parseNoWithdrawalSkus(file: File): Promise<ParsedRow[]> {
   })
 }
 
+export function parseMooChōdMaster(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseCsv(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+        const results: ParsedRow[] = raw
+          .map(r => {
+            const keys = Object.keys(r)
+            const find = (...kws: string[]) =>
+              keys.find(k => kws.every(kw => k.toLowerCase().includes(kw))) ?? ''
+
+            const stationCol = find('จุดงาน') || find('station') || find('work') || ''
+            const groupCol   = find('กลุ่ม')   || find('group')   || ''
+            const sapCol     = find('sap')     || find('รหัส')    || ''
+            const nameCol    = find('ชื่อ')    || find('name')    || find('product') || ''
+            const fatCol     = find('ไขมัน')   || find('fat')     || ''
+
+            const fatRaw = r[fatCol]
+            let fat_percent: number | null = null
+            if (fatRaw != null && fatRaw !== '') {
+              const num = parseFloat(String(fatRaw).replace('%', '').trim())
+              if (!isNaN(num)) fat_percent = num <= 1 ? Math.round(num * 100) : num
+            }
+
+            return {
+              work_station:  String(r[stationCol] ?? '').trim() || null,
+              product_group: String(r[groupCol]   ?? '').trim() || null,
+              sap_code:      String(r[sapCol]     ?? '').trim(),
+              product_name:  String(r[nameCol]    ?? '').trim() || null,
+              fat_percent,
+            }
+          })
+          .filter(r => !!(r as Record<string, unknown>).sap_code)
+        if (!results.length) throw new Error('ไม่พบรายการที่มีรหัส SAP')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+// Parser สำหรับ Master เบิกของหมูบด — ไฟล์ 2 กลุ่มเคียงกัน: เนื้อ (ซ้าย) + มัน (ขวา)
+// Header: Priority | Sap เนื้อ | ชื่อเนื้อ | %ไขมัน | Priority | Sap มัน | ชื่อมัน | %ไขมัน
+export function parseMooChōdWithdrawalMaster(file: File): Promise<ParsedRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const aoa = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
+
+        if (!aoa.length) throw new Error('ไม่พบข้อมูล')
+
+        let hIdx = 0
+        for (let i = 0; i < Math.min(5, aoa.length); i++) {
+          const row = aoa[i]
+          if (row.some(c => String(c ?? '').toLowerCase().includes('priority') || String(c ?? '').includes('%ไขมัน'))) {
+            hIdx = i; break
+          }
+        }
+
+        const headers = aoa[hIdx].map(c => String(c ?? '').trim().toLowerCase())
+
+        const allPriority = headers.reduce<number[]>((a, h, i) => h.includes('priority') ? [...a, i] : a, [])
+        const allSap      = headers.reduce<number[]>((a, h, i) => h.includes('sap') ? [...a, i] : a, [])
+        const allName     = headers.reduce<number[]>((a, h, i) => (h.includes('ชื่อ') || (h.includes('name') && !h.includes('%'))) ? [...a, i] : a, [])
+        const allFat      = headers.reduce<number[]>((a, h, i) => (h.includes('ไขมัน') || (h.includes('fat') && !h.includes('name'))) ? [...a, i] : a, [])
+
+        const mPri = allPriority[0] ?? -1; const fPri = allPriority[1] ?? -1
+        const mSap = allSap[0]      ?? -1; const fSap = allSap[1]      ?? -1
+        const mNam = allName[0]     ?? -1; const fNam = allName[1]     ?? -1
+        const mFat = allFat[0]      ?? -1; const fFat = allFat[1]      ?? -1
+
+        const parseFatVal = (v: string | number | null): number | null => {
+          if (v == null || v === '') return null
+          const n = parseFloat(String(v).replace('%', '').trim())
+          if (isNaN(n)) return null
+          return n <= 1 ? Math.round(n * 100) : n
+        }
+        const parsePriority = (v: string | number | null) =>
+          parseInt(String(v ?? '').replace(/[^\d]/g, '')) || 0
+
+        const results: ParsedRow[] = []
+
+        for (let i = hIdx + 1; i < aoa.length; i++) {
+          const row = aoa[i]
+
+          const mSapStr = String(row[mSap] ?? '').trim()
+          const mNamStr = String(row[mNam] ?? '').trim()
+          if (row[mPri] != null || mSapStr || mNamStr) {
+            results.push({
+              ingredient_type: 'เนื้อ',
+              priority:    parsePriority(row[mPri]),
+              sap_code:    mSapStr || null,
+              product_name: mNamStr || null,
+              fat_percent:  parseFatVal(row[mFat]),
+            })
+          }
+
+          const fSapStr = String(row[fSap] ?? '').trim()
+          const fNamStr = String(row[fNam] ?? '').trim()
+          if (row[fPri] != null || fSapStr || fNamStr) {
+            results.push({
+              ingredient_type: 'มัน',
+              priority:    parsePriority(row[fPri]),
+              sap_code:    fSapStr || null,
+              product_name: fNamStr || null,
+              fat_percent:  parseFatVal(row[fFat]),
+            })
+          }
+        }
+
+        const filtered = results.filter(r => (r.priority as number) > 0 || r.sap_code || r.product_name)
+        if (!filtered.length) throw new Error('ไม่พบรายการที่ถูกต้อง')
+        resolve(filtered)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 
-
 const PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
 const PHASE_ROUND_MINS: Record<string, number[]> = {
@@ -15,14 +14,31 @@ const DEFAULT_START_MINS: Record<string, number> = {
   '1': 510, '2': 870, '3': 990,
 }
 
+export interface LotInfo {
+  spec_code: string
+  factory: string
+  prod_date: string
+  available: number
+  to_withdraw: number
+  insufficient?: boolean
+}
+
+type LotEntry = { spec_code: string; weight: number; factory: string; prod_date: string; sortKey: string }
+
+interface MooIng {
+  ingredient_type: string
+  priority: number
+  sap_code: string | null
+  product_name: string
+  fat_percent: number
+}
+
 function minsToTime(mins: number): string {
   const h = Math.floor(mins / 60)
   const m = Math.floor(mins % 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-// normalize material name สำหรับ fallback matching
-// ทำให้ "สันนอก-Raw" และ "สันนอก - Raw" ตรงกัน
 const normMatName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 
 function timeStrToMins(t: string): number {
@@ -39,7 +55,6 @@ function getRoundMins(startMins: number, roundMins: number[]): number {
   return round
 }
 
-/** Parse "rounds:480=575;600=575" → Map<roundMins, qty> */
 function parseRoundNote(note: string | null): Map<number, number> {
   const result = new Map<number, number>()
   if (!note?.startsWith('rounds:')) return result
@@ -50,31 +65,11 @@ function parseRoundNote(note: string | null): Map<number, number> {
   return result
 }
 
-export interface LotInfo {
-  spec_code: string
-  factory: string
-  prod_date: string
-  available: number
-  to_withdraw: number
-  insufficient?: boolean
-}
-
 function parseSpecCode(s: string): { factory: string; prod_date: string; sortKey: string } | null {
-  // Format 1: letter(s) followed by 6 digits e.g. "AB030605K" or "03261250K030605"
   const m1 = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
-  if (m1) return {
-    factory:   m1[1],
-    prod_date: `${m1[2]}/${m1[3]}`,
-    sortKey:   `${m1[3]}${m1[2]}`,
-  }
-  // Format 2: all-digit prefix + trailing letter e.g. "03261250K"
-  // factory(2) + year(2) + month(2) + batch(2) + lot_letter(s)
+  if (m1) return { factory: m1[1], prod_date: `${m1[2]}/${m1[3]}`, sortKey: `${m1[3]}${m1[2]}` }
   const m2 = s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})[A-Z]/)
-  if (m2) return {
-    factory:   m2[1],
-    prod_date: `${m2[3]}/${m2[2]}`,
-    sortKey:   `${m2[2]}${m2[3]}${m2[4]}`,
-  }
+  if (m2) return { factory: m2[1], prod_date: `${m2[3]}/${m2[2]}`, sortKey: `${m2[2]}${m2[3]}${m2[4]}` }
   return null
 }
 
@@ -86,30 +81,96 @@ function allocateFIFO(
   let remaining = needed
   for (const lot of lots) {
     if (remaining <= 0.005) break
-    if (lot.weight <= 0.005) continue  // lot นี้ถูกใช้หมดแล้วจากรอบก่อน
+    if (lot.weight <= 0.005) continue
     const take = Math.min(remaining, lot.weight)
     result.push({
       spec_code:   lot.spec_code,
       factory:     lot.factory,
       prod_date:   lot.prod_date,
       available:   Math.round(lot.weight * 100) / 100,
-      to_withdraw: Math.round(take  * 100) / 100,
+      to_withdraw: Math.round(take * 100) / 100,
     })
-    lot.weight -= take  // หักจาก stock จริง เพื่อให้รอบถัดไปเห็น stock ที่เหลือ
+    lot.weight -= take
     remaining  -= take
   }
   if (remaining > 0.005) {
+    result.push({ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: Math.round(remaining * 100) / 100, insufficient: true })
+  }
+  return result
+}
+
+// หมูบด: priority-based allocation
+function allocateMooPriority(
+  demandKg: number,
+  ings: MooIng[],
+  stockByCode: Map<string, LotEntry[]>,
+  stockByName: Map<string, LotEntry[]>,
+): { ing: MooIng; qty: number; lots: LotInfo[] }[] {
+  const result: { ing: MooIng; qty: number; lots: LotInfo[] }[] = []
+  let remaining = demandKg
+
+  const byPriority = new Map<number, MooIng[]>()
+  for (const ing of ings) {
+    const list = byPriority.get(ing.priority) ?? []
+    list.push(ing)
+    byPriority.set(ing.priority, list)
+  }
+
+  for (const priority of Array.from(byPriority.keys()).sort((a, b) => a - b)) {
+    if (remaining <= 0.005) break
+    for (const ing of byPriority.get(priority)!) {
+      if (remaining <= 0.005) break
+      const lots = ing.sap_code
+        ? (stockByCode.get(ing.sap_code.trim()) ?? stockByName.get(normMatName(ing.product_name)) ?? [])
+        : (stockByName.get(normMatName(ing.product_name)) ?? [])
+      const avail = lots.reduce((s, l) => s + l.weight, 0)
+      if (avail <= 0.005) continue
+      const take = Math.min(remaining, avail)
+      result.push({ ing, qty: take, lots: allocateFIFO(lots, take) })
+      remaining -= take
+    }
+  }
+
+  if (remaining > 0.005) {
     result.push({
-      spec_code:   '— ไม่เพียงพอ —',
-      factory:     '-',
-      prod_date:   '-',
-      available:   0,
-      to_withdraw: Math.round(remaining * 100) / 100,
-      insufficient: true,
+      ing:  { ingredient_type: '?', priority: 999, sap_code: null, product_name: '— ไม่เพียงพอ —', fat_percent: 0 },
+      qty:  remaining,
+      lots: [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: Math.round(remaining * 100) / 100, insufficient: true }],
     })
   }
   return result
 }
+
+function buildStockMaps(stockRows: { material_code: string; material_name: string | null; spec_code: string; weight_total: number }[]): {
+  byCode: Map<string, LotEntry[]>; byName: Map<string, LotEntry[]>
+} {
+  const lotAgg      = new Map<string, number>()
+  const codeToName  = new Map<string, string>()
+  for (const row of stockRows) {
+    if (!row.material_code || !row.spec_code) continue
+    const k = `${row.material_code}|||${row.spec_code}`
+    lotAgg.set(k, (lotAgg.get(k) ?? 0) + Number(row.weight_total))
+    if (row.material_name) codeToName.set(row.material_code, row.material_name)
+  }
+  const byCode = new Map<string, LotEntry[]>()
+  const byName = new Map<string, LotEntry[]>()
+  for (const [k, weight] of Array.from(lotAgg.entries())) {
+    const [matCode, spec_code] = k.split('|||')
+    const parsed = parseSpecCode(spec_code)
+    const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
+    const codeList = byCode.get(matCode) ?? []; codeList.push(lot); byCode.set(matCode, codeList)
+    const matName = codeToName.get(matCode)
+    if (matName) {
+      const nameKey = normMatName(matName)
+      const nameList = byName.get(nameKey) ?? []; nameList.push(lot); byName.set(nameKey, nameList)
+    }
+  }
+  for (const list of Array.from(byCode.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+  for (const list of Array.from(byName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+  return { byCode, byName }
+}
+
+type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
 
 export async function POST(req: NextRequest) {
   try {
@@ -118,7 +179,7 @@ export async function POST(req: NextRequest) {
   const period = PERIOD[phaseStr]
   if (!date || !period) return NextResponse.json({ error: 'missing params' }, { status: 400 })
 
-  // ดึงกฎ Mas Raw Material
+  // Fetch rules
   const { data: rawMaterialRules } = await supabase
     .from('master_logic_calculation')
     .select('row_data')
@@ -126,18 +187,18 @@ export async function POST(req: NextRequest) {
     .order('uploaded_at', { ascending: false })
 
   const rules: RawMaterialRule[] = (rawMaterialRules ?? []).map(r => {
-    const data = (r.row_data ?? {}) as Record<string, any>
+    const data = (r.row_data ?? {}) as Record<string, unknown>
     return {
       productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(),
-      type: String(data['ประเภท'] ?? '').trim(),
-      d16: String(data['D16'] ?? '').trim(),
-      d17: String(data['D17'] ?? '').trim(),
+      type:         String(data['ประเภท']     ?? '').trim(),
+      d16:          String(data['D16']        ?? '').trim(),
+      d17:          String(data['D17']        ?? '').trim(),
     }
   })
 
   const roundMins = PHASE_ROUND_MINS[phaseStr] ?? PHASE_ROUND_MINS['1']
 
-  // 1. ดึง production_assignments พร้อม note (round breakdown) และ deadline_time (fallback)
+  // 1. Fetch assignments
   const { data: assignments, error: e1 } = await supabase
     .from('production_assignments')
     .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
@@ -150,56 +211,76 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ items: [], message: `ไม่พบคำสั่งผลิต Phase ${phase} วันที่ ${date}` })
   }
 
-  // Fetch SKUs that do not require withdrawal
-  const { data: noWithdrawalRows } = await supabase
-    .from('no_withdrawal_skus')
-    .select('sap')
+  // 2. Fetch masters in parallel
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes] = await Promise.all([
+    supabase.from('no_withdrawal_skus').select('sap'),
+    supabase.from('moo_chod_master').select('sap_code, fat_percent'),
+    supabase.from('moo_chod_withdrawal_master')
+      .select('ingredient_type, priority, sap_code, product_name, fat_percent')
+      .order('ingredient_type').order('priority').order('id'),
+  ])
 
-  const noWithdrawalSaps = new Set((noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()))
+  const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
 
-  // Filter assignments: skip any whose SKU is in the no_withdrawal_skus master table
-  const activeAssignments = assignments.filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
-  if (!activeAssignments.length) {
-    return NextResponse.json({ items: [], message: `ไม่พบรายการเบิก เนื่องจาก SKU ทั้งหมดในแผนผลิตเป็น SKU ที่ไม่ต้องเบิกของ` })
+  // Build moo_chod fat map: sap_code → fat_percent
+  const normSku = (s: string) => String(s ?? '').trim().replace(/^0+/, '') || String(s ?? '').trim()
+  const mooFatMap = new Map<string, number>()
+  for (const r of mooMasterRes.data ?? []) {
+    if (!r.sap_code) continue
+    for (const c of [r.sap_code.trim(), normSku(r.sap_code)].filter(Boolean))
+      mooFatMap.set(c, Number(r.fat_percent ?? 0))
   }
 
-  // 2. Build finRoundMap: (station|||sku) → Map<roundMins, qty>
-  //    ใช้ข้อมูล per-round จาก note (ถ้ามี) หรือ fallback จาก deadline_time
+  const mooWithdrawalIngs = (mooWithdrawalRes.data ?? []) as MooIng[]
+  const mooMeatIngs = mooWithdrawalIngs.filter(i => i.ingredient_type === 'เนื้อ')
+  const mooFatIngs  = mooWithdrawalIngs.filter(i => i.ingredient_type === 'มัน')
+
+  const activeAssignments = assignments.filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
+  if (!activeAssignments.length) {
+    return NextResponse.json({ items: [], message: 'ไม่พบรายการเบิก เนื่องจาก SKU ทั้งหมดในแผนผลิตเป็น SKU ที่ไม่ต้องเบิกของ' })
+  }
+
+  // Split: หมูบด กลุ่มสินค้าหมูบด (in moo_chod_master) vs regular
+  const isMooChōdSku = (a: { table_name: string; sku: string }) =>
+    a.table_name === 'หมูบด' && mooFatMap.size > 0 &&
+    (mooFatMap.has(normSku(a.sku)) || mooFatMap.has(String(a.sku ?? '').trim()))
+
+  const mooChōdAssignments = activeAssignments.filter(isMooChōdSku)
+  const regularAssignments  = activeAssignments.filter(a => !isMooChōdSku(a))
+
+  // ── Regular path: BOM-based ────────────────────────────────────
+
+  // 3. Build finRoundMap
   const finRoundMap = new Map<string, Map<number, number>>()
   const finNameMap  = new Map<string, string | null>()
   const skuSet      = new Set<string>()
 
-  for (const a of activeAssignments) {
+  for (const a of regularAssignments) {
     const key = `${a.table_name}|||${a.sku}`
     if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
     finNameMap.set(key, a.sku_name ?? null)
     skuSet.add(a.sku)
 
-    const roundQtys = finRoundMap.get(key)!
+    const roundQtys  = finRoundMap.get(key)!
     const noteRounds = parseRoundNote(a.note)
 
     if (noteRounds.size > 0) {
-      // มีข้อมูล per-round จาก generate → นำมา map เข้ากับ round boundary ของ withdrawal
       for (const [rm, q] of Array.from(noteRounds.entries())) {
         const mappedRm = getRoundMins(rm, roundMins)
         roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
       }
     } else {
-      // fallback: ถ้าไม่มี round breakdown ใช้ deadline_time เป็น start time
-      const startMins = a.deadline_time
-        ? timeStrToMins(String(a.deadline_time))
-        : DEFAULT_START_MINS[phaseStr]
+      const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : DEFAULT_START_MINS[phaseStr]
       const rm = getRoundMins(startMins, roundMins)
       roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + Number(a.target_quantity))
     }
   }
 
-  // 3. ดึง BOM
+  // 4. Fetch BOM
   const skus = Array.from(skuSet)
-  const { data: bomRows, error: e2 } = await supabase
-    .from('bom_items')
-    .select('product_sap, raw_sap, raw_name, yield_pct')
-    .in('product_sap', skus)
+  const { data: bomRows, error: e2 } = skus.length > 0
+    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', skus)
+    : { data: [], error: null }
   if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
 
   const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
@@ -210,16 +291,16 @@ export async function POST(req: NextRequest) {
     bomMap.set(b.product_sap, list)
   }
 
-  // 4. คำนวณ raw material ต่อ (station, raw_sap, roundMins)
+  // 5. Calculate raw material per (station, raw_sap, round)
   interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
-  const rawMap = new Map<string, RawEntry>()
+  const rawMap      = new Map<string, RawEntry>()
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
 
   for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
     const [station, sku] = finKey.split('|||')
     const sku_name = finNameMap.get(finKey) ?? null
-    const boms = bomMap.get(sku)
+    const boms     = bomMap.get(sku)
 
     for (const [rm, finQty] of Array.from(roundQtys.entries())) {
       if (!boms?.length) {
@@ -239,96 +320,58 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 5. ดึง stock
-  const rawSaps  = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
-  const rawNames = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_name).filter(Boolean) as string[]))
-
-  type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
-  const stockRows: StockRow[] = []
+  // 6. Fetch stock (regular path)
+  const rawSaps = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
+  const regularStockRows: StockRow[] = []
 
   if (rawSaps.length > 0) {
     const [res0010, res20] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
       supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
     ])
-    stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
+    regularStockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
   }
 
-  // Name-based fallback: for any raw_sap that returned no stock rows, re-query by material_name
-  // ขยาย names ให้ครอบทั้ง "สันนอก-Raw" และ "สันนอก - Raw" (stock ใช้ UNIX code ไม่ใช่ SAP)
-  const foundCodes = new Set(stockRows.map(r => r.material_code))
+  // Name-based fallback
+  const foundCodes = new Set(regularStockRows.map(r => r.material_code))
   const missingNames = Array.from(new Set(
     Array.from(rawMap.values())
       .filter(v => !foundCodes.has(v.raw_sap))
-      .map(v => v.raw_name)
-      .filter(Boolean) as string[]
+      .map(v => v.raw_name).filter(Boolean) as string[]
   ))
   if (missingNames.length > 0) {
     const expandedNames = Array.from(new Set(missingNames.flatMap(n => [
-      n,
-      n.replace(/\s*-\s*/g, '-'),     // "สันนอก - Raw" → "สันนอก-Raw"
-      n.replace(/\s*-\s*/g, ' - '),   // "สันนอก-Raw"   → "สันนอก - Raw"
+      n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
     ])))
     const [res0010n, res20n] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
       supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
     ])
-    stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+    regularStockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
   }
 
-  type LotEntry = { spec_code: string; weight: number; factory: string; prod_date: string; sortKey: string }
-  const lotAggCode = new Map<string, number>()
-  const matCodeToName = new Map<string, string>()  // material_code → material_name
-  for (const row of stockRows) {
-    if (!row.material_code || !row.spec_code) continue
-    const k = `${row.material_code}|||${row.spec_code}`
-    lotAggCode.set(k, (lotAggCode.get(k) ?? 0) + Number(row.weight_total))
-    if (row.material_name) matCodeToName.set(row.material_code, row.material_name)
-  }
+  const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
 
-  const stockByMat  = new Map<string, LotEntry[]>()  // by material_code
-  const stockByName = new Map<string, LotEntry[]>()  // by normalized material_name (fallback)
-  for (const [k, weight] of Array.from(lotAggCode.entries())) {
-    const [matCode, spec_code] = k.split('|||')
-    const parsed = parseSpecCode(spec_code)
-    const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
-
-    const codeList = stockByMat.get(matCode) ?? []
-    codeList.push(lot)
-    stockByMat.set(matCode, codeList)
-
-    const matName = matCodeToName.get(matCode)
-    if (matName) {
-      const nameKey = normMatName(matName)
-      const nameList = stockByName.get(nameKey) ?? []
-      nameList.push(lot)
-      stockByName.set(nameKey, nameList)
-    }
-  }
-  for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-  for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-
-  // 6. สร้าง output items พร้อม withdrawal_round
-  // sort by roundMins ก่อน เพื่อให้ FIFO หักรอบเก่าออกก่อนเสมอ
+  // 7. Build regular output items
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) => a.roundMins - b.roundMins)
     .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
-    const needed  = Math.round(qty * 100) / 100
-    const nameKey = normMatName(raw_name ?? '')
-    const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
-    const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
-    return {
-      sku:              raw_sap,
-      sku_name:         raw_name,
-      quantity:         needed,
-      unit:             'กก.',
-      work_station:     station,
-      note:             'คำนวณจาก BOM',
-      lots:             lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
-      for_products:     rawToProducts.get(rawKey) ?? [],
-      withdrawal_round: minsToTime(roundMins),
-    }
-  })
+      const needed  = Math.round(qty * 100) / 100
+      const nameKey = normMatName(raw_name ?? '')
+      const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
+      const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
+      return {
+        sku:              raw_sap,
+        sku_name:         raw_name,
+        quantity:         needed,
+        unit:             'กก.',
+        work_station:     station,
+        note:             'คำนวณจาก BOM',
+        lots:             lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
+        for_products:     rawToProducts.get(rawKey) ?? [],
+        withdrawal_round: minsToTime(roundMins),
+      }
+    })
 
   const noBomItems = noBom.map(({ station, sku, sku_name, qty, roundMins }) => ({
     sku,
@@ -338,10 +381,84 @@ export async function POST(req: NextRequest) {
     work_station:     station,
     note:             'ไม่พบ BOM — ใช้ปริมาณผลิตโดยตรง',
     lots:             [] as LotInfo[],
+    for_products:     [] as { sku: string; sku_name: string | null; qty: number; rawQty: number }[],
     withdrawal_round: minsToTime(roundMins),
   }))
 
-  const items = [...rawItems, ...noBomItems].sort((a, b) =>
+  // ── หมูบด priority path ────────────────────────────────────────
+
+  const mooItems: typeof rawItems = []
+
+  if (mooChōdAssignments.length > 0 && mooWithdrawalIngs.length > 0) {
+    // คำนวณ demand แยก fatKg + meatKg ต่อ round
+    const mooRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
+    const mooForProducts: { sku: string; sku_name: string | null; qty: number; rawQty: number }[] = []
+
+    for (const a of mooChōdAssignments) {
+      const fatPct = mooFatMap.get(normSku(a.sku)) ?? mooFatMap.get(String(a.sku ?? '').trim()) ?? 0
+      const noteRounds = parseRoundNote(a.note)
+      const roundEntries: [number, number][] = noteRounds.size > 0
+        ? Array.from(noteRounds.entries()).map(([rm, q]) => [getRoundMins(rm, roundMins), q] as [number, number])
+        : [[DEFAULT_START_MINS[phaseStr], Number(a.target_quantity)]]
+
+      const totalQty = Number(a.target_quantity)
+      if (!mooForProducts.find(p => p.sku === a.sku))
+        mooForProducts.push({ sku: a.sku, sku_name: a.sku_name ?? null, qty: totalQty, rawQty: totalQty })
+
+      for (const [rm, qty] of roundEntries) {
+        const cur = mooRoundDemand.get(rm) ?? { fatKg: 0, meatKg: 0 }
+        cur.fatKg  += qty * fatPct / 100
+        cur.meatKg += qty * (1 - fatPct / 100)
+        mooRoundDemand.set(rm, cur)
+      }
+    }
+
+    // Fetch stock สำหรับ withdrawal ingredients (แยกจาก regular stock)
+    const mooAllSaps  = mooWithdrawalIngs.map(i => i.sap_code).filter(Boolean) as string[]
+    const mooAllNames = mooWithdrawalIngs.map(i => i.product_name).filter(Boolean) as string[]
+    const mooStockRows: StockRow[] = []
+
+    const mooStockPromises = []
+    if (mooAllSaps.length > 0) {
+      mooStockPromises.push(
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+      )
+    }
+    if (mooAllNames.length > 0) {
+      mooStockPromises.push(
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+      )
+    }
+    const mooStockResults = await Promise.all(mooStockPromises)
+    for (const r of mooStockResults) mooStockRows.push(...((r.data ?? []) as StockRow[]))
+
+    const { byCode: mooByCode, byName: mooByName } = buildStockMaps(mooStockRows)
+
+    // Build items per round
+    for (const [rm, demand] of Array.from(mooRoundDemand.entries()).sort(([a], [b]) => a - b)) {
+      const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
+      const meatAllocs = demand.meatKg > 0.005 ? allocateMooPriority(demand.meatKg, mooMeatIngs, mooByCode, mooByName) : []
+
+      for (const { ing, qty, lots } of [...fatAllocs, ...meatAllocs]) {
+        mooItems.push({
+          sku:              ing.sap_code ?? ing.product_name,
+          sku_name:         ing.product_name,
+          quantity:         Math.round(qty * 100) / 100,
+          unit:             'กก.',
+          work_station:     'หมูบด',
+          note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
+          lots,
+          for_products:     mooForProducts,
+          withdrawal_round: minsToTime(rm),
+        })
+      }
+    }
+  }
+
+  // Combine and sort
+  const items = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
     (a.sku ?? '').localeCompare(b.sku ?? '')
