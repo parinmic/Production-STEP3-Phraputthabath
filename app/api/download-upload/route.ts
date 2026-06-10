@@ -174,6 +174,26 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       unit:           'หน่วย',
     },
   },
+  moo_chod_master: {
+    cols: ['work_station', 'product_group', 'sap_code', 'product_name', 'fat_percent'],
+    headers: {
+      work_station:  'จุดงาน',
+      product_group: 'กลุ่มสินค้า',
+      sap_code:      'SAP',
+      product_name:  'ชื่อสินค้า',
+      fat_percent:   '%ไขมัน',
+    },
+  },
+  moo_chod_withdrawal_master: {
+    cols: ['ingredient_type', 'priority', 'sap_code', 'product_name', 'fat_percent'],
+    headers: {
+      ingredient_type: 'กลุ่ม (เนื้อ/มัน)',
+      priority:        'Priority',
+      sap_code:        'SAP',
+      product_name:    'ชื่อวัตถุดิบ',
+      fat_percent:     '%ไขมัน',
+    },
+  },
 }
 
 async function fetchAllRows(
