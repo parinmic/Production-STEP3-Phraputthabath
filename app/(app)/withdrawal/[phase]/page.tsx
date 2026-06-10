@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Printer, RefreshCw, PackageOpen, Zap, Save, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { Printer, RefreshCw, PackageOpen, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
 import { downloadWithdrawalPDF } from '@/lib/withdrawal-pdf'
 
 interface WithdrawalItem {
@@ -78,10 +78,6 @@ export default function WithdrawalPage() {
   const [date, setDate]           = useState(today)
   const [items, setItems]         = useState<WithdrawalItem[]>([])
   const [loading, setLoading]     = useState(false)
-  const [calculating, setCalc]    = useState(false)
-  const [saving, setSaving]       = useState(false)
-  const [preview, setPreview]     = useState<CalcItem[] | null>(null)
-  const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set())
   const [printModal, setPrintModal]       = useState(false)
@@ -106,7 +102,7 @@ export default function WithdrawalPage() {
     }
   }, [date, phase])
 
-  useEffect(() => { load(); setPreview(null); setCalcMsg(null) }, [load])
+  useEffect(() => { load() }, [load])
 
   useEffect(() => {
     fetch('/api/master-trakra')
@@ -145,72 +141,6 @@ export default function WithdrawalPage() {
       alert('เกิดข้อผิดพลาดในการสร้าง PDF')
     } finally {
       setDownloading(false)
-    }
-  }
-
-  const calculate = async () => {
-    setCalc(true); setCalcMsg(null)
-    try {
-      const res = await fetch('/api/withdrawal/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: Number(phase) }),
-      })
-      const data = await res.json()
-      if (data.error) { setCalcMsg(data.error); return }
-      if (!data.items?.length) { setCalcMsg(data.message ?? 'ไม่พบข้อมูลคำสั่งผลิต'); return }
-      setPreview(data.items)
-    } catch {
-      setCalcMsg('เกิดข้อผิดพลาด ไม่สามารถคำนวณได้')
-    } finally {
-      setCalc(false)
-    }
-  }
-
-  const save = async () => {
-    if (!preview) return
-    setSaving(true); setCalcMsg(null)
-    try {
-      const flatItems = preview.flatMap(item => {
-        const fpTag = encodeFPTag(item.for_products ?? [])
-        const roundPrefix = item.withdrawal_round ? `[Round: ${item.withdrawal_round}] ` : ''
-        if (!item.lots?.length) return [
-          {
-            sku:          item.sku,
-            sku_name:     item.sku_name,
-            quantity:     item.quantity,
-            unit:         item.unit,
-            work_station: item.work_station,
-            note:         `${roundPrefix}${fpTag}${item.note ?? ''}`,
-          }
-        ]
-        return item.lots.map(lot => ({
-          sku:          item.sku,
-          sku_name:     item.sku_name,
-          quantity:     lot.to_withdraw,
-          unit:         item.unit,
-          work_station: item.work_station,
-          note: lot.insufficient
-            ? `${roundPrefix}${fpTag}ไม่เพียงพอในสต็อก (ขาด ${lot.to_withdraw} กก.)`
-            : `${roundPrefix}${fpTag}Lot: ${lot.spec_code} | รร.${lot.factory} | ผลิต ${lot.prod_date}`,
-        }))
-      })
-      const res = await fetch('/api/withdrawal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: flatItems, requestDate: date, phase: Number(phase) }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setPreview(null)
-        await load()
-      } else {
-        setCalcMsg(data.message ?? 'บันทึกไม่สำเร็จ')
-      }
-    } catch {
-      setCalcMsg('บันทึกไม่สำเร็จ')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -338,7 +268,7 @@ export default function WithdrawalPage() {
     })
   }
 
-  const displayItems: RowItem[] = preview ?? groupSaved(items)
+  const displayItems: RowItem[] = groupSaved(items)
   const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
@@ -511,7 +441,7 @@ export default function WithdrawalPage() {
           </button>
         </div>
 
-        {/* Phase tabs + date + calculate */}
+        {/* Phase tabs + date */}
         <div className="no-print flex items-center gap-2 flex-wrap">
           {(['1','2','3'] as const).map((ph) => {
             const c = PHASE_CONFIG[ph]
@@ -528,39 +458,9 @@ export default function WithdrawalPage() {
             )
           })}
           <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block" />
-          <input type="date" value={date} onChange={e => { setDate(e.target.value); setPreview(null) }}
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={calculate} disabled={calculating}
-            className="flex items-center gap-1.5 text-xs sm:text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-3 sm:px-4 py-2 rounded-lg transition-colors">
-            <Zap size={14} className={calculating ? 'animate-pulse' : ''} />
-            {calculating ? 'กำลังคำนวณ...' : 'คำนวณอัตโนมัติ'}
-          </button>
         </div>
-
-        {calcMsg && (
-          <div className="no-print bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-            <span className="font-medium">⚠</span> {calcMsg}
-          </div>
-        )}
-
-        {preview && (
-          <div className="no-print bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <p className="font-semibold text-indigo-800">ผลการคำนวณ — {preview.length} รายการ</p>
-              <p className="text-sm text-indigo-600 mt-0.5">ตรวจสอบแล้วกด "บันทึก" เพื่อบันทึกลงระบบ</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPreview(null)}
-                className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg font-medium">
-                <X size={14} /> ยกเลิก
-              </button>
-              <button onClick={save} disabled={saving}
-                className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg transition-colors">
-                <Save size={14} /> {saving ? 'กำลังบันทึก...' : 'บันทึกรายการ'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Print area */}
         <div id="print-area" ref={printRef}>
@@ -587,7 +487,7 @@ export default function WithdrawalPage() {
             <div className="card text-center py-12 no-print">
               <PackageOpen size={40} className="mx-auto text-gray-300 mb-3" />
               <p className="text-gray-500 font-medium">ยังไม่มีรายการเบิกสินค้า</p>
-              <p className="text-sm text-gray-400 mt-1">กด "คำนวณอัตโนมัติ" เพื่อสร้างรายการจากคำสั่งผลิต</p>
+              <p className="text-sm text-gray-400 mt-1">รายการเบิกจะแสดงหลังจากสร้างแผนผลิตแล้ว</p>
             </div>
           )}
 
