@@ -1101,7 +1101,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     : (phaseCfg.startH * 60)
 
   const d = new Date(productionDate)
-  const histDates = [1, 2, 3].map(n => {
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => {
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
@@ -2125,9 +2125,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const secStockList       = stockAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
   const secDeficitList     = deficitAssignList.filter(i => secondarySkuSet.has(i.sku.replace(/^0+/, '')))
 
-  // Merge stock + deficit into one pass so same-SKU produces one continuous block
-  runChannelPass([...primaryStockList, ...primaryDeficitList])
+  // Pass 2a: stock-supported items — fills workers with produceable quantities first
+  runChannelPass(primaryStockList)
   assignments.push(...keptAssignments)
+  // Pass 2b: deficit items — uses remaining worker capacity, assigned with is_deficit=true
+  // Kept separate so runChannelPass's `handled` set doesn't drop deficit items that share
+  // the same channel+SKU as stock items.
+  runChannelPass(primaryDeficitList)
 
   if (secStockList.length || secDeficitList.length) {
     // Concurrent mode: secondary runs alongside primary, starting at the SAME TIME.
@@ -2164,7 +2168,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
-    runChannelPass([...secStockList, ...secDeficitList])
+    runChannelPass(secStockList)
+    runChannelPass(secDeficitList)
   }
 
   if (!assignments.length) {
@@ -2419,7 +2424,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (a.is_deficit && !a.note?.includes('|deficit')) {
       a.note = (a.note ?? '') + '|deficit'
     }
-    delete a.is_deficit 
+    a['is_deficit'] = !!a.is_deficit
   })
   assignments.length = 0
   assignments.push(...resequenced)
