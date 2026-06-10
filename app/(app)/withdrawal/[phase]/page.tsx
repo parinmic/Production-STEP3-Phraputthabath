@@ -372,9 +372,9 @@ export default function WithdrawalPage() {
               <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
               <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
               <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า</th>
-              <th className="px-2 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
+              <th className="px-2 py-2.5 text-left text-gray-600 font-medium">จำนวน</th>
               <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
-              <th className="px-2 py-2.5 text-right text-gray-600 font-medium">ตะกร้า</th>
+              <th className="px-2 py-2.5 text-left text-gray-600 font-medium">ตะกร้า</th>
             </tr>
           </thead>
           <tbody>
@@ -402,16 +402,16 @@ export default function WithdrawalPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-2 py-1.5 text-right">
+                    <td className="px-2 py-1.5">
                       <button
                         onClick={(e) => { e.stopPropagation(); setPopupItem({ item, station, roundTime }) }}
-                        className="font-bold text-gray-900 bg-gray-100 active:bg-blue-100 hover:bg-blue-50 rounded-xl px-3 py-2 min-w-[56px] w-full touch-manipulation transition-colors text-right">
+                        className="font-bold text-gray-900 bg-gray-100 active:bg-blue-100 hover:bg-blue-50 rounded-xl px-3 py-2 min-w-[56px] touch-manipulation transition-colors text-left">
                         {roundTo5Or0(item.quantity).toLocaleString()}
                         <span className="md:hidden text-xs font-normal text-gray-500 ml-1">{item.unit}</span>
                       </button>
                     </td>
                     <td className="hidden md:table-cell px-3 py-2.5 text-gray-600">{item.unit}</td>
-                    <td className="px-2 py-2.5 text-right text-orange-600 font-medium text-xs sm:text-sm">
+                    <td className="px-2 py-2.5 text-left text-orange-600 font-medium text-xs sm:text-sm">
                       {getTotalBaskets(item) != null
                         ? <><span>{getTotalBaskets(item)}</span><span className="hidden md:inline"> ตะกร้า</span></>
                         : <span className="text-gray-300">—</span>}
@@ -451,12 +451,12 @@ export default function WithdrawalPage() {
                             ? <span className="text-red-500 font-medium">⚠ สต็อกไม่เพียงพอ</span>
                             : <span>ผลิต <span className="font-medium">{date}</span></span>}
                         </td>
-                        <td className={`px-2 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
+                        <td className={`px-2 py-1.5 text-left font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
                           {roundTo5Or0(qty).toLocaleString()}
                           <span className="md:hidden text-xs font-normal text-gray-400 ml-1">กก.</span>
                         </td>
                         <td className="hidden md:table-cell px-3 py-1.5 text-gray-500">กก.</td>
-                        <td className="px-2 py-1.5 text-right text-orange-500 text-xs">
+                        <td className="px-2 py-1.5 text-left text-orange-500 text-xs">
                           {!insufficient && getBaskets(item.sku, qty) != null
                             ? getBaskets(item.sku, qty)
                             : ''}
@@ -470,8 +470,8 @@ export default function WithdrawalPage() {
             <tr className="bg-gray-50 font-semibold border-t">
               <td className="hidden md:table-cell" />
               <td className="hidden md:table-cell" />
-              <td className="px-3 py-2.5 text-right text-gray-600">รวม</td>
-              <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
+              <td className="px-3 py-2.5 text-left text-gray-600">รวม</td>
+              <td className="px-3 py-2.5 text-left text-gray-900">{stationTotal.toLocaleString()}</td>
               <td className="hidden md:table-cell" />
               <td />
             </tr>
