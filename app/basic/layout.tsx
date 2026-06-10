@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Factory, LayoutDashboard, ClipboardList, ChevronDown, ChevronRight, Menu, X, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Undo2, Menu, X, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -31,7 +31,7 @@ function BasicSidebar() {
         <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
           <Menu size={22} />
         </button>
-        <Factory size={20} className="text-orange-400" />
+        <img src="/icon-transparent.png" alt="" className="w-5 h-5 shrink-0" />
         <span className="font-bold text-sm">PPTB เบสิค</span>
       </div>
 
@@ -47,28 +47,25 @@ function BasicSidebar() {
       ].join(' ')}>
 
         {/* Header */}
-        <div className="border-b border-gray-700">
-          <div className="px-3 pt-5 pb-3 flex items-center gap-3 overflow-hidden">
-            <Factory className="text-orange-400 shrink-0" size={26} />
-            <div className={`overflow-hidden flex-1 ${labelCls}`}>
-              <p className="font-bold text-sm whitespace-nowrap">PPTB เบสิค</p>
-              <p className="text-gray-400 text-xs whitespace-nowrap">Basic Mode</p>
-            </div>
-            <button className="md:hidden ml-auto p-1 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
-              <X size={18} />
-            </button>
-          </div>
+        <div className="border-b border-gray-700 flex items-center">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`hidden md:flex w-full items-center py-2.5 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors border-t border-gray-700/50 ${collapsed ? 'justify-center' : 'gap-2.5'}`}
+            className={`hidden md:flex flex-1 items-center py-3 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'}`}
           >
-            <Menu size={18} />
-            {!collapsed && <span className="text-xs text-gray-400">ย่อเมนู</span>}
+            {collapsed ? <Menu size={22} /> : <ChevronLeft size={22} />}
+            {!collapsed && <span className="text-sm text-gray-400">ย่อเมนู</span>}
+          </button>
+          <button className="md:hidden flex items-center gap-2 py-3 px-3 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
+            <X size={18} />
           </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="เลือกโหมดใช้งาน">
+            <Undo2 size={18} className="shrink-0" />
+            <span className={labelCls}>เลือกโหมดใช้งาน</span>
+          </Link>
           <Link href="/basic" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
