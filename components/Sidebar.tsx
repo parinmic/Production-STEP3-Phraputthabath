@@ -230,6 +230,8 @@ export default function Sidebar() {
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </Link>
 
+          <div className="hidden md:block space-y-1">
+
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
@@ -412,6 +414,8 @@ export default function Sidebar() {
             <ShieldAlert size={18} className="shrink-0" />
             <span className={labelCls}>จัดการแผนผลิต</span>
           </Link>
+
+          </div>{/* end hidden md:block */}
 
         </nav>
 
