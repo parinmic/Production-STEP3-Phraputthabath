@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const supabaseSchema = 'public'
+export const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { db: { schema: supabaseSchema } },
 )
 
 export const externalSupabase = createClient(
