@@ -407,8 +407,8 @@ export default function WithdrawalPage() {
                         onClick={(e) => { e.stopPropagation(); setPopupItem({ item, station, roundTime }) }}
                         className="font-bold text-gray-900 bg-gray-100 active:bg-blue-100 hover:bg-blue-50 rounded-xl px-3 py-2 min-w-[56px] w-full touch-manipulation transition-colors text-right">
                         {roundTo5Or0(item.quantity).toLocaleString()}
+                        <span className="md:hidden text-xs font-normal text-gray-500 ml-1">{item.unit}</span>
                       </button>
-                      <p className="md:hidden text-xs text-gray-400 text-center mt-0.5">{item.unit}</p>
                     </td>
                     <td className="hidden md:table-cell px-3 py-2.5 text-gray-600">{item.unit}</td>
                     <td className="px-2 py-2.5 text-right text-orange-600 font-medium text-xs sm:text-sm">
@@ -453,7 +453,7 @@ export default function WithdrawalPage() {
                         </td>
                         <td className={`px-2 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
                           {roundTo5Or0(qty).toLocaleString()}
-                          <p className="md:hidden text-gray-400 font-normal text-center">กก.</p>
+                          <span className="md:hidden text-xs font-normal text-gray-400 ml-1">กก.</span>
                         </td>
                         <td className="hidden md:table-cell px-3 py-1.5 text-gray-500">กก.</td>
                         <td className="px-2 py-1.5 text-right text-orange-500 text-xs">
