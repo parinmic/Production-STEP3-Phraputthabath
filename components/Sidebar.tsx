@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, House } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -101,10 +101,6 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="กลับหน้าหลัก">
-            <House size={18} className="shrink-0" />
-            <span className={labelCls}>กลับหน้าหลัก</span>
-          </Link>
           <Link href="/home" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/home')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
@@ -420,8 +416,13 @@ export default function Sidebar() {
 
         </nav>
 
-        <div className={`px-6 py-4 border-t border-gray-700 text-gray-500 text-xs ${collapsed ? 'md:hidden' : ''}`}>
-          PPTB Production
+        <div className="border-t border-gray-700 px-2 py-3">
+          <Link href="/"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors ${collapsed ? 'md:justify-center' : ''}`}
+            title="กลับหน้าหลัก">
+            <ArrowLeft size={18} className="shrink-0" />
+            <span className={labelCls}>กลับหน้าหลัก</span>
+          </Link>
         </div>
       </aside>
     </>
