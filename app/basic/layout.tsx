@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Undo2, Menu, X, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Menu, X, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -62,10 +62,6 @@ function BasicSidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="เลือกโหมดใช้งาน">
-            <Undo2 size={18} className="shrink-0" />
-            <span className={labelCls}>เลือกโหมดใช้งาน</span>
-          </Link>
           <Link href="/basic" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>

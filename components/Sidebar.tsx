@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, Undo2 } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -65,10 +65,10 @@ export default function Sidebar() {
         <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
           <Menu size={22} />
         </button>
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-3">
           <img src="/icon-transparent.png" alt="" className="w-5 h-5 shrink-0" />
           <span className="font-bold text-sm">PPTB Production</span>
-        </Link>
+        </div>
       </div>
 
       {/* ── Mobile backdrop ──────────────────────────────────── */}
@@ -93,17 +93,14 @@ export default function Sidebar() {
             {collapsed ? <Menu size={22} /> : <ChevronLeft size={22} />}
             {!collapsed && <span className="text-sm text-gray-400">ย่อเมนู</span>}
           </button>
-          <button className="md:hidden flex items-center gap-2 py-3 px-3 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
-            <X size={18} />
+          <button className="md:hidden flex flex-1 items-center gap-2.5 py-3 px-3 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" onClick={() => setMobileOpen(false)}>
+            <ChevronLeft size={22} />
+            <span className="text-sm">ย่อเมนู</span>
           </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="เลือกโหมดใช้งาน">
-            <Undo2 size={18} className="shrink-0" />
-            <span className={labelCls}>เลือกโหมดใช้งาน</span>
-          </Link>
           <Link href="/home" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/home')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
@@ -223,6 +220,15 @@ export default function Sidebar() {
             </div>
           )}
 
+          <Link href="/workforce-daily-status"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/workforce-daily-status')}`}
+            title="ตรวจสอบสถานะกำลังคนประจำวัน">
+            <CalendarDays size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
+          </Link>
+
+          <div className="hidden md:block space-y-1">
+
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
@@ -245,7 +251,7 @@ export default function Sidebar() {
               </Link>
               <Link href="/workforce/weekly"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />แผนเข้างานประจำวัน
+                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />แผนเข้างานประจำสัปดาห์
               </Link>
             </div>
           )}
@@ -258,8 +264,8 @@ export default function Sidebar() {
               </Link>
               <Link href="/workforce/weekly"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำวัน">
-                <span className="w-2 h-2 rounded-full bg-purple-500" />
+                title="แผนเข้างานประจำสัปดาห์">
+                <span className="w-2 h-2 rounded-full bg-teal-500" />
               </Link>
             </div>
           )}
@@ -406,10 +412,17 @@ export default function Sidebar() {
             <span className={labelCls}>จัดการแผนผลิต</span>
           </Link>
 
+          </div>{/* end hidden md:block */}
+
         </nav>
 
-        <div className={`px-6 py-4 border-t border-gray-700 text-gray-500 text-xs ${collapsed ? 'md:hidden' : ''}`}>
-          PPTB Production
+        <div className="border-t border-gray-700 px-2 py-3">
+          <Link href="/"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors ${collapsed ? 'md:justify-center' : ''}`}
+            title="กลับหน้าหลัก">
+            <ArrowLeft size={18} className="shrink-0" />
+            <span className={labelCls}>กลับหน้าหลัก</span>
+          </Link>
         </div>
       </aside>
     </>
