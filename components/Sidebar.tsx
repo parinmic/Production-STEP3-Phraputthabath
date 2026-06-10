@@ -275,11 +275,9 @@ export default function Sidebar() {
             { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS' },
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
             { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
-            { href: '/quota',              icon: BarChart3,      label: 'Quota ช่องทางขาย' },
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้' },
-            { href: '/bkp',               icon: PackageOpen,    label: 'คำสั่งซื้อ BKP' },
           ].map((m) => (
             <Link key={m.href} href={m.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`}
