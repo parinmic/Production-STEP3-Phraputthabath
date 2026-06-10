@@ -1079,36 +1079,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   const mooItems: (typeof rawItems[0])[] = []
 
   if (mooChōdAssignments.length > 0 && mooWithdrawalIngs.length > 0) {
-    const mooRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
-    const mooForProducts: { sku: string; sku_name: string | null; qty: number; rawQty: number }[] = []
-
-    for (const a of mooChōdAssignments) {
-      const skuStr = String(a.sku ?? '')
-      const fatPct = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
-      const totalQty = Number(a.target_quantity)
-      if (!mooForProducts.find(p => p.sku === skuStr))
-        mooForProducts.push({ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalQty, rawQty: totalQty })
-
-      const noteRounds = parseRoundNote(a.note as string | null)
-      if (noteRounds.size > 0) {
-        for (const [rm, q] of Array.from(noteRounds.entries())) {
-          const mappedRm = getRoundMins(rm, roundMins)
-          const cur = mooRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-          cur.fatKg  += q * fatPct / 100
-          cur.meatKg += q * (1 - fatPct / 100)
-          mooRoundDemand.set(mappedRm, cur)
-        }
-      } else {
-        const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
-        const mappedRm = getRoundMins(startMins, roundMins)
-        const cur = mooRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-        cur.fatKg  += totalQty * fatPct / 100
-        cur.meatKg += totalQty * (1 - fatPct / 100)
-        mooRoundDemand.set(mappedRm, cur)
-      }
-    }
-
-    // Fetch stock for moo_chod ingredients
+    // Fetch stock once for all moo_chod ingredients
     const mooAllSaps  = mooWithdrawalIngs.map(i => i.sap_code).filter(Boolean) as string[]
     const mooAllNames = mooWithdrawalIngs.map(i => i.product_name).filter(Boolean) as string[]
     const mooStockRows: StockRow[] = []
@@ -1127,7 +1098,8 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       mooStockRows.push(...((rm3.data ?? []) as StockRow[]), ...((rm4.data ?? []) as StockRow[]))
     }
 
-    // Build stock maps for moo path
+    // Build shared (mutable) stock maps — allocateFIFOLocal deducts weight in-place,
+    // so each SKU consumes from the remaining stock of the previous SKU naturally.
     const mooLotAgg = new Map<string, number>()
     const mooCodeToName = new Map<string, string>()
     for (const row of mooStockRows) {
@@ -1149,22 +1121,46 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     for (const list of Array.from(mooByCode.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
     for (const list of Array.from(mooByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
-    for (const [rm, demand] of Array.from(mooRoundDemand.entries()).sort(([a], [b]) => a - b)) {
-      const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
-      const meatAllocs = demand.meatKg > 0.005 ? allocateMooPriority(demand.meatKg, mooMeatIngs, mooByCode, mooByName) : []
-      for (const { ing, lots } of [...fatAllocs, ...meatAllocs]) {
-        const qty = lots.reduce((s, l) => s + l.to_withdraw, 0)
-        mooItems.push({
-          sku:              ing.sap_code ?? ing.product_name,
-          sku_name:         ing.product_name,
-          quantity:         Math.round(qty * 100) / 100,
-          unit:             'กก.',
-          work_station:     'หมูบด',
-          note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
-          lots,
-          for_products:     mooForProducts,
-          withdrawal_round: minsToTime(rm),
-        })
+    // Process each SKU independently — station handles one SKU at a time
+    for (const a of mooChōdAssignments) {
+      const skuStr  = String(a.sku ?? '')
+      const fatPct  = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
+      const totalQty = Number(a.target_quantity)
+      const forProduct = [{ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalQty, rawQty: totalQty }]
+
+      const skuRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
+      const noteRounds = parseRoundNote(a.note as string | null)
+      if (noteRounds.size > 0) {
+        for (const [rm, q] of Array.from(noteRounds.entries())) {
+          const mappedRm = getRoundMins(rm, roundMins)
+          const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
+          cur.fatKg  += q * fatPct / 100
+          cur.meatKg += q * (1 - fatPct / 100)
+          skuRoundDemand.set(mappedRm, cur)
+        }
+      } else {
+        const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
+        const mappedRm = getRoundMins(startMins, roundMins)
+        skuRoundDemand.set(mappedRm, { fatKg: totalQty * fatPct / 100, meatKg: totalQty * (1 - fatPct / 100) })
+      }
+
+      for (const [rm, demand] of Array.from(skuRoundDemand.entries()).sort(([a], [b]) => a - b)) {
+        const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
+        const meatAllocs = demand.meatKg > 0.005 ? allocateMooPriority(demand.meatKg, mooMeatIngs, mooByCode, mooByName) : []
+        for (const { ing, lots } of [...fatAllocs, ...meatAllocs]) {
+          const qty = lots.reduce((s, l) => s + l.to_withdraw, 0)
+          mooItems.push({
+            sku:              ing.sap_code ?? ing.product_name,
+            sku_name:         ing.product_name,
+            quantity:         Math.round(qty * 100) / 100,
+            unit:             'กก.',
+            work_station:     'หมูบด',
+            note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
+            lots,
+            for_products:     forProduct,
+            withdrawal_round: minsToTime(rm),
+          })
+        }
       }
     }
   }
