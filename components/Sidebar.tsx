@@ -51,12 +51,9 @@ export default function Sidebar() {
   const a = (href: string) =>
     p === href ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
 
-  // Label: always visible on mobile; hidden on desktop when collapsed
-  const labelCls = collapsed ? 'md:hidden' : ''
-  // Section heading: same
-  const sectionCls = `text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3 ${collapsed ? 'md:hidden' : ''}`
-  // Divider: only on desktop when collapsed
-  const dividerCls = `border-t border-gray-700 my-2 hidden ${collapsed ? 'md:block' : ''}`
+  const labelCls = collapsed ? 'hidden' : ''
+  const sectionCls = `text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3 ${collapsed ? 'hidden' : ''}`
+  const dividerCls = `border-t border-gray-700 my-2 ${collapsed ? 'block' : 'hidden'}`
 
   return (
     <>
@@ -78,17 +75,17 @@ export default function Sidebar() {
 
       {/* ── Sidebar ─────────────────────────────────────────── */}
       <aside className={[
-        'fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-all duration-300 w-64',
+        'fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-all duration-300',
         'md:relative md:inset-auto md:z-auto md:translate-x-0 md:shrink-0',
         mobileOpen ? 'translate-x-0' : '-translate-x-full',
-        collapsed ? 'md:w-16' : 'md:w-64',
+        collapsed ? 'w-16' : 'w-64',
       ].join(' ')}>
 
         {/* Header */}
         <div className="border-b border-gray-700 flex items-center">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`hidden md:flex flex-1 items-center py-3 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'}`}
+            className={`flex flex-1 items-center py-3 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'}`}
           >
             {collapsed ? <Menu size={22} /> : <ChevronLeft size={22} />}
             {!collapsed && <span className="text-sm text-gray-400">ย่อเมนู</span>}
@@ -100,7 +97,7 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="เลือกโหมดใช้งาน">
+          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'justify-center' : ''}`} title="เลือกโหมดใช้งาน">
             <Pointer size={18} className="shrink-0" />
             <span className={labelCls}>เลือกโหมดใช้งาน</span>
           </Link>
@@ -128,7 +125,7 @@ export default function Sidebar() {
           </button>
 
           {openWithdrawal && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               {[
                 { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
                 { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
@@ -142,7 +139,7 @@ export default function Sidebar() {
             </div>
           )}
           {openWithdrawal && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               {['1','2','3'].map((phase) => (
                 <Link key={phase} href={`/withdrawal/${phase}`}
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/withdrawal/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -165,7 +162,7 @@ export default function Sidebar() {
           </button>
 
           {openShortage && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               {[
                 { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
                 { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
@@ -179,7 +176,7 @@ export default function Sidebar() {
             </div>
           )}
           {openShortage && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               {['1','2','3'].map((phase) => (
                 <Link key={phase} href={`/shortage/${phase}`}
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/shortage/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -202,7 +199,7 @@ export default function Sidebar() {
           </button>
 
           {open && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               {TABLES.map((t) => (
                 <Link key={t.slug} href={`/production/${t.slug}`}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
@@ -212,7 +209,7 @@ export default function Sidebar() {
             </div>
           )}
           {open && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               {TABLES.map((t) => (
                 <Link key={t.slug} href={`/production/${t.slug}`}
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -247,7 +244,7 @@ export default function Sidebar() {
           </button>
 
           {openWorkforce && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               <Link href="/workforce"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
@@ -259,7 +256,7 @@ export default function Sidebar() {
             </div>
           )}
           {openWorkforce && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               <Link href="/workforce"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="อัพโหลดกำลังคนประจำวัน">
@@ -307,7 +304,7 @@ export default function Sidebar() {
           </button>
 
           {openManpower && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               {MANPOWER_TYPES.map((t) => (
                 <Link key={t.slug} href={`/master-logic/manpower/${t.slug}`}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
@@ -317,7 +314,7 @@ export default function Sidebar() {
             </div>
           )}
           {openManpower && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               {MANPOWER_TYPES.map((t) => (
                 <Link key={t.slug} href={`/master-logic/manpower/${t.slug}`}
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -340,7 +337,7 @@ export default function Sidebar() {
           </button>
 
           {openCalculation && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+            <div className={`ml-4 space-y-1 ${collapsed ? 'hidden' : ''}`}>
               {CALCULATION_TYPES.map((t) => (
                 <Link key={t.slug} href={`/master-logic/calculation/${t.slug}`}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/master-logic/calculation/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
@@ -370,7 +367,7 @@ export default function Sidebar() {
             </div>
           )}
           {openCalculation && collapsed && (
-            <div className="space-y-1 hidden md:block">
+            <div className="space-y-1">
               {CALCULATION_TYPES.map((t) => (
                 <Link key={t.slug} href={`/master-logic/calculation/${t.slug}`}
                   className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/master-logic/calculation/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -419,7 +416,7 @@ export default function Sidebar() {
 
         </nav>
 
-        <div className={`px-6 py-4 border-t border-gray-700 text-gray-500 text-xs ${collapsed ? 'md:hidden' : ''}`}>
+        <div className={`px-6 py-4 border-t border-gray-700 text-gray-500 text-xs ${collapsed ? 'hidden' : ''}`}>
           PPTB Production
         </div>
       </aside>
