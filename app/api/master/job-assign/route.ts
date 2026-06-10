@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export interface JobAssignWorker {
   fullName: string                    // รายชื่อพนักงาน (normalized)
   nickname: string                    // ชื่อเล่น
