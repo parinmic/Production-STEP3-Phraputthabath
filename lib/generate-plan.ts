@@ -506,6 +506,15 @@ function allocateBalanced(params: {
   // Track which workers have been assigned to each normSku
   const skuAssignedWorkers = new Map<string, Set<string>>()
 
+  // สไลด์: pre-split workers into 2 fixed parallel groups (each group works one SKU at a time)
+  const slideGroups: WorkforceRow[][] | null = tableName === 'สไลด์' && workers.length >= 2
+    ? (() => {
+        const sorted = [...workers].sort((a, b) => normName(a.name).localeCompare(normName(b.name)))
+        const half = Math.ceil(sorted.length / 2)
+        return [sorted.slice(0, half), sorted.slice(half)]
+      })()
+    : null
+
   // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
   for (const block of skuBlocks) {
     const normSku  = block.normSku
@@ -518,29 +527,43 @@ function allocateBalanced(params: {
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
 
-    // Eligible workers sorted: skill ASC → freeAt ASC
-    // Exclude workers whose shift starts at or after limitEnd (e.g. กะ 2 in Phase 1)
-    let eligible = workers.filter(w => {
-      const freeAt = workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins
-      return freeAt < limitEnd && isWorkerEligible(w, block.productGroup)
-    })
-    if (!eligible.length) eligible = workers.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
-    if (!eligible.length) continue
+    let eligible: WorkforceRow[]
+    let selected: WorkforceRow[]
 
-    eligible.sort((a, b) => {
-      const la = getWorkerSkillLevel(a, block.productGroup)
-      const lb = getWorkerSkillLevel(b, block.productGroup)
-      if (la !== lb) return la - lb
-      const fa = workerFreeAtMins.get(normName(a.name)) ?? phaseStartMins
-      const fb = workerFreeAtMins.get(normName(b.name)) ?? phaseStartMins
-      return fa - fb
-    })
+    if (slideGroups) {
+      // สไลด์: pick the group that will be free soonest (max freeAt within group)
+      const groupFreeAt = slideGroups.map(g =>
+        g.length > 0 ? Math.max(...g.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)) : Infinity
+      )
+      const chosenIdx = groupFreeAt[0] <= groupFreeAt[1] ? 0 : 1
+      eligible = slideGroups[chosenIdx]
+      selected = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
+      if (!selected.length) continue
+    } else {
+      // Eligible workers sorted: skill ASC → freeAt ASC
+      // Exclude workers whose shift starts at or after limitEnd (e.g. กะ 2 in Phase 1)
+      eligible = workers.filter(w => {
+        const freeAt = workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins
+        return freeAt < limitEnd && isWorkerEligible(w, block.productGroup)
+      })
+      if (!eligible.length) eligible = workers.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
+      if (!eligible.length) continue
 
-    // Only include workers who can start before this phase ends (exclude e.g. กะ 2 in Phase 1)
-    const canWork    = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
-    const selectPool = canWork.length > 0 ? canWork : eligible
-    const numSelect  = Math.min(maxW === Infinity ? numBags : maxW, selectPool.length, numBags)
-    const selected   = selectPool.slice(0, numSelect)
+      eligible.sort((a, b) => {
+        const la = getWorkerSkillLevel(a, block.productGroup)
+        const lb = getWorkerSkillLevel(b, block.productGroup)
+        if (la !== lb) return la - lb
+        const fa = workerFreeAtMins.get(normName(a.name)) ?? phaseStartMins
+        const fb = workerFreeAtMins.get(normName(b.name)) ?? phaseStartMins
+        return fa - fb
+      })
+
+      // Only include workers who can start before this phase ends (exclude e.g. กะ 2 in Phase 1)
+      const canWork    = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
+      const selectPool = canWork.length > 0 ? canWork : eligible
+      const numSelect  = Math.min(maxW === Infinity ? numBags : maxW, selectPool.length, numBags)
+      selected         = selectPool.slice(0, numSelect)
+    }
 
     // blockStart = latest freeAt among selected workers (synchronized start)
     let blockStart = phaseStartMins
