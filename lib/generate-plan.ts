@@ -656,6 +656,22 @@ function allocateBalanced(params: {
         break
       }
     }
+
+    // สไลด์: sync all group members to the slowest finish time so no one starts
+    // the next SKU before the whole group is done (handles 0-bag workers who were skipped)
+    if (slideGroups) {
+      const groupMaxFreeAt = Math.max(...eligible.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins))
+      for (const w of eligible) {
+        const nameKey = normName(w.name)
+        const currentFreeAt = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+        if (currentFreeAt < groupMaxFreeAt) {
+          const segs = workerBusySegments.get(nameKey) ?? []
+          segs.push({ start: currentFreeAt, end: groupMaxFreeAt })
+          workerBusySegments.set(nameKey, segs)
+          workerFreeAtMins.set(nameKey, groupMaxFreeAt)
+        }
+      }
+    }
   }
 
   // 5. Build assignment records — one record per (worker, normSku), primary channel = largest qty
