@@ -506,12 +506,23 @@ function allocateBalanced(params: {
   // Track which workers have been assigned to each normSku
   const skuAssignedWorkers = new Map<string, Set<string>>()
 
-  // สไลด์: pre-split workers into 2 fixed parallel groups (each group works one SKU at a time)
+  // สไลด์: pre-split workers into groups
+  //   - Group C (WIP): workers whose job assignment has ONLY กลุ่ม WIP → WIP blocks only
+  //   - Group A + B: remaining workers split evenly → non-WIP blocks only
+  const SLIDE_WIP_GROUP = 'กลุ่ม WIP'
   const slideGroups: WorkforceRow[][] | null = tableName === 'สไลด์' && workers.length >= 2
     ? (() => {
-        const sorted = [...workers].sort((a, b) => normName(a.name).localeCompare(normName(b.name)))
+        const wipOnly = workers.filter(w => {
+          const jobInfo = jobAssignMap.get(normName(w.name))
+          if (!jobInfo || jobInfo.groups.size === 0) return false
+          return Array.from(jobInfo.groups.keys()).every(k => k === SLIDE_WIP_GROUP)
+        })
+        const nonWip = workers.filter(w => !wipOnly.includes(w))
+        const sorted = [...nonWip].sort((a, b) => normName(a.name).localeCompare(normName(b.name)))
         const half = Math.ceil(sorted.length / 2)
-        return [sorted.slice(0, half), sorted.slice(half)]
+        const groups: WorkforceRow[][] = [sorted.slice(0, half), sorted.slice(half)]
+        if (wipOnly.length > 0) groups.push(wipOnly)  // group index 2 = WIP group
+        return groups
       })()
     : null
 
@@ -531,12 +542,19 @@ function allocateBalanced(params: {
     let selected: WorkforceRow[]
 
     if (slideGroups) {
-      // สไลด์: pick the group that will be free soonest (max freeAt within group)
-      const groupFreeAt = slideGroups.map(g =>
+      // Route WIP blocks to WIP group (index 2); non-WIP blocks to groups 0 & 1
+      const hasWipGroup = slideGroups.length >= 3
+      const isWipBlock  = block.productGroup === SLIDE_WIP_GROUP
+      const groupSubset = hasWipGroup && isWipBlock
+        ? [slideGroups[2]]
+        : slideGroups.slice(0, 2)
+
+      // Pick the sub-group that will be free soonest
+      const groupFreeAt = groupSubset.map(g =>
         g.length > 0 ? Math.max(...g.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)) : Infinity
       )
-      const chosenIdx = groupFreeAt[0] <= groupFreeAt[1] ? 0 : 1
-      eligible = slideGroups[chosenIdx]
+      const chosenIdx = groupFreeAt.indexOf(Math.min(...groupFreeAt))
+      eligible = groupSubset[chosenIdx]
       selected = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
       if (!selected.length) continue
     } else {
