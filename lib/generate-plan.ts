@@ -870,16 +870,42 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
-  const { data: noWithdrawalRows } = await supabase.from('no_withdrawal_skus').select('sap')
-  const noWithdrawalSaps = new Set((noWithdrawalRows ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes] = await Promise.all([
+    supabase.from('no_withdrawal_skus').select('sap'),
+    supabase.from('moo_chod_master').select('sap_code, fat_percent'),
+    supabase.from('moo_chod_withdrawal_master')
+      .select('ingredient_type, priority, sap_code, product_name, fat_percent')
+      .order('ingredient_type').order('priority').order('id'),
+  ])
+
+  const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
   const activeAssignments = (assignments as { sku: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
   if (!activeAssignments.length) return
+
+  interface MooIng { ingredient_type: string; priority: number; sap_code: string | null; product_name: string; fat_percent: number }
+  const normSku = (s: string) => String(s ?? '').trim().replace(/^0+/, '') || String(s ?? '').trim()
+  const mooFatMap = new Map<string, number>()
+  for (const r of mooMasterRes.data ?? []) {
+    if (!r.sap_code) continue
+    for (const c of [r.sap_code.trim(), normSku(r.sap_code)].filter(Boolean))
+      mooFatMap.set(c, Number(r.fat_percent ?? 0))
+  }
+  const mooWithdrawalIngs = (mooWithdrawalRes.data ?? []) as MooIng[]
+  const mooMeatIngs = mooWithdrawalIngs.filter(i => i.ingredient_type === 'เนื้อ')
+  const mooFatIngs  = mooWithdrawalIngs.filter(i => i.ingredient_type === 'มัน')
+
+  const isMooChōdSku = (a: { table_name: unknown; sku: unknown }) =>
+    a.table_name === 'หมูบด' && mooFatMap.size > 0 &&
+    (mooFatMap.has(normSku(String(a.sku ?? ''))) || mooFatMap.has(String(a.sku ?? '').trim()))
+
+  const mooChōdAssignments = activeAssignments.filter(isMooChōdSku)
+  const regularAssignments  = activeAssignments.filter(a => !isMooChōdSku(a))
 
   const finRoundMap = new Map<string, Map<number, number>>()
   const finNameMap  = new Map<string, string | null>()
   const skuSet      = new Set<string>()
 
-  for (const a of activeAssignments) {
+  for (const a of regularAssignments) {
     const key = `${a.table_name}|||${a.sku}`
     if (!finRoundMap.has(key)) finRoundMap.set(key, new Map())
     finNameMap.set(key, (a.sku_name as string | null) ?? null)
@@ -989,6 +1015,34 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   for (const list of Array.from(stockByMat.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
   for (const list of Array.from(stockByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
+  const allocateMooPriority = (
+    demandKg: number,
+    ings: MooIng[],
+    byCode: Map<string, LocalLotEntry[]>,
+    byName: Map<string, LocalLotEntry[]>,
+  ): { ing: MooIng; qty: number; lots: LotInfo[] }[] => {
+    const result: { ing: MooIng; qty: number; lots: LotInfo[] }[] = []
+    let remaining = demandKg
+    const byPriority = new Map<number, MooIng[]>()
+    for (const ing of ings) { const list = byPriority.get(ing.priority) ?? []; list.push(ing); byPriority.set(ing.priority, list) }
+    for (const priority of Array.from(byPriority.keys()).sort((a, b) => a - b)) {
+      if (remaining <= 0.005) break
+      for (const ing of byPriority.get(priority)!) {
+        if (remaining <= 0.005) break
+        const lots = ing.sap_code
+          ? (byCode.get(ing.sap_code.trim()) ?? byName.get(normMatName(ing.product_name)) ?? [])
+          : (byName.get(normMatName(ing.product_name)) ?? [])
+        const avail = lots.reduce((s, l) => s + l.weight, 0)
+        if (avail <= 0.005) continue
+        const take = Math.min(remaining, avail)
+        result.push({ ing, qty: take, lots: allocateFIFOLocal(lots, take) })
+        remaining -= take
+      }
+    }
+    if (remaining > 0.005)
+      result.push({ ing: { ingredient_type: '?', priority: 999, sap_code: null, product_name: '— ไม่เพียงพอ —', fat_percent: 0 }, qty: remaining, lots: [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: Math.round(remaining * 100) / 100, insufficient: true }] })
+    return result
+  }
 
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) => a.roundMins - b.roundMins)
@@ -1021,7 +1075,101 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     withdrawal_round: minsToTime(roundMins),
   }))
 
-  const items = [...rawItems, ...noBomItems].sort((a, b) =>
+  // ── หมูบด priority path ───────────────────────────────────────
+  const mooItems: (typeof rawItems[0])[] = []
+
+  if (mooChōdAssignments.length > 0 && mooWithdrawalIngs.length > 0) {
+    const mooRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
+    const mooForProducts: { sku: string; sku_name: string | null; qty: number; rawQty: number }[] = []
+
+    for (const a of mooChōdAssignments) {
+      const skuStr = String(a.sku ?? '')
+      const fatPct = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
+      const totalQty = Number(a.target_quantity)
+      if (!mooForProducts.find(p => p.sku === skuStr))
+        mooForProducts.push({ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalQty, rawQty: totalQty })
+
+      const noteRounds = parseRoundNote(a.note as string | null)
+      if (noteRounds.size > 0) {
+        for (const [rm, q] of Array.from(noteRounds.entries())) {
+          const mappedRm = getRoundMins(rm, roundMins)
+          const cur = mooRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
+          cur.fatKg  += q * fatPct / 100
+          cur.meatKg += q * (1 - fatPct / 100)
+          mooRoundDemand.set(mappedRm, cur)
+        }
+      } else {
+        const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
+        const mappedRm = getRoundMins(startMins, roundMins)
+        const cur = mooRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
+        cur.fatKg  += totalQty * fatPct / 100
+        cur.meatKg += totalQty * (1 - fatPct / 100)
+        mooRoundDemand.set(mappedRm, cur)
+      }
+    }
+
+    // Fetch stock for moo_chod ingredients
+    const mooAllSaps  = mooWithdrawalIngs.map(i => i.sap_code).filter(Boolean) as string[]
+    const mooAllNames = mooWithdrawalIngs.map(i => i.product_name).filter(Boolean) as string[]
+    const mooStockRows: StockRow[] = []
+    if (mooAllSaps.length > 0) {
+      const [rm1, rm2] = await Promise.all([
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+      ])
+      mooStockRows.push(...((rm1.data ?? []) as StockRow[]), ...((rm2.data ?? []) as StockRow[]))
+    }
+    if (mooAllNames.length > 0) {
+      const [rm3, rm4] = await Promise.all([
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+      ])
+      mooStockRows.push(...((rm3.data ?? []) as StockRow[]), ...((rm4.data ?? []) as StockRow[]))
+    }
+
+    // Build stock maps for moo path
+    const mooLotAgg = new Map<string, number>()
+    const mooCodeToName = new Map<string, string>()
+    for (const row of mooStockRows) {
+      if (!row.material_code || !row.spec_code) continue
+      const k = `${row.material_code}|||${row.spec_code}`
+      mooLotAgg.set(k, (mooLotAgg.get(k) ?? 0) + Number(row.weight_total))
+      if (row.material_name) mooCodeToName.set(row.material_code, row.material_name)
+    }
+    const mooByCode = new Map<string, LocalLotEntry[]>()
+    const mooByName = new Map<string, LocalLotEntry[]>()
+    for (const [k, weight] of Array.from(mooLotAgg.entries())) {
+      const [matCode, spec_code] = k.split('|||')
+      const parsed = parseSpecCode(spec_code)
+      const lot: LocalLotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
+      const codeList = mooByCode.get(matCode) ?? []; codeList.push(lot); mooByCode.set(matCode, codeList)
+      const matName = mooCodeToName.get(matCode)
+      if (matName) { const nameKey = normMatName(matName); const nameList = mooByName.get(nameKey) ?? []; nameList.push(lot); mooByName.set(nameKey, nameList) }
+    }
+    for (const list of Array.from(mooByCode.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    for (const list of Array.from(mooByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+
+    for (const [rm, demand] of Array.from(mooRoundDemand.entries()).sort(([a], [b]) => a - b)) {
+      const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
+      const meatAllocs = demand.meatKg > 0.005 ? allocateMooPriority(demand.meatKg, mooMeatIngs, mooByCode, mooByName) : []
+      for (const { ing, lots } of [...fatAllocs, ...meatAllocs]) {
+        const qty = lots.reduce((s, l) => s + l.to_withdraw, 0)
+        mooItems.push({
+          sku:              ing.sap_code ?? ing.product_name,
+          sku_name:         ing.product_name,
+          quantity:         Math.round(qty * 100) / 100,
+          unit:             'กก.',
+          work_station:     'หมูบด',
+          note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
+          lots,
+          for_products:     mooForProducts,
+          withdrawal_round: minsToTime(rm),
+        })
+      }
+    }
+  }
+
+  const items = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
     (a.sku ?? '').localeCompare(b.sku ?? '')
