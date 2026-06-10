@@ -441,7 +441,9 @@ export default function WithdrawalPage() {
                       cur.qty += lot.to_withdraw
                       byDate.set(key, cur)
                     }
-                    return Array.from(byDate.entries()).map(([date, { qty, insufficient }]) => (
+                    return Array.from(byDate.entries())
+                      .sort(([, a], [, b]) => (a.insufficient ? 1 : 0) - (b.insufficient ? 1 : 0))
+                      .map(([date, { qty, insufficient }]) => (
                       <tr key={`${item.sku}-date-${date}`}
                         className={`border-b text-xs ${insufficient ? 'bg-red-50' : 'bg-blue-50/40'}`}>
                         <td className="hidden md:table-cell" />
