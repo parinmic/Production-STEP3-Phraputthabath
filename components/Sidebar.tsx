@@ -65,10 +65,10 @@ export default function Sidebar() {
         <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
           <Menu size={22} />
         </button>
-        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-3">
           <img src="/icon-transparent.png" alt="" className="w-5 h-5 shrink-0" />
           <span className="font-bold text-sm">PPTB Production</span>
-        </Link>
+        </div>
       </div>
 
       {/* ── Mobile backdrop ──────────────────────────────────── */}
