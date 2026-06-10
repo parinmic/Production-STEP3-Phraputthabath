@@ -369,12 +369,12 @@ export default function WithdrawalPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b">
-              <th className="px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
-              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
-              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า / วัตถุดิบ</th>
-              <th className="px-3 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
-              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
-              <th className="px-3 py-2.5 text-right text-gray-600 font-medium">ตะกร้า</th>
+              <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium w-8">#</th>
+              <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium">รหัส</th>
+              <th className="px-3 py-2.5 text-left text-gray-600 font-medium">ชื่อสินค้า</th>
+              <th className="px-2 py-2.5 text-right text-gray-600 font-medium">จำนวน</th>
+              <th className="hidden md:table-cell px-3 py-2.5 text-left text-gray-600 font-medium">หน่วย</th>
+              <th className="px-2 py-2.5 text-right text-gray-600 font-medium">ตะกร้า</th>
             </tr>
           </thead>
           <tbody>
@@ -387,16 +387,19 @@ export default function WithdrawalPage() {
                   <tr key={`${item.sku}-${idx}`}
                     className={`border-b hover:bg-gray-50 ${hasProducts ? 'cursor-pointer' : ''}`}
                     onClick={() => hasProducts && setExpandedKey(isExpanded ? null : rowKey)}>
-                    <td className="px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
+                    <td className="hidden md:table-cell px-3 py-2.5 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="hidden md:table-cell px-3 py-2.5 font-mono text-gray-700">{item.sku}</td>
                     <td className="px-3 py-2.5 text-gray-800">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-start gap-1.5">
                         {hasProducts && (
                           isExpanded
-                            ? <ChevronDown size={14} className="text-indigo-500 shrink-0" />
-                            : <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                            ? <ChevronDown size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+                            : <ChevronRight size={14} className="text-gray-400 shrink-0 mt-0.5" />
                         )}
-                        {item.sku_name ?? '-'}
+                        <div>
+                          <span>{item.sku_name ?? '-'}</span>
+                          <p className="md:hidden text-xs font-mono text-gray-400 mt-0.5">{item.sku}</p>
+                        </div>
                       </div>
                     </td>
                     <td className="px-2 py-1.5 text-right">
@@ -405,18 +408,18 @@ export default function WithdrawalPage() {
                         className="font-bold text-gray-900 bg-gray-100 active:bg-blue-100 hover:bg-blue-50 rounded-xl px-3 py-2 min-w-[56px] w-full touch-manipulation transition-colors text-right">
                         {roundTo5Or0(item.quantity).toLocaleString()}
                       </button>
+                      <p className="md:hidden text-xs text-gray-400 text-center mt-0.5">{item.unit}</p>
                     </td>
-                    <td className="px-3 py-2.5 text-gray-600">{item.unit}</td>
-                    <td className="px-3 py-2.5 text-right text-orange-600 font-medium">
+                    <td className="hidden md:table-cell px-3 py-2.5 text-gray-600">{item.unit}</td>
+                    <td className="px-2 py-2.5 text-right text-orange-600 font-medium text-xs sm:text-sm">
                       {getTotalBaskets(item) != null
-                        ? `${getTotalBaskets(item)} ตะกร้า`
+                        ? <><span>{getTotalBaskets(item)}</span><span className="hidden md:inline"> ตะกร้า</span></>
                         : <span className="text-gray-300">—</span>}
                     </td>
                   </tr>
                   {isExpanded && hasProducts && (
                     <tr key={`${rowKey}-expand`} className="bg-indigo-50/60 border-b">
-                      <td />
-                      <td colSpan={5} className="px-3 py-2.5 pl-7">
+                      <td colSpan={6} className="px-3 py-2.5">
                         <p className="text-xs font-semibold text-indigo-700 mb-1.5">ใช้ผลิต</p>
                         <div className="flex flex-wrap gap-2">
                           {item.for_products!.map((p, pi) => (
@@ -431,7 +434,6 @@ export default function WithdrawalPage() {
                     </tr>
                   )}
                   {item.lots && item.lots.length > 0 && (() => {
-                    // Group by prod_date, sum to_withdraw
                     const byDate = new Map<string, { qty: number; insufficient: boolean }>()
                     for (const lot of item.lots!) {
                       const key = lot.insufficient ? '⚠ ไม่เพียงพอ' : lot.prod_date
@@ -442,20 +444,21 @@ export default function WithdrawalPage() {
                     return Array.from(byDate.entries()).map(([date, { qty, insufficient }]) => (
                       <tr key={`${item.sku}-date-${date}`}
                         className={`border-b text-xs ${insufficient ? 'bg-red-50' : 'bg-blue-50/40'}`}>
-                        <td />
+                        <td className="hidden md:table-cell" />
+                        <td className="hidden md:table-cell" />
                         <td className="px-3 py-1.5 text-gray-500">
                           {insufficient
                             ? <span className="text-red-500 font-medium">⚠ สต็อกไม่เพียงพอ</span>
                             : <span>ผลิต <span className="font-medium">{date}</span></span>}
                         </td>
-                        <td />
-                        <td className={`px-3 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
+                        <td className={`px-2 py-1.5 text-right font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
                           {roundTo5Or0(qty).toLocaleString()}
+                          <p className="md:hidden text-gray-400 font-normal text-center">กก.</p>
                         </td>
-                        <td className="px-3 py-1.5 text-gray-500">กก.</td>
-                        <td className="px-3 py-1.5 text-right text-orange-500 text-xs">
+                        <td className="hidden md:table-cell px-3 py-1.5 text-gray-500">กก.</td>
+                        <td className="px-2 py-1.5 text-right text-orange-500 text-xs">
                           {!insufficient && getBaskets(item.sku, qty) != null
-                            ? `${getBaskets(item.sku, qty)} ตะกร้า`
+                            ? getBaskets(item.sku, qty)
                             : ''}
                         </td>
                       </tr>
@@ -464,10 +467,13 @@ export default function WithdrawalPage() {
                 </>
               )
             })}
-            <tr className="bg-gray-50 font-semibold">
-              <td colSpan={3} className="px-3 py-2.5 text-right text-gray-600">รวม</td>
+            <tr className="bg-gray-50 font-semibold border-t">
+              <td className="hidden md:table-cell" />
+              <td className="hidden md:table-cell" />
+              <td className="px-3 py-2.5 text-right text-gray-600">รวม</td>
               <td className="px-3 py-2.5 text-right text-gray-900">{stationTotal.toLocaleString()}</td>
-              <td colSpan={2} />
+              <td className="hidden md:table-cell" />
+              <td />
             </tr>
           </tbody>
         </table>
@@ -492,14 +498,14 @@ export default function WithdrawalPage() {
 
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">รายการเบิกสินค้า</h1>
-            <p className="text-gray-500 mt-1">คำนวณจากคำสั่งผลิต + BOM หรือดูรายการที่บันทึกไว้</p>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">รายการเบิกสินค้า</h1>
+            <p className="text-gray-500 mt-1 text-sm hidden sm:block">คำนวณจากคำสั่งผลิต + BOM หรือดูรายการที่บันทึกไว้</p>
           </div>
           <button onClick={openPrintModal}
-            className="no-print flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors text-sm">
-            <Printer size={16} /> ดาวน์โหลด / พิมพ์ PDF
+            className="no-print self-start flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg font-medium transition-colors text-sm">
+            <Printer size={16} /> พิมพ์ PDF
           </button>
         </div>
 
@@ -510,7 +516,7 @@ export default function WithdrawalPage() {
             const active = ph === phase
             return (
               <Link key={ph} href={`/withdrawal/${ph}`}
-                className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
                   active
                     ? `border-${c.color}-500 bg-${c.color}-50 text-${c.color}-700`
                     : 'border-gray-200 text-gray-500 hover:border-gray-300'
@@ -519,12 +525,11 @@ export default function WithdrawalPage() {
               </Link>
             )
           })}
-          <div className="w-px h-6 bg-gray-200 mx-1" />
-          <Calendar size={16} className="text-gray-400 shrink-0" />
+          <div className="w-px h-6 bg-gray-200 mx-1 hidden sm:block" />
           <input type="date" value={date} onChange={e => { setDate(e.target.value); setPreview(null) }}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <button onClick={calculate} disabled={calculating}
-            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg transition-colors">
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-3 sm:px-4 py-2 rounded-lg transition-colors">
             <Zap size={14} className={calculating ? 'animate-pulse' : ''} />
             {calculating ? 'กำลังคำนวณ...' : 'คำนวณอัตโนมัติ'}
           </button>
