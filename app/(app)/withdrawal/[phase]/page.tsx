@@ -650,13 +650,7 @@ export default function WithdrawalPage() {
                 )
               })}
 
-              {/* Grand total */}
-              <div className="no-print card bg-gray-900 text-white flex items-center justify-between px-6 py-4">
-                <span className="font-semibold">รวมทั้งหมด — {cfg.label} ({rounds.length} รอบ)</span>
-                <span className="text-2xl font-bold">{totalQty.toLocaleString()} กก.</span>
-              </div>
-
-              {/* Signature area for print */}
+{/* Signature area for print */}
               <div className="hidden print:grid grid-cols-3 gap-8 mt-8 pt-6 border-t border-gray-300">
                 {['ผู้เบิก', 'ผู้จ่ายของ', 'ผู้อนุมัติ'].map(role => (
                   <div key={role} className="text-center">
