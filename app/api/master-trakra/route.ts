@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   // ดึง source_files ที่อัปโหลดเป็น mas-trakra จาก upload_log
   const { data: logs } = await supabase

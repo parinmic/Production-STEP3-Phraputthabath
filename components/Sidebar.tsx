@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, Factory, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, Undo2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -65,8 +65,10 @@ export default function Sidebar() {
         <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
           <Menu size={22} />
         </button>
-        <Factory size={20} className="text-blue-400" />
-        <span className="font-bold text-sm">PPTB Production</span>
+        <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <img src="/icon-transparent.png" alt="" className="w-5 h-5 shrink-0" />
+          <span className="font-bold text-sm">PPTB Production</span>
+        </Link>
       </div>
 
       {/* ── Mobile backdrop ──────────────────────────────────── */}
@@ -83,31 +85,25 @@ export default function Sidebar() {
       ].join(' ')}>
 
         {/* Header */}
-        <div className="border-b border-gray-700">
-          {/* Logo + title */}
-          <div className="px-3 pt-5 pb-3 flex items-center gap-3 overflow-hidden">
-            <Factory className="text-blue-400 shrink-0" size={26} />
-            <div className={`overflow-hidden flex-1 ${labelCls}`}>
-              <p className="font-bold text-sm whitespace-nowrap">PPTB Production</p>
-              <p className="text-gray-400 text-xs whitespace-nowrap">Production Management</p>
-            </div>
-            {/* Mobile close button */}
-            <button className="md:hidden ml-auto p-1 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
-              <X size={18} />
-            </button>
-          </div>
-          {/* Hamburger toggle — desktop only, below title */}
+        <div className="border-b border-gray-700 flex items-center">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`hidden md:flex w-full items-center py-2.5 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors border-t border-gray-700/50 ${collapsed ? 'justify-center' : 'gap-2.5'}`}
+            className={`hidden md:flex flex-1 items-center py-3 px-3 text-gray-500 hover:text-white hover:bg-gray-800 transition-colors ${collapsed ? 'justify-center' : 'gap-2.5'}`}
           >
-            <Menu size={18} />
-            {!collapsed && <span className="text-xs text-gray-400">ย่อเมนู</span>}
+            {collapsed ? <Menu size={22} /> : <ChevronLeft size={22} />}
+            {!collapsed && <span className="text-sm text-gray-400">ย่อเมนู</span>}
+          </button>
+          <button className="md:hidden flex items-center gap-2 py-3 px-3 text-gray-400 hover:text-white" onClick={() => setMobileOpen(false)}>
+            <X size={18} />
           </button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+          <Link href="/" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors bg-orange-500 text-white hover:bg-orange-600 ${collapsed ? 'md:justify-center' : ''}`} title="เลือกโหมดใช้งาน">
+            <Undo2 size={18} className="shrink-0" />
+            <span className={labelCls}>เลือกโหมดใช้งาน</span>
+          </Link>
           <Link href="/home" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/home')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
