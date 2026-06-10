@@ -512,7 +512,7 @@ function allocateBalanced(params: {
     const numBags  = Math.floor(block.totalQty / block.wpb)
     if (numBags < 1) continue
 
-    const maxW         = getMaxWorkers(normSku)
+    const maxW         = tableName === 'หมูบด' ? Infinity : getMaxWorkers(normSku)
     const specialTime  = specialTimeMap.get(block.rawSku) ?? specialTimeMap.get(normSku)
     const specialStart = specialTime?.startMins ?? null
     const specialStop  = specialTime?.stopMins  ?? null
