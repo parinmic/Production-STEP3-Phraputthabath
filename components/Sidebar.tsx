@@ -223,6 +223,13 @@ export default function Sidebar() {
             </div>
           )}
 
+          <Link href="/workforce/weekly"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/workforce/weekly')}`}
+            title="ตรวจสอบสถานะกำลังคนประจำวัน">
+            <CalendarDays size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
+          </Link>
+
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
@@ -243,10 +250,6 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
               </Link>
-              <Link href="/workforce/weekly"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-purple-500" />แผนเข้างานประจำวัน
-              </Link>
             </div>
           )}
           {openWorkforce && collapsed && (
@@ -255,11 +258,6 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="อัพโหลดกำลังคนประจำวัน">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
-              </Link>
-              <Link href="/workforce/weekly"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำวัน">
-                <span className="w-2 h-2 rounded-full bg-purple-500" />
               </Link>
             </div>
           )}
