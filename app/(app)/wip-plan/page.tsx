@@ -135,12 +135,17 @@ export default function WipPlanPage() {
     setStatus('saving')
     setMessage('')
     try {
-      const upserts = rows.map(r => ({
-        plan_date: date,
-        sap_code: r.sap_code,
-        quantity: r.quantity,
-        updated_at: new Date().toISOString(),
-      }))
+      const upserts = rows.map(r => {
+        const avgKg = r.orderKg / 7
+        const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
+        const finalPlan = r.quantity > 0 ? r.quantity : wipInitial
+        return {
+          plan_date: date,
+          sap_code: r.sap_code,
+          quantity: finalPlan,
+          updated_at: new Date().toISOString(),
+        }
+      })
       const { error } = await supabase
         .from('wip_plan')
         .upsert(upserts, { onConflict: 'plan_date,sap_code' })

@@ -2387,13 +2387,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
   {
     const slideWorkers = workersByStation['สไลด์'] ?? []
-    const hasWipWorkers = slideWorkers.some(w => {
-      const jobInfo = jobAssignMap.get(normName(w.name))
-      if (!jobInfo || jobInfo.groups.size === 0) return false
-      return Array.from(jobInfo.groups.keys()).every(k => k === 'กลุ่ม WIP')
-    })
-
-    if (hasWipWorkers) {
+    if (slideWorkers.length) {
       const { data: wipPlanRows } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity')
