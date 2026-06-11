@@ -1356,6 +1356,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: quotasRaw },
     { data: concurrentSkuRaw },
     bkpOrdersRaw,
+  { data: mooChōdMasterRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
@@ -1412,6 +1413,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       'bkp_orders', 'sku, sku_name, quantity',
       [{ col: 'production_date', op: 'eq', val: productionDate }])
       .catch(() => [] as { sku: string; sku_name: string | null; quantity: number }[]),
+    supabase.from('moo_chod_master').select('sap_code').limit(5000),
   ])
 
   // Merge: manual overrides > 1530 > 0930; fall back to weekly schedule
@@ -1457,6 +1459,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       success: false,
       message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP) — กรุณาอัพโหลดก่อน`,
     }
+  }
+
+  // mooChōd SKU set — skip BOM deficit check for these (withdrawal uses priority logic instead)
+  const mooChōdSapSet = new Set<string>()
+  for (const r of (mooChōdMasterRaw ?? []) as { sap_code: string | null }[]) {
+    const s = String(r.sap_code ?? '').trim()
+    if (s) { mooChōdSapSet.add(s); mooChōdSapSet.add(s.replace(/^0+/, '')) }
   }
 
   // Bag size map
@@ -2096,6 +2105,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const cleanSku = item.sku.replace(/^0+/, '')
       if (noWithdrawalSaps.has(item.sku) || noWithdrawalSaps.has(cleanSku)) { splitAssignList.push(item); continue }
       if (!stockWasUploaded) { splitAssignList.push(item); continue }
+      if (mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(cleanSku)) { splitAssignList.push(item); continue }
       const boms = bomMap.get(cleanSku)
       if (!boms?.length) { splitAssignList.push(item); continue }
 
