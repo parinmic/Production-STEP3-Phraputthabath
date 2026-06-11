@@ -7,6 +7,7 @@ interface WipRow {
   sap_code: string
   sku_name: string
   station: string
+  orderKg: number
   quantity: number
 }
 
@@ -20,6 +21,7 @@ export default function WipPlanPage() {
   const loadData = useCallback(async (d: string) => {
     setLoading(true)
     try {
+      // 1. Get WIP SKUs from master_logic_calculation
       const { data: masterData } = await supabase
         .from('master_logic_calculation')
         .select('row_data')
@@ -41,6 +43,59 @@ export default function WipPlanPage() {
         })
       }
 
+      const wipSapList = wipSkus.map(s => s.sap_code)
+
+      // 2. Reverse BOM lookup: WIP SAP → final product SAPs
+      const { data: bomData } = await supabase
+        .from('bom_items')
+        .select('raw_sap, product_sap')
+        .in('raw_sap', wipSapList)
+
+      const wipToFinalSaps = new Map<string, string[]>()
+      const finalSapToWip = new Map<string, string>()
+      for (const b of bomData ?? []) {
+        const rawSap = String(b.raw_sap).trim()
+        const productSap = String(b.product_sap ?? '').trim()
+        if (!/^\d+$/.test(productSap)) continue  // skip revision suffixes
+        const list = wipToFinalSaps.get(rawSap) ?? []
+        list.push(productSap)
+        wipToFinalSaps.set(rawSap, list)
+        if (!finalSapToWip.has(productSap)) finalSapToWip.set(productSap, rawSap)
+      }
+      const allFinalSaps = Array.from(finalSapToWip.keys())
+
+      // 3. Load weight_per_bag for final products
+      const { data: pumData } = await supabase
+        .from('picking_unit_master')
+        .select('sap, weight_per_bag')
+        .in('sap', allFinalSaps)
+
+      const wpbMap = new Map<string, number>()
+      for (const p of pumData ?? []) wpbMap.set(String(p.sap).trim(), Number(p.weight_per_bag))
+
+      // 4. Load orders for last 7 days
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - 7)
+      const cutoffStr = cutoff.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+
+      const [{ data: wm }, { data: lo }, { data: mk }] = await Promise.all([
+        supabase.from('wet_market_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
+        supabase.from('lotus_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
+        supabase.from('makro_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
+      ])
+
+      // 5. Sum kg per WIP SAP (orders are in bags → multiply by weight_per_bag)
+      const orderKgByWip = new Map<string, number>()
+      for (const row of [...(wm ?? []), ...(lo ?? []), ...(mk ?? [])]) {
+        const shortSku = String(row.sku ?? '').replace(/^0+/, '')
+        const wipSap = finalSapToWip.get(shortSku)
+        if (!wipSap) continue
+        const wpb = wpbMap.get(shortSku) ?? 0
+        const kg = Number(row.quantity) * wpb
+        orderKgByWip.set(wipSap, (orderKgByWip.get(wipSap) ?? 0) + kg)
+      }
+
+      // 6. Load saved WIP plan quantities for selected date
       const { data: planData } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity')
@@ -49,7 +104,11 @@ export default function WipPlanPage() {
       const qtyMap = new Map<string, number>()
       for (const p of planData ?? []) qtyMap.set(String(p.sap_code), Number(p.quantity))
 
-      setRows(wipSkus.map(s => ({ ...s, quantity: qtyMap.get(s.sap_code) ?? 0 })))
+      setRows(wipSkus.map(s => ({
+        ...s,
+        orderKg: orderKgByWip.get(s.sap_code) ?? 0,
+        quantity: qtyMap.get(s.sap_code) ?? 0,
+      })))
     } finally {
       setLoading(false)
     }
@@ -78,6 +137,8 @@ export default function WipPlanPage() {
       setMessage(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
     }
   }
+
+  const fmt = (n: number) => n === 0 ? '—' : n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
 
   return (
     <div className="space-y-6">
@@ -114,38 +175,54 @@ export default function WipPlanPage() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600">
-                  <th className="px-4 py-3 w-12 text-center">#</th>
-                  <th className="px-4 py-3 w-32">SAP</th>
+                  <th className="px-4 py-3 w-8 text-center">#</th>
+                  <th className="px-4 py-3 w-28">SAP</th>
                   <th className="px-4 py-3">ชื่อสินค้า</th>
-                  <th className="px-4 py-3 w-32">จุดงาน</th>
-                  <th className="px-4 py-3 w-44 text-right">จำนวน (กก.)</th>
+                  <th className="px-4 py-3 w-24">จุดงาน</th>
+                  <th className="px-4 py-3 w-36 text-right text-blue-700">Order ย้อนหลัง 7 วัน (กก.)</th>
+                  <th className="px-4 py-3 w-32 text-right text-indigo-700">ปริมาณ WIP ตั้งต้น (กก.)</th>
+                  <th className="px-4 py-3 w-40 text-right">จำนวนที่กรอก (กก.)</th>
+                  <th className="px-4 py-3 w-32 text-right text-emerald-700">Final Plan (กก.)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((row, i) => (
-                  <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-center text-xs text-gray-400 font-mono">{i + 1}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.sap_code}</td>
-                    <td className="px-4 py-3 text-sm text-gray-800">{row.sku_name}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{row.station}</td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={row.quantity || ''}
-                        onChange={e => {
-                          const newRows = [...rows]
-                          newRows[i] = { ...row, quantity: Math.max(0, Number(e.target.value) || 0) }
-                          setRows(newRows)
-                          setStatus('idle')
-                        }}
-                        placeholder="0"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((row, i) => {
+                  const wipInitial = Math.floor(row.orderKg * 1.1 / 100) * 100
+                  const finalPlan = row.quantity > 0 ? row.quantity : wipInitial
+                  return (
+                    <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 text-center text-xs text-gray-400 font-mono">{i + 1}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.sap_code}</td>
+                      <td className="px-4 py-3 text-sm text-gray-800">{row.sku_name}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{row.station}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-blue-700">
+                        {fmt(row.orderKg)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-indigo-700">
+                        {wipInitial > 0 ? wipInitial.toLocaleString('th-TH') : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.quantity || ''}
+                          onChange={e => {
+                            const newRows = [...rows]
+                            newRows[i] = { ...row, quantity: Math.max(0, Number(e.target.value) || 0) }
+                            setRows(newRows)
+                            setStatus('idle')
+                          }}
+                          placeholder="0"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs font-bold text-emerald-700">
+                        {finalPlan > 0 ? finalPlan.toLocaleString('th-TH') : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
