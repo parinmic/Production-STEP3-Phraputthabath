@@ -2398,11 +2398,41 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
         wipTargets.sort((a, b) => b.deficit - a.deficit)
 
-        for (const target of wipTargets) {
+        // WIP items often aren't in picking_unit_master (wpb defaults to 1), meaning
+        // targetQty kg becomes numBags = targetQty which takes far more than one shift.
+        // Cap each target proportionally so per-worker work fits within available phase time.
+        const wipOnlyCount = slideWorkers.filter(w => {
+          const ji = jobAssignMap.get(normName(w.name))
+          return ji && ji.groups.size > 0 && Array.from(ji.groups.keys()).every(k => k === 'กลุ่ม WIP')
+        }).length
+        const nWipWorkers = Math.max(1, wipOnlyCount > 0 ? wipOnlyCount : slideWorkers.length)
+        const phaseWorkMins = availableWorkMins(phaseCfg.startH * 60, phaseEndMins)
+
+        // Demand in work-minutes per target (proportional weight for capacity split)
+        const demandWorkMins = wipTargets.map(t => {
+          const p = skuMap.get(t.sku.replace(/^0+/, '')) ?? skuMap.get(t.sku)
+          return (p && p.rate > 0) ? (t.deficit / p.rate) * 60 : 0
+        })
+        const totalDemandWorkMins = demandWorkMins.reduce((s, v) => s + v, 0)
+
+        for (let idx = 0; idx < wipTargets.length; idx++) {
+          const target = wipTargets[idx]
+          const normSku = target.sku.replace(/^0+/, '')
+          const prod = skuMap.get(normSku) ?? skuMap.get(target.sku)
+          if (!prod || prod.rate <= 0) continue
+
+          const fraction = totalDemandWorkMins > 0
+            ? demandWorkMins[idx] / totalDemandWorkMins
+            : 1 / wipTargets.length
+          const perWorkerMins = phaseWorkMins * fraction
+          const kgPerWorker = Math.floor(prod.rate * perWorkerMins / 60)
+          const cappedQty = Math.min(target.targetQty, kgPerWorker * nWipWorkers)
+          if (cappedQty < 1) continue
+
           assignments.push(...allocateBalanced({
             productionDate,
             tableName: 'สไลด์',
-            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: target.targetQty, channel: target.channel }],
+            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: cappedQty, channel: target.channel }],
             workers: slideWorkers,
             skuMap,
             jobAssignMap,
