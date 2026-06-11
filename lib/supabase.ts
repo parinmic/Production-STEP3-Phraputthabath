@@ -5,7 +5,11 @@ export const supabaseSchema = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+<<<<<<< HEAD
   { db: { schema: supabaseSchema } },
+=======
+  { db: { schema: 'public' } },
+>>>>>>> 0059cc5 (fix: force public schema on supabase client to prevent dev schema routing)
 )
 
 export const externalSupabase = createClient(
