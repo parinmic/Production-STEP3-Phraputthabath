@@ -1200,33 +1200,30 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     // Process each unique SKU once — allocate combined demand from shared stock
     for (const [skuStr, skuAssignments] of Array.from(mooChōdBySku.entries())) {
       const fatPct = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
-      const wpb    = wpbMapLocal.get(normSku(skuStr)) ?? wpbMapLocal.get(skuStr.trim()) ?? 1
 
       const skuRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
       for (const a of skuAssignments) {
-        const bags      = Number(a.target_quantity)
+        const kgThis    = Number(a.target_quantity)   // already in กก.
         const noteRounds = parseRoundNote(a.note as string | null)
         if (noteRounds.size > 0) {
           for (const [rm, q] of Array.from(noteRounds.entries())) {
             const mappedRm = getRoundMins(rm, roundMins)
             const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-            const qKg = q * wpb
-            cur.fatKg  += qKg * fatPct / 100
-            cur.meatKg += qKg * (1 - fatPct / 100)
+            cur.fatKg  += q * fatPct / 100
+            cur.meatKg += q * (1 - fatPct / 100)
             skuRoundDemand.set(mappedRm, cur)
           }
         } else {
           const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
           const mappedRm = getRoundMins(startMins, roundMins)
           const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-          const kgThis = bags * wpb
           cur.fatKg  += kgThis * fatPct / 100
           cur.meatKg += kgThis * (1 - fatPct / 100)
           skuRoundDemand.set(mappedRm, cur)
         }
       }
 
-      const totalKg   = skuAssignments.reduce((s, a) => s + Number(a.target_quantity) * wpb, 0)
+      const totalKg   = skuAssignments.reduce((s, a) => s + Number(a.target_quantity), 0)
       const sku_name  = (skuAssignments[0].sku_name as string | null) ?? null
       const forProduct = [{ sku: skuStr, sku_name, qty: totalKg, rawQty: totalKg }]
 
