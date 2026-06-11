@@ -1104,8 +1104,10 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
         remaining -= take
       }
     }
-    if (remaining > 0.005)
-      result.push({ ing: { ingredient_type: '?', priority: 999, sap_code: null, product_name: '— ไม่เพียงพอ —', fat_percent: 0 }, qty: remaining, lots: [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: Math.round(remaining * 100) / 100, insufficient: true }] })
+    if (remaining > 0.005) {
+      const p3ing = ings.find(i => i.priority === 3) ?? ings[ings.length - 1] ?? { ingredient_type: '?', priority: 3, sap_code: null, product_name: '— ไม่เพียงพอ —', fat_percent: 0 }
+      result.push({ ing: p3ing, qty: remaining, lots: [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: Math.round(remaining * 100) / 100, insufficient: true }] })
+    }
     return result
   }
 
