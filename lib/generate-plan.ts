@@ -1188,31 +1188,47 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     for (const list of Array.from(mooByCode.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
     for (const list of Array.from(mooByName.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
-    // Process each SKU independently — station handles one SKU at a time
+    // Group assignments by SKU — multiple worker rows must be combined into one demand
+    const mooChōdBySku = new Map<string, typeof mooChōdAssignments>()
     for (const a of mooChōdAssignments) {
-      const skuStr  = String(a.sku ?? '')
-      const fatPct  = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
-      const totalBags = Number(a.target_quantity)
-      const wpb = wpbMapLocal.get(normSku(skuStr)) ?? wpbMapLocal.get(skuStr.trim()) ?? 1
-      const totalKg = totalBags * wpb
-      const forProduct = [{ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalKg, rawQty: totalKg }]
+      const k = String(a.sku ?? '')
+      const list = mooChōdBySku.get(k) ?? []
+      list.push(a)
+      mooChōdBySku.set(k, list)
+    }
+
+    // Process each unique SKU once — allocate combined demand from shared stock
+    for (const [skuStr, skuAssignments] of Array.from(mooChōdBySku.entries())) {
+      const fatPct = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
+      const wpb    = wpbMapLocal.get(normSku(skuStr)) ?? wpbMapLocal.get(skuStr.trim()) ?? 1
 
       const skuRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
-      const noteRounds = parseRoundNote(a.note as string | null)
-      if (noteRounds.size > 0) {
-        for (const [rm, q] of Array.from(noteRounds.entries())) {
-          const mappedRm = getRoundMins(rm, roundMins)
+      for (const a of skuAssignments) {
+        const bags      = Number(a.target_quantity)
+        const noteRounds = parseRoundNote(a.note as string | null)
+        if (noteRounds.size > 0) {
+          for (const [rm, q] of Array.from(noteRounds.entries())) {
+            const mappedRm = getRoundMins(rm, roundMins)
+            const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
+            const qKg = q * wpb
+            cur.fatKg  += qKg * fatPct / 100
+            cur.meatKg += qKg * (1 - fatPct / 100)
+            skuRoundDemand.set(mappedRm, cur)
+          }
+        } else {
+          const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
+          const mappedRm = getRoundMins(startMins, roundMins)
           const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-          const qKg = q * wpb
-          cur.fatKg  += qKg * fatPct / 100
-          cur.meatKg += qKg * (1 - fatPct / 100)
+          const kgThis = bags * wpb
+          cur.fatKg  += kgThis * fatPct / 100
+          cur.meatKg += kgThis * (1 - fatPct / 100)
           skuRoundDemand.set(mappedRm, cur)
         }
-      } else {
-        const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
-        const mappedRm = getRoundMins(startMins, roundMins)
-        skuRoundDemand.set(mappedRm, { fatKg: totalKg * fatPct / 100, meatKg: totalKg * (1 - fatPct / 100) })
       }
+
+      const totalKg   = skuAssignments.reduce((s, a) => s + Number(a.target_quantity) * wpb, 0)
+      const sku_name  = (skuAssignments[0].sku_name as string | null) ?? null
+      const forProduct = [{ sku: skuStr, sku_name, qty: totalKg, rawQty: totalKg }]
 
       for (const [rm, demand] of Array.from(skuRoundDemand.entries()).sort(([a], [b]) => a - b)) {
         const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
