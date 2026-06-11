@@ -20,15 +20,14 @@ const MANPOWER_TYPES = [
 ]
 
 const CALCULATION_TYPES = [
-  { label: 'Mas Productivity',          slug: 'mas-productivity',        dot: 'bg-purple-500' },
-  { label: 'Mas %Variance Makro',       slug: 'mas-variance-makro',      dot: 'bg-blue-500' },
-  { label: 'Mas %Variance Wet Market',  slug: 'mas-variance-wet-market', dot: 'bg-cyan-500' },
-  { label: 'Mas %Variance LOTUS',       slug: 'mas-variance-lotus',      dot: 'bg-lime-500' },
-  { label: 'Mas LOTUS',                 slug: 'mas-lotus',               dot: 'bg-green-500' },
-  { label: 'Mas Channel',               slug: 'mas-channel',             dot: 'bg-orange-500' },
-  { label: 'Mas ตระกร้า',               slug: 'mas-trakra',              dot: 'bg-yellow-500' },
-  { label: 'Mas Special',               slug: 'mas-special',             dot: 'bg-pink-500' },
-  { label: 'Mas Sku ผลิตพร้อมกัน',     slug: 'mas-sku-concurrent',      dot: 'bg-teal-500' },
+  { label: 'Mas Productivity Basic',         slug: 'mas-productivity-basic',        dot: 'bg-purple-500' },
+  { label: 'Mas Channel Basic',              slug: 'mas-channel-basic',             dot: 'bg-orange-500' },
+  { label: 'Mas %Variance Makro Basic',      slug: 'mas-variance-makro-basic',      dot: 'bg-blue-500' },
+  { label: 'Mas %Variance Wet Market Basic', slug: 'mas-variance-wet-market-basic', dot: 'bg-cyan-500' },
+  { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
+  { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
+  { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
+  { label: 'Mas ตะกร้า Raw',                slug: 'mas-raw-basket',                dot: 'bg-amber-500' },
 ]
 
 function BasicSidebar() {
@@ -309,6 +308,10 @@ function BasicSidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/master-logic/moo-chod-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-red-400" />Mas เบิกหมูบด
               </Link>
+              <Link href="/basic/mas-yield"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/mas-yield' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />Mas Yield
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -320,6 +323,11 @@ function BasicSidebar() {
                   <span className={`w-2 h-2 rounded-full ${t.dot}`} />
                 </Link>
               ))}
+              <Link href="/basic/mas-yield"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/mas-yield' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas Yield">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              </Link>
               <Link href="/basic/bom"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="BOM สินค้า">
