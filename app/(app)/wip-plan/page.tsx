@@ -174,20 +174,21 @@ export default function WipPlanPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600">
-                  <th className="px-4 py-3 w-8 text-center">#</th>
-                  <th className="px-4 py-3 w-28">SAP</th>
-                  <th className="px-4 py-3">ชื่อสินค้า</th>
-                  <th className="px-4 py-3 w-24">จุดงาน</th>
-                  <th className="px-4 py-3 w-36 text-right text-blue-700">Order ย้อนหลัง 7 วัน (กก.)</th>
-                  <th className="px-4 py-3 w-32 text-right text-indigo-700">ปริมาณ WIP ตั้งต้น (กก.)</th>
-                  <th className="px-4 py-3 w-40 text-right">จำนวนที่กรอก (กก.)</th>
-                  <th className="px-4 py-3 w-32 text-right text-emerald-700">Final Plan (กก.)</th>
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600 align-bottom">
+                  <th className="px-4 py-3 w-8 text-center whitespace-nowrap">#</th>
+                  <th className="px-4 py-3 w-28 whitespace-nowrap">SAP</th>
+                  <th className="px-4 py-3 whitespace-nowrap">ชื่อสินค้า</th>
+                  <th className="px-4 py-3 w-24 whitespace-nowrap">จุดงาน</th>
+                  <th className="px-4 py-3 w-36 text-right text-blue-700 whitespace-nowrap">Average 7 วัน (กก.)</th>
+                  <th className="px-4 py-3 w-36 text-right text-indigo-700 whitespace-nowrap">ปริมาณ WIP ตั้งต้น (กก.)</th>
+                  <th className="px-4 py-3 w-40 text-right whitespace-nowrap">จำนวนที่กรอก (กก.)</th>
+                  <th className="px-4 py-3 w-32 text-right text-emerald-700 whitespace-nowrap">Final Plan (กก.)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row, i) => {
-                  const wipInitial = Math.floor(row.orderKg * 1.1 / 100) * 100
+                  const avgKg = row.orderKg / 7
+                  const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
                   const finalPlan = row.quantity > 0 ? row.quantity : wipInitial
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
@@ -196,7 +197,7 @@ export default function WipPlanPage() {
                       <td className="px-4 py-3 text-sm text-gray-800">{row.sku_name}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{row.station}</td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-blue-700">
-                        {fmt(row.orderKg)}
+                        {avgKg > 0 ? Math.round(avgKg).toLocaleString('th-TH') : '—'}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-indigo-700">
                         {wipInitial > 0 ? wipInitial.toLocaleString('th-TH') : '—'}
