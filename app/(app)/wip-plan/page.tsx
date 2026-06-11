@@ -7,6 +7,7 @@ interface WipRow {
   sap_code: string
   sku_name: string
   station: string
+  stockKg: number
   orderKg: number
   quantity: number
 }
@@ -95,7 +96,20 @@ export default function WipPlanPage() {
         orderKgByWip.set(wipSap, (orderKgByWip.get(wipSap) ?? 0) + kg)
       }
 
-      // 6. Load saved WIP plan quantities for selected date
+      // 6. Load WIP stock from stock_20 by material_name matching sku_name
+      const wipNames = wipSkus.map(s => s.sku_name).filter(Boolean)
+      const { data: stockData } = await supabase
+        .from('stock_20')
+        .select('material_name, weight_total')
+        .in('material_name', wipNames)
+
+      const stockKgByName = new Map<string, number>()
+      for (const r of stockData ?? []) {
+        const name = String(r.material_name ?? '').trim()
+        stockKgByName.set(name, (stockKgByName.get(name) ?? 0) + Number(r.weight_total))
+      }
+
+      // 7. Load saved WIP plan quantities for selected date
       const { data: planData } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity')
@@ -106,6 +120,7 @@ export default function WipPlanPage() {
 
       setRows(wipSkus.map(s => ({
         ...s,
+        stockKg: stockKgByName.get(s.sku_name) ?? 0,
         orderKg: orderKgByWip.get(s.sap_code) ?? 0,
         quantity: qtyMap.get(s.sap_code) ?? 0,
       })))
@@ -179,6 +194,7 @@ export default function WipPlanPage() {
                   <th className="px-4 py-3 w-28 whitespace-nowrap">SAP</th>
                   <th className="px-4 py-3 whitespace-nowrap">ชื่อสินค้า</th>
                   <th className="px-4 py-3 w-24 whitespace-nowrap">จุดงาน</th>
+                  <th className="px-4 py-3 w-32 text-right text-gray-700 whitespace-nowrap">Stock ปัจจุบัน (กก.)</th>
                   <th className="px-4 py-3 w-36 text-right text-blue-700 whitespace-nowrap">Average 7 วัน (กก.)</th>
                   <th className="px-4 py-3 w-36 text-right text-indigo-700 whitespace-nowrap">ปริมาณ WIP ตั้งต้น (กก.)</th>
                   <th className="px-4 py-3 w-40 text-right whitespace-nowrap">จำนวนที่กรอก (กก.)</th>
@@ -196,6 +212,9 @@ export default function WipPlanPage() {
                       <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.sap_code}</td>
                       <td className="px-4 py-3 text-sm text-gray-800">{row.sku_name}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{row.station}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-gray-700">
+                        {row.stockKg > 0 ? Math.round(row.stockKg).toLocaleString('th-TH') : '—'}
+                      </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-blue-700">
                         {avgKg > 0 ? Math.round(avgKg).toLocaleString('th-TH') : '—'}
                       </td>

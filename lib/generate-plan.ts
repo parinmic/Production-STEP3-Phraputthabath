@@ -2384,6 +2384,79 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // the same channel+SKU as stock items.
   runChannelPass(primaryDeficitList)
 
+  // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
+  {
+    const slideWorkers = workersByStation['สไลด์'] ?? []
+    const hasWipWorkers = slideWorkers.some(w => {
+      const jobInfo = jobAssignMap.get(normName(w.name))
+      if (!jobInfo || jobInfo.groups.size === 0) return false
+      return Array.from(jobInfo.groups.keys()).every(k => k === 'กลุ่ม WIP')
+    })
+
+    if (hasWipWorkers) {
+      const { data: wipPlanRows } = await supabase
+        .from('wip_plan')
+        .select('sap_code, quantity')
+        .eq('plan_date', productionDate)
+        .gt('quantity', 0)
+
+      if (wipPlanRows?.length) {
+        const wipNames: string[] = []
+        for (const row of wipPlanRows) {
+          const sap = String(row.sap_code).trim().replace(/^0+/, '')
+          const prod = skuMap.get(sap)
+          if (prod?.product_group === 'กลุ่ม WIP' && prod.sku_name) wipNames.push(prod.sku_name)
+        }
+
+        const stockKgByName = new Map<string, number>()
+        if (wipNames.length) {
+          const { data: stockRows } = await supabase
+            .from('stock_20')
+            .select('material_name, weight_total')
+            .in('material_name', wipNames)
+          for (const r of stockRows ?? []) {
+            const name = String(r.material_name ?? '').trim()
+            stockKgByName.set(name, (stockKgByName.get(name) ?? 0) + Number(r.weight_total))
+          }
+        }
+
+        type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number }
+        const wipTargets: WipPlanTarget[] = []
+        for (const row of wipPlanRows) {
+          const sapRaw = String(row.sap_code).trim()
+          const sap = sapRaw.replace(/^0+/, '')
+          const qty = Number(row.quantity)
+          if (qty <= 0) continue
+          const prod = skuMap.get(sap) ?? skuMap.get(sapRaw)
+          if (!prod || prod.product_group !== 'กลุ่ม WIP') continue
+          const stockKg = stockKgByName.get(prod.sku_name) ?? 0
+          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: qty, channel: 'wip_plan', deficit: Math.max(0, qty - stockKg) })
+        }
+
+        wipTargets.sort((a, b) => b.deficit - a.deficit)
+
+        for (const target of wipTargets) {
+          assignments.push(...allocateBalanced({
+            productionDate,
+            tableName: 'สไลด์',
+            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: target.targetQty, channel: target.channel }],
+            workers: slideWorkers,
+            skuMap,
+            jobAssignMap,
+            workerHours,
+            workerFreeAtMins,
+            workerBusySegments,
+            phaseEndMins,
+            period: phaseCfg.period,
+            phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+            wpbMap,
+            specialTimeMap,
+          }))
+        }
+      }
+    }
+  }
+
   if (secStockList.length || secDeficitList.length) {
     // Concurrent mode: secondary runs alongside primary, starting at the SAME TIME.
     // Target quantity is order-driven (normal SKU logic), not capped by primary hours.
