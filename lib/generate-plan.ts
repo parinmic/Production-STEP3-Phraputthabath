@@ -927,13 +927,21 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, pickingUnitMooRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
+    supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
   ])
+
+  const wpbMapLocal = new Map<string, number>()
+  for (const r of (pickingUnitMooRes.data ?? []) as { sap: string; weight_per_bag: number }[]) {
+    const sap = String(r.sap ?? '').trim()
+    const wpb = Number(r.weight_per_bag ?? 0)
+    if (sap && wpb > 0) { wpbMapLocal.set(sap, wpb); wpbMapLocal.set(sap.replace(/^0+/, ''), wpb) }
+  }
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
   const activeAssignments = (assignments as { sku: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
@@ -1182,8 +1190,10 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     for (const a of mooChōdAssignments) {
       const skuStr  = String(a.sku ?? '')
       const fatPct  = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
-      const totalQty = Number(a.target_quantity)
-      const forProduct = [{ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalQty, rawQty: totalQty }]
+      const totalBags = Number(a.target_quantity)
+      const wpb = wpbMapLocal.get(normSku(skuStr)) ?? wpbMapLocal.get(skuStr.trim()) ?? 1
+      const totalKg = totalBags * wpb
+      const forProduct = [{ sku: skuStr, sku_name: (a.sku_name as string | null) ?? null, qty: totalKg, rawQty: totalKg }]
 
       const skuRoundDemand = new Map<number, { fatKg: number; meatKg: number }>()
       const noteRounds = parseRoundNote(a.note as string | null)
@@ -1191,14 +1201,15 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
         for (const [rm, q] of Array.from(noteRounds.entries())) {
           const mappedRm = getRoundMins(rm, roundMins)
           const cur = skuRoundDemand.get(mappedRm) ?? { fatKg: 0, meatKg: 0 }
-          cur.fatKg  += q * fatPct / 100
-          cur.meatKg += q * (1 - fatPct / 100)
+          const qKg = q * wpb
+          cur.fatKg  += qKg * fatPct / 100
+          cur.meatKg += qKg * (1 - fatPct / 100)
           skuRoundDemand.set(mappedRm, cur)
         }
       } else {
         const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
         const mappedRm = getRoundMins(startMins, roundMins)
-        skuRoundDemand.set(mappedRm, { fatKg: totalQty * fatPct / 100, meatKg: totalQty * (1 - fatPct / 100) })
+        skuRoundDemand.set(mappedRm, { fatKg: totalKg * fatPct / 100, meatKg: totalKg * (1 - fatPct / 100) })
       }
 
       for (const [rm, demand] of Array.from(skuRoundDemand.entries()).sort(([a], [b]) => a - b)) {
