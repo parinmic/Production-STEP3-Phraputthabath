@@ -8,7 +8,7 @@ interface WipRow {
   sku_name: string
   station: string
   stockKg: number
-  orderKg: number
+  avgKg: number   // average daily kg (already divided by days-with-data)
   quantity: number
 }
 
@@ -46,13 +46,12 @@ export default function WipPlanPage() {
 
       const wipSapList = wipSkus.map(s => s.sap_code)
 
-      // 2. Reverse BOM lookup: WIP SAP → final product SAPs
+      // 2. Reverse BOM lookup: WIP SAP → final product SAPs (normalised, no leading zeros)
       const { data: bomData } = await supabase
         .from('bom_items')
         .select('raw_sap, product_sap')
         .in('raw_sap', wipSapList)
 
-      // normalise final product SAP → strip leading zeros for consistent lookup
       const finalSapToWip = new Map<string, string>()
       for (const b of bomData ?? []) {
         const rawSap = String(b.raw_sap).trim()
@@ -96,8 +95,9 @@ export default function WipPlanPage() {
         supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
       ])
 
-      // 5. Per-day Phase 3 priority logic → accumulate WIP kg over 7 days then average
+      // 5. Per-day Phase 3 priority → sum kg and count days-with-data per WIP SAP
       const wipKgSum = new Map<string, number>()
+      const wipDayCount = new Map<string, number>()
 
       for (const hDate of histDates) {
         const p100 = (histPlan100 ?? []).filter((r: {plan_date: string}) => r.plan_date === hDate)
@@ -105,12 +105,14 @@ export default function WipPlanPage() {
         const lot  = (histLotus ?? []).filter((r: {delivery_date: string}) => r.delivery_date === hDate)
         const wm   = (histWm ?? []).filter((r: {delivery_date: string}) => r.delivery_date === hDate)
 
+        const dayKg = new Map<string, number>()
+
         const p100Skus = new Set<string>()
         for (const r of p100 as {sap: string; weight_total: number}[]) {
           const norm = String(r.sap ?? '').replace(/^0+/, '')
           p100Skus.add(norm)
           const wipSap = finalSapToWip.get(norm)
-          if (wipSap) wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.weight_total ?? 0))
+          if (wipSap) dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.weight_total ?? 0))
         }
 
         const m1400 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '1400')
@@ -121,7 +123,7 @@ export default function WipPlanPage() {
           const wipSap = finalSapToWip.get(norm)
           if (!wipSap) continue
           const wpb = wpbMap.get(norm) ?? 0
-          wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+          dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
         }
 
         for (const r of [...lot, ...wm] as {sku: string; quantity: number}[]) {
@@ -130,13 +132,24 @@ export default function WipPlanPage() {
           const wipSap = finalSapToWip.get(norm)
           if (!wipSap) continue
           const wpb = wpbMap.get(norm) ?? 0
-          wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+          dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+        }
+
+        // Merge day into totals; count this day only if it has data for that WIP SAP
+        for (const [wipSap, kg] of dayKg) {
+          if (kg > 0) {
+            wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + kg)
+            wipDayCount.set(wipSap, (wipDayCount.get(wipSap) ?? 0) + 1)
+          }
         }
       }
 
-      const orderKgByWip = new Map<string, number>()
-      for (const [wipSap, total] of wipKgSum)
-        orderKgByWip.set(wipSap, total / 7)
+      // Divide by actual days-with-data (not always 7)
+      const avgKgByWip = new Map<string, number>()
+      for (const [wipSap, total] of wipKgSum) {
+        const days = wipDayCount.get(wipSap) ?? 1
+        avgKgByWip.set(wipSap, total / days)
+      }
 
       // 6. Load WIP stock from stock_20 by material_name matching sku_name
       const wipNames = wipSkus.map(s => s.sku_name).filter(Boolean)
@@ -151,20 +164,21 @@ export default function WipPlanPage() {
         stockKgByName.set(name, (stockKgByName.get(name) ?? 0) + Number(r.weight_total))
       }
 
-      // 7. Load saved WIP plan quantities for selected date
+      // 7. Load saved WIP plan for selected date — only to pre-fill saved plan date
       const { data: planData } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity')
         .eq('plan_date', d)
 
-      const qtyMap = new Map<string, number>()
-      for (const p of planData ?? []) qtyMap.set(String(p.sap_code), Number(p.quantity))
+      const savedQtyMap = new Map<string, number>()
+      for (const p of planData ?? []) savedQtyMap.set(String(p.sap_code), Number(p.quantity))
 
       setRows(wipSkus.map(s => ({
         ...s,
         stockKg: stockKgByName.get(s.sku_name) ?? 0,
-        orderKg: orderKgByWip.get(s.sap_code) ?? 0,
-        quantity: qtyMap.get(s.sap_code) ?? 0,
+        avgKg:   avgKgByWip.get(s.sap_code) ?? 0,
+        // inputs start blank (0); if user already saved a custom value today, pre-fill it
+        quantity: savedQtyMap.get(s.sap_code) ?? 0,
       })))
     } finally {
       setLoading(false)
@@ -178,8 +192,7 @@ export default function WipPlanPage() {
     setMessage('')
     try {
       const upserts = rows.map(r => {
-        const avgKg = r.orderKg / 7
-        const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
+        const wipInitial = Math.floor(r.avgKg * 1.2 / 100) * 100
         const finalPlan = r.quantity > 0 ? r.quantity : wipInitial
         return {
           plan_date: date,
@@ -199,8 +212,6 @@ export default function WipPlanPage() {
       setMessage(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
     }
   }
-
-  const fmt = (n: number) => n === 0 ? '—' : n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
 
   return (
     <div className="space-y-6">
@@ -250,8 +261,7 @@ export default function WipPlanPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row, i) => {
-                  const avgKg = row.orderKg / 7
-                  const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
+                  const wipInitial = Math.floor(row.avgKg * 1.2 / 100) * 100
                   const finalPlan = row.quantity > 0 ? row.quantity : wipInitial
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
@@ -263,7 +273,7 @@ export default function WipPlanPage() {
                         {row.stockKg > 0 ? Math.round(row.stockKg).toLocaleString('th-TH') : '—'}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-blue-700">
-                        {avgKg > 0 ? Math.round(avgKg).toLocaleString('th-TH') : '—'}
+                        {row.avgKg > 0 ? Math.round(row.avgKg).toLocaleString('th-TH') : '—'}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-indigo-700">
                         {wipInitial > 0 ? wipInitial.toLocaleString('th-TH') : '—'}
@@ -272,7 +282,7 @@ export default function WipPlanPage() {
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
                           value={row.quantity || ''}
                           onChange={e => {
                             const newRows = [...rows]
