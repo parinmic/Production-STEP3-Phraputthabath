@@ -52,49 +52,91 @@ export default function WipPlanPage() {
         .select('raw_sap, product_sap')
         .in('raw_sap', wipSapList)
 
-      const wipToFinalSaps = new Map<string, string[]>()
+      // normalise final product SAP → strip leading zeros for consistent lookup
       const finalSapToWip = new Map<string, string>()
       for (const b of bomData ?? []) {
         const rawSap = String(b.raw_sap).trim()
         const productSap = String(b.product_sap ?? '').trim()
-        if (!/^\d+$/.test(productSap)) continue  // skip revision suffixes
-        const list = wipToFinalSaps.get(rawSap) ?? []
-        list.push(productSap)
-        wipToFinalSaps.set(rawSap, list)
-        if (!finalSapToWip.has(productSap)) finalSapToWip.set(productSap, rawSap)
+        if (!/^\d+$/.test(productSap)) continue
+        const norm = productSap.replace(/^0+/, '')
+        if (!finalSapToWip.has(norm)) finalSapToWip.set(norm, rawSap)
       }
-      const allFinalSaps = Array.from(finalSapToWip.keys())
+      const allFinalSapNorms = Array.from(finalSapToWip.keys())
 
       // 3. Load weight_per_bag for final products
       const { data: pumData } = await supabase
         .from('picking_unit_master')
         .select('sap, weight_per_bag')
-        .in('sap', allFinalSaps)
+        .in('sap', allFinalSapNorms)
 
       const wpbMap = new Map<string, number>()
-      for (const p of pumData ?? []) wpbMap.set(String(p.sap).trim(), Number(p.weight_per_bag))
+      for (const p of pumData ?? []) {
+        const norm = String(p.sap).replace(/^0+/, '')
+        wpbMap.set(norm, Number(p.weight_per_bag))
+      }
 
-      // 4. Load orders for last 7 days
-      const cutoff = new Date()
-      cutoff.setDate(cutoff.getDate() - 7)
-      const cutoffStr = cutoff.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+      // 4. Load last 7 days using Phase 3 order logic (same as executive dashboard):
+      //    plan100 → Makro 1400 + 0800 fallback → Lotus/WM 1400 (skip if plan100 covers SKU)
+      const histDates: string[] = []
+      for (let i = 1; i <= 7; i++) {
+        const dt = new Date()
+        dt.setDate(dt.getDate() - i)
+        histDates.push(dt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+      }
 
-      const [{ data: wm }, { data: lo }, { data: mk }] = await Promise.all([
-        supabase.from('wet_market_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
-        supabase.from('lotus_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
-        supabase.from('makro_orders').select('sku, quantity').gte('delivery_date', cutoffStr),
+      const [
+        { data: histPlan100 },
+        { data: histMakro },
+        { data: histLotus },
+        { data: histWm },
+      ] = await Promise.all([
+        supabase.from('production_plan_100').select('plan_date, sap, weight_total').in('plan_date', histDates),
+        supabase.from('makro_orders').select('delivery_date, sku, quantity, upload_round').in('delivery_date', histDates),
+        supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+        supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
       ])
 
-      // 5. Sum kg per WIP SAP (orders are in bags → multiply by weight_per_bag)
-      const orderKgByWip = new Map<string, number>()
-      for (const row of [...(wm ?? []), ...(lo ?? []), ...(mk ?? [])]) {
-        const shortSku = String(row.sku ?? '').replace(/^0+/, '')
-        const wipSap = finalSapToWip.get(shortSku)
-        if (!wipSap) continue
-        const wpb = wpbMap.get(shortSku) ?? 0
-        const kg = Number(row.quantity) * wpb
-        orderKgByWip.set(wipSap, (orderKgByWip.get(wipSap) ?? 0) + kg)
+      // 5. Per-day Phase 3 priority logic → accumulate WIP kg over 7 days then average
+      const wipKgSum = new Map<string, number>()
+
+      for (const hDate of histDates) {
+        const p100 = (histPlan100 ?? []).filter((r: {plan_date: string}) => r.plan_date === hDate)
+        const mAll = (histMakro ?? []).filter((r: {delivery_date: string}) => r.delivery_date === hDate)
+        const lot  = (histLotus ?? []).filter((r: {delivery_date: string}) => r.delivery_date === hDate)
+        const wm   = (histWm ?? []).filter((r: {delivery_date: string}) => r.delivery_date === hDate)
+
+        const p100Skus = new Set<string>()
+        for (const r of p100 as {sap: string; weight_total: number}[]) {
+          const norm = String(r.sap ?? '').replace(/^0+/, '')
+          p100Skus.add(norm)
+          const wipSap = finalSapToWip.get(norm)
+          if (wipSap) wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.weight_total ?? 0))
+        }
+
+        const m1400 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '1400')
+        const m0800 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '0800')
+        const m1400Skus = new Set((m1400 as {sku: string}[]).map(r => String(r.sku ?? '').replace(/^0+/, '')))
+        for (const r of [...m1400, ...(m0800 as {sku: string}[]).filter(r => !m1400Skus.has(String(r.sku ?? '').replace(/^0+/, '')))] as {sku: string; quantity: number}[]) {
+          const norm = String(r.sku ?? '').replace(/^0+/, '')
+          const wipSap = finalSapToWip.get(norm)
+          if (!wipSap) continue
+          const wpb = wpbMap.get(norm) ?? 0
+          wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+        }
+
+        for (const r of [...lot, ...wm] as {sku: string; quantity: number}[]) {
+          const norm = String(r.sku ?? '').replace(/^0+/, '')
+          if (p100Skus.has(norm)) continue
+          const wipSap = finalSapToWip.get(norm)
+          if (!wipSap) continue
+          const wpb = wpbMap.get(norm) ?? 0
+          wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+        }
       }
+
+      const orderKgByWip = new Map<string, number>()
+      for (const [wipSap, total] of wipKgSum)
+        orderKgByWip.set(wipSap, total / 7)
 
       // 6. Load WIP stock from stock_20 by material_name matching sku_name
       const wipNames = wipSkus.map(s => s.sku_name).filter(Boolean)
