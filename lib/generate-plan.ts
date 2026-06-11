@@ -1197,7 +1197,15 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       mooChōdBySku.set(k, list)
     }
 
-    // Process each unique SKU once — allocate combined demand from shared stock
+    // Collect ALL (sku, round) demand entries across every SKU first,
+    // then sort globally by round time so 8am of all SKUs is processed before 10am of any SKU.
+    // This ensures stock depletion is correctly sequential across rounds regardless of SKU order.
+    type MooDemandEntry = {
+      skuStr: string; sku_name: string | null; totalKg: number
+      rm: number; fatKg: number; meatKg: number
+    }
+    const allMooDemands: MooDemandEntry[] = []
+
     for (const [skuStr, skuAssignments] of Array.from(mooChōdBySku.entries())) {
       const fatPct = mooFatMap.get(normSku(skuStr)) ?? mooFatMap.get(skuStr.trim()) ?? 0
 
@@ -1223,27 +1231,33 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
         }
       }
 
-      const totalKg   = skuAssignments.reduce((s, a) => s + Number(a.target_quantity), 0)
-      const sku_name  = (skuAssignments[0].sku_name as string | null) ?? null
-      const forProduct = [{ sku: skuStr, sku_name, qty: totalKg, rawQty: totalKg }]
+      const totalKg  = skuAssignments.reduce((s, a) => s + Number(a.target_quantity), 0)
+      const sku_name = (skuAssignments[0].sku_name as string | null) ?? null
+      for (const [rm, demand] of Array.from(skuRoundDemand.entries())) {
+        allMooDemands.push({ skuStr, sku_name, totalKg, rm, fatKg: demand.fatKg, meatKg: demand.meatKg })
+      }
+    }
 
-      for (const [rm, demand] of Array.from(skuRoundDemand.entries()).sort(([a], [b]) => a - b)) {
-        const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
-        const meatAllocs = demand.meatKg > 0.005 ? allocateMooPriority(demand.meatKg, mooMeatIngs, mooByCode, mooByName) : []
-        for (const { ing, lots } of [...fatAllocs, ...meatAllocs]) {
-          const qty = lots.reduce((s, l) => s + l.to_withdraw, 0)
-          mooItems.push({
-            sku:              ing.sap_code ?? ing.product_name,
-            sku_name:         ing.product_name,
-            quantity:         Math.round(qty * 100) / 100,
-            unit:             'กก.',
-            work_station:     'หมูบด',
-            note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
-            lots,
-            for_products:     forProduct,
-            withdrawal_round: minsToTime(rm),
-          })
-        }
+    // Sort by round time → stock depletion is chronological across all SKUs
+    allMooDemands.sort((a, b) => a.rm - b.rm)
+
+    for (const { skuStr, sku_name, totalKg, rm, fatKg, meatKg } of allMooDemands) {
+      const forProduct = [{ sku: skuStr, sku_name, qty: totalKg, rawQty: totalKg }]
+      const fatAllocs  = fatKg  > 0.005 ? allocateMooPriority(fatKg,  mooFatIngs,  mooByCode, mooByName) : []
+      const meatAllocs = meatKg > 0.005 ? allocateMooPriority(meatKg, mooMeatIngs, mooByCode, mooByName) : []
+      for (const { ing, lots } of [...fatAllocs, ...meatAllocs]) {
+        const qty = lots.reduce((s, l) => s + l.to_withdraw, 0)
+        mooItems.push({
+          sku:              ing.sap_code ?? ing.product_name,
+          sku_name:         ing.product_name,
+          quantity:         Math.round(qty * 100) / 100,
+          unit:             'กก.',
+          work_station:     'หมูบด',
+          note:             `หมูบด — กลุ่ม${ing.ingredient_type} P${ing.priority}`,
+          lots,
+          for_products:     forProduct,
+          withdrawal_round: minsToTime(rm),
+        })
       }
     }
   }
