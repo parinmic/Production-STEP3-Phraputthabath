@@ -275,6 +275,7 @@ export default function Sidebar() {
             { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS' },
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
             { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
+            { href: '/wip-plan',           icon: Layers,         label: 'แผนผลิต WIP' },
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้' },
