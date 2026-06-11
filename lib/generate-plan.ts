@@ -1113,7 +1113,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
 
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) => a.roundMins - b.roundMins)
-    .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
+    .flatMap(({ station, raw_sap, raw_name, qty, roundMins }) => {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
@@ -1126,13 +1126,17 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
           ? [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: needed, insufficient: true }]
           : []
 
-      return {
+      // Skip rounds where stock was already fully depleted — nothing to physically withdraw
+      const hasRealWithdrawal = resolvedLots.some(l => !l.insufficient && l.to_withdraw > 0.005)
+      if (!hasRealWithdrawal) return []
+
+      return [{
         sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station,
         note: lots ? 'คำนวณจาก BOM' : stockUploaded ? 'คำนวณจาก BOM' : 'ไม่มี Stock',
         lots: resolvedLots,
         for_products: rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
-      }
+      }]
     })
 
   const noBomItems = noBom.map(({ station, sku, sku_name, qty, roundMins }) => ({
@@ -2424,7 +2428,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const prod = skuMap.get(sap) ?? skuMap.get(sapRaw)
           if (!prod || prod.product_group !== 'กลุ่ม WIP') continue
           const stockKg = stockKgByName.get(prod.sku_name) ?? 0
-          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: qty, channel: 'wip_plan', deficit: Math.max(0, qty - stockKg) })
+          if (stockKg >= qty) continue  // stock covers plan, no production needed
+          const deficit = qty - stockKg
+          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: qty, channel: 'wip_plan', deficit })
         }
 
         wipTargets.sort((a, b) => b.deficit - a.deficit)
