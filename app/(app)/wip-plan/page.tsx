@@ -193,7 +193,7 @@ export default function WipPlanPage() {
     try {
       const upserts = rows.map(r => {
         const wipInitial = Math.floor(r.avgKg * 2 * 1.2 / 100) * 100
-        const finalPlan = r.quantity > 0 ? r.quantity : wipInitial
+        const finalPlan = r.quantity > 0 ? r.quantity : Math.max(0, wipInitial - r.stockKg)
         return {
           plan_date: date,
           sap_code: r.sap_code,
@@ -262,7 +262,7 @@ export default function WipPlanPage() {
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row, i) => {
                   const wipInitial = Math.floor(row.avgKg * 2 * 1.2 / 100) * 100
-                  const finalPlan = row.quantity > 0 ? row.quantity : wipInitial
+                  const finalPlan = row.quantity > 0 ? row.quantity : Math.max(0, wipInitial - row.stockKg)
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3 text-center text-xs text-gray-400 font-mono">{i + 1}</td>
