@@ -1985,6 +1985,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return { ...item, targetQty: newQty }
   }).filter(item => item.targetQty > 0)
 
+  // WIP full-production cap: populated inside split block, consumed in WIP plan block
+  const wipFullCapBySap = new Map<string, number>() // SAP (raw) → max producible kg given raw pool
+
   // Stock-based splitting: run for every phase when stock data is available
   {
     const { data: stockPlanLog } = await supabase
@@ -2084,24 +2087,29 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
 
     // ── Priority 1: pre-allocate WIP สไลด์ raw needs before other stations ──
+    // Variables hoisted so the full-production allocation below can reuse them
+    type WipAllocRow = { sap_code: string; quantity: number; wip_initial: number | null }
+    type WipBomRow   = { product_sap: string; raw_sap: string; raw_name: string | null; yield_pct: number }
+    let wipPlanForAlloc: WipAllocRow[] = []
+    const wipStockForAlloc = new Map<string, number>()
+    let wipBomForAlloc: WipBomRow[] = []
     {
-      const { data: wipPlanForAlloc } = await supabase
+      const { data: wipRows } = await supabase
         .from('wip_plan').select('sap_code, quantity, wip_initial')
         .eq('plan_date', productionDate).gt('quantity', 0)
+      wipPlanForAlloc = (wipRows ?? []) as WipAllocRow[]
 
-      if ((wipPlanForAlloc ?? []).length) {
-        const wipSapListForAlloc = wipPlanForAlloc!.map(r => String(r.sap_code).trim())
+      if (wipPlanForAlloc.length) {
+        const wipSapList = wipPlanForAlloc.map(r => String(r.sap_code).trim())
 
-        // Current WIP finished-goods stock from stock_20 by sku_name
-        const wipStockForAlloc = new Map<string, number>()
-        const wipSkuNames = wipSapListForAlloc
+        const wipSkuNames = wipSapList
           .map(s => skuMap.get(s.replace(/^0+/, ''))?.sku_name).filter(Boolean) as string[]
         if (wipSkuNames.length) {
           const { data: ws } = await supabase.from('stock_20')
             .select('material_name, weight_total').in('material_name', wipSkuNames)
           for (const r of ws ?? []) {
             const name = String(r.material_name ?? '').trim()
-            for (const sap of wipSapListForAlloc) {
+            for (const sap of wipSapList) {
               const sapNorm = sap.replace(/^0+/, '')
               if (skuMap.get(sapNorm)?.sku_name === name)
                 wipStockForAlloc.set(sapNorm, (wipStockForAlloc.get(sapNorm) ?? 0) + Number(r.weight_total))
@@ -2109,11 +2117,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
         }
 
-        const { data: wipBomForAlloc } = await supabase
+        const { data: bomRows } = await supabase
           .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct')
-          .in('product_sap', wipSapListForAlloc)
+          .in('product_sap', wipSapList)
+        wipBomForAlloc = (bomRows ?? []) as WipBomRow[]
 
-        for (const wip of wipPlanForAlloc!) {
+        for (const wip of wipPlanForAlloc) {
           const sap     = String(wip.sap_code).trim()
           const sapNorm = sap.replace(/^0+/, '')
           const qty     = Number(wip.quantity)
@@ -2121,7 +2130,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
           const effectiveQty = wipInit > 0 ? Math.min(qty, Math.max(0, wipInit - stockKg)) : qty
           if (effectiveQty < 0.005) continue
-          for (const b of (wipBomForAlloc ?? []).filter(b =>
+          for (const b of wipBomForAlloc.filter(b =>
             b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm
           )) {
             if (!b.raw_name) continue
@@ -2171,6 +2180,33 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         const rawSap  = stationRawSap.get(key) ?? ''
         stationRawAllocated.set(key, takeFromPoolLocal(rawNorm, rawSap, needed))
       }
+    }
+
+    // ── After station allocations: take remaining pool for WIP full production ──
+    // Buffer (wip_initial) was already taken above; now allocate whatever pool remains for qty > buffer
+    for (const wip of wipPlanForAlloc) {
+      const sap     = String(wip.sap_code).trim()
+      const sapNorm = sap.replace(/^0+/, '')
+      const qty     = Number(wip.quantity)
+      const wipInit = Number(wip.wip_initial ?? 0)
+      const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
+      const bufferQty = wipInit > 0 ? Math.min(qty, Math.max(0, wipInit - stockKg)) : qty
+
+      const boms = wipBomForAlloc.filter(b =>
+        (b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm) && b.raw_name
+      )
+      if (!boms.length) { wipFullCapBySap.set(sap, qty); continue }
+
+      let minScale = 1.0
+      for (const b of boms) {
+        const rawTotal  = b.yield_pct > 0 ? qty / b.yield_pct : qty
+        const rawBuffer = b.yield_pct > 0 ? bufferQty / b.yield_pct : bufferQty
+        const rawExtra  = Math.max(0, rawTotal - rawBuffer)
+        if (rawExtra < 0.005) continue // buffer already covers full qty, no extra needed
+        const extraTaken = takeFromPoolLocal(b.raw_name!, b.raw_sap, rawExtra)
+        if (rawTotal > 0.005) minScale = Math.min(minScale, (rawBuffer + extraTaken) / rawTotal)
+      }
+      wipFullCapBySap.set(sap, qty * minScale)
     }
 
     // ── Split each SKU target into stock-supported qty (based on allocation ratio) + deficit qty ──
@@ -2549,7 +2585,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
         }
 
-        type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number }
+        type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number; isDeficit?: boolean }
         const wipTargets: WipPlanTarget[] = []
         for (const row of effectiveWipPlan) {
           const sapRaw      = String(row.sap_code).trim()
@@ -2575,7 +2611,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const remainingQty    = Math.max(0, qty - alreadyAssigned)
           if (remainingQty < 1) continue
 
-          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: remainingQty, channel: 'wip_plan', deficit: remainingQty })
+          // Split into stock-supported vs deficit based on raw material allocation
+          const cap       = wipFullCapBySap.get(sapRaw) ?? wipFullCapBySap.get(sap) ?? remainingQty
+          const wpbLocal  = bagSizeMap.get(sap) ?? bagSizeMap.get(sapRaw) ?? 1
+          const stockQty  = wpbLocal > 0 ? Math.floor(Math.min(remainingQty, cap) / wpbLocal) * wpbLocal : Math.min(remainingQty, cap)
+          const defQty    = remainingQty - stockQty
+
+          if (stockQty >= 1) wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: stockQty,  channel: 'wip_plan', deficit: stockQty,  isDeficit: false })
+          if (defQty   >= 1) wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: defQty,    channel: 'wip_plan', deficit: defQty,    isDeficit: true  })
         }
 
         wipTargets.sort((a, b) => b.deficit - a.deficit)
@@ -2614,7 +2657,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           assignments.push(...allocateBalanced({
             productionDate,
             tableName: 'สไลด์',
-            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: cappedQty, channel: target.channel }],
+            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: cappedQty, channel: target.channel, isDeficit: target.isDeficit }],
             workers: slideWorkers,
             skuMap,
             jobAssignMap,
