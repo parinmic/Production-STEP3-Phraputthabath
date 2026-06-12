@@ -248,6 +248,55 @@ export async function POST(req: NextRequest) {
   const mooChōdAssignments = activeAssignments.filter(isMooChōdSku)
   const regularAssignments  = activeAssignments.filter(a => !isMooChōdSku(a))
 
+  // ── 2b. WIP effectiveQty cap (สไลด์ WIP: min(assignment, wip_initial - wip_stock)) ──
+  const wipSapSet = new Set(regularAssignments.filter(a => a.table_name === 'สไลด์').map(a => String(a.sku).trim()))
+  const wipEffectiveQtyMap = new Map<string, number>() // sap_code → effectiveQty
+
+  if (wipSapSet.size > 0) {
+    const wipSapList = Array.from(wipSapSet)
+
+    // wip_initial per SAP
+    const { data: wipPlanRows } = await supabase
+      .from('wip_plan').select('sap_code, quantity, wip_initial').eq('plan_date', date).in('sap_code', wipSapList)
+    const wipInitialMap = new Map<string, number>()
+    for (const r of wipPlanRows ?? []) wipInitialMap.set(String(r.sap_code).trim(), Number(r.wip_initial ?? 0))
+
+    // WIP sku_name from master_logic_calculation
+    const { data: masterRows } = await supabase
+      .from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false })
+    const wipSkuNameBySap = new Map<string, string>()
+    const seenWip = new Set<string>()
+    for (const r of masterRows ?? []) {
+      const row = r.row_data as Record<string, unknown>
+      if (String(row['กลุ่มสินค้า'] ?? '') !== 'กลุ่ม WIP') continue
+      const sap = String(row['SAP'] ?? '').trim()
+      if (!sap || seenWip.has(sap)) continue
+      seenWip.add(sap)
+      wipSkuNameBySap.set(sap, String(row['ชื่อสินค้า'] ?? '').trim())
+    }
+
+    // WIP stock from stock_20 by material_name
+    const wipNames = wipSapList.map(s => wipSkuNameBySap.get(s)).filter(Boolean) as string[]
+    const wipStockBySap = new Map<string, number>()
+    if (wipNames.length) {
+      const { data: stockRows } = await supabase.from('stock_20').select('material_name, weight_total').in('material_name', wipNames)
+      for (const r of stockRows ?? []) {
+        const skuName = String(r.material_name ?? '').trim()
+        for (const [sap, name] of Array.from(wipSkuNameBySap.entries())) {
+          if (name === skuName) wipStockBySap.set(sap, (wipStockBySap.get(sap) ?? 0) + Number(r.weight_total))
+        }
+      }
+    }
+
+    // Build effectiveQty per WIP sap
+    for (const sap of wipSapList) {
+      const wipInit = wipInitialMap.get(sap) ?? 0
+      const stock   = wipStockBySap.get(sap) ?? 0
+      // No wip_initial saved → use assignment qty as-is (no cap)
+      if (wipInit > 0) wipEffectiveQtyMap.set(sap, Math.max(0, wipInit - stock))
+    }
+  }
+
   // ── Regular path: BOM-based ────────────────────────────────────
 
   // 3. Build finRoundMap
@@ -261,18 +310,28 @@ export async function POST(req: NextRequest) {
     finNameMap.set(key, a.sku_name ?? null)
     skuSet.add(a.sku)
 
+    // Cap สไลด์ WIP qty to effectiveQty (wip_initial - wip_stock)
+    const rawTargetQty = Number(a.target_quantity)
+    const effectiveCap = wipEffectiveQtyMap.get(String(a.sku).trim())
+    const cappedQty    = effectiveCap !== undefined ? Math.min(rawTargetQty, effectiveCap) : rawTargetQty
+
+    if (cappedQty <= 0) continue
+
     const roundQtys  = finRoundMap.get(key)!
     const noteRounds = parseRoundNote(a.note)
 
     if (noteRounds.size > 0) {
+      // Scale note-round quantities proportionally to the cap
+      const noteTotal = Array.from(noteRounds.values()).reduce((s, v) => s + v, 0)
+      const scale     = noteTotal > 0 ? cappedQty / noteTotal : 1
       for (const [rm, q] of Array.from(noteRounds.entries())) {
         const mappedRm = getRoundMins(rm, roundMins)
-        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
+        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q * scale)
       }
     } else {
       const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : DEFAULT_START_MINS[phaseStr]
       const rm = getRoundMins(startMins, roundMins)
-      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + Number(a.target_quantity))
+      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + cappedQty)
     }
   }
 
