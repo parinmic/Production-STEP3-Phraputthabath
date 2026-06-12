@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { allocateFIFOWithRules, RawMaterialRule, getLotType, LotEntry } from '@/lib/withdrawal-rules'
+import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 
 // ========== Types ==========
 
@@ -2043,13 +2043,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
 
-    const { data: rawMaterialRules } = await supabase.from('master_logic_calculation').select('row_data')
-      .eq('calculation_type', 'Mas Raw Material').order('uploaded_at', { ascending: false })
-    const rules: RawMaterialRule[] = (rawMaterialRules ?? [] as { row_data: Record<string, unknown> }[]).map((r: { row_data: Record<string, unknown> }) => {
-      const data = (r.row_data ?? {}) as Record<string, any>
-      return { productGroup: String(data['กลุ่มสินค้า'] ?? '').trim(), type: String(data['ประเภท'] ?? '').trim(), d16: String(data['D16'] ?? '').trim(), d17: String(data['D17'] ?? '').trim() }
-    })
+    const normMatNameLocal = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 
+    // Aggregate stock: lotAggCode["matCode|||specCode"] → weight, matCodeToName → display name
     const lotAggCode = new Map<string, number>()
     const matCodeToName = new Map<string, string>()
     for (const row of stockRows) {
@@ -2059,28 +2055,125 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (row.material_name) matCodeToName.set(row.material_code, row.material_name)
     }
 
-    const parseSpecCodeLocal = (s: string) => {
-      const m1 = s.match(/[A-Z]+(\d{2})(\d{2})(\d{2})/)
-      if (m1) return { factory: m1[1], prod_date: `${m1[2]}/${m1[3]}`, sortKey: `${m1[3]}${m1[2]}` }
-      const m2 = s.match(/^(\d{2})(\d{2})(\d{2})(\d{2})[A-Z]/)
-      if (m2) return { factory: m2[1], prod_date: `${m2[3]}/${m2[2]}`, sortKey: `${m2[2]}${m2[3]}${m2[4]}` }
-      return null
-    }
-    const normMatNameLocal = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
-
-    const stockByMat2  = new Map<string, LotEntry[]>()
-    const stockByName2 = new Map<string, LotEntry[]>()
-    for (const [k, weight] of Array.from(lotAggCode.entries())) {
-      const [matCode, spec_code] = k.split('|||')
-      const parsed = parseSpecCodeLocal(spec_code)
-      const lot: LotEntry = { spec_code, weight, factory: parsed?.factory ?? '-', prod_date: parsed?.prod_date ?? '-', sortKey: parsed?.sortKey ?? spec_code }
-      const codeList = stockByMat2.get(matCode) ?? []; codeList.push(lot); stockByMat2.set(matCode, codeList)
+    // Build raw material pool: normName → totalKg available (also by matCode as fallback)
+    const pool    = new Map<string, number>() // normName → totalKg
+    const poolSap = new Map<string, number>() // matCode  → totalKg
+    for (const [k, weight] of lotAggCode.entries()) {
+      const [matCode] = k.split('|||')
+      poolSap.set(matCode, (poolSap.get(matCode) ?? 0) + weight)
       const matName = matCodeToName.get(matCode)
-      if (matName) { const nameKey = normMatNameLocal(matName); const nameList = stockByName2.get(nameKey) ?? []; nameList.push(lot); stockByName2.set(nameKey, nameList) }
+      if (matName) { const nk = normMatNameLocal(matName); pool.set(nk, (pool.get(nk) ?? 0) + weight) }
     }
-    for (const list of Array.from(stockByMat2.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-    for (const list of Array.from(stockByName2.values())) list.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
+    const takeFromPoolLocal = (rawName: string, rawSap: string, amount: number): number => {
+      const normKey = normMatNameLocal(rawName)
+      const normAvail = pool.get(normKey)
+      const sapAvail  = poolSap.get(rawSap)
+      // Prefer normName; fall back to SAP code when normName not found
+      if (normAvail !== undefined && normAvail > 0) {
+        const taken = Math.min(amount, normAvail)
+        pool.set(normKey, normAvail - taken)
+        return taken
+      }
+      if (sapAvail !== undefined && sapAvail > 0) {
+        const taken = Math.min(amount, sapAvail)
+        poolSap.set(rawSap, sapAvail - taken)
+        return taken
+      }
+      return 0
+    }
+
+    // ── Priority 1: pre-allocate WIP สไลด์ raw needs before other stations ──
+    {
+      const { data: wipPlanForAlloc } = await supabase
+        .from('wip_plan').select('sap_code, quantity, wip_initial')
+        .eq('plan_date', productionDate).gt('quantity', 0)
+
+      if ((wipPlanForAlloc ?? []).length) {
+        const wipSapListForAlloc = wipPlanForAlloc!.map(r => String(r.sap_code).trim())
+
+        // Current WIP finished-goods stock from stock_20 by sku_name
+        const wipStockForAlloc = new Map<string, number>()
+        const wipSkuNames = wipSapListForAlloc
+          .map(s => skuMap.get(s.replace(/^0+/, ''))?.sku_name).filter(Boolean) as string[]
+        if (wipSkuNames.length) {
+          const { data: ws } = await supabase.from('stock_20')
+            .select('material_name, weight_total').in('material_name', wipSkuNames)
+          for (const r of ws ?? []) {
+            const name = String(r.material_name ?? '').trim()
+            for (const sap of wipSapListForAlloc) {
+              const sapNorm = sap.replace(/^0+/, '')
+              if (skuMap.get(sapNorm)?.sku_name === name)
+                wipStockForAlloc.set(sapNorm, (wipStockForAlloc.get(sapNorm) ?? 0) + Number(r.weight_total))
+            }
+          }
+        }
+
+        const { data: wipBomForAlloc } = await supabase
+          .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct')
+          .in('product_sap', wipSapListForAlloc)
+
+        for (const wip of wipPlanForAlloc!) {
+          const sap     = String(wip.sap_code).trim()
+          const sapNorm = sap.replace(/^0+/, '')
+          const qty     = Number(wip.quantity)
+          const wipInit = Number(wip.wip_initial ?? 0)
+          const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
+          const effectiveQty = wipInit > 0 ? Math.min(qty, Math.max(0, wipInit - stockKg)) : qty
+          if (effectiveQty < 0.005) continue
+          for (const b of (wipBomForAlloc ?? []).filter(b =>
+            b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm
+          )) {
+            if (!b.raw_name) continue
+            takeFromPoolLocal(b.raw_name, b.raw_sap, b.yield_pct > 0 ? effectiveQty / b.yield_pct : effectiveQty)
+          }
+        }
+      }
+    }
+
+    // ── Sum raw needs per (station, rawNorm) from all SKU targets ──
+    const stationRawTotalNeeded = new Map<string, number>() // "station|||rawNorm" → kg needed
+    const stationRawSap         = new Map<string, string>() // "station|||rawNorm" → raw_sap
+    for (const item of assignList) {
+      const cleanSku = item.sku.replace(/^0+/, '')
+      if (noWithdrawalSaps.has(item.sku) || noWithdrawalSaps.has(cleanSku)) continue
+      if (!stockWasUploaded) continue
+      if (mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(cleanSku)) continue
+      const boms = bomMap.get(cleanSku) ?? []
+      if (!boms.length) continue
+      const prod = skuMap.get(cleanSku) ?? skuMap.get(item.sku)
+      if (!prod) continue
+      const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+      for (const b of boms) {
+        if (!b.raw_name) continue
+        const rawNorm = normMatNameLocal(b.raw_name)
+        const key = `${station}|||${rawNorm}`
+        const rawNeeded = b.yield_pct > 0 ? item.targetQty / b.yield_pct : item.targetQty
+        stationRawTotalNeeded.set(key, (stationRawTotalNeeded.get(key) ?? 0) + rawNeeded)
+        if (!stationRawSap.has(key)) stationRawSap.set(key, b.raw_sap)
+      }
+    }
+
+    // ── Allocate pool in station priority order ──
+    const stationRawAllocated   = new Map<string, number>() // "station|||rawNorm" → allocatedKg
+    const ALLOC_PRIORITY_STNS   = ['สไลด์', 'สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด']
+    const allNeededStns = Array.from(new Set(
+      Array.from(stationRawTotalNeeded.keys()).map(k => k.split('|||')[0])
+    ))
+    const orderedStnsForAlloc = [
+      ...ALLOC_PRIORITY_STNS.filter(s => allNeededStns.includes(s)),
+      ...allNeededStns.filter(s => !ALLOC_PRIORITY_STNS.includes(s)),
+    ]
+    for (const station of orderedStnsForAlloc) {
+      for (const [key, needed] of stationRawTotalNeeded.entries()) {
+        if (!key.startsWith(`${station}|||`)) continue
+        const rawNorm = key.split('|||')[1]
+        const rawSap  = stationRawSap.get(key) ?? ''
+        stationRawAllocated.set(key, takeFromPoolLocal(rawNorm, rawSap, needed))
+      }
+    }
+
+    // ── Split each SKU target into stock-supported qty (based on allocation ratio) + deficit qty ──
     const splitAssignList: SkuTarget[] = []
     for (const item of assignList) {
       const cleanSku = item.sku.replace(/^0+/, '')
@@ -2089,49 +2182,23 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(cleanSku)) { splitAssignList.push(item); continue }
       const boms = bomMap.get(cleanSku)
       if (!boms?.length) { splitAssignList.push(item); continue }
+      const prod = skuMap.get(cleanSku) ?? skuMap.get(item.sku)
+      if (!prod) { splitAssignList.push(item); continue }
+      const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
 
-      let Q_max = item.targetQty
+      // Minimum allocation ratio across all BOM components (bottleneck raw material)
+      let scale = 1.0
       for (const b of boms) {
-        const yield_pct = b.yield_pct > 0 ? b.yield_pct : 1.0
-        const lots = stockByMat2.get(b.raw_sap) ?? stockByName2.get(normMatNameLocal(b.raw_name ?? '')) ?? []
-        let availWeight = 0
-        for (const lot of lots) {
-          if (lot.weight <= 0.005) continue
-          const lotType = getLotType(b.raw_name ?? '', lot.spec_code, rules)
-          if (lotType === 'RAW' || (item.skuName && item.skuName.toUpperCase().includes(lotType.toUpperCase())))
-            availWeight += lot.weight
-        }
-        const maxProduceable = availWeight * yield_pct
-        if (maxProduceable < Q_max) Q_max = maxProduceable
+        if (!b.raw_name) continue
+        const key    = `${station}|||${normMatNameLocal(b.raw_name)}`
+        const needed = stationRawTotalNeeded.get(key) ?? 0
+        const alloc  = stationRawAllocated.get(key) ?? needed
+        if (needed > 0.005) scale = Math.min(scale, alloc / needed)
       }
-      if (Q_max < 0) Q_max = 0
 
-      // Align split to bag boundary: round stock DOWN, deficit = bag-total - stock
-      // Prevents each portion being rounded up independently (which inflates the total by up to 1 bag per portion)
-      const wpbLocal = bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1
+      const wpbLocal       = bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1
       const bagAlignedTotal = wpbLocal > 0 ? Math.floor(item.targetQty / wpbLocal) * wpbLocal : item.targetQty
-      const stockBagQty = wpbLocal > 0 ? Math.floor(Q_max / wpbLocal) * wpbLocal : Q_max
-
-      if (stockBagQty > 0.01) {
-        for (const b of boms) {
-          const yield_pct = b.yield_pct > 0 ? b.yield_pct : 1.0
-          let rawDeduct = stockBagQty / yield_pct
-          const lots = stockByMat2.get(b.raw_sap) ?? stockByName2.get(normMatNameLocal(b.raw_name ?? '')) ?? []
-          for (const lot of lots) {
-            if (rawDeduct <= 0.005 || lot.weight <= 0.005) break
-            const lotType = getLotType(b.raw_name ?? '', lot.spec_code, rules)
-            if (lotType !== 'RAW' && item.skuName && item.skuName.toUpperCase().includes(lotType.toUpperCase())) {
-              const take = Math.min(lot.weight, rawDeduct); lot.weight -= take; rawDeduct -= take
-            }
-          }
-          for (const lot of lots) {
-            if (rawDeduct <= 0.005 || lot.weight <= 0.005) break
-            if (getLotType(b.raw_name ?? '', lot.spec_code, rules) === 'RAW') {
-              const take = Math.min(lot.weight, rawDeduct); lot.weight -= take; rawDeduct -= take
-            }
-          }
-        }
-      }
+      const stockBagQty    = wpbLocal > 0 ? Math.floor(bagAlignedTotal * scale / wpbLocal) * wpbLocal : bagAlignedTotal * scale
 
       if (stockBagQty > 0.01) splitAssignList.push({ ...item, targetQty: stockBagQty, isDeficit: false })
       const deficitBagQty = bagAlignedTotal - stockBagQty
