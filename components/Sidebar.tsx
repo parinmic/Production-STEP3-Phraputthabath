@@ -136,6 +136,10 @@ export default function Sidebar() {
                   <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
                 </Link>
               ))}
+              <Link href="/withdrawal/rm-allocation"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/withdrawal/rm-allocation' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-400" />จัดสรรเนื้อ Raw Mat
+              </Link>
             </div>
           )}
           {openWithdrawal && collapsed && (
@@ -147,6 +151,11 @@ export default function Sidebar() {
                   <span className="text-xs font-bold">P{phase}</span>
                 </Link>
               ))}
+              <Link href="/withdrawal/rm-allocation"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/withdrawal/rm-allocation' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="จัดสรรเนื้อ Raw Mat">
+                <span className="text-xs font-bold">RM</span>
+              </Link>
             </div>
           )}
 

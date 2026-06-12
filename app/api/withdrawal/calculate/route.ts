@@ -352,22 +352,39 @@ export async function POST(req: NextRequest) {
 
   const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
 
-  // 7. Build regular output items
+  // 7. Build regular output items — sorted by station priority so shared lots are consumed in order
+  // สไลด์(P1) → สามชั้น/สะโพก/ไหล่(P2) → หมูบด(P3), then by round time
+  const STATION_PRIORITY: Record<string, number> = {
+    'สไลด์':   1,
+    'สามชั้น': 2,
+    'สะโพก':   2,
+    'ไหล่':    2,
+    'หมูบด':   3,
+  }
+
   const rawItems = Array.from(rawMap.values())
-    .sort((a, b) => a.roundMins - b.roundMins)
+    .sort((a, b) =>
+      (STATION_PRIORITY[a.station] ?? 9) - (STATION_PRIORITY[b.station] ?? 9) ||
+      a.roundMins - b.roundMins
+    )
     .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
+      const lotsResult = lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : []
+      // quantity = actual allocated (sum of non-insufficient lots); use needed only when no stock data
+      const allocated = lots
+        ? Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
+        : needed
       return {
         sku:              raw_sap,
         sku_name:         raw_name,
-        quantity:         needed,
+        quantity:         allocated,
         unit:             'กก.',
         work_station:     station,
         note:             'คำนวณจาก BOM',
-        lots:             lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : [],
+        lots:             lotsResult,
         for_products:     rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
       }
