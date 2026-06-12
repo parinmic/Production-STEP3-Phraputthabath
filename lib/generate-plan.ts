@@ -2570,9 +2570,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
           // Manual entry: always create assignment regardless of current stock
 
+          // Cap production need to (wip_initial - current stock) — same formula as rm-allocation
+          const effectiveNeed = wipInitialVal > 0 ? Math.min(qty, Math.max(0, wipInitialVal - stockKg)) : qty
+
           // Multi-phase cap: subtract what's already assigned in previous periods
           const alreadyAssigned = alreadyAssignedByWip.get(sapRaw) ?? alreadyAssignedByWip.get(sap) ?? 0
-          const remainingQty    = Math.max(0, qty - alreadyAssigned)
+          const remainingQty    = Math.max(0, effectiveNeed - alreadyAssigned)
           if (remainingQty < 1) continue
 
           wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: remainingQty, channel: 'wip_plan', deficit: remainingQty })
