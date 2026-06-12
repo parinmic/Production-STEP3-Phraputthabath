@@ -2361,9 +2361,93 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         .eq('plan_date', productionDate)
         .gt('quantity', 0)
 
-      if (wipPlanRows?.length) {
+      // If no saved wip_plan for this date, compute Final Plan on-the-fly
+      // (same logic as wip-plan page: avgKg × 1.2 rounded up to nearest 100)
+      let effectiveWipPlan: { sap_code: string; quantity: number }[] = wipPlanRows ?? []
+
+      if (!effectiveWipPlan.length) {
+        const wipSapSet = new Set<string>()
+        for (const [, p] of skuMap) {
+          if (p.product_group === 'กลุ่ม WIP') wipSapSet.add(p.sku)
+        }
+        const wipSapListUniq = Array.from(wipSapSet)
+
+        if (wipSapListUniq.length) {
+          const { data: bomRevRows } = await supabase
+            .from('bom_items').select('raw_sap, product_sap').in('raw_sap', wipSapListUniq)
+
+          const finalSapToWip = new Map<string, string>()
+          for (const b of bomRevRows ?? []) {
+            const ps = String(b.product_sap ?? '').trim()
+            if (!/^\d+$/.test(ps)) continue
+            const norm = ps.replace(/^0+/, '')
+            if (!finalSapToWip.has(norm)) finalSapToWip.set(norm, String(b.raw_sap))
+          }
+
+          const [
+            { data: wipHistP100 },
+            { data: wipHistLotus },
+            { data: wipHistWm },
+          ] = await Promise.all([
+            supabase.from('production_plan_100').select('plan_date, sap, weight_total').in('plan_date', histDates),
+            supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+            supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+          ])
+
+          const wipKgSum = new Map<string, number>()
+          const wipDayCount = new Map<string, number>()
+
+          for (const hDate of histDates) {
+            const p100 = (wipHistP100 ?? []).filter((r: { plan_date: string }) => r.plan_date === hDate) as { sap: string; weight_total: number }[]
+            const lot  = (wipHistLotus ?? []).filter((r: { delivery_date: string }) => r.delivery_date === hDate) as { sku: string; quantity: number }[]
+            const wm   = (wipHistWm   ?? []).filter((r: { delivery_date: string }) => r.delivery_date === hDate) as { sku: string; quantity: number }[]
+            const mak  = (makroHistRaw ?? []).filter(r => r.delivery_date === hDate)
+
+            const dayKg = new Map<string, number>()
+            const p100Skus = new Set<string>()
+
+            for (const r of p100) {
+              const norm = String(r.sap ?? '').replace(/^0+/, '')
+              p100Skus.add(norm)
+              const wipSap = finalSapToWip.get(norm)
+              if (wipSap) dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.weight_total ?? 0))
+            }
+            // Makro hist (already filtered to round 1400) — quantity is in kg
+            for (const r of mak) {
+              const norm = String(r.sku ?? '').replace(/^0+/, '')
+              const wipSap = finalSapToWip.get(norm)
+              if (!wipSap) continue
+              dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0))
+            }
+            // Lotus + WM 1400: skip SKUs already covered by plan100
+            for (const r of [...lot, ...wm]) {
+              const norm = String(r.sku ?? '').replace(/^0+/, '')
+              if (p100Skus.has(norm)) continue
+              const wipSap = finalSapToWip.get(norm)
+              if (!wipSap) continue
+              const wpb = wpbMap.get(norm) ?? 0
+              dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+            }
+
+            for (const [wipSap, kg] of dayKg) {
+              if (kg > 0) {
+                wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + kg)
+                wipDayCount.set(wipSap, (wipDayCount.get(wipSap) ?? 0) + 1)
+              }
+            }
+          }
+
+          for (const [wipSap, total] of wipKgSum) {
+            const avgKg = total / (wipDayCount.get(wipSap) ?? 1)
+            const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
+            if (wipInitial > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: wipInitial })
+          }
+        }
+      }
+
+      if (effectiveWipPlan.length) {
         const wipNames: string[] = []
-        for (const row of wipPlanRows) {
+        for (const row of effectiveWipPlan) {
           const sap = String(row.sap_code).trim().replace(/^0+/, '')
           const prod = skuMap.get(sap)
           if (prod?.product_group === 'กลุ่ม WIP' && prod.sku_name) wipNames.push(prod.sku_name)
@@ -2383,7 +2467,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
         type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number }
         const wipTargets: WipPlanTarget[] = []
-        for (const row of wipPlanRows) {
+        for (const row of effectiveWipPlan) {
           const sapRaw = String(row.sap_code).trim()
           const sap = sapRaw.replace(/^0+/, '')
           const qty = Number(row.quantity)
