@@ -2439,7 +2439,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           for (const [wipSap, total] of wipKgSum) {
             const avgKg = total / (wipDayCount.get(wipSap) ?? 1)
-            const wipInitial = Math.floor(avgKg * 1.2 / 100) * 100
+            const wipInitial = Math.floor(avgKg * 2 * 1.2 / 100) * 100
             if (wipInitial > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: wipInitial })
           }
         }
