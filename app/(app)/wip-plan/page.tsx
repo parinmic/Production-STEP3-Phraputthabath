@@ -118,12 +118,12 @@ export default function WipPlanPage() {
         const m1400 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '1400')
         const m0800 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '0800')
         const m1400Skus = new Set((m1400 as {sku: string}[]).map(r => String(r.sku ?? '').replace(/^0+/, '')))
+        // Makro quantity is already in kg — use directly (no × wpb)
         for (const r of [...m1400, ...(m0800 as {sku: string}[]).filter(r => !m1400Skus.has(String(r.sku ?? '').replace(/^0+/, '')))] as {sku: string; quantity: number}[]) {
           const norm = String(r.sku ?? '').replace(/^0+/, '')
           const wipSap = finalSapToWip.get(norm)
           if (!wipSap) continue
-          const wpb = wpbMap.get(norm) ?? 0
-          dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
+          dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0))
         }
 
         for (const r of [...lot, ...wm] as {sku: string; quantity: number}[]) {
