@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Calendar, Save, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Calendar, Save, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
 
 interface WipRow {
   sap_code: string
@@ -320,6 +320,15 @@ export default function WipPlanPage() {
               </div>
             )}
           </div>
+          <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setRows(r => r.map(row => ({ ...row, quantity: 0 }))); setStatus('idle') }}
+            disabled={status === 'saving' || loading}
+            className="flex items-center gap-2 border border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 text-sm font-medium px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={14} />
+            รีเซ็ต
+          </button>
           <button
             onClick={handleSave}
             disabled={status === 'saving' || loading}
@@ -337,6 +346,7 @@ export default function WipPlanPage() {
               </>
             )}
           </button>
+          </div>
         </div>
       </div>
     </div>
