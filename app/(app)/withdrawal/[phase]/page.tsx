@@ -2,8 +2,139 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Printer, RefreshCw, PackageOpen, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { Printer, RefreshCw, PackageOpen, X, ChevronDown, ChevronRight, Clock, SkipForward, Beef } from 'lucide-react'
 import { downloadWithdrawalPDF } from '@/lib/withdrawal-pdf'
+
+// ── RM Allocation types ──────────────────────────────────────────────────────
+interface RawNeed {
+  raw_sap: string
+  raw_name: string
+  needed_kg: number
+  allocated_kg: number
+  shortage_kg: number
+}
+interface AllocationGroup {
+  phase: number
+  priority: number
+  station: string
+  purpose: string
+  items: RawNeed[]
+  skipped?: string
+}
+interface RmAllocationResult {
+  date: string
+  allocation: AllocationGroup[]
+  message?: string
+}
+
+const RM_PRIORITY_COLOR: Record<number, { label: string; color: string; bg: string; border: string }> = {
+  1: { label: 'P1', color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200' },
+  2: { label: 'P2', color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-200' },
+  3: { label: 'P3', color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
+  4: { label: 'P4', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+}
+const RM_STATION_BADGE: Record<string, string> = {
+  'สไลด์':   'bg-purple-100 text-purple-700',
+  'สามชั้น': 'bg-blue-100   text-blue-700',
+  'สะโพก':   'bg-orange-100 text-orange-700',
+  'ไหล่':    'bg-green-100  text-green-700',
+  'หมูบด':   'bg-red-100    text-red-700',
+}
+
+function RmBarCell({ allocated, needed }: { allocated: number; needed: number }) {
+  const p     = needed <= 0 ? 100 : Math.round((allocated / needed) * 100)
+  const color = p >= 100 ? 'bg-green-500' : p >= 70 ? 'bg-yellow-400' : 'bg-red-400'
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[60px]">
+        <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(p, 100)}%` }} />
+      </div>
+      <span className={`text-xs font-semibold w-8 text-right ${p >= 100 ? 'text-green-600' : p >= 70 ? 'text-yellow-600' : 'text-red-600'}`}>{p}%</span>
+    </div>
+  )
+}
+
+function RmGroupCard({ group }: { group: AllocationGroup }) {
+  const cfg         = RM_PRIORITY_COLOR[group.priority] ?? RM_PRIORITY_COLOR[2]
+  const totalNeeded = group.items.reduce((s, i) => s + i.needed_kg, 0)
+  const totalAlloc  = group.items.reduce((s, i) => s + i.allocated_kg, 0)
+  const totalShort  = group.items.reduce((s, i) => s + i.shortage_kg, 0)
+  const hasShortage = totalShort > 0.5
+
+  if (group.skipped) {
+    return (
+      <div className="card border border-dashed border-gray-200 bg-gray-50/60 opacity-70">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${RM_STATION_BADGE[group.station] ?? 'bg-gray-100 text-gray-700'}`}>{group.station}</span>
+          <span className="text-sm text-gray-400">{group.purpose}</span>
+          <span className="ml-auto flex items-center gap-1 text-xs text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+            <SkipForward size={11} />{group.skipped}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`card border-2 ${cfg.border}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${RM_STATION_BADGE[group.station] ?? 'bg-gray-100 text-gray-700'}`}>{group.station}</span>
+          <span className="text-sm text-gray-500">{group.purpose}</span>
+        </div>
+        {hasShortage && (
+          <span className="text-xs text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full shrink-0">
+            ขาด {Math.round(totalShort).toLocaleString()} กก.
+          </span>
+        )}
+      </div>
+      {group.items.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">— ไม่มีรายการ (ไม่พบ BOM) —</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b text-xs">
+              <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
+              <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการ</th>
+              <th className="px-3 py-2 text-right text-gray-500 font-medium">จัดสรร</th>
+              <th className="px-3 py-2 text-right text-gray-500 font-medium hidden sm:table-cell">ขาด</th>
+              <th className="px-3 py-2 text-left  text-gray-500 font-medium hidden md:table-cell w-36">สัดส่วน</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.items.map((item, i) => (
+              <tr key={i} className={`border-b last:border-0 ${item.shortage_kg > 0.5 ? 'bg-red-50/40' : ''}`}>
+                <td className="px-3 py-2.5 font-medium text-gray-800">{item.raw_name}</td>
+                <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{item.needed_kg.toLocaleString()}</td>
+                <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-600' : 'text-gray-800'}`}>{item.allocated_kg.toLocaleString()}</td>
+                <td className={`px-3 py-2.5 text-right hidden sm:table-cell tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+                  {item.shortage_kg > 0.5 ? item.shortage_kg.toLocaleString() : '—'}
+                </td>
+                <td className="px-3 py-2.5 hidden md:table-cell">
+                  <RmBarCell allocated={item.allocated_kg} needed={item.needed_kg} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+            <tr>
+              <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
+              <td className="px-3 py-2 text-right text-sm font-semibold text-gray-700 tabular-nums">{Math.round(totalNeeded).toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${hasShortage ? 'text-red-600' : 'text-green-600'}`}>{Math.round(totalAlloc).toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right text-sm font-bold hidden sm:table-cell tabular-nums ${hasShortage ? 'text-red-500' : 'text-gray-400'}`}>
+                {hasShortage ? Math.round(totalShort).toLocaleString() : '—'}
+              </td>
+              <td className="hidden md:table-cell" />
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  )
+}
+// ── End RM helpers ───────────────────────────────────────────────────────────
 
 interface WithdrawalItem {
   id: string
@@ -86,6 +217,9 @@ export default function WithdrawalPage() {
   const [downloading, setDownloading]     = useState(false)
   const [basketMap, setBasketMap]         = useState<Map<string, number>>(new Map())
   const [popupItem, setPopupItem]         = useState<PopupItem>(null)
+  const [rmResult, setRmResult]           = useState<RmAllocationResult | null>(null)
+  const [rmLoading, setRmLoading]         = useState(false)
+  const [showRmAlloc, setShowRmAlloc]     = useState(true)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -102,7 +236,18 @@ export default function WithdrawalPage() {
     }
   }, [date, phase])
 
+  const loadRm = useCallback(async () => {
+    setRmLoading(true)
+    try {
+      const res  = await fetch(`/api/withdrawal/rm-allocation?date=${date}`)
+      const data = await res.json()
+      if (res.ok && !data.error) setRmResult(data)
+    } catch { /* silent */ }
+    finally { setRmLoading(false) }
+  }, [date])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadRm() }, [loadRm])
 
   useEffect(() => {
     fetch('/api/master-trakra')
@@ -563,6 +708,50 @@ export default function WithdrawalPage() {
             </div>
           )}
         </div>
+
+        {/* ── จัดสรรเนื้อ Raw Mat ─────────────────────────────── */}
+        {(() => {
+          const phaseNum  = parseInt(phase)
+          const rmGroups  = rmResult?.allocation.filter(g => g.phase === phaseNum) ?? []
+          const hasGroups = rmGroups.length > 0
+
+          return (
+            <div className="no-print">
+              <button
+                onClick={() => setShowRmAlloc(s => !s)}
+                className="w-full flex items-center gap-3 text-left py-1"
+              >
+                <Beef size={18} className="text-rose-500 shrink-0" />
+                <span className="font-semibold text-gray-800 text-sm">จัดสรรเนื้อ Raw Mat — Phase {phase}</span>
+                {rmLoading && <RefreshCw size={13} className="animate-spin text-gray-400 ml-1" />}
+                <div className="flex-1 h-px bg-gray-200 mx-2" />
+                {showRmAlloc
+                  ? <ChevronDown size={16} className="text-gray-400" />
+                  : <ChevronRight size={16} className="text-gray-400" />}
+              </button>
+
+              {showRmAlloc && (
+                <div className="mt-3 space-y-4">
+                  {rmLoading && (
+                    <div className="card text-center py-8 text-gray-400">
+                      <RefreshCw size={24} className="animate-spin mx-auto mb-2" />
+                      <p className="text-sm">กำลังคำนวณการจัดสรร...</p>
+                    </div>
+                  )}
+                  {!rmLoading && rmResult?.message && (
+                    <div className="card text-center py-8 text-gray-500 text-sm">{rmResult.message}</div>
+                  )}
+                  {!rmLoading && !hasGroups && !rmResult?.message && rmResult && (
+                    <div className="card text-center py-8 text-gray-400 text-sm">ไม่มีการจัดสรร Raw Mat สำหรับ Phase นี้</div>
+                  )}
+                  {!rmLoading && hasGroups && rmGroups.map((group, i) => (
+                    <RmGroupCard key={i} group={group} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Item detail bottom-sheet popup */}

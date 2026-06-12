@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     // ── 1. WIP Plan ──────────────────────────────────────────────────────────
     const { data: wipRows } = await supabase
       .from('wip_plan')
-      .select('sap_code, quantity')
+      .select('sap_code, quantity, wip_initial')
       .eq('plan_date', date)
       .gt('quantity', 0)
 
@@ -57,6 +57,17 @@ export async function GET(req: NextRequest) {
     }
 
     const wipSaps = wipRows.map(w => w.sap_code)
+
+    // ── 1b. WIP stock (สไลด์ finished WIP) ──────────────────────────────────
+    const [wipStock0010, wipStock20] = await Promise.all([
+      supabase.from('stock_0010').select('material_code, weight_total').in('material_code', wipSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, weight_total').in('material_code', wipSaps).gt('weight_total', 0),
+    ])
+    const wipStockMap = new Map<string, number>()
+    for (const row of [...(wipStock0010.data ?? []), ...(wipStock20.data ?? [])]) {
+      const k = String(row.material_code)
+      wipStockMap.set(k, (wipStockMap.get(k) ?? 0) + Number(row.weight_total))
+    }
 
     // ── 2. BOM for WIP items ────────────────────────────────────────────────
     const { data: wipBomRows } = await supabase
@@ -196,12 +207,21 @@ export async function GET(req: NextRequest) {
     const finalPlanByWip = new Map<string, number>()
 
     for (const wip of wipRows) {
-      const productionQty = Number(wip.quantity)
+      const productionQty   = Number(wip.quantity)
       if (productionQty < 0.005) continue
-      finalPlanByWip.set(wip.sap_code, productionQty)
+
+      // Cap: ผลิตได้ไม่เกิน (wip_initial - stock ปัจจุบัน)
+      const wipInit         = Number(wip.wip_initial ?? 0)
+      const currentWIPStock = wipStockMap.get(String(wip.sap_code)) ?? 0
+      const effectiveQty    = wipInit > 0
+        ? Math.min(productionQty, Math.max(0, wipInit - currentWIPStock))
+        : productionQty
+
+      if (effectiveQty < 0.005) continue
+      finalPlanByWip.set(wip.sap_code, effectiveQty)
 
       for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
-        const rawNeeded = bom.yield_pct > 0 ? productionQty / bom.yield_pct : productionQty
+        const rawNeeded = bom.yield_pct > 0 ? effectiveQty / bom.yield_pct : effectiveQty
         const allocated = takeFromPool(bom.raw_name, rawNeeded)
         p1Items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
       }
