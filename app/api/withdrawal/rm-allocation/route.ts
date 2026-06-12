@@ -58,15 +58,42 @@ export async function GET(req: NextRequest) {
 
     const wipSaps = wipRows.map(w => w.sap_code)
 
-    // ── 1b. WIP stock (สไลด์ finished WIP) ──────────────────────────────────
-    const [wipStock0010, wipStock20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, weight_total').in('material_code', wipSaps).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, weight_total').in('material_code', wipSaps).gt('weight_total', 0),
-    ])
-    const wipStockMap = new Map<string, number>()
-    for (const row of [...(wipStock0010.data ?? []), ...(wipStock20.data ?? [])]) {
-      const k = String(row.material_code)
-      wipStockMap.set(k, (wipStockMap.get(k) ?? 0) + Number(row.weight_total))
+    // ── 1b. WIP sku_name lookup (same source as wip-plan page) ───────────────
+    // stock_20 stores WIP finished goods by material_name (sku_name), not by sap_code
+    const { data: masterRows } = await supabase
+      .from('master_logic_calculation')
+      .select('row_data')
+      .eq('calculation_type', 'Mas Productivity')
+      .order('uploaded_at', { ascending: false })
+
+    const wipSkuNameBySap = new Map<string, string>()
+    const seen = new Set<string>()
+    for (const r of masterRows ?? []) {
+      const row = r.row_data as Record<string, unknown>
+      if (String(row['กลุ่มสินค้า'] ?? '') !== 'กลุ่ม WIP') continue
+      const sap = String(row['SAP'] ?? '').trim()
+      if (!sap || seen.has(sap)) continue
+      seen.add(sap)
+      wipSkuNameBySap.set(sap, String(row['ชื่อสินค้า'] ?? '').trim())
+    }
+
+    // ── 1c. WIP stock from stock_20 by material_name ─────────────────────────
+    const wipNames = wipSaps.map(s => wipSkuNameBySap.get(s)).filter(Boolean) as string[]
+    const wipStockMap = new Map<string, number>() // sap_code → total_stock_kg
+    if (wipNames.length) {
+      const { data: wipStockRows } = await supabase
+        .from('stock_20')
+        .select('material_name, weight_total')
+        .in('material_name', wipNames)
+      for (const row of wipStockRows ?? []) {
+        const skuName = String(row.material_name ?? '').trim()
+        // reverse: find sap from skuName
+        for (const [sap, name] of Array.from(wipSkuNameBySap.entries())) {
+          if (name === skuName) {
+            wipStockMap.set(sap, (wipStockMap.get(sap) ?? 0) + Number(row.weight_total))
+          }
+        }
+      }
     }
 
     // ── 2. BOM for WIP items ────────────────────────────────────────────────
