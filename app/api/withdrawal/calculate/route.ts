@@ -374,7 +374,16 @@ export async function POST(req: NextRequest) {
       const totalNeeded = stationRawTotal.get(key) ?? 0
       const rmAllocated = rmAllocMap.get(key)
       if (rmAllocated !== undefined && totalNeeded > 0.005 && rmAllocated < totalNeeded) {
-        entry.qty = entry.qty * (rmAllocated / totalNeeded)
+        const scale = rmAllocated / totalNeeded
+        entry.qty = entry.qty * scale
+        const rawKey = `${entry.station}|||${entry.raw_sap}|||${entry.roundMins}`
+        const prods = rawToProducts.get(rawKey)
+        if (prods) {
+          for (const p of prods) {
+            p.qty    = p.qty    * scale
+            p.rawQty = p.rawQty * scale
+          }
+        }
       }
     }
   }
