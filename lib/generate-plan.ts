@@ -2357,13 +2357,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     if (slideWorkers.length) {
       const { data: wipPlanRows } = await supabase
         .from('wip_plan')
-        .select('sap_code, quantity')
+        .select('sap_code, quantity, is_manual, wip_initial')
         .eq('plan_date', productionDate)
         .gt('quantity', 0)
 
       // If no saved wip_plan for this date, compute Final Plan on-the-fly
       // (same logic as wip-plan page: avgKg × 1.2 rounded up to nearest 100)
-      let effectiveWipPlan: { sap_code: string; quantity: number }[] = wipPlanRows ?? []
+      let effectiveWipPlan: { sap_code: string; quantity: number; is_manual?: boolean; wip_initial?: number }[] = wipPlanRows ?? []
 
       if (!effectiveWipPlan.length) {
         const wipSapSet = new Set<string>()
@@ -2440,7 +2440,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           for (const [wipSap, total] of wipKgSum) {
             const avgKg = total / (wipDayCount.get(wipSap) ?? 1)
             const wipInitial = Math.floor(avgKg * 2 * 1.2 / 100) * 100
-            if (wipInitial > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: wipInitial })
+            if (wipInitial > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: wipInitial, is_manual: false, wip_initial: wipInitial })
           }
         }
       }
@@ -2465,19 +2465,50 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
         }
 
+        // Multi-phase: sum WIP already assigned in OTHER periods for this date
+        const wipSapList = effectiveWipPlan.map(r => String(r.sap_code).trim())
+        const alreadyAssignedByWip = new Map<string, number>()
+        if (wipSapList.length) {
+          const { data: prevAssn } = await supabase
+            .from('production_assignments')
+            .select('sku, target_quantity')
+            .eq('production_date', productionDate)
+            .eq('table_name', 'สไลด์')
+            .in('sku', wipSapList)
+            .neq('period', phaseCfg.period)
+          for (const a of prevAssn ?? []) {
+            const k = String(a.sku)
+            alreadyAssignedByWip.set(k, (alreadyAssignedByWip.get(k) ?? 0) + Number(a.target_quantity))
+          }
+        }
+
         type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number }
         const wipTargets: WipPlanTarget[] = []
         for (const row of effectiveWipPlan) {
-          const sapRaw = String(row.sap_code).trim()
-          const sap = sapRaw.replace(/^0+/, '')
-          const qty = Number(row.quantity)
+          const sapRaw      = String(row.sap_code).trim()
+          const sap         = sapRaw.replace(/^0+/, '')
+          const qty         = Number(row.quantity)
           if (qty <= 0) continue
           const prod = skuMap.get(sap) ?? skuMap.get(sapRaw)
           if (!prod || prod.product_group !== 'กลุ่ม WIP') continue
-          const stockKg = stockKgByName.get(prod.sku_name) ?? 0
-          if (stockKg >= qty) continue  // stock covers plan, no production needed
-          const deficit = qty - stockKg
-          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: qty, channel: 'wip_plan', deficit })
+
+          const isManual      = Boolean(row.is_manual)
+          const wipInitialVal = Number(row.wip_initial ?? 0)
+          const stockKg       = stockKgByName.get(prod.sku_name) ?? 0
+
+          // Auto (no manual entry): skip if current stock already meets WIP target level
+          if (!isManual) {
+            const threshold = wipInitialVal > 0 ? wipInitialVal : qty
+            if (stockKg >= threshold) continue
+          }
+          // Manual entry: always create assignment regardless of current stock
+
+          // Multi-phase cap: subtract what's already assigned in previous periods
+          const alreadyAssigned = alreadyAssignedByWip.get(sapRaw) ?? alreadyAssignedByWip.get(sap) ?? 0
+          const remainingQty    = Math.max(0, qty - alreadyAssigned)
+          if (remainingQty < 1) continue
+
+          wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: remainingQty, channel: 'wip_plan', deficit: remainingQty })
         }
 
         wipTargets.sort((a, b) => b.deficit - a.deficit)

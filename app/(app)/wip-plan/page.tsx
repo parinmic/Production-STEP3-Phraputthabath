@@ -193,12 +193,14 @@ export default function WipPlanPage() {
     try {
       const upserts = rows.map(r => {
         const wipInitial = Math.floor(r.avgKg * 2 * 1.2 / 100) * 100
-        const finalPlan = r.quantity > 0 ? Math.round(r.quantity) : Math.round(Math.max(0, wipInitial - r.stockKg))
+        const finalPlan  = r.quantity > 0 ? Math.round(r.quantity) : Math.round(Math.max(0, wipInitial - r.stockKg))
         return {
-          plan_date: date,
-          sap_code: r.sap_code,
-          quantity: finalPlan,
-          updated_at: new Date().toISOString(),
+          plan_date:   date,
+          sap_code:    r.sap_code,
+          quantity:    finalPlan,
+          is_manual:   r.quantity > 0,   // true = user typed a value; false = auto-calculated
+          wip_initial: wipInitial,        // store target stock level so generate-plan can use it
+          updated_at:  new Date().toISOString(),
         }
       })
       const { error } = await supabase
