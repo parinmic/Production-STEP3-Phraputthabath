@@ -74,15 +74,20 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // 2. BOM for WIP
+  // 2. BOM for WIP — query with both padded and stripped SAP codes to handle zero-padding mismatch
+  const wipSapsExpanded = Array.from(new Set([...wipSaps, ...wipSaps.map(s => s.replace(/^0+/, ''))]))
   const { data: wipBomRows } = await supabase
-    .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSaps)
+    .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSapsExpanded)
 
   const wipBomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
   for (const b of wipBomRows ?? []) {
-    const list = wipBomMap.get(b.product_sap) ?? []
-    list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? '', yield_pct: Number(b.yield_pct) })
-    wipBomMap.set(b.product_sap, list)
+    const entry = { raw_sap: b.raw_sap, raw_name: b.raw_name ?? '', yield_pct: Number(b.yield_pct) }
+    // Store under both original and stripped key so lookup works regardless of zero-padding
+    for (const k of [b.product_sap, b.product_sap.replace(/^0+/, '')]) {
+      const list = wipBomMap.get(k) ?? []
+      if (!list.some(x => x.raw_sap === entry.raw_sap)) list.push(entry)
+      wipBomMap.set(k, list)
+    }
   }
 
   // 3. Production assignments — all periods (non-สไลด์ stations)
