@@ -8,8 +8,8 @@ interface WipRow {
   sku_name: string
   station: string
   stockKg: number
-  avgKg: number   // average daily kg (already divided by days-with-data)
-  quantity: number
+  avgKg: number
+  quantity: number  // extra add-on above auto; finalPlan = auto + quantity
 }
 
 export default function WipPlanPage() {
@@ -22,7 +22,6 @@ export default function WipPlanPage() {
   const loadData = useCallback(async (d: string) => {
     setLoading(true)
     try {
-      // 1. Get WIP SKUs from master_logic_calculation
       const { data: masterData } = await supabase
         .from('master_logic_calculation')
         .select('row_data')
@@ -46,7 +45,6 @@ export default function WipPlanPage() {
 
       const wipSapList = wipSkus.map(s => s.sap_code)
 
-      // 2. Reverse BOM lookup: WIP SAP → final product SAPs (normalised, no leading zeros)
       const { data: bomData } = await supabase
         .from('bom_items')
         .select('raw_sap, product_sap')
@@ -62,7 +60,6 @@ export default function WipPlanPage() {
       }
       const allFinalSapNorms = Array.from(finalSapToWip.keys())
 
-      // 3. Load weight_per_bag for final products
       const { data: pumData } = await supabase
         .from('picking_unit_master')
         .select('sap, weight_per_bag')
@@ -74,8 +71,6 @@ export default function WipPlanPage() {
         wpbMap.set(norm, Number(p.weight_per_bag))
       }
 
-      // 4. Load last 7 days using Phase 3 order logic (same as executive dashboard):
-      //    plan100 → Makro 1400 + 0800 fallback → Lotus/WM 1400 (skip if plan100 covers SKU)
       const histDates: string[] = []
       for (let i = 1; i <= 7; i++) {
         const dt = new Date()
@@ -95,7 +90,6 @@ export default function WipPlanPage() {
         supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
       ])
 
-      // 5. Per-day Phase 3 priority → sum kg and count days-with-data per WIP SAP
       const wipKgSum = new Map<string, number>()
       const wipDayCount = new Map<string, number>()
 
@@ -118,7 +112,6 @@ export default function WipPlanPage() {
         const m1400 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '1400')
         const m0800 = mAll.filter((r: {upload_round: string|number}) => String(r.upload_round) === '0800')
         const m1400Skus = new Set((m1400 as {sku: string}[]).map(r => String(r.sku ?? '').replace(/^0+/, '')))
-        // Makro quantity is already in kg — use directly (no × wpb)
         for (const r of [...m1400, ...(m0800 as {sku: string}[]).filter(r => !m1400Skus.has(String(r.sku ?? '').replace(/^0+/, '')))] as {sku: string; quantity: number}[]) {
           const norm = String(r.sku ?? '').replace(/^0+/, '')
           const wipSap = finalSapToWip.get(norm)
@@ -135,7 +128,6 @@ export default function WipPlanPage() {
           dayKg.set(wipSap, (dayKg.get(wipSap) ?? 0) + Number(r.quantity ?? 0) * wpb)
         }
 
-        // Merge day into totals; count this day only if it has data for that WIP SAP
         for (const [wipSap, kg] of dayKg) {
           if (kg > 0) {
             wipKgSum.set(wipSap, (wipKgSum.get(wipSap) ?? 0) + kg)
@@ -144,14 +136,12 @@ export default function WipPlanPage() {
         }
       }
 
-      // Divide by actual days-with-data (not always 7)
       const avgKgByWip = new Map<string, number>()
       for (const [wipSap, total] of wipKgSum) {
         const days = wipDayCount.get(wipSap) ?? 1
         avgKgByWip.set(wipSap, total / days)
       }
 
-      // 6. Load WIP stock from stock_20 by material_name matching sku_name
       const wipNames = wipSkus.map(s => s.sku_name).filter(Boolean)
       const { data: stockData } = await supabase
         .from('stock_20')
@@ -164,7 +154,6 @@ export default function WipPlanPage() {
         stockKgByName.set(name, (stockKgByName.get(name) ?? 0) + Number(r.weight_total))
       }
 
-      // 7. Load saved WIP plan for selected date — only to pre-fill saved plan date
       const { data: planData } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity')
@@ -173,13 +162,16 @@ export default function WipPlanPage() {
       const savedQtyMap = new Map<string, number>()
       for (const p of planData ?? []) savedQtyMap.set(String(p.sap_code), Number(p.quantity))
 
-      setRows(wipSkus.map(s => ({
-        ...s,
-        stockKg: stockKgByName.get(s.sku_name) ?? 0,
-        avgKg:   avgKgByWip.get(s.sap_code) ?? 0,
-        // inputs start blank (0); if user already saved a custom value today, pre-fill it
-        quantity: savedQtyMap.get(s.sap_code) ?? 0,
-      })))
+      // quantity stored = extra add-on: if previously saved, compute extra = savedFinalPlan - currentAuto
+      setRows(wipSkus.map(s => {
+        const stockKg    = stockKgByName.get(s.sku_name) ?? 0
+        const avgKg      = avgKgByWip.get(s.sap_code) ?? 0
+        const safetyStock = Math.floor(avgKg * 3 * 1.2 / 100) * 100
+        const autoBase   = Math.max(0, safetyStock - stockKg)
+        const savedQty   = savedQtyMap.get(s.sap_code) ?? 0
+        const extra      = Math.max(0, savedQty - autoBase)
+        return { ...s, stockKg, avgKg, quantity: extra }
+      }))
     } finally {
       setLoading(false)
     }
@@ -192,14 +184,15 @@ export default function WipPlanPage() {
     setMessage('')
     try {
       const upserts = rows.map(r => {
-        const wipInitial = Math.floor(r.avgKg * 2 * 1.2 / 100) * 100
-        const finalPlan  = r.quantity > 0 ? Math.round(r.quantity) : Math.round(Math.max(0, wipInitial - r.stockKg))
+        const safetyStock = Math.floor(r.avgKg * 3 * 1.2 / 100) * 100
+        const autoBase    = Math.round(Math.max(0, safetyStock - r.stockKg))
+        const finalPlan   = autoBase + Math.round(r.quantity || 0)
         return {
           plan_date:   date,
           sap_code:    r.sap_code,
           quantity:    finalPlan,
-          is_manual:   r.quantity > 0,   // true = user typed a value; false = auto-calculated
-          wip_initial: wipInitial,        // store target stock level so generate-plan can use it
+          is_manual:   r.quantity > 0,
+          wip_initial: safetyStock,
           updated_at:  new Date().toISOString(),
         }
       })
@@ -219,7 +212,7 @@ export default function WipPlanPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">แผนผลิต WIP</h1>
-        <p className="text-gray-500 mt-1 text-sm">กรอกจำนวน (กก.) ที่ต้องการผลิตสำหรับสินค้ากลุ่ม WIP</p>
+        <p className="text-gray-500 mt-1 text-sm">กรอกจำนวน (กก.) ที่ต้องการผลิตเพิ่มจากค่าอัตโนมัติสำหรับสินค้ากลุ่ม WIP</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
@@ -256,15 +249,18 @@ export default function WipPlanPage() {
                   <th className="px-4 py-3 w-24 whitespace-nowrap">จุดงาน</th>
                   <th className="px-4 py-3 w-32 text-right text-gray-700 whitespace-nowrap">Stock ปัจจุบัน (กก.)</th>
                   <th className="px-4 py-3 w-36 text-right text-blue-700 whitespace-nowrap">Average 7 วัน (กก.)</th>
-                  <th className="px-4 py-3 w-36 text-right text-indigo-700 whitespace-nowrap">ปริมาณ WIP ตั้งต้น (กก.)</th>
-                  <th className="px-4 py-3 w-40 text-right whitespace-nowrap">จำนวนที่กรอก (กก.)</th>
+                  <th className="px-4 py-3 w-36 text-right text-red-600 whitespace-nowrap">WIP Crisis (กก.)</th>
+                  <th className="px-4 py-3 w-36 text-right text-indigo-700 whitespace-nowrap">Safety Stock (กก.)</th>
+                  <th className="px-4 py-3 w-40 text-right whitespace-nowrap">เพิ่มเติม (กก.)</th>
                   <th className="px-4 py-3 w-32 text-right text-emerald-700 whitespace-nowrap">Final Plan (กก.)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row, i) => {
-                  const wipInitial = Math.floor(row.avgKg * 2 * 1.2 / 100) * 100
-                  const finalPlan = row.quantity > 0 ? Math.round(row.quantity) : Math.round(Math.max(0, wipInitial - row.stockKg))
+                  const safetyStock = Math.floor(row.avgKg * 3 * 1.2 / 100) * 100
+                  const autoBase    = Math.round(Math.max(0, safetyStock - row.stockKg))
+                  const wipCrisis   = Math.max(0, Math.round(row.avgKg) - Math.round(row.stockKg))
+                  const finalPlan   = autoBase + Math.round(row.quantity || 0)
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3 text-center text-xs text-gray-400 font-mono">{i + 1}</td>
@@ -277,8 +273,13 @@ export default function WipPlanPage() {
                       <td className="px-4 py-3 text-right font-mono text-xs text-blue-700">
                         {row.avgKg > 0 ? Math.round(row.avgKg).toLocaleString('th-TH') : '—'}
                       </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {wipCrisis > 0
+                          ? <span className="text-red-600 font-semibold">{wipCrisis.toLocaleString('th-TH')}</span>
+                          : <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-indigo-700">
-                        {wipInitial > 0 ? wipInitial.toLocaleString('th-TH') : '—'}
+                        {safetyStock > 0 ? safetyStock.toLocaleString('th-TH') : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <input
