@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-const VALID_TYPES = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
+const VALID_TYPES = [
+  'sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special',
+  'sa-phok-basic', 'lai-basic', 'sam-chan-basic', 'perd-moo',
+]
 
 export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? ''
