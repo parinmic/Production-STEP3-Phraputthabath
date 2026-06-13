@@ -4,18 +4,6 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
-interface WithdrawalItem {
-  id: string
-  request_date: string
-  phase: number
-  sku: string
-  sku_name: string | null
-  quantity: number
-  unit: string
-  work_station: string | null
-  note: string | null
-}
-
 interface ShortageRow {
   sku: string
   sku_name: string | null
@@ -50,20 +38,6 @@ const STATION_DISPLAY: Record<string, string> = {
   'สไลด์':   'สไลด์พิเศษ',
 }
 
-function parseFPSkus(note: string | null): string[] {
-  if (!note) return []
-  const m = note.match(/\[FP:([^\]]+)\]/)
-  if (!m) return []
-  return m[1].split('|').map(p => p.split('~')[0]).filter(Boolean)
-}
-
-function parseDeficit(note: string | null): number | null {
-  if (!note) return null
-  const m = note.match(/ขาด\s*([\d,.]+)\s*กก\./)
-  if (!m) return null
-  return parseFloat(m[1].replace(/,/g, ''))
-}
-
 
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
@@ -83,60 +57,73 @@ export default function ShortagePage() {
     try {
       const period = PERIOD_MAP[phase] ?? 'เช้า'
 
-      const [withdrawalRes, assignRes] = await Promise.all([
-        fetch(`/api/withdrawal?date=${date}&phase=${phase}`).then(r => r.json()),
-        supabase
-          .from('production_assignments')
-          .select('sku, deadline_time, table_name')
-          .eq('production_date', date)
-          .eq('period', period)
-          .like('note', '%|deficit%')
-          .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']),
-      ])
+      // 1. Deficit production assignments
+      const { data: deficitRows } = await supabase
+        .from('production_assignments')
+        .select('sku, sku_name, target_quantity, deadline_time, table_name')
+        .eq('production_date', date)
+        .eq('period', period)
+        .like('note', '%|deficit%')
+        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
 
-      const items: WithdrawalItem[] = withdrawalRes.items ?? []
+      if (!deficitRows?.length) { setRows([]); return }
 
-      const deficitTimeMap = new Map<string, string>()
-      for (const a of assignRes.data ?? []) {
-        const normSku  = String(a.sku).replace(/^0+/, '')
-        const key      = `${a.table_name}|||${normSku}`
-        const dt       = String(a.deadline_time ?? '').slice(0, 5)
-        const existing = deficitTimeMap.get(key)
-        if (dt && (!existing || dt < existing)) deficitTimeMap.set(key, dt)
+      // 2. BOM for deficit SKUs → convert finished-product qty to raw material needs
+      const skus     = Array.from(new Set(deficitRows.map(a => String(a.sku))))
+      const skusNorm = Array.from(new Set(skus.map(s => s.replace(/^0+/, ''))))
+      const { data: bomRows } = await supabase
+        .from('bom_items')
+        .select('product_sap, raw_sap, raw_name, yield_pct')
+        .in('product_sap', [...skus, ...skusNorm])
+
+      const bomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
+      for (const b of bomRows ?? []) {
+        if (!b.raw_name) continue
+        const norm = b.product_sap.replace(/^0+/, '')
+        for (const key of [b.product_sap, norm]) {
+          const list = bomMap.get(key) ?? []
+          if (!list.some(x => x.raw_sap === b.raw_sap)) {
+            list.push({ raw_sap: b.raw_sap ?? '', raw_name: b.raw_name, yield_pct: Number(b.yield_pct) || 1 })
+            bomMap.set(key, list)
+          }
+        }
       }
 
-      const shortage = items
-        .filter(i => i.note?.includes('ไม่เพียงพอ'))
-        .map(i => {
-          const fpSkus = parseFPSkus(i.note)
-          let productionTime: string | null = null
-          for (const fpSku of fpSkus) {
-            const normFp = fpSku.replace(/^0+/, '')
-            const dt = deficitTimeMap.get(`${i.work_station}|||${normFp}`)
-            if (dt && (!productionTime || dt < productionTime)) productionTime = dt
-          }
-          return {
-            sku:          i.sku,
-            sku_name:     i.sku_name,
-            quantity:     i.quantity,
-            unit:         i.unit,
-            deficit:      parseDeficit(i.note),
-            productionTime,
-            work_station: i.work_station,
-          }
-        })
-        .reduce((acc, row) => {
-          const key = `${row.work_station}|||${row.sku.replace(/^0+/, '')}|||${row.productionTime ?? ''}`
-          const existing = acc.get(key)
-          if (existing) {
-            existing.deficit = (existing.deficit ?? 0) + (row.deficit ?? 0)
-          } else {
-            acc.set(key, { ...row })
-          }
-          return acc
-        }, new Map<string, ShortageRow>())
+      // 3. Aggregate raw material deficit by (station, raw_sap)
+      const rawMap = new Map<string, ShortageRow>()
 
-      const merged = Array.from(shortage.values()).sort((a, b) => {
+      for (const a of deficitRows) {
+        const sku  = String(a.sku)
+        const norm = sku.replace(/^0+/, '')
+        const qty  = Number(a.target_quantity)
+        const stn  = String(a.table_name)
+        const time = String(a.deadline_time ?? '').slice(0, 5)
+        const boms = bomMap.get(norm) ?? bomMap.get(sku) ?? []
+
+        const addRow = (rawSku: string, rawName: string | null, rawQty: number) => {
+          const key = `${stn}|||${rawSku || rawName || norm}`
+          const ex  = rawMap.get(key)
+          if (ex) {
+            ex.quantity += rawQty
+            ex.deficit   = (ex.deficit ?? 0) + rawQty
+            if (time && (!ex.productionTime || time < ex.productionTime)) ex.productionTime = time
+          } else {
+            rawMap.set(key, { sku: rawSku || sku, sku_name: rawName ?? a.sku_name, quantity: rawQty, unit: 'กก.', deficit: rawQty, productionTime: time || null, work_station: stn })
+          }
+        }
+
+        if (!boms.length) {
+          addRow(sku, a.sku_name, qty)
+        } else {
+          for (const b of boms) {
+            addRow(b.raw_sap || b.raw_name, b.raw_name, b.yield_pct > 0 ? qty / b.yield_pct : qty)
+          }
+        }
+      }
+
+      const merged = Array.from(rawMap.values())
+        .map(r => ({ ...r, quantity: Math.round(r.quantity * 100) / 100, deficit: Math.round((r.deficit ?? 0) * 100) / 100 }))
+        .sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')
           const sb = STATION_ORDER.indexOf(b.work_station ?? '')
           if (sa !== sb) return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb)
