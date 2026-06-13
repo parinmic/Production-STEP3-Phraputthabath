@@ -72,7 +72,7 @@ function GroupCard({ group }: { group: AllocationGroup }) {
   }
 
   return (
-    <div className={`card border-2 ${cfg.border}`}>
+    <div className={`card border-2 ${hasShortage ? 'border-red-400' : cfg.border}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
