@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 const VALID_TYPES = [
+  // Special
   'mas-productivity',
   'mas-variance-makro',
   'mas-variance-wet-market',
@@ -12,19 +13,36 @@ const VALID_TYPES = [
   'mas-special',
   'mas-sku-concurrent',
   'mas-raw-material',
+  // Basic
+  'mas-productivity-basic',
+  'mas-variance-makro-basic',
+  'mas-variance-wet-market-basic',
+  'mas-variance-lotus-basic',
+  'mas-channel-basic',
+  'mas-special-basic',
+  'mas-saipan',
+  'mas-raw-basket',
 ]
 
 const TYPE_LABEL: Record<string, string> = {
-  'mas-productivity':        'Mas Productivity',
-  'mas-variance-makro':      'Mas %Variance Makro',
-  'mas-variance-wet-market': 'Mas %Variance Wet Market',
-  'mas-variance-lotus':      'Mas %Variance LOTUS',
-  'mas-lotus':               'Mas LOTUS',
-  'mas-channel':             'Mas Channel',
-  'mas-trakra':              'Mas ตระกร้า',
-  'mas-special':             'Mas Special',
-  'mas-sku-concurrent':      'Mas Sku ผลิตพร้อมกัน',
-  'mas-raw-material':        'Mas Raw Material',
+  'mas-productivity':                'Mas Productivity',
+  'mas-variance-makro':              'Mas %Variance Makro',
+  'mas-variance-wet-market':         'Mas %Variance Wet Market',
+  'mas-variance-lotus':              'Mas %Variance LOTUS',
+  'mas-lotus':                       'Mas LOTUS',
+  'mas-channel':                     'Mas Channel',
+  'mas-trakra':                      'Mas ตระกร้า',
+  'mas-special':                     'Mas Special',
+  'mas-sku-concurrent':              'Mas Sku ผลิตพร้อมกัน',
+  'mas-raw-material':                'Mas Raw Material',
+  'mas-productivity-basic':          'Mas Productivity Basic',
+  'mas-variance-makro-basic':        'Mas %Variance Makro Basic',
+  'mas-variance-wet-market-basic':   'Mas %Variance Wet Market Basic',
+  'mas-variance-lotus-basic':        'Mas %Variance LOTUS Basic',
+  'mas-channel-basic':               'Mas Channel Basic',
+  'mas-special-basic':               'Mas Special Basic',
+  'mas-saipan':                      'Mas สายพาน',
+  'mas-raw-basket':                  'Mas ตะกร้า Raw',
 }
 
 export async function GET(req: NextRequest) {
