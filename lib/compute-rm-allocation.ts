@@ -20,18 +20,46 @@ export interface RmGroup {
   skipped?: string
 }
 
-type StockRow   = { material_code: string; material_name: string | null; weight_total: number }
-type SkuQtyMap  = Map<string, { station: string; qty: number }>
+type StockRow  = { material_code: string; material_name: string | null; weight_total: number }
+type SkuQtyMap = Map<string, { station: string; qty: number; channel: string | null }>
 
 const ALL_NON_SLIDE  = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด']
 const OTHER_STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่']
+const PHASE_PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
+
+function extractCondChannel(condition: string): string | null {
+  const c = condition.toLowerCase()
+  if (c.includes('lotus')) return 'LOTUS'
+  if (c.includes('makro')) return 'Makro'
+  if (c.includes('wet'))   return 'Wet'
+  return null
+}
+
+// Matches DB channel value against a condition-derived channel key.
+// "Wet Market".startsWith("Wet") → true, "LOTUS" === "LOTUS" → true
+function channelMatch(dbChannel: string | null | undefined, condChannel: string): boolean {
+  if (!dbChannel) return false
+  const db   = dbChannel.toLowerCase()
+  const cond = condChannel.toLowerCase()
+  return db === cond || db.startsWith(cond) || cond.startsWith(db)
+}
 
 /**
  * Compute priority-based pool allocation for all three phases.
- * Pool depletes sequentially: Phase 1 P1 → P2 → P3 → P4 → Phase 2 → Phase 3.
- * Returns all RmGroup entries with allocated_kg reflecting actual pool availability.
+ * Priority order is driven by the `mas_priority_withdrawal` table.
+ * Pool depletes sequentially according to the table's phase/priority_order.
  */
 export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
+  // 0. Load priority table
+  const { data: priorityRowsRaw } = await supabase
+    .from('mas_priority_withdrawal')
+    .select('phase, station, priority_order, condition')
+
+  const priorityRows = (priorityRowsRaw ?? []).sort((a, b) =>
+    (Number(a.phase) - Number(b.phase)) || (Number(a.priority_order) - Number(b.priority_order))
+  )
+  if (!priorityRows.length) return []
+
   // 1. WIP Plan
   const { data: wipRows } = await supabase
     .from('wip_plan')
@@ -61,7 +89,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     wipSkuNameBySap.set(sap, String(row['ชื่อสินค้า'] ?? '').trim())
   }
 
-  // 1c. WIP current stock from stock_20 by material_name
+  // 1c. WIP current stock from stock_20
   const wipNames = wipSaps.map(s => wipSkuNameBySap.get(s)).filter(Boolean) as string[]
   const wipStockMap = new Map<string, number>()
   if (wipNames.length) {
@@ -74,7 +102,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // 2. BOM for WIP — query with both padded and stripped SAP codes to handle zero-padding mismatch
+  // 2. BOM for WIP
   const wipSapsExpanded = Array.from(new Set([...wipSaps, ...wipSaps.map(s => s.replace(/^0+/, ''))]))
   const { data: wipBomRows } = await supabase
     .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSapsExpanded)
@@ -82,7 +110,6 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   const wipBomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
   for (const b of wipBomRows ?? []) {
     const entry = { raw_sap: b.raw_sap, raw_name: b.raw_name ?? '', yield_pct: Number(b.yield_pct) }
-    // Store under both original and stripped key so lookup works regardless of zero-padding
     for (const k of [b.product_sap, b.product_sap.replace(/^0+/, '')]) {
       const list = wipBomMap.get(k) ?? []
       if (!list.some(x => x.raw_sap === entry.raw_sap)) list.push(entry)
@@ -90,10 +117,10 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // 3. Production assignments — all periods (non-สไลด์ stations)
+  // 3. Production assignments (all non-สไลด์ stations) — include channel
   const { data: assnRows } = await supabase
     .from('production_assignments')
-    .select('table_name, sku, sku_name, target_quantity, period')
+    .select('table_name, sku, sku_name, target_quantity, period, channel')
     .eq('production_date', date)
     .in('period', ['เช้า', 'บ่าย', 'ค่ำ'])
     .in('table_name', ALL_NON_SLIDE)
@@ -104,8 +131,9 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   for (const a of assnRows ?? []) {
     const pm = skuQtyByPeriod.get(a.period)
     if (!pm) continue
-    const k = `${a.table_name}|||${a.sku}`
-    const cur = pm.get(k) ?? { station: a.table_name, qty: 0 }
+    // Key includes channel so same SKU from different channels stays separate
+    const k   = `${a.table_name}|||${a.sku}|||${a.channel ?? ''}`
+    const cur = pm.get(k) ?? { station: a.table_name, qty: 0, channel: a.channel ?? null }
     cur.qty += Number(a.target_quantity)
     pm.set(k, cur)
   }
@@ -158,14 +186,14 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   function takeFromPool(rawName: string, amount: number): number {
-    const key = normName(rawName)
+    const key  = normName(rawName)
     const avail = pool.get(key) ?? 0
     const taken = Math.min(amount, avail)
     pool.set(key, avail - taken)
     return taken
   }
 
-  // ── Mas Moo Chod data (หมูบด priority-based allocation) ──────────────────
+  // ── Mas Moo Chod (หมูบด) ─────────────────────────────────────────────────
 
   interface MooIngAlloc {
     ingredient_type: string; priority: number
@@ -191,12 +219,10 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   const mooMeatIngsAlloc = mooIngsAlloc.filter(i => i.ingredient_type === 'เนื้อ')
   const mooFatIngsAlloc  = mooIngsAlloc.filter(i => i.ingredient_type === 'มัน')
 
-  // Fetch stock for non-shared Mas Moo Chod ingredients (P1/P2 that aren't in pool)
-  // Shared ingredients (like เนื้อไหล่-Raw at P3) are already in pool via other station BOMs
-  const nonSharedMooIngs   = mooIngsAlloc.filter(ing => !pool.has(normName(ing.product_name)))
-  const nonSharedMooSaps   = nonSharedMooIngs.map(i => i.sap_code).filter(Boolean) as string[]
-  const nonSharedMooNames  = nonSharedMooIngs.map(i => i.product_name).filter(Boolean)
-  const nonSharedExpanded  = Array.from(new Set(
+  const nonSharedMooIngs  = mooIngsAlloc.filter(ing => !pool.has(normName(ing.product_name)))
+  const nonSharedMooSaps  = nonSharedMooIngs.map(i => i.sap_code).filter(Boolean) as string[]
+  const nonSharedMooNames = nonSharedMooIngs.map(i => i.product_name).filter(Boolean)
+  const nonSharedExpanded = Array.from(new Set(
     nonSharedMooNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])
   ))
 
@@ -227,16 +253,14 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // Replaces allocateStation('หมูบด', period): uses Mas Moo Chod ingredient priorities
-  // instead of BOM. Non-shared P1/P2 ingredients use own stock; shared P3 ingredients
-  // use the shared pool (so allocation reflects actual contention with other stations).
-  function allocateMooStation(period: string): RmRawNeed[] {
+  function allocateMooStation(period: string, channelFilter: string | null = null): RmRawNeed[] {
     const pm = skuQtyByPeriod.get(period) ?? new Map()
 
     let totalFatKg  = 0
     let totalMeatKg = 0
     for (const [key, info] of Array.from(pm.entries())) {
       if (info.station !== 'หมูบด') continue
+      if (channelFilter != null && !channelMatch(info.channel, channelFilter)) continue
       const sku = key.split('|||')[1]
       const fatPct = mooFatPercentBySap.get(sku) ?? mooFatPercentBySap.get(sku.replace(/^0+/, '')) ?? 0
       totalFatKg  += info.qty * fatPct / 100
@@ -256,7 +280,6 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
           const normN = normName(ing.product_name)
           const inPool = pool.has(normN)
           if (inPool) {
-            // Shared ingredient: allocate from shared pool
             const allocated = takeFromPool(ing.product_name, remaining)
             result.push({
               raw_sap:      ing.sap_code ?? normN,
@@ -267,7 +290,6 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
             })
             remaining -= allocated
           } else {
-            // Non-shared: deplete own stock (not pool), not shown in rm-allocation
             const ownSap   = ing.sap_code ?? ''
             const sapAvail = mooOwnStockBySap.get(ownSap) ?? 0
             const normAvail = mooOwnStockByNorm.get(normN) ?? 0
@@ -287,10 +309,11 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     return result.sort((a, b) => b.needed_kg - a.needed_kg)
   }
 
-  function stationRawNeeds(station: string, periodMap: SkuQtyMap) {
+  function stationRawNeeds(station: string, periodMap: SkuQtyMap, channelFilter: string | null = null) {
     const needs = new Map<string, { raw_sap: string; raw_name: string; needed: number }>()
     for (const [key, info] of Array.from(periodMap.entries())) {
       if (info.station !== station) continue
+      if (channelFilter != null && !channelMatch(info.channel, channelFilter)) continue
       const sku = key.split('|||')[1]
       for (const bom of assnBomMap.get(sku) ?? []) {
         if (!bom.raw_name) continue
@@ -304,9 +327,9 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     return needs
   }
 
-  function allocateStation(station: string, period: string): RmRawNeed[] {
+  function allocateStation(station: string, period: string, channelFilter: string | null = null): RmRawNeed[] {
     const pm    = skuQtyByPeriod.get(period) ?? new Map()
-    const needs = stationRawNeeds(station, pm)
+    const needs = stationRawNeeds(station, pm, channelFilter)
     if (!needs.size) return []
     return Array.from(needs.values()).map(({ raw_sap, raw_name, needed }) => {
       const allocated = takeFromPool(raw_name, needed)
@@ -314,106 +337,91 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }).sort((a, b) => b.needed_kg - a.needed_kg)
   }
 
-  // ════ PHASE 1 ════
+  // ════ Data-driven allocation loop ════════════════════════════════════════
 
-  const p1Items: RmRawNeed[] = []
-  const finalPlanByWip = new Map<string, number>()
+  const groups: RmGroup[] = []
+  const wipFinalPlanByWip = new Map<string, number>()
 
-  for (const wip of wipRows) {
-    const productionQty   = Number(wip.quantity)
-    if (productionQty < 0.005) continue
-    const wipInit         = Number(wip.wip_initial ?? 0)
-    const currentWIPStock = wipStockMap.get(String(wip.sap_code)) ?? 0
-    const effectiveQty    = wipInit > 0
-      ? Math.min(productionQty, Math.max(0, wipInit - currentWIPStock))
-      : productionQty
-    if (effectiveQty < 0.005) continue
-    finalPlanByWip.set(wip.sap_code, effectiveQty)
-    for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
-      const rawNeeded = bom.yield_pct > 0 ? effectiveQty / bom.yield_pct : effectiveQty
-      const allocated = takeFromPool(bom.raw_name, rawNeeded)
-      p1Items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
-    }
-  }
+  for (const row of priorityRows) {
+    const phase    = Number(row.phase)
+    const priority = Number(row.priority_order)
+    const station  = String(row.station ?? '')
+    const condition = String(row.condition ?? '')
+    const period   = PHASE_PERIOD[String(phase)]
+    if (!period) continue
 
-  const ph1P2Groups: RmGroup[] = []
-  for (const st of OTHER_STATIONS) {
-    const items = allocateStation(st, 'เช้า')
-    if (items.length) ph1P2Groups.push({ phase: 1, priority: 2, station: st, purpose: 'ผลิต Phase 1 ให้ครบ (เช้า)', items })
-  }
-  const ph1P3Items = allocateMooStation('เช้า')
+    const isWipCrisis = condition.includes('WIP Crisis')
+    const isWipExtra  = condition.includes('25%')
+    const isRemainder = station === 'สไลด์' && !isWipCrisis && !isWipExtra
+    const condChannel = extractCondChannel(condition)
 
-  const p4Items: RmRawNeed[] = []
-  for (const wip of wipRows) {
-    const fp = finalPlanByWip.get(wip.sap_code) ?? 0
-    if (fp < 0.005) continue
-    for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
-      const rawNeeded = bom.yield_pct > 0 ? (fp * 0.5) / bom.yield_pct : fp * 0.5
-      const allocated = takeFromPool(bom.raw_name, rawNeeded)
-      p4Items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
-    }
-  }
-  const p4WasDone = p4Items.reduce((s, i) => s + i.allocated_kg, 0) > 0.005
-
-  // ════ PHASE 2 ════
-
-  const ph2P1Items: RmRawNeed[] = []
-  let ph2P1Skipped: string | undefined
-
-  if (p4WasDone) {
-    ph2P1Skipped = 'Phase 1 P4 ดำเนินการแล้ว — ไม่จำเป็นต้องผลิต WIP เพิ่ม'
-  } else {
-    for (const wip of wipRows) {
-      const fp = finalPlanByWip.get(wip.sap_code) ?? 0
-      if (fp < 0.005) continue
-      for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
-        const rawNeeded = bom.yield_pct > 0 ? (fp * 0.5) / bom.yield_pct : fp * 0.5
-        const allocated = takeFromPool(bom.raw_name, rawNeeded)
-        ph2P1Items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
+    if (station === 'สไลด์' && isWipCrisis) {
+      // Produce WIP up to the needed amount (safety stock target minus current stock)
+      const items: RmRawNeed[] = []
+      for (const wip of wipRows) {
+        const productionQty = Number(wip.quantity)
+        if (productionQty < 0.005) continue
+        const wipInit        = Number(wip.wip_initial ?? 0)
+        const currentStock   = wipStockMap.get(String(wip.sap_code)) ?? 0
+        const effectiveQty   = wipInit > 0
+          ? Math.min(productionQty, Math.max(0, wipInit - currentStock))
+          : productionQty
+        if (effectiveQty < 0.005) continue
+        wipFinalPlanByWip.set(wip.sap_code, effectiveQty)
+        for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
+          const rawNeeded = bom.yield_pct > 0 ? effectiveQty / bom.yield_pct : effectiveQty
+          const allocated = takeFromPool(bom.raw_name, rawNeeded)
+          items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
+        }
       }
+      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP ตาม Final Plan', items })
+
+    } else if (station === 'สไลด์' && isWipExtra) {
+      // Extra WIP ≤25% of effective plan
+      const items: RmRawNeed[] = []
+      for (const wip of wipRows) {
+        const fp = wipFinalPlanByWip.get(wip.sap_code) ?? 0
+        if (fp < 0.005) continue
+        for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
+          const rawNeeded = bom.yield_pct > 0 ? (fp * 0.25) / bom.yield_pct : fp * 0.25
+          const allocated = takeFromPool(bom.raw_name, rawNeeded)
+          items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
+        }
+      }
+      groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
+
+    } else if (station === 'สไลด์' && isRemainder) {
+      // Allocate all remaining pool to สไลด์
+      const items: RmRawNeed[] = []
+      const seenKeys = new Set<string>()
+      for (const [key, remaining] of Array.from(pool.entries())) {
+        if (remaining < 0.005 || seenKeys.has(key)) continue
+        seenKeys.add(key)
+        const displayName = normToDisplay.get(key) ?? key
+        const allocated   = takeFromPool(displayName, remaining)
+        items.push({ raw_sap: rawSapByNorm.get(key) ?? '', raw_name: displayName, needed_kg: round2(remaining), allocated_kg: round2(allocated), shortage_kg: 0 })
+      }
+      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'รับเนื้อที่เหลือทั้งหมด', items })
+
+    } else if (station === 'อื่น ๆ') {
+      const purpose = condChannel
+        ? `ผลิต Phase ${phase} ${condChannel} (${period})`
+        : `ผลิต Phase ${phase} ให้ครบ (${period})`
+      for (const st of OTHER_STATIONS) {
+        const items = allocateStation(st, period, condChannel)
+        if (items.length) groups.push({ phase, priority, station: st, purpose, items })
+      }
+
+    } else if (station === 'หมูบด') {
+      const purpose = condChannel
+        ? `ผลิต Phase ${phase} ${condChannel} (${period})`
+        : `ผลิต Phase ${phase} (${period})`
+      const items = allocateMooStation(period, condChannel)
+      if (items.length) groups.push({ phase, priority, station: 'หมูบด', purpose, items })
     }
-    if (!ph2P1Items.length || ph2P1Items.every(i => i.allocated_kg < 0.005))
-      ph2P1Skipped = 'ไม่มีวัตถุดิบเหลือสำหรับผลิต WIP เพิ่ม'
   }
 
-  const ph2P2Groups: RmGroup[] = []
-  for (const st of OTHER_STATIONS) {
-    const items = allocateStation(st, 'บ่าย')
-    if (items.length) ph2P2Groups.push({ phase: 2, priority: 2, station: st, purpose: 'ผลิต Phase 2 ให้ครบ (บ่าย)', items })
-  }
-  const ph2P3Items = allocateMooStation('บ่าย')
-
-  // ════ PHASE 3 ════
-
-  const ph3P1Groups: RmGroup[] = []
-  for (const st of OTHER_STATIONS) {
-    const items = allocateStation(st, 'ค่ำ')
-    if (items.length) ph3P1Groups.push({ phase: 3, priority: 1, station: st, purpose: 'ผลิต Phase 3 (ค่ำ)', items })
-  }
-  const ph3P2Items = allocateMooStation('ค่ำ')
-
-  const ph3P3Items: RmRawNeed[] = []
-  const seenKeys = new Set<string>()
-  for (const [key, remaining] of Array.from(pool.entries())) {
-    if (remaining < 0.005 || seenKeys.has(key)) continue
-    seenKeys.add(key)
-    const displayName = normToDisplay.get(key) ?? key
-    const allocated   = takeFromPool(displayName, remaining)
-    ph3P3Items.push({ raw_sap: rawSapByNorm.get(key) ?? '', raw_name: displayName, needed_kg: round2(remaining), allocated_kg: round2(allocated), shortage_kg: 0 })
-  }
-
-  return [
-    { phase: 1, priority: 1, station: 'สไลด์',  purpose: 'ผลิต WIP ตาม Final Plan',                    items: p1Items },
-    ...ph1P2Groups,
-    ...(ph1P3Items.length ? [{ phase: 1, priority: 3, station: 'หมูบด', purpose: 'ผลิต Phase 1 (เช้า)', items: ph1P3Items }] : []),
-    { phase: 1, priority: 4, station: 'สไลด์',  purpose: 'ผลิต WIP เพิ่มเติม (≤50% Final Plan)',       items: p4Items },
-    { phase: 2, priority: 1, station: 'สไลด์',  purpose: 'ผลิต WIP เพิ่ม (กรณี P4 Phase 1 ไม่ได้ทำ)', items: ph2P1Items, ...(ph2P1Skipped ? { skipped: ph2P1Skipped } : {}) },
-    ...ph2P2Groups,
-    ...(ph2P3Items.length ? [{ phase: 2, priority: 3, station: 'หมูบด', purpose: 'ผลิต Phase 2 (บ่าย)', items: ph2P3Items }] : []),
-    ...ph3P1Groups,
-    ...(ph3P2Items.length ? [{ phase: 3, priority: 2, station: 'หมูบด', purpose: 'ผลิต Phase 3 (ค่ำ)',  items: ph3P2Items }] : []),
-    ...(ph3P3Items.length ? [{ phase: 3, priority: 3, station: 'สไลด์', purpose: 'รับเนื้อที่เหลือทั้งหมด',  items: ph3P3Items }] : []),
-  ]
+  return groups
 }
 
 /**
