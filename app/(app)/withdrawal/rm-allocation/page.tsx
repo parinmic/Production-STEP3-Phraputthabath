@@ -51,6 +51,8 @@ function GroupCard({ group }: { group: AllocationGroup }) {
   const hasShortage  = totalShort > 0.5
   const isSkipped    = !!group.skipped
 
+  if (!isSkipped && group.items.length === 0) return null
+
   if (isSkipped) {
     return (
       <div className="card border border-dashed border-gray-200 bg-gray-50/60 opacity-70">
