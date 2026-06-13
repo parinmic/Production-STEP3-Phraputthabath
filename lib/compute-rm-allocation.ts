@@ -339,8 +339,16 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
 
   // ════ Data-driven allocation loop ════════════════════════════════════════
 
+  // Phase 2 uploads a fresh stock file (overwrites Phase 1's stock), so Phase 1
+  // and Phase 2 each draw from independent pools. Phase 3 shares Phase 2's pool.
+  // Snapshot the pool before Phase 1 and restore it at the start of Phase 2.
+  const poolSnapshot         = new Map(pool)
+  const mooNormSnapshot      = new Map(mooOwnStockByNorm)
+  const mooSapSnapshot       = new Map(mooOwnStockBySap)
+
   const groups: RmGroup[] = []
   const wipFinalPlanByWip = new Map<string, number>()
+  let lastPhase = 0
 
   for (const row of priorityRows) {
     const phase    = Number(row.phase)
@@ -349,6 +357,17 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     const condition = String(row.condition ?? '')
     const period   = PHASE_PERIOD[String(phase)]
     if (!period) continue
+
+    // At the boundary between Phase 1 → Phase 2, restore pool to fresh state
+    if (phase === 2 && lastPhase < 2) {
+      for (const [k, v] of poolSnapshot) pool.set(k, v)
+      for (const k of Array.from(pool.keys())) { if (!poolSnapshot.has(k)) pool.delete(k) }
+      for (const [k, v] of mooNormSnapshot) mooOwnStockByNorm.set(k, v)
+      for (const k of Array.from(mooOwnStockByNorm.keys())) { if (!mooNormSnapshot.has(k)) mooOwnStockByNorm.delete(k) }
+      for (const [k, v] of mooSapSnapshot) mooOwnStockBySap.set(k, v)
+      for (const k of Array.from(mooOwnStockBySap.keys())) { if (!mooSapSnapshot.has(k)) mooOwnStockBySap.delete(k) }
+    }
+    lastPhase = phase
 
     const isWipCrisis = condition.includes('WIP Crisis')
     const isWipExtra  = condition.includes('25%')
