@@ -117,6 +117,14 @@ function normalizeRow(r: Record<string, unknown>): Record<string, unknown> {
 
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
 
+// Map short station names from Productivity Master to Basic station names used in workforce
+const BASIC_STATION_MAP: Record<string, string> = {
+  'สะโพก':  'สะโพกเบสิค',
+  'ไหล่':   'ไหล่เบสิค',
+  'สามชั้น': 'สามชั้นเบสิค',
+}
+const toBasicStation = (s: string): string => BASIC_STATION_MAP[normalizeStation(s)] ?? normalizeStation(s)
+
 const normName = (s: string) => {
   if (!s) return ''
   return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
@@ -1314,7 +1322,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
         const prod = skuMap.get(normSku) ?? skuMap.get(item.sku)
         if (!prod) continue
-        const station = normalizeStation(prod.station)
+        const station = toBasicStation(prod.station)
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
 
