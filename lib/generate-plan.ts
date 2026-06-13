@@ -2163,6 +2163,117 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
 
+    // ── Mas Moo Chod: add shared ingredient demand for หมูบด to the pool allocation ──
+    // Uses actual P1/P2 own-stock to compute residual demand that falls on shared P3 (e.g. เนื้อไหล่-Raw).
+    let mooTotalKg = 0
+    if (stockWasUploaded && mooChōdSapSet.size > 0) {
+      const mooChōdItems = assignList.filter(item => {
+        const c = item.sku.replace(/^0+/, '')
+        return mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(c)
+      })
+      if (mooChōdItems.length > 0) {
+        interface MooIngLocal { ingredient_type: string; priority: number; sap_code: string | null; product_name: string }
+
+        // Fetch masters (fat_percent + ingredients)
+        const [mooMasterSplit, mooWithdrawalSplit] = await Promise.all([
+          supabase.from('moo_chod_master').select('sap_code, fat_percent'),
+          supabase.from('moo_chod_withdrawal_master')
+            .select('ingredient_type, priority, sap_code, product_name')
+            .order('ingredient_type').order('priority').order('id'),
+        ])
+        const mooFatMapSplit = new Map<string, number>()
+        for (const r of mooMasterSplit.data ?? []) {
+          if (!r.sap_code) continue
+          const s = String(r.sap_code).trim()
+          mooFatMapSplit.set(s, Number(r.fat_percent ?? 0))
+          mooFatMapSplit.set(s.replace(/^0+/, ''), Number(r.fat_percent ?? 0))
+        }
+        const mooIngsSplit     = (mooWithdrawalSplit.data ?? []) as MooIngLocal[]
+        const mooMeatIngsSplit = mooIngsSplit.filter(i => i.ingredient_type === 'เนื้อ')
+        const mooFatIngsSplit  = mooIngsSplit.filter(i => i.ingredient_type === 'มัน')
+
+        // Fetch stock for non-shared P1/P2 Mas Moo Chod ingredients (not in pool)
+        const nonSharedIngsSplit  = mooIngsSplit.filter(ing => !pool.has(normMatNameLocal(ing.product_name)) && !(ing.sap_code && poolSap.has(ing.sap_code)))
+        const nonSharedSapsSplit  = nonSharedIngsSplit.map(i => i.sap_code).filter(Boolean) as string[]
+        const nonSharedNamesSplit = nonSharedIngsSplit.map(i => i.product_name).filter(Boolean)
+        const nonSharedExpSplit   = Array.from(new Set(
+          nonSharedNamesSplit.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])
+        ))
+        const mooOwnStockNorm = new Map<string, number>()
+        const mooOwnStockSap  = new Map<string, number>()
+        {
+          type SR2 = { material_code: string; material_name: string | null; weight_total: number }
+          const proms: Promise<{ data: SR2[] | null }>[] = []
+          if (nonSharedSapsSplit.length)
+            proms.push(
+              supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_code', nonSharedSapsSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+              supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_code', nonSharedSapsSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+            )
+          if (nonSharedExpSplit.length)
+            proms.push(
+              supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_name', nonSharedExpSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+              supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_name', nonSharedExpSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+            )
+          for (const r of await Promise.all(proms)) {
+            for (const row of r.data ?? []) {
+              if (row.material_name) {
+                const k = normMatNameLocal(row.material_name)
+                mooOwnStockNorm.set(k, (mooOwnStockNorm.get(k) ?? 0) + Number(row.weight_total))
+              }
+              if (row.material_code)
+                mooOwnStockSap.set(row.material_code, (mooOwnStockSap.get(row.material_code) ?? 0) + Number(row.weight_total))
+            }
+          }
+        }
+
+        // Compute total fat/meat demand from หมูบด assignments
+        let totalMooFatKg  = 0
+        let totalMooMeatKg = 0
+        for (const item of mooChōdItems) {
+          const s = item.sku.replace(/^0+/, '')
+          const fatPct = mooFatMapSplit.get(s) ?? mooFatMapSplit.get(item.sku) ?? 0
+          totalMooFatKg  += item.targetQty * fatPct / 100
+          totalMooMeatKg += item.targetQty * (1 - fatPct / 100)
+        }
+        mooTotalKg = totalMooFatKg + totalMooMeatKg
+
+        // Simulate priority allocation: deplete P1/P2 own stock, then add residual to
+        // stationRawTotalNeeded for shared P3 ingredients so they enter pool allocation.
+        function addMooSharedNeeds(demandKg: number, ings: MooIngLocal[]) {
+          let remaining = demandKg
+          const priorities = Array.from(new Set(ings.map(i => i.priority))).sort((a, b) => a - b)
+          for (const prio of priorities) {
+            if (remaining < 0.005) break
+            for (const ing of ings.filter(i => i.priority === prio)) {
+              if (remaining < 0.005) break
+              const normN = normMatNameLocal(ing.product_name)
+              const inPool = pool.has(normN) || (ing.sap_code ? poolSap.has(ing.sap_code) : false)
+              if (inPool) {
+                // Shared ingredient: record demand so pool allocation handles it
+                const key = `หมูบด|||${normN}`
+                stationRawTotalNeeded.set(key, (stationRawTotalNeeded.get(key) ?? 0) + remaining)
+                if (!stationRawSap.has(key) && ing.sap_code) stationRawSap.set(key, ing.sap_code)
+                remaining = 0
+              } else {
+                // Non-shared: consume from own stock
+                const sapKey = ing.sap_code ?? ''
+                const sapAvail  = sapKey ? (mooOwnStockSap.get(sapKey) ?? 0) : 0
+                const normAvail = mooOwnStockNorm.get(normN) ?? 0
+                const avail = sapKey ? sapAvail : normAvail
+                const take  = Math.min(remaining, avail)
+                if (sapKey) mooOwnStockSap.set(sapKey, sapAvail - take)
+                mooOwnStockNorm.set(normN, Math.max(0, normAvail - take))
+                remaining -= take
+              }
+            }
+          }
+        }
+
+        addMooSharedNeeds(totalMooFatKg,  mooFatIngsSplit)
+        addMooSharedNeeds(totalMooMeatKg, mooMeatIngsSplit)
+      }
+    }
+
     // ── Allocate pool in station priority order ──
     const stationRawAllocated   = new Map<string, number>() // "station|||rawNorm" → allocatedKg
     const ALLOC_PRIORITY_STNS   = ['สไลด์', 'สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด']
@@ -2209,13 +2320,33 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       wipFullCapBySap.set(sap, qty * minScale)
     }
 
+    // หมูบด scale: (total - sharedDeficit) / total — accounts for P1/P2 own-stock coverage
+    let mooChōdScale = 1.0
+    if (mooTotalKg > 0.005) {
+      let sharedDeficit = 0
+      for (const [key, needed] of stationRawTotalNeeded.entries()) {
+        if (!key.startsWith('หมูบด|||')) continue
+        const allocated = stationRawAllocated.get(key) ?? needed
+        sharedDeficit += Math.max(0, needed - allocated)
+      }
+      mooChōdScale = Math.max(0, 1 - sharedDeficit / mooTotalKg)
+    }
+
     // ── Split each SKU target into stock-supported qty (based on allocation ratio) + deficit qty ──
     const splitAssignList: SkuTarget[] = []
     for (const item of assignList) {
       const cleanSku = item.sku.replace(/^0+/, '')
       if (noWithdrawalSaps.has(item.sku) || noWithdrawalSaps.has(cleanSku)) { splitAssignList.push(item); continue }
       if (!stockWasUploaded) { splitAssignList.push(item); continue }
-      if (mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(cleanSku)) { splitAssignList.push(item); continue }
+      if (mooChōdSapSet.has(item.sku) || mooChōdSapSet.has(cleanSku)) {
+        const wpbLocal = bagSizeMap.get(cleanSku) ?? bagSizeMap.get(item.sku) ?? 1
+        const bagAlignedTotal = wpbLocal > 0 ? Math.floor(item.targetQty / wpbLocal) * wpbLocal : item.targetQty
+        const stockBagQty = wpbLocal > 0 ? Math.floor(bagAlignedTotal * mooChōdScale / wpbLocal) * wpbLocal : bagAlignedTotal * mooChōdScale
+        if (stockBagQty > 0.01) splitAssignList.push({ ...item, targetQty: stockBagQty, isDeficit: false })
+        const deficitBagQty = bagAlignedTotal - stockBagQty
+        if (deficitBagQty > 0.01) splitAssignList.push({ ...item, targetQty: deficitBagQty, isDeficit: true })
+        continue
+      }
       const boms = bomMap.get(cleanSku)
       if (!boms?.length) { splitAssignList.push(item); continue }
       const prod = skuMap.get(cleanSku) ?? skuMap.get(item.sku)

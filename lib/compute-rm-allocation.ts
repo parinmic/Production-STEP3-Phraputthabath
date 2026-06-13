@@ -165,6 +165,128 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     return taken
   }
 
+  // ── Mas Moo Chod data (หมูบด priority-based allocation) ──────────────────
+
+  interface MooIngAlloc {
+    ingredient_type: string; priority: number
+    sap_code: string | null; product_name: string
+  }
+
+  const [mooMasterAllocRes, mooWithdrawalAllocRes] = await Promise.all([
+    supabase.from('moo_chod_master').select('sap_code, fat_percent'),
+    supabase.from('moo_chod_withdrawal_master')
+      .select('ingredient_type, priority, sap_code, product_name')
+      .order('ingredient_type').order('priority').order('id'),
+  ])
+
+  const mooFatPercentBySap = new Map<string, number>()
+  for (const r of mooMasterAllocRes.data ?? []) {
+    if (!r.sap_code) continue
+    const s = String(r.sap_code).trim()
+    mooFatPercentBySap.set(s, Number(r.fat_percent ?? 0))
+    mooFatPercentBySap.set(s.replace(/^0+/, ''), Number(r.fat_percent ?? 0))
+  }
+
+  const mooIngsAlloc     = (mooWithdrawalAllocRes.data ?? []) as MooIngAlloc[]
+  const mooMeatIngsAlloc = mooIngsAlloc.filter(i => i.ingredient_type === 'เนื้อ')
+  const mooFatIngsAlloc  = mooIngsAlloc.filter(i => i.ingredient_type === 'มัน')
+
+  // Fetch stock for non-shared Mas Moo Chod ingredients (P1/P2 that aren't in pool)
+  // Shared ingredients (like เนื้อไหล่-Raw at P3) are already in pool via other station BOMs
+  const nonSharedMooIngs   = mooIngsAlloc.filter(ing => !pool.has(normName(ing.product_name)))
+  const nonSharedMooSaps   = nonSharedMooIngs.map(i => i.sap_code).filter(Boolean) as string[]
+  const nonSharedMooNames  = nonSharedMooIngs.map(i => i.product_name).filter(Boolean)
+  const nonSharedExpanded  = Array.from(new Set(
+    nonSharedMooNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])
+  ))
+
+  const mooOwnStockByNorm = new Map<string, number>()
+  const mooOwnStockBySap  = new Map<string, number>()
+  {
+    const proms: Promise<{ data: StockRow[] | null }>[] = []
+    if (nonSharedMooSaps.length)
+      proms.push(
+        supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+      )
+    if (nonSharedExpanded.length)
+      proms.push(
+        supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+      )
+    const results = await Promise.all(proms)
+    for (const r of results) {
+      for (const row of r.data ?? []) {
+        if (row.material_name) {
+          const k = normName(row.material_name)
+          mooOwnStockByNorm.set(k, (mooOwnStockByNorm.get(k) ?? 0) + Number(row.weight_total))
+        }
+        if (row.material_code)
+          mooOwnStockBySap.set(row.material_code, (mooOwnStockBySap.get(row.material_code) ?? 0) + Number(row.weight_total))
+      }
+    }
+  }
+
+  // Replaces allocateStation('หมูบด', period): uses Mas Moo Chod ingredient priorities
+  // instead of BOM. Non-shared P1/P2 ingredients use own stock; shared P3 ingredients
+  // use the shared pool (so allocation reflects actual contention with other stations).
+  function allocateMooStation(period: string): RmRawNeed[] {
+    const pm = skuQtyByPeriod.get(period) ?? new Map()
+
+    let totalFatKg  = 0
+    let totalMeatKg = 0
+    for (const [key, info] of Array.from(pm.entries())) {
+      if (info.station !== 'หมูบด') continue
+      const sku = key.split('|||')[1]
+      const fatPct = mooFatPercentBySap.get(sku) ?? mooFatPercentBySap.get(sku.replace(/^0+/, '')) ?? 0
+      totalFatKg  += info.qty * fatPct / 100
+      totalMeatKg += info.qty * (1 - fatPct / 100)
+    }
+    if (totalFatKg + totalMeatKg < 0.005) return []
+
+    const result: RmRawNeed[] = []
+
+    function processIngType(demandKg: number, ings: MooIngAlloc[]) {
+      let remaining = demandKg
+      const priorities = Array.from(new Set(ings.map(i => i.priority))).sort((a, b) => a - b)
+      for (const prio of priorities) {
+        if (remaining < 0.005) break
+        for (const ing of ings.filter(i => i.priority === prio)) {
+          if (remaining < 0.005) break
+          const normN = normName(ing.product_name)
+          const inPool = pool.has(normN)
+          if (inPool) {
+            // Shared ingredient: allocate from shared pool
+            const allocated = takeFromPool(ing.product_name, remaining)
+            result.push({
+              raw_sap:      ing.sap_code ?? normN,
+              raw_name:     ing.product_name,
+              needed_kg:    round2(remaining),
+              allocated_kg: round2(allocated),
+              shortage_kg:  round2(Math.max(0, remaining - allocated)),
+            })
+            remaining -= allocated
+          } else {
+            // Non-shared: deplete own stock (not pool), not shown in rm-allocation
+            const ownSap   = ing.sap_code ?? ''
+            const sapAvail = mooOwnStockBySap.get(ownSap) ?? 0
+            const normAvail = mooOwnStockByNorm.get(normN) ?? 0
+            const avail = ownSap ? sapAvail : normAvail
+            const take  = Math.min(remaining, avail)
+            if (ownSap) mooOwnStockBySap.set(ownSap, sapAvail - take)
+            mooOwnStockByNorm.set(normN, Math.max(0, normAvail - take))
+            remaining -= take
+          }
+        }
+      }
+    }
+
+    processIngType(totalFatKg,  mooFatIngsAlloc)
+    processIngType(totalMeatKg, mooMeatIngsAlloc)
+
+    return result.sort((a, b) => b.needed_kg - a.needed_kg)
+  }
+
   function stationRawNeeds(station: string, periodMap: SkuQtyMap) {
     const needs = new Map<string, { raw_sap: string; raw_name: string; needed: number }>()
     for (const [key, info] of Array.from(periodMap.entries())) {
@@ -219,7 +341,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     const items = allocateStation(st, 'เช้า')
     if (items.length) ph1P2Groups.push({ phase: 1, priority: 2, station: st, purpose: 'ผลิต Phase 1 ให้ครบ (เช้า)', items })
   }
-  const ph1P3Items = allocateStation('หมูบด', 'เช้า')
+  const ph1P3Items = allocateMooStation('เช้า')
 
   const p4Items: RmRawNeed[] = []
   for (const wip of wipRows) {
@@ -259,7 +381,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     const items = allocateStation(st, 'บ่าย')
     if (items.length) ph2P2Groups.push({ phase: 2, priority: 2, station: st, purpose: 'ผลิต Phase 2 ให้ครบ (บ่าย)', items })
   }
-  const ph2P3Items = allocateStation('หมูบด', 'บ่าย')
+  const ph2P3Items = allocateMooStation('บ่าย')
 
   // ════ PHASE 3 ════
 
@@ -268,7 +390,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     const items = allocateStation(st, 'ค่ำ')
     if (items.length) ph3P1Groups.push({ phase: 3, priority: 1, station: st, purpose: 'ผลิต Phase 3 (ค่ำ)', items })
   }
-  const ph3P2Items = allocateStation('หมูบด', 'ค่ำ')
+  const ph3P2Items = allocateMooStation('ค่ำ')
 
   const ph3P3Items: RmRawNeed[] = []
   const seenKeys = new Set<string>()
