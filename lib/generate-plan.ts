@@ -398,11 +398,12 @@ function allocateBalanced(params: {
   wpbMap: Map<string, number>
   specialTimeMap: Map<string, { startMins: number | null; stopMins: number | null }>
   skuTotalQtyOverride?: Map<string, number>
+  lastSkuSet?: Set<string>
 }): Record<string, unknown>[] {
   const {
     productionDate, tableName, targets, workers, skuMap, jobAssignMap,
     workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins,
-    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride
+    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride, lastSkuSet
   } = params
 
   if (!targets.length || !workers.length) return []
@@ -446,7 +447,15 @@ function allocateBalanced(params: {
     }
   }
   const skuBlocks = Array.from(skuBlockMap.values())
-  skuBlocks.sort((a, b) => (b.totalQty / b.rate) - (a.totalQty / a.rate))
+  skuBlocks.sort((a, b) => {
+    // SKUs in lastSkuSet are produced last within the phase (e.g. หมูบด 50% fat)
+    if (lastSkuSet) {
+      const aLast = lastSkuSet.has(a.normSku) || lastSkuSet.has(a.rawSku)
+      const bLast = lastSkuSet.has(b.normSku) || lastSkuSet.has(b.rawSku)
+      if (aLast !== bLast) return aLast ? 1 : -1
+    }
+    return (b.totalQty / b.rate) - (a.totalQty / a.rate)
+  })
 
   // 2. Helper to check if a worker is eligible for a product group
   const isWorkerEligible = (worker: WorkforceRow, skuGroup: string): boolean => {
@@ -509,6 +518,7 @@ function allocateBalanced(params: {
   // สไลด์: pre-split workers into groups
   //   - Group C (WIP): workers whose job assignment has ONLY กลุ่ม WIP → WIP blocks only
   //   - Group A + B: remaining workers split evenly → non-WIP blocks only
+  //   Non-WIP: sticky product-group routing — once group A takes e.g. สะโพก, all สะโพก blocks go to A
   const SLIDE_WIP_GROUP = 'กลุ่ม WIP'
   const slideGroups: WorkforceRow[][] | null = tableName === 'สไลด์' && workers.length >= 2
     ? (() => {
@@ -525,6 +535,8 @@ function allocateBalanced(params: {
         return groups
       })()
     : null
+  // product group → slide group index (0 or 1); set on first block of each product group
+  const slideGroupProductMap = new Map<string, number>()
 
   // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
   for (const block of skuBlocks) {
@@ -549,12 +561,28 @@ function allocateBalanced(params: {
         ? [slideGroups[2]]
         : slideGroups.slice(0, 2)
 
-      // Pick the sub-group that will be free soonest
-      const groupFreeAt = groupSubset.map(g =>
-        g.length > 0 ? Math.max(...g.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)) : Infinity
-      )
-      const chosenIdx = groupFreeAt.indexOf(Math.min(...groupFreeAt))
-      eligible = groupSubset[chosenIdx]
+      let chosenGroupIdx: number
+      if (!isWipBlock && groupSubset.length >= 2) {
+        // Sticky product-group routing: group 1 & 2 each get exclusive product groups
+        const existingIdx = slideGroupProductMap.get(block.productGroup)
+        if (existingIdx !== undefined && existingIdx < groupSubset.length) {
+          chosenGroupIdx = existingIdx
+        } else {
+          const groupFreeAt = groupSubset.map(g =>
+            g.length > 0 ? Math.max(...g.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)) : Infinity
+          )
+          chosenGroupIdx = groupFreeAt.indexOf(Math.min(...groupFreeAt))
+          slideGroupProductMap.set(block.productGroup, chosenGroupIdx)
+        }
+      } else {
+        // WIP block or single group: pick free soonest
+        const groupFreeAt = groupSubset.map(g =>
+          g.length > 0 ? Math.max(...g.map(w => workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)) : Infinity
+        )
+        chosenGroupIdx = groupFreeAt.indexOf(Math.min(...groupFreeAt))
+      }
+
+      eligible = groupSubset[chosenGroupIdx] ?? groupSubset[0]
       selected = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
       if (!selected.length) continue
     } else {
@@ -1394,7 +1422,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       'bkp_orders', 'sku, sku_name, quantity',
       [{ col: 'production_date', op: 'eq', val: productionDate }])
       .catch(() => [] as { sku: string; sku_name: string | null; quantity: number }[]),
-    supabase.from('moo_chod_master').select('sap_code').limit(5000),
+    supabase.from('moo_chod_master').select('sap_code, fat_percent').limit(5000),
   ])
 
   // Merge: manual overrides > 1530 > 0930; fall back to weekly schedule
@@ -1443,10 +1471,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   }
 
   // mooChōd SKU set — skip BOM deficit check for these (withdrawal uses priority logic instead)
-  const mooChōdSapSet = new Set<string>()
-  for (const r of (mooChōdMasterRaw ?? []) as { sap_code: string | null }[]) {
+  const mooChōdSapSet     = new Set<string>()
+  const mooChōd50PctSapSet = new Set<string>() // fat_percent = 50 → produce last in phase
+  for (const r of (mooChōdMasterRaw ?? []) as { sap_code: string | null; fat_percent?: number | null }[]) {
     const s = String(r.sap_code ?? '').trim()
-    if (s) { mooChōdSapSet.add(s); mooChōdSapSet.add(s.replace(/^0+/, '')) }
+    if (!s) continue
+    mooChōdSapSet.add(s); mooChōdSapSet.add(s.replace(/^0+/, ''))
+    if (Number(r.fat_percent ?? 0) === 50) {
+      mooChōd50PctSapSet.add(s); mooChōd50PctSapSet.add(s.replace(/^0+/, ''))
+    }
   }
 
   // Bag size map
@@ -2453,6 +2486,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
         wpbMap,
         specialTimeMap,
+        lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
       }))
     }
   }
@@ -2547,6 +2581,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           wpbMap,
           specialTimeMap,
           skuTotalQtyOverride: globalSkuTotalQty,
+          lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
         }))
       }
     }
