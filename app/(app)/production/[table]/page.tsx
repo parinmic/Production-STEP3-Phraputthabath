@@ -1508,6 +1508,18 @@ export default function TablePage() {
             }
           }
         }
+        // For สไลด์: WIP Crisis/Extra groups each show frac=1 (their own slice is covered),
+        // but the full production plan may need more raw than crisis+extra combined.
+        // wipCapFractionByPhase = total_rm_allocated / full_production_raw_needed per phase.
+        if (stationLabel === 'สไลด์') {
+          const wipCap = (data.wipCapFractionByPhase ?? {}) as Record<number, number>
+          for (const [ph, frac] of Object.entries(wipCap)) {
+            const p   = Number(ph)
+            const cur = fracByPhase[p]
+            fracByPhase[p] = cur !== undefined ? Math.min(cur, Number(frac)) : Number(frac)
+          }
+        }
+
         setRmShortageByPhase(byPhase)
         setRmCapFractionByPhase(fracByPhase)
       })

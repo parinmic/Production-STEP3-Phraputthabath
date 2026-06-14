@@ -22,19 +22,30 @@ export interface RmAllocationResult {
   summary: { raw_name: string; total_stock: number; total_allocated: number; remaining: number }[]
   allocation: import('@/lib/compute-rm-allocation').RmGroup[]
   wipNeeds?: WipPhaseNeeds[]
+  /** min(allocated/needed) per phase for สไลด์ station — used by Gantt to split bars */
+  wipCapFractionByPhase?: Record<number, number>
   message?: string
 }
 
 const round2   = (n: number) => Math.round(n * 100) / 100
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 
-/** Compute WIP(F) items that สไลด์ needs to produce in-house (not from warehouse stock) */
-async function computeSlideWipNeeds(date: string): Promise<WipPhaseNeeds[]> {
+/**
+ * Compute:
+ * 1. WIP(F) items สไลด์ produces in-house (BOM components not in warehouse stock)
+ * 2. Cap fraction per phase: min(rm_allocated / full_production_needed)
+ *    Used by the Gantt to split bars when rm-allocation crisis/extra < full plan
+ */
+async function computeSlideNeeds(
+  date: string,
+  allocation: import('@/lib/compute-rm-allocation').RmGroup[]
+): Promise<{ wipNeeds: WipPhaseNeeds[]; wipCapFractionByPhase: Record<number, number> }> {
   const PERIODS = [
     { phase: 1, period: 'เช้า' },
     { phase: 2, period: 'บ่าย' },
     { phase: 3, period: 'ค่ำ' },
   ]
+  const PERIOD_PHASE: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
 
   // 1. Fetch สไลด์ assignments for all phases
   const { data: assignments } = await supabase
@@ -44,7 +55,7 @@ async function computeSlideWipNeeds(date: string): Promise<WipPhaseNeeds[]> {
     .eq('table_name', 'สไลด์')
     .in('period', ['เช้า', 'บ่าย', 'ค่ำ'])
 
-  if (!assignments?.length) return []
+  if (!assignments?.length) return { wipNeeds: [], wipCapFractionByPhase: {} }
 
   // 2. Fetch BOM for all assigned SKUs
   const skus = Array.from(new Set(assignments.map(a => a.sku)))
@@ -53,7 +64,7 @@ async function computeSlideWipNeeds(date: string): Promise<WipPhaseNeeds[]> {
     .select('product_sap, raw_sap, raw_name, yield_pct')
     .in('product_sap', skus)
 
-  if (!bomRows?.length) return []
+  if (!bomRows?.length) return { wipNeeds: [], wipCapFractionByPhase: {} }
 
   const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
   for (const b of bomRows) {
@@ -63,7 +74,7 @@ async function computeSlideWipNeeds(date: string): Promise<WipPhaseNeeds[]> {
     bomMap.set(b.product_sap, list)
   }
 
-  // 3. Check which raw SAP codes exist in stock (any weight)
+  // 3. Check which raw SAP codes exist in stock (any weight) — WIP items won't be found
   const allRawSaps  = Array.from(new Set(bomRows.map(b => b.raw_sap).filter(Boolean) as string[]))
   const stockSapSet = new Set<string>()
 
@@ -77,37 +88,70 @@ async function computeSlideWipNeeds(date: string): Promise<WipPhaseNeeds[]> {
     }
   }
 
-  // 4. Per phase: aggregate WIP needs (BOM components NOT in stock system)
-  const result: WipPhaseNeeds[] = []
+  // 4. Per phase: build WIP needs (components NOT in stock) + full raw needed (ALL components)
+  const wipNeeds: WipPhaseNeeds[] = []
+  const fullNeeded = new Map<number, Map<string, number>>() // phase → normName → total needed kg
 
   for (const { phase, period } of PERIODS) {
     const phaseAss = assignments.filter(a => a.period === period)
     if (!phaseAss.length) continue
 
-    const rawNeeds = new Map<string, WipNeedItem>()
+    const wipItems = new Map<string, WipNeedItem>()
 
     for (const a of phaseAss) {
       const boms = bomMap.get(a.sku) ?? []
       for (const b of boms) {
-        if (stockSapSet.has(b.raw_sap.trim())) continue  // in warehouse stock — skip
         const needed = b.yield_pct > 0 ? Number(a.target_quantity) / b.yield_pct : Number(a.target_quantity)
-        const cur = rawNeeds.get(b.raw_sap) ?? { raw_sap: b.raw_sap, raw_name: b.raw_name, needed_kg: 0, for_products: [] }
+
+        // Track full raw needed (all BOM components) for cap fraction
+        const normN  = normName(b.raw_name ?? b.raw_sap)
+        const byRaw  = fullNeeded.get(phase) ?? new Map()
+        byRaw.set(normN, (byRaw.get(normN) ?? 0) + needed)
+        fullNeeded.set(phase, byRaw)
+
+        // WIP display: only components NOT found in warehouse stock
+        if (stockSapSet.has(b.raw_sap.trim())) continue
+        const cur = wipItems.get(b.raw_sap) ?? { raw_sap: b.raw_sap, raw_name: b.raw_name, needed_kg: 0, for_products: [] }
         cur.needed_kg += needed
         cur.for_products.push({ sku: a.sku, sku_name: a.sku_name ?? null, qty: Number(a.target_quantity) })
-        rawNeeds.set(b.raw_sap, cur)
+        wipItems.set(b.raw_sap, cur)
       }
     }
 
-    if (rawNeeds.size) {
-      result.push({
+    if (wipItems.size) {
+      wipNeeds.push({
         phase,
         period,
-        items: Array.from(rawNeeds.values()).map(r => ({ ...r, needed_kg: round2(r.needed_kg) })),
+        items: Array.from(wipItems.values()).map(r => ({ ...r, needed_kg: round2(r.needed_kg) })),
       })
     }
   }
 
-  return result
+  // 5. Cap fraction: compare total rm-allocated vs full production raw needed, per phase
+  const totalAlloc = new Map<number, Map<string, number>>() // phase → normName → allocated
+  for (const g of allocation) {
+    if (g.station !== 'สไลด์') continue
+    for (const item of g.items) {
+      const normN  = normName(item.raw_name)
+      const byRaw  = totalAlloc.get(g.phase) ?? new Map()
+      byRaw.set(normN, (byRaw.get(normN) ?? 0) + item.allocated_kg)
+      totalAlloc.set(g.phase, byRaw)
+    }
+  }
+
+  const wipCapFractionByPhase: Record<number, number> = {}
+  for (const [ph, rawNeeds] of Array.from(fullNeeded.entries())) {
+    const allocByRaw = totalAlloc.get(ph)
+    let minFrac = 1.0
+    for (const [normN, needed] of Array.from(rawNeeds.entries())) {
+      if (needed < 0.005) continue
+      const alloc = allocByRaw?.get(normN) ?? 0
+      minFrac = Math.min(minFrac, alloc / needed)
+    }
+    if (minFrac < 0.999) wipCapFractionByPhase[ph] = round2(minFrac)
+  }
+
+  return { wipNeeds, wipCapFractionByPhase }
 }
 
 export async function GET(req: NextRequest) {
@@ -115,14 +159,12 @@ export async function GET(req: NextRequest) {
     const date = req.nextUrl.searchParams.get('date')
     if (!date) return NextResponse.json({ error: 'missing date' }, { status: 400 })
 
-    const [allocation, wipNeeds] = await Promise.all([
-      computeRmAllocation(date),
-      computeSlideWipNeeds(date),
-    ])
+    const allocation = await computeRmAllocation(date)
+    const { wipNeeds, wipCapFractionByPhase } = await computeSlideNeeds(date, allocation)
 
     if (!allocation.length) {
       return NextResponse.json({
-        date, summary: [], allocation: [], wipNeeds: [],
+        date, summary: [], allocation: [], wipNeeds: [], wipCapFractionByPhase: {},
         message: `ไม่พบ WIP Plan สำหรับวันที่ ${date}`,
       })
     }
@@ -159,7 +201,7 @@ export async function GET(req: NextRequest) {
       return { raw_name, total_stock, total_allocated, remaining: round2(total_stock - total_allocated) }
     }).filter(s => s.total_stock > 0).sort((a, b) => b.total_stock - a.total_stock)
 
-    return NextResponse.json({ date, summary, allocation, wipNeeds })
+    return NextResponse.json({ date, summary, allocation, wipNeeds, wipCapFractionByPhase })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
