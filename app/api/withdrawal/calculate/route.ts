@@ -489,6 +489,19 @@ export async function POST(req: NextRequest) {
 
     const { byCode: mooByCode, byName: mooByName } = buildStockMaps(mooStockRows)
 
+    // Cap shared-pool ingredient lots to rm-allocated amounts for หมูบด.
+    // P3 own-stock ingredients (not in rmAllocMap) keep their full stock weight.
+    if (rmAllocMap.size > 0) {
+      for (const [nameKey, lots] of Array.from(mooByName.entries())) {
+        const rmAllocated = rmAllocMap.get(`หมูบด|||${nameKey}`)
+        if (rmAllocated === undefined) continue
+        const totalAvail = lots.reduce((s, l) => s + l.weight, 0)
+        if (totalAvail <= rmAllocated + 0.005) continue
+        const scale = rmAllocated / totalAvail
+        for (const lot of lots) lot.weight = Math.round(lot.weight * scale * 100) / 100
+      }
+    }
+
     // Build items per round
     for (const [rm, demand] of Array.from(mooRoundDemand.entries()).sort(([a], [b]) => a - b)) {
       const fatAllocs  = demand.fatKg  > 0.005 ? allocateMooPriority(demand.fatKg,  mooFatIngs,  mooByCode, mooByName) : []
