@@ -411,17 +411,23 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
 
     } else if (station === 'สไลด์' && isRemainder) {
-      // Allocate all remaining pool to สไลด์
-      const items: RmRawNeed[] = []
-      const seenKeys = new Set<string>()
-      for (const [key, remaining] of Array.from(pool.entries())) {
-        if (remaining < 0.005 || seenKeys.has(key)) continue
-        seenKeys.add(key)
-        const displayName = normToDisplay.get(key) ?? key
-        const allocated   = takeFromPool(displayName, remaining)
-        items.push({ raw_sap: rawSapByNorm.get(key) ?? '', raw_name: displayName, needed_kg: round2(remaining), allocated_kg: round2(allocated), shortage_kg: 0 })
+      // Only show remainder if Phase 2 or Phase 3 has production assignments.
+      // If only Phase 1 is planned, skip — the pool hasn't been used by Phase 2/3
+      // so "remainder" would incorrectly absorb all Phase 2/3 stock.
+      const hasPh2 = (skuQtyByPeriod.get('บ่าย') ?? new Map()).size > 0
+      const hasPh3 = (skuQtyByPeriod.get('ค่ำ')  ?? new Map()).size > 0
+      if (!hasPh2 && !hasPh3) { /* skip */ } else {
+        const items: RmRawNeed[] = []
+        const seenKeys = new Set<string>()
+        for (const [key, remaining] of Array.from(pool.entries())) {
+          if (remaining < 0.005 || seenKeys.has(key)) continue
+          seenKeys.add(key)
+          const displayName = normToDisplay.get(key) ?? key
+          const allocated   = takeFromPool(displayName, remaining)
+          items.push({ raw_sap: rawSapByNorm.get(key) ?? '', raw_name: displayName, needed_kg: round2(remaining), allocated_kg: round2(allocated), shortage_kg: 0 })
+        }
+        if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'รับเนื้อที่เหลือทั้งหมด', items })
       }
-      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'รับเนื้อที่เหลือทั้งหมด', items })
 
     } else if (station === 'อื่น ๆ') {
       const purpose = condChannel
