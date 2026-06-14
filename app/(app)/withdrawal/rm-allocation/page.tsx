@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { RefreshCw, ChevronRight, SkipForward } from 'lucide-react'
-import type { RmAllocationResult, AllocationGroup } from '@/app/api/withdrawal/rm-allocation/route'
+import type { RmAllocationResult, AllocationGroup, WipPhaseNeeds } from '@/app/api/withdrawal/rm-allocation/route'
 
 const PRIORITY_COLOR: Record<number, { label: string; color: string; bg: string; border: string }> = {
   1: { label: 'P1', color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200' },
@@ -306,6 +306,72 @@ export default function RmAllocationPage() {
               </div>
             )}
           </div>
+
+          {/* WIP(F) section — in-house produced items สไลด์ needs */}
+          {(result.wipNeeds ?? []).length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="bg-purple-600 text-white text-sm font-bold px-3 py-1 rounded-lg">WIP(F)</span>
+                <span className="text-sm text-gray-500">วัตถุดิบ In-House ที่ต้องเตรียมสำหรับสไลด์</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              {(result.wipNeeds ?? []).map((wp: WipPhaseNeeds) => {
+                const ph = PHASE_LABEL[wp.phase]
+                const totalNeeded = wp.items.reduce((s, i) => s + i.needed_kg, 0)
+                return (
+                  <div key={wp.phase} className="card border-2 border-purple-200">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <span className={`${ph.bg} ${ph.text} text-xs font-bold px-2 py-0.5 rounded-full`}>{ph.label}</span>
+                      <span className="text-sm text-gray-500">{wp.period}</span>
+                      <span className="ml-auto text-xs text-purple-700 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
+                        รวม {Math.round(totalNeeded).toLocaleString()} กก.
+                      </span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b text-xs">
+                          <th className="px-3 py-2 text-left  text-gray-500 font-medium">WIP Item</th>
+                          <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการ (กก.)</th>
+                          <th className="px-3 py-2 text-left  text-gray-500 font-medium hidden md:table-cell">ใช้ผลิต</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {wp.items.map((item, i) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="px-3 py-2.5">
+                              <div className="font-medium text-gray-800">{item.raw_name ?? item.raw_sap}</div>
+                              <div className="text-xs text-gray-400">{item.raw_sap}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-purple-700">
+                              {item.needed_kg.toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2.5 hidden md:table-cell">
+                              <div className="flex flex-wrap gap-1">
+                                {item.for_products.map((fp, j) => (
+                                  <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                    {fp.sku_name ?? fp.sku} ({fp.qty.toLocaleString()} กก.)
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                        <tr>
+                          <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
+                          <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-purple-700">
+                            {Math.round(totalNeeded).toLocaleString()}
+                          </td>
+                          <td className="hidden md:table-cell" />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* Phase sections */}
           {phaseGroups.map(({ phase, groups }) => {
