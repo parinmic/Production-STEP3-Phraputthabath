@@ -418,15 +418,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
 
     } else if (station === 'สไลด์' && isRemainder) {
       // BOM-based allocation for สไลด์ regular production — same as other stations.
-      // Skip WIP(F) components (produced in-house, not in warehouse stock pool).
-      const pm    = skuQtyByPeriod.get(period) ?? new Map()
-      const needs = stationRawNeeds('สไลด์', pm)
-      const items: RmRawNeed[] = []
-      for (const { raw_sap, raw_name, needed } of Array.from(needs.values())) {
-        if (!pool.has(normName(raw_name))) continue  // WIP(F) — not in warehouse stock
-        const allocated = takeFromPool(raw_name, needed)
-        items.push({ raw_sap, raw_name, needed_kg: round2(needed), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, needed - allocated)) })
-      }
+      const items = allocateStation('สไลด์', period)
       if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: `ผลิต Phase ${phase} (${period})`, items })
 
     } else if (station === 'อื่น ๆ') {
