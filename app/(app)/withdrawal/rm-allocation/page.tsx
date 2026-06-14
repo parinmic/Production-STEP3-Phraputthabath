@@ -330,9 +330,8 @@ export default function RmAllocationPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50 border-b text-xs">
-                          <th className="px-3 py-2 text-left  text-gray-500 font-medium">WIP Item</th>
+                          <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
                           <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการ (กก.)</th>
-                          <th className="px-3 py-2 text-left  text-gray-500 font-medium hidden md:table-cell">ใช้ผลิต</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -345,15 +344,6 @@ export default function RmAllocationPage() {
                             <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-purple-700">
                               {item.needed_kg.toLocaleString()}
                             </td>
-                            <td className="px-3 py-2.5 hidden md:table-cell">
-                              <div className="flex flex-wrap gap-1">
-                                {item.for_products.map((fp, j) => (
-                                  <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                                    {fp.sku_name ?? fp.sku} ({fp.qty.toLocaleString()} กก.)
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -363,7 +353,6 @@ export default function RmAllocationPage() {
                           <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-purple-700">
                             {Math.round(totalNeeded).toLocaleString()}
                           </td>
-                          <td className="hidden md:table-cell" />
                         </tr>
                       </tfoot>
                     </table>
