@@ -103,18 +103,19 @@ async function computeSlideNeeds(
       for (const b of boms) {
         const needed = b.yield_pct > 0 ? Number(a.target_quantity) / b.yield_pct : Number(a.target_quantity)
 
-        // Track full raw needed (all BOM components) for cap fraction
-        const normN  = normName(b.raw_name ?? b.raw_sap)
-        const byRaw  = fullNeeded.get(phase) ?? new Map()
-        byRaw.set(normN, (byRaw.get(normN) ?? 0) + needed)
-        fullNeeded.set(phase, byRaw)
-
-        // WIP display: only components NOT found in warehouse stock
-        if (stockSapSet.has(b.raw_sap.trim())) continue
-        const cur = wipItems.get(b.raw_sap) ?? { raw_sap: b.raw_sap, raw_name: b.raw_name, needed_kg: 0, for_products: [] }
-        cur.needed_kg += needed
-        cur.for_products.push({ sku: a.sku, sku_name: a.sku_name ?? null, qty: Number(a.target_quantity) })
-        wipItems.set(b.raw_sap, cur)
+        if (stockSapSet.has(b.raw_sap.trim())) {
+          // Cap fraction: only warehouse-stocked components (WIP components have no alloc so skip)
+          const normN  = normName(b.raw_name ?? b.raw_sap)
+          const byRaw  = fullNeeded.get(phase) ?? new Map()
+          byRaw.set(normN, (byRaw.get(normN) ?? 0) + needed)
+          fullNeeded.set(phase, byRaw)
+        } else {
+          // WIP display: components NOT found in warehouse stock
+          const cur = wipItems.get(b.raw_sap) ?? { raw_sap: b.raw_sap, raw_name: b.raw_name, needed_kg: 0, for_products: [] }
+          cur.needed_kg += needed
+          cur.for_products.push({ sku: a.sku, sku_name: a.sku_name ?? null, qty: Number(a.target_quantity) })
+          wipItems.set(b.raw_sap, cur)
+        }
       }
     }
 
