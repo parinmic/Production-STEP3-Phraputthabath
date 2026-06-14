@@ -165,6 +165,17 @@ export default function RmAllocationPage() {
   const totalRaw       = result?.summary.reduce((s, r) => s + r.total_stock, 0)       ?? 0
   const totalAllocated = result?.summary.reduce((s, r) => s + r.total_allocated, 0)   ?? 0
 
+  // Sum shortage per raw material across all allocation groups (all phases)
+  const shortageByRaw = new Map<string, number>()
+  const neededByRaw   = new Map<string, number>()
+  for (const group of result?.allocation ?? []) {
+    for (const item of group.items) {
+      const key = item.raw_name.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+      shortageByRaw.set(key, (shortageByRaw.get(key) ?? 0) + item.shortage_kg)
+      neededByRaw.set(key,   (neededByRaw.get(key)   ?? 0) + item.needed_kg)
+    }
+  }
+
   // Group allocation by phase
   const phaseGroups = result
     ? [1, 2, 3].map(phase => ({
@@ -248,35 +259,47 @@ export default function RmAllocationPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b text-xs">
-                      <th className="px-3 py-2 text-left   text-gray-500 font-medium">วัตถุดิบ</th>
-                      <th className="px-3 py-2 text-right  text-gray-500 font-medium">Stock รวม (กก.)</th>
-                      <th className="px-3 py-2 text-right  text-gray-500 font-medium">จัดสรรแล้ว</th>
-                      <th className="px-3 py-2 text-right  text-gray-500 font-medium">คงเหลือ</th>
-                      <th className="px-3 py-2 text-left   text-gray-500 font-medium hidden md:table-cell w-36">ใช้ไป</th>
+                      <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-medium">Stock (กก.)</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการรวม</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-medium">ขาด (กก.)</th>
+                      <th className="px-3 py-2 text-center text-gray-500 font-medium">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {result.summary.map((row, i) => (
-                      <tr key={i} className="border-b last:border-0">
-                        <td className="px-3 py-2.5 font-medium text-gray-800">{row.raw_name}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{row.total_stock.toLocaleString()}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-gray-800">{row.total_allocated.toLocaleString()}</td>
-                        <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${row.remaining < 0.5 ? 'text-gray-400' : 'text-green-600'}`}>
-                          {row.remaining.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2.5 hidden md:table-cell">
-                          <BarCell allocated={row.total_allocated} needed={row.total_stock} />
-                        </td>
-                      </tr>
-                    ))}
+                    {result.summary.map((row, i) => {
+                      const key      = row.raw_name.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+                      const shortage = shortageByRaw.get(key) ?? 0
+                      const needed   = neededByRaw.get(key) ?? 0
+                      const hasShort = shortage > 0.5
+                      return (
+                        <tr key={i} className={`border-b last:border-0 ${hasShort ? 'bg-red-50/40' : ''}`}>
+                          <td className="px-3 py-2.5 font-medium text-gray-800">{row.raw_name}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{Math.round(row.total_stock).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{Math.round(needed).toLocaleString()}</td>
+                          <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${hasShort ? 'text-red-600' : 'text-gray-300'}`}>
+                            {hasShort ? Math.round(shortage).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-center">
+                            {hasShort
+                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">ขาด</span>
+                              : <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">เพียงพอ</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot className="border-t-2 bg-gray-50">
                     <tr>
                       <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{Math.round(totalRaw).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-gray-800">{Math.round(totalAllocated).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-green-600">{Math.round(totalRaw - totalAllocated).toLocaleString()}</td>
-                      <td className="hidden md:table-cell" />
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-gray-700">{Math.round(Array.from(neededByRaw.values()).reduce((s, v) => s + v, 0)).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">
+                        {Array.from(shortageByRaw.values()).reduce((s, v) => s + v, 0) > 0.5
+                          ? Math.round(Array.from(shortageByRaw.values()).reduce((s, v) => s + v, 0)).toLocaleString()
+                          : '—'}
+                      </td>
+                      <td />
                     </tr>
                   </tfoot>
                 </table>
