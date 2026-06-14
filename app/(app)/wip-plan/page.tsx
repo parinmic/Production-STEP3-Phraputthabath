@@ -259,7 +259,7 @@ export default function WipPlanPage() {
                 {rows.map((row, i) => {
                   const safetyStock = Math.floor(row.avgKg * 3 * 1.2 / 100) * 100
                   const autoBase    = Math.round(Math.max(0, safetyStock - row.stockKg))
-                  const wipCrisis   = Math.max(0, Math.round(row.avgKg) - Math.round(row.stockKg))
+                  const wipCrisis   = Math.max(0, Math.round(row.avgKg * 1.2) - Math.round(row.stockKg))
                   const finalPlan   = autoBase + Math.round(row.quantity || 0)
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
