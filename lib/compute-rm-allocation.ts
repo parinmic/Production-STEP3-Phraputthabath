@@ -347,7 +347,8 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   const mooSapSnapshot       = new Map(mooOwnStockBySap)
 
   const groups: RmGroup[] = []
-  const wipFinalPlanByWip = new Map<string, number>()
+  const wipFinalPlanByWip = new Map<string, number>() // SAP → crisis qty allocated in P1
+  const wipFullPlan       = new Map<string, number>() // SAP → original Final Plan qty
   let lastPhase = 0
 
   for (const row of priorityRows) {
@@ -388,6 +389,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
         const effectiveQty = Math.min(productionQty, crisisQty)
         if (effectiveQty < 0.005) continue
         wipFinalPlanByWip.set(wip.sap_code, effectiveQty)
+        wipFullPlan.set(wip.sap_code, productionQty)
         for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
           const rawNeeded = bom.yield_pct > 0 ? effectiveQty / bom.yield_pct : effectiveQty
           const allocated = takeFromPool(bom.raw_name, rawNeeded)
@@ -397,18 +399,22 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP ตาม WIP Crisis', items })
 
     } else if (station === 'สไลด์' && isWipExtra) {
-      // Extra WIP ≤25% of effective plan
+      // P4: top up WIP so total (P1 crisis + P4) ≤ 25% of Final Plan.
+      // If P1 crisis already ≥ 25% of Final Plan, skip entirely.
       const items: RmRawNeed[] = []
       for (const wip of wipRows) {
-        const fp = wipFinalPlanByWip.get(wip.sap_code) ?? 0
-        if (fp < 0.005) continue
+        const p1Qty      = wipFinalPlanByWip.get(wip.sap_code) ?? 0
+        const fullPlan   = wipFullPlan.get(wip.sap_code) ?? Number(wip.quantity)
+        const cap25      = fullPlan * 0.25
+        const extraQty   = Math.max(0, cap25 - p1Qty)
+        if (extraQty < 0.005) continue  // P1 already covered ≥25% of Final Plan
         for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
-          const rawNeeded = bom.yield_pct > 0 ? (fp * 0.25) / bom.yield_pct : fp * 0.25
+          const rawNeeded = bom.yield_pct > 0 ? extraQty / bom.yield_pct : extraQty
           const allocated = takeFromPool(bom.raw_name, rawNeeded)
           items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
         }
       }
-      groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
+      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
 
     } else if (station === 'สไลด์' && isRemainder) {
       // Only show remainder if Phase 2 or Phase 3 has production assignments.
