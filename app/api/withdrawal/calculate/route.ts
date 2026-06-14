@@ -403,17 +403,17 @@ export async function POST(req: NextRequest) {
       (STATION_PRIORITY[a.station] ?? 9) - (STATION_PRIORITY[b.station] ?? 9) ||
       a.roundMins - b.roundMins
     )
-    .map(({ station, raw_sap, raw_name, qty, roundMins }) => {
+    .flatMap(({ station, raw_sap, raw_name, qty, roundMins }) => {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
+      // Skip raw materials not found in any stock table — these are in-house WIP items (e.g. WIP(F))
+      if (!lots) return []
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
-      const lotsResult = lots ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules) : []
-      // quantity = actual allocated (sum of non-insufficient lots); use needed only when no stock data
-      const allocated = lots
-        ? Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
-        : needed
-      return {
+      const lotsResult = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
+      const allocated = Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
+      if (allocated <= 0.005 && lotsResult.every(l => l.insufficient)) return []
+      return [{
         sku:              raw_sap,
         sku_name:         raw_name,
         quantity:         allocated,
@@ -423,7 +423,7 @@ export async function POST(req: NextRequest) {
         lots:             lotsResult,
         for_products:     rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
-      }
+      }]
     })
 
   const noBomItems = noBom.map(({ station, sku, sku_name, qty, roundMins }) => ({
