@@ -375,16 +375,17 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     const condChannel = extractCondChannel(condition)
 
     if (station === 'สไลด์' && isWipCrisis) {
-      // Produce WIP up to the needed amount (safety stock target minus current stock)
+      // Produce WIP up to WIP Crisis amount: max(0, avgKg×1.2 − stock)
+      // avgKg = wip_initial / (3×1.2) = wip_initial / 3.6
+      // crisis = avgKg×1.2 − stock = wip_initial/3 − stock
       const items: RmRawNeed[] = []
       for (const wip of wipRows) {
         const productionQty = Number(wip.quantity)
         if (productionQty < 0.005) continue
-        const wipInit        = Number(wip.wip_initial ?? 0)
-        const currentStock   = wipStockMap.get(String(wip.sap_code)) ?? 0
-        const effectiveQty   = wipInit > 0
-          ? Math.min(productionQty, Math.max(0, wipInit - currentStock))
-          : productionQty
+        const wipInit      = Number(wip.wip_initial ?? 0)
+        const currentStock = wipStockMap.get(String(wip.sap_code)) ?? 0
+        const crisisQty    = wipInit > 0 ? Math.max(0, wipInit / 3 - currentStock) : productionQty
+        const effectiveQty = Math.min(productionQty, crisisQty)
         if (effectiveQty < 0.005) continue
         wipFinalPlanByWip.set(wip.sap_code, effectiveQty)
         for (const bom of wipBomMap.get(wip.sap_code) ?? []) {
@@ -393,7 +394,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
           items.push({ raw_sap: bom.raw_sap, raw_name: bom.raw_name, needed_kg: round2(rawNeeded), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, rawNeeded - allocated)) })
         }
       }
-      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP ตาม Final Plan', items })
+      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP ตาม WIP Crisis', items })
 
     } else if (station === 'สไลด์' && isWipExtra) {
       // Extra WIP ≤25% of effective plan
