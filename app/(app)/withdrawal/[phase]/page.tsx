@@ -6,18 +6,6 @@ import { Printer, RefreshCw, PackageOpen, X, ChevronDown, ChevronRight, Clock } 
 import { downloadWithdrawalPDF } from '@/lib/withdrawal-pdf'
 
 
-interface WithdrawalItem {
-  id: string
-  request_date: string
-  phase: number
-  sku: string
-  sku_name: string | null
-  quantity: number
-  unit: string
-  work_station: string | null
-  note: string | null
-}
-
 interface LotInfo {
   spec_code: string
   factory: string
@@ -80,7 +68,8 @@ export default function WithdrawalPage() {
   const { phase } = useParams() as { phase: string }
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]           = useState(today)
-  const [items, setItems]         = useState<WithdrawalItem[]>([])
+  const [items, setItems]         = useState<CalcItem[]>([])
+  const [calcMsg, setCalcMsg]     = useState<string | null>(null)
   const [loading, setLoading]     = useState(false)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [collapsedRounds, setCollapsedRounds] = useState<Set<string>>(new Set())
@@ -98,9 +87,16 @@ export default function WithdrawalPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/withdrawal?date=${date}&phase=${phase}`)
+      const res = await fetch('/api/withdrawal/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase: Number(phase) }),
+      })
       const data = await res.json()
       setItems(data.items ?? [])
+      setCalcMsg(data.message ?? null)
+    } catch {
+      setCalcMsg('เกิดข้อผิดพลาดในการคำนวณ')
     } finally {
       setLoading(false)
     }
@@ -148,16 +144,6 @@ export default function WithdrawalPage() {
     }
   }
 
-  function parseLotNote(note: string | null): { spec_code: string; factory: string; prod_date: string } | null {
-    if (!note?.startsWith('Lot:')) return null
-    const parts = note.split(' | ')
-    return {
-      spec_code: parts[0]?.replace('Lot:', '').trim() ?? note,
-      factory:   parts[1]?.replace('รร.', '').trim() ?? '-',
-      prod_date: parts[2]?.replace('ผลิต', '').trim() ?? '-',
-    }
-  }
-
   function getBaskets(sku: string, qty: number): number | null {
     const rate = basketMap.get(String(sku).replace(/^0+/, '').trim())
     if (!rate || rate <= 0) return null
@@ -188,91 +174,7 @@ export default function WithdrawalPage() {
     return total
   }
 
-  function encodeFPTag(products: ForProduct[]): string {
-    if (!products.length) return ''
-    const s = products
-      .map(p => `${p.sku}~${(p.sku_name ?? '').replace(/[|~[\]]/g, ' ')}~${p.qty}`)
-      .join('|')
-    return `[FP:${s}] `
-  }
-
-  function parseFPFromNote(note: string | null): ForProduct[] {
-    if (!note) return []
-    const m = note.match(/\[FP:([^\]]*)\]/)
-    if (!m?.[1]) return []
-    return m[1].split('|').filter(Boolean).map(entry => {
-      const parts = entry.split('~')
-      return { sku: parts[0] ?? '', sku_name: parts[1] || null, qty: parseFloat(parts[2] ?? '0') }
-    })
-  }
-
-  function parseRoundFromNote(note: string | null): { round: string | null; cleanNote: string | null } {
-    if (!note) return { round: null, cleanNote: null }
-    let rest = note
-    let round: string | null = null
-    const roundM = rest.match(/^\[Round:\s*([^\]]+)\]\s*/)
-    if (roundM) { round = roundM[1].trim(); rest = rest.slice(roundM[0].length) }
-    // strip FP tag so it doesn't appear as visible note text
-    const fpM = rest.match(/^\[FP:[^\]]*\]\s*/)
-    if (fpM) rest = rest.slice(fpM[0].length)
-    return { round, cleanNote: rest.trim() || null }
-  }
-
-  function groupSaved(raw: WithdrawalItem[]): RowItem[] {
-    const map = new Map<string, { round: string | null; items: WithdrawalItem[] }>()
-    for (const item of raw) {
-      const { round } = parseRoundFromNote(item.note)
-      const k = `${item.work_station ?? ''}|||${item.sku}|||${round ?? ''}`
-      const entry = map.get(k) ?? { round, items: [] }
-      entry.items.push(item)
-      map.set(k, entry)
-    }
-    return Array.from(map.values()).map(({ round, items: group }) => {
-      const first = group[0]
-      // reconstruct for_products from any note that has the FP tag
-      const forProducts = group.map(i => parseFPFromNote(i.note)).find(fp => fp.length > 0) ?? []
-      const cleanedGroup = group.map(i => {
-        const { cleanNote } = parseRoundFromNote(i.note)
-        return { ...i, note: cleanNote }
-      })
-      const hasLot = cleanedGroup.some(i => parseLotNote(i.note) !== null || i.note?.includes('ไม่เพียงพอ'))
-      if (!hasLot) {
-        return {
-          sku:          first.sku,
-          sku_name:     first.sku_name,
-          quantity:     cleanedGroup.reduce((s, i) => s + i.quantity, 0),
-          unit:         first.unit,
-          work_station: first.work_station,
-          note:         cleanedGroup[0]?.note ?? null,
-          withdrawal_round: round ?? undefined,
-          for_products: forProducts.length ? forProducts : undefined,
-        } as RowItem
-      }
-      return {
-        sku:          first.sku,
-        sku_name:     first.sku_name,
-        quantity:     cleanedGroup.reduce((s, i) => s + i.quantity, 0),
-        unit:         first.unit,
-        work_station: first.work_station,
-        note:         'คำนวณจาก BOM',
-        withdrawal_round: round ?? undefined,
-        for_products: forProducts.length ? forProducts : undefined,
-        lots: cleanedGroup.map(item => {
-          const p = parseLotNote(item.note)
-          return {
-            spec_code:    p?.spec_code ?? item.note ?? '-',
-            factory:      p?.factory   ?? '-',
-            prod_date:    p?.prod_date ?? '-',
-            available:    0,
-            to_withdraw:  item.quantity,
-            insufficient: item.note?.includes('ไม่เพียงพอ') ?? false,
-          } satisfies LotInfo
-        }),
-      } as RowItem
-    })
-  }
-
-  const displayItems: RowItem[] = groupSaved(items)
+  const displayItems: RowItem[] = items
   const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
@@ -490,7 +392,9 @@ export default function WithdrawalPage() {
           {!loading && displayItems.length === 0 && (
             <div className="card text-center py-12 no-print">
               <PackageOpen size={40} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500 font-medium">ยังไม่มีรายการเบิกสินค้า</p>
+              <p className="text-gray-500 font-medium">
+                {calcMsg ?? 'ยังไม่มีรายการเบิกสินค้า'}
+              </p>
               <p className="text-sm text-gray-400 mt-1">รายการเบิกจะแสดงหลังจากสร้างแผนผลิตแล้ว</p>
             </div>
           )}

@@ -337,9 +337,10 @@ interface SkuScheduleViewProps {
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   rmShortageByPhase?: Record<number, number>
+  rmCapFractionByPhase?: Record<number, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, rmShortageByPhase }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, rmShortageByPhase, rmCapFractionByPhase }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -588,11 +589,28 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                   const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                   const segDone  = nowMins >= seg.end
                   const segPend  = nowMins < seg.start
+                  const opacity  = segDone ? 0.45 : segPend ? 0.35 : 1
+                  // Determine which phase this segment starts in to get RM cap fraction
+                  const segPhase = seg.start < 870 ? 1 : seg.start < 990 ? 2 : 3
+                  const rmFrac   = (rmCapFractionByPhase ?? {})[segPhase] ?? 1
+                  const hasCap   = rmFrac < 0.999 && barWidth > 0.5
+                  const splitPct = hasCap ? barLeft + rmFrac * (pct(seg.end) - pct(seg.start)) : 0
+                  const solidW   = hasCap ? Math.max(splitPct - barLeft, 0) : barWidth
+                  const shortW   = hasCap ? Math.max(barWidth - solidW, 0.5) : 0
                   return (
-                    <div key={`s-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
-                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
-                      onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                    <div key={`s-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5" style={{ left: `${barLeft}%`, width: `${barWidth}%` }}>
+                      {/* Producible portion */}
+                      <div className="absolute inset-y-0 left-0 rounded-sm cursor-pointer"
+                        style={{ width: `${(solidW / barWidth) * 100}%`, backgroundColor: col.bg, opacity }}
+                        onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      {/* Shortage portion */}
+                      {hasCap && shortW > 0 && (
+                        <div className="absolute inset-y-0 rounded-sm cursor-pointer"
+                          style={{ left: `${(solidW / barWidth) * 100}%`, width: `${(shortW / barWidth) * 100}%`,
+                            backgroundColor: col.bg + '30', border: '2px solid #ef4444', opacity }}
+                          onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      )}
+                    </div>
                   )
                 })}
                 {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
@@ -1413,6 +1431,7 @@ export default function TablePage() {
   const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
   const [genSupResult, setGenSupResult] = useState<{ success: boolean; message: string } | null>(null)
   const [rmShortageByPhase, setRmShortageByPhase] = useState<Record<number, number>>({})
+  const [rmCapFractionByPhase, setRmCapFractionByPhase] = useState<Record<number, number>>({})
 
   const [midRecal, setMidRecal]     = useState(() => {
     if (typeof window !== 'undefined') {
@@ -1470,18 +1489,30 @@ export default function TablePage() {
     fetch(`/api/withdrawal/rm-allocation?date=${date}`)
       .then(r => r.json())
       .then(data => {
+        const stationLabel = cfg?.label ?? ''
         const byPhase: Record<number, number> = {}
+        const fracByPhase: Record<number, number> = {}
         for (const group of (data.allocation ?? [])) {
-          for (const item of (group.items ?? [])) {
-            if ((item.shortage_kg ?? 0) > 0.005) {
-              byPhase[group.phase] = (byPhase[group.phase] ?? 0) + item.shortage_kg
+          // Shortage strip: only count groups for this station
+          if (group.station === stationLabel) {
+            for (const item of (group.items ?? [])) {
+              if ((item.shortage_kg ?? 0) > 0.005) {
+                byPhase[group.phase] = (byPhase[group.phase] ?? 0) + item.shortage_kg
+              }
+              // Cap fraction: minimum allocated/needed across all items in this station+phase
+              if ((item.needed_kg ?? 0) > 0.005) {
+                const frac = Math.min(1, (item.allocated_kg ?? 0) / item.needed_kg)
+                const cur = fracByPhase[group.phase]
+                fracByPhase[group.phase] = cur !== undefined ? Math.min(cur, frac) : frac
+              }
             }
           }
         }
         setRmShortageByPhase(byPhase)
+        setRmCapFractionByPhase(fracByPhase)
       })
       .catch(() => {})
-  }, [date])
+  }, [date, cfg?.label])
 
   const generate = async (deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
     if (selectedPhase === 'all') return
@@ -1711,6 +1742,7 @@ export default function TablePage() {
                 skuColor={skuColor}
                 nameMap={nameMap}
                 rmShortageByPhase={rmShortageByPhase}
+                rmCapFractionByPhase={rmCapFractionByPhase}
               />
             )}
             {viewMode === 'gantt' && (
