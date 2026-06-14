@@ -117,13 +117,13 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // 3. Production assignments (all non-สไลด์ stations) — include channel
+  // 3. Production assignments (all stations including สไลด์) — include channel
   const { data: assnRows } = await supabase
     .from('production_assignments')
     .select('table_name, sku, sku_name, target_quantity, period, channel')
     .eq('production_date', date)
     .in('period', ['เช้า', 'บ่าย', 'ค่ำ'])
-    .in('table_name', ALL_NON_SLIDE)
+    .in('table_name', [...ALL_NON_SLIDE, 'สไลด์'])
 
   const skuQtyByPeriod = new Map<string, SkuQtyMap>([
     ['เช้า', new Map()], ['บ่าย', new Map()], ['ค่ำ', new Map()],
@@ -417,23 +417,17 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
 
     } else if (station === 'สไลด์' && isRemainder) {
-      // Only show remainder if Phase 2 or Phase 3 has production assignments.
-      // If only Phase 1 is planned, skip — the pool hasn't been used by Phase 2/3
-      // so "remainder" would incorrectly absorb all Phase 2/3 stock.
-      const hasPh2 = (skuQtyByPeriod.get('บ่าย') ?? new Map()).size > 0
-      const hasPh3 = (skuQtyByPeriod.get('ค่ำ')  ?? new Map()).size > 0
-      if (!hasPh2 && !hasPh3) { /* skip */ } else {
-        const items: RmRawNeed[] = []
-        const seenKeys = new Set<string>()
-        for (const [key, remaining] of Array.from(pool.entries())) {
-          if (remaining < 0.005 || seenKeys.has(key)) continue
-          seenKeys.add(key)
-          const displayName = normToDisplay.get(key) ?? key
-          const allocated   = takeFromPool(displayName, remaining)
-          items.push({ raw_sap: rawSapByNorm.get(key) ?? '', raw_name: displayName, needed_kg: round2(remaining), allocated_kg: round2(allocated), shortage_kg: 0 })
-        }
-        if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'รับเนื้อที่เหลือทั้งหมด', items })
+      // BOM-based allocation for สไลด์ regular production — same as other stations.
+      // Skip WIP(F) components (produced in-house, not in warehouse stock pool).
+      const pm    = skuQtyByPeriod.get(period) ?? new Map()
+      const needs = stationRawNeeds('สไลด์', pm)
+      const items: RmRawNeed[] = []
+      for (const { raw_sap, raw_name, needed } of Array.from(needs.values())) {
+        if (!pool.has(normName(raw_name))) continue  // WIP(F) — not in warehouse stock
+        const allocated = takeFromPool(raw_name, needed)
+        items.push({ raw_sap, raw_name, needed_kg: round2(needed), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, needed - allocated)) })
       }
+      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: `ผลิต Phase ${phase} (${period})`, items })
 
     } else if (station === 'อื่น ๆ') {
       const purpose = condChannel
