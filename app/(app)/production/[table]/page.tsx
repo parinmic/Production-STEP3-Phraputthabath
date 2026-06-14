@@ -336,9 +336,10 @@ interface SkuScheduleViewProps {
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
+  rmShortageByPhase?: Record<number, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, rmShortageByPhase }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -487,7 +488,47 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
       {/* Chart body */}
       <div className="divide-y divide-gray-50 relative">
-        
+
+        {/* RM shortage strip */}
+        {(() => {
+          const PHASE_RANGES = [
+            { phase: 1, startMins: 510, endMins: 870 },
+            { phase: 2, startMins: 870, endMins: 990 },
+            { phase: 3, startMins: 990, endMins: 1440 },
+          ]
+          const bands = PHASE_RANGES.map(pr => {
+            const shortage = (rmShortageByPhase ?? {})[pr.phase] ?? 0
+            const bandStart = Math.max(pr.startMins, chartStart)
+            const bandEnd   = Math.min(pr.endMins, chartEnd)
+            if (bandStart >= bandEnd || shortage <= 0.005) return null
+            return { phase: pr.phase, shortage, bandStart, bandEnd }
+          }).filter(Boolean) as { phase: number; shortage: number; bandStart: number; bandEnd: number }[]
+          if (!bands.length) return null
+          return (
+            <div className="flex items-center min-h-[28px] sm:min-h-[32px] relative z-10 bg-red-50/60 border-b border-red-100">
+              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 border-r border-gray-100 flex items-center">
+                <p className="text-[10px] sm:text-xs font-semibold text-red-500 leading-tight">ขาดเนื้อ</p>
+              </div>
+              <div className="flex-1 relative h-6 sm:h-7">
+                {bands.map(band => {
+                  const bandLeft  = Math.max(pct(band.bandStart), 0)
+                  const bandWidth = Math.max(pct(band.bandEnd) - pct(band.bandStart), 0.5)
+                  return (
+                    <div key={band.phase}
+                      className="absolute top-1 bottom-1 rounded flex items-center justify-center overflow-hidden"
+                      style={{ left: `${bandLeft}%`, width: `${bandWidth}%`, backgroundColor: '#fca5a5', border: '1.5px solid #ef4444' }}>
+                      <span className="text-[9px] sm:text-[10px] font-bold text-red-700 truncate px-1 whitespace-nowrap select-none">
+                        ขาด {Math.round(band.shortage).toLocaleString()} กก.
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="w-24 sm:w-32 shrink-0 border-l border-gray-100" />
+            </div>
+          )
+        })()}
+
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
           const col       = skuColor[sku]
@@ -1371,6 +1412,7 @@ export default function TablePage() {
   const [viewMode, setViewMode]     = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
   const [genSupSlot, setGenSupSlot] = useState<number | null>(null)
   const [genSupResult, setGenSupResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [rmShortageByPhase, setRmShortageByPhase] = useState<Record<number, number>>({})
 
   const [midRecal, setMidRecal]     = useState(() => {
     if (typeof window !== 'undefined') {
@@ -1423,6 +1465,23 @@ export default function TablePage() {
     const id = setInterval(() => loadData(date, true), 3000)
     return () => clearInterval(id)
   }, [date, cfg?.label])
+
+  useEffect(() => {
+    fetch(`/api/withdrawal/rm-allocation?date=${date}`)
+      .then(r => r.json())
+      .then(data => {
+        const byPhase: Record<number, number> = {}
+        for (const group of (data.allocation ?? [])) {
+          for (const item of (group.items ?? [])) {
+            if ((item.shortage_kg ?? 0) > 0.005) {
+              byPhase[group.phase] = (byPhase[group.phase] ?? 0) + item.shortage_kg
+            }
+          }
+        }
+        setRmShortageByPhase(byPhase)
+      })
+      .catch(() => {})
+  }, [date])
 
   const generate = async (deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
     if (selectedPhase === 'all') return
@@ -1651,6 +1710,7 @@ export default function TablePage() {
                 bagMap={bagMap}
                 skuColor={skuColor}
                 nameMap={nameMap}
+                rmShortageByPhase={rmShortageByPhase}
               />
             )}
             {viewMode === 'gantt' && (
