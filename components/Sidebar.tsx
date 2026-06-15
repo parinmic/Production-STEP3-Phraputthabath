@@ -227,7 +227,7 @@ export default function Sidebar() {
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </Link>
 
-          <div className="hidden md:block space-y-1">
+          <div className="space-y-1">
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
@@ -426,7 +426,7 @@ export default function Sidebar() {
             <span className={labelCls}>จัดสรรเนื้อ Raw Mat</span>
           </Link>
 
-          </div>{/* end hidden md:block */}
+          </div>
 
         </nav>
 
