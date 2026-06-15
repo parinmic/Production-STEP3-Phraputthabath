@@ -55,10 +55,22 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     .from('mas_priority_withdrawal')
     .select('phase, station, priority_order, condition')
 
-  const priorityRows = (priorityRowsRaw ?? []).sort((a, b) =>
+  const DEFAULT_PRIORITY_ROWS = [
+    { phase: '1', station: 'สไลด์', priority_order: 1, condition: 'WIP Crisis' },
+    { phase: '1', station: 'อื่น ๆ',  priority_order: 2, condition: '' },
+    { phase: '1', station: 'หมูบด',  priority_order: 3, condition: '' },
+    { phase: '1', station: 'สไลด์', priority_order: 4, condition: '25%' },
+    { phase: '2', station: 'สไลด์', priority_order: 1, condition: '' },
+    { phase: '2', station: 'อื่น ๆ',  priority_order: 2, condition: '' },
+    { phase: '2', station: 'หมูบด',  priority_order: 3, condition: '' },
+    { phase: '3', station: 'อื่น ๆ',  priority_order: 1, condition: '' },
+    { phase: '3', station: 'หมูบด',  priority_order: 2, condition: '' },
+    { phase: '3', station: 'สไลด์', priority_order: 3, condition: '' },
+  ]
+  const raw = priorityRowsRaw ?? []
+  const priorityRows = (raw.length ? raw : DEFAULT_PRIORITY_ROWS).sort((a, b) =>
     (Number(a.phase) - Number(b.phase)) || (Number(a.priority_order) - Number(b.priority_order))
   )
-  if (!priorityRows.length) return []
 
   // 1. WIP Plan
   const { data: wipRows } = await supabase
