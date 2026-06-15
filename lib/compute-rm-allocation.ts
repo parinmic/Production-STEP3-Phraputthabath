@@ -428,9 +428,21 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: 'ผลิต WIP เพิ่มเติม (≤25% Final Plan)', items })
 
     } else if (station === 'สไลด์' && isRemainder) {
-      // BOM-based allocation for สไลด์ regular production — same as other stations.
-      const items = allocateStation('สไลด์', period)
-      if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: `ผลิต Phase ${phase} (${period})`, items })
+      // BOM-based allocation for สไลด์ regular production.
+      // Filter to only materials present in warehouse pool — WIP(F) items produced in-house are
+      // not in the pool and must not appear as false shortages.
+      const pm    = skuQtyByPeriod.get(period) ?? new Map()
+      const needs = stationRawNeeds('สไลด์', pm, null)
+      if (needs.size) {
+        const items = Array.from(needs.values())
+          .filter(({ raw_name }) => pool.has(normName(raw_name)))
+          .map(({ raw_sap, raw_name, needed }) => {
+            const allocated = takeFromPool(raw_name, needed)
+            return { raw_sap, raw_name, needed_kg: round2(needed), allocated_kg: round2(allocated), shortage_kg: round2(Math.max(0, needed - allocated)) }
+          })
+          .sort((a, b) => b.needed_kg - a.needed_kg)
+        if (items.length) groups.push({ phase, priority, station: 'สไลด์', purpose: `ผลิต Phase ${phase} (${period})`, items })
+      }
 
     } else if (station === 'อื่น ๆ') {
       const purpose = condChannel
