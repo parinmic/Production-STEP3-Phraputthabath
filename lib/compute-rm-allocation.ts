@@ -67,9 +67,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     .eq('plan_date', date)
     .gt('quantity', 0)
 
-  if (!wipRows?.length) return []
-
-  const wipSaps = wipRows.map(w => w.sap_code)
+  const wipSaps = (wipRows ?? []).map(w => w.sap_code)
 
   // 1b. WIP sku_name from master_logic_calculation
   const { data: masterRows } = await supabase
@@ -104,8 +102,9 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
 
   // 2. BOM for WIP
   const wipSapsExpanded = Array.from(new Set([...wipSaps, ...wipSaps.map(s => s.replace(/^0+/, ''))]))
-  const { data: wipBomRows } = await supabase
-    .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSapsExpanded)
+  const { data: wipBomRows } = wipSapsExpanded.length
+    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSapsExpanded)
+    : { data: [] }
 
   const wipBomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
   for (const b of wipBomRows ?? []) {
