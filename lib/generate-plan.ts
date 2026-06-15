@@ -549,6 +549,8 @@ function allocateBalanced(params: {
     const specialStart = specialTime?.startMins ?? null
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
+    const _isMooDebug  = tableName === 'หมูบด' && normSku === '23057698'
+    if (_isMooDebug) console.log(`[DEBUG2] 23057698 block: totalQty=${block.totalQty} numBags=${numBags} wpb=${block.wpb} rate=${block.rate} phaseEndMins=${phaseEndMins} limitEnd=${limitEnd} specialStop=${specialStop}`)
 
     let eligible: WorkforceRow[]
     let selected: WorkforceRow[]
@@ -616,7 +618,8 @@ function allocateBalanced(params: {
     for (const w of selected)
       blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
     if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
-    if (blockStart >= limitEnd) continue
+    if (_isMooDebug) console.log(`[DEBUG2] 23057698 blockStart=${blockStart} selected=${selected.length} eligible=${eligible.length}`)
+    if (blockStart >= limitEnd) { if (_isMooDebug) console.log(`[DEBUG2] 23057698 SKIP: blockStart(${blockStart}) >= limitEnd(${limitEnd})`); continue }
 
     // Distribute bags equally; remainder goes to last worker
     // key = normSku (channels merged → one continuous block per worker)
