@@ -2706,10 +2706,27 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             }
           }
 
+          // Fetch current WIP stock to compute net quantity needed (same formula as wip-plan page)
+          const wipAutoNames = Array.from(wipKgSum.keys())
+            .map(sap => skuMap.get(sap.replace(/^0+/, ''))?.sku_name)
+            .filter((n): n is string => Boolean(n))
+          const wipAutoStockMap = new Map<string, number>()
+          if (wipAutoNames.length) {
+            const { data: autoStk } = await supabase
+              .from('stock_20').select('material_name, weight_total').in('material_name', wipAutoNames)
+            for (const r of autoStk ?? []) {
+              const name = String(r.material_name ?? '').trim()
+              wipAutoStockMap.set(name, (wipAutoStockMap.get(name) ?? 0) + Number(r.weight_total))
+            }
+          }
+
           for (const [wipSap, total] of wipKgSum) {
             const avgKg = total / (wipDayCount.get(wipSap) ?? 1)
-            const wipInitial = Math.floor(avgKg * 2 * 1.2 / 100) * 100
-            if (wipInitial > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: wipInitial, is_manual: false, wip_initial: wipInitial })
+            const safetyStock = Math.floor(avgKg * 3 * 1.2 / 100) * 100
+            const prodName = skuMap.get(wipSap.replace(/^0+/, ''))?.sku_name ?? ''
+            const stockKg = wipAutoStockMap.get(prodName) ?? 0
+            const autoBase = Math.round(Math.max(0, safetyStock - stockKg))
+            if (autoBase > 0) effectiveWipPlan.push({ sap_code: wipSap, quantity: autoBase, is_manual: false, wip_initial: safetyStock })
           }
         }
       }
