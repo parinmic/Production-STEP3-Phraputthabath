@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { RefreshCw, ChevronRight, SkipForward } from 'lucide-react'
+import { RefreshCw, ChevronRight, SkipForward, Camera } from 'lucide-react'
 import type { RmAllocationResult, AllocationGroup, WipPhaseNeeds } from '@/app/api/withdrawal/rm-allocation/route'
 
 const PRIORITY_COLOR: Record<number, { label: string; color: string; bg: string; border: string }> = {
@@ -20,9 +20,9 @@ const STATION_BADGE: Record<string, string> = {
 }
 
 const PHASE_LABEL: Record<number, { label: string; period: string; bg: string; text: string; border: string }> = {
-  1: { label: 'Phase 1', period: 'เช้า',  bg: 'bg-blue-600',  text: 'text-white', border: 'border-blue-600' },
-  2: { label: 'Phase 2', period: 'บ่าย',  bg: 'bg-amber-500', text: 'text-white', border: 'border-amber-500' },
-  3: { label: 'Phase 3', period: 'ค่ำ',   bg: 'bg-indigo-600',text: 'text-white', border: 'border-indigo-600' },
+  1: { label: 'Phase 1', period: 'เช้า',  bg: 'bg-blue-600',   text: 'text-white', border: 'border-blue-600' },
+  2: { label: 'Phase 2', period: 'บ่าย',  bg: 'bg-amber-500',  text: 'text-white', border: 'border-amber-500' },
+  3: { label: 'Phase 3', period: 'ค่ำ',   bg: 'bg-indigo-600', text: 'text-white', border: 'border-indigo-600' },
 }
 
 function pct(allocated: number, needed: number) {
@@ -91,59 +91,61 @@ function GroupCard({ group }: { group: AllocationGroup }) {
       {group.items.length === 0 ? (
         <p className="text-sm text-gray-400 italic">— ไม่มีรายการ (ไม่พบ BOM) —</p>
       ) : (
-        <>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b text-xs">
-                <th className="px-3 py-2 text-left   text-gray-500 font-medium">วัตถุดิบ</th>
-                <th className="px-3 py-2 text-right  text-gray-500 font-medium">ต้องการ</th>
-                <th className="px-3 py-2 text-right  text-gray-500 font-medium">จัดสรร</th>
-                <th className="px-3 py-2 text-right  text-gray-500 font-medium hidden sm:table-cell">ขาด</th>
-                <th className="px-3 py-2 text-left   text-gray-500 font-medium hidden md:table-cell w-36">สัดส่วน</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.items.map((item, i) => (
-                <tr key={i} className={`border-b last:border-0 ${item.shortage_kg > 0.5 ? 'bg-red-50/40' : ''}`}>
-                  <td className="px-3 py-2.5 font-medium text-gray-800">{item.raw_name}</td>
-                  <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{item.needed_kg.toLocaleString()}</td>
-                  <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-600' : 'text-gray-800'}`}>
-                    {item.allocated_kg.toLocaleString()}
-                  </td>
-                  <td className={`px-3 py-2.5 text-right hidden sm:table-cell tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
-                    {item.shortage_kg > 0.5 ? item.shortage_kg.toLocaleString() : '—'}
-                  </td>
-                  <td className="px-3 py-2.5 hidden md:table-cell">
-                    <BarCell allocated={item.allocated_kg} needed={item.needed_kg} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-gray-200 bg-gray-50">
-              <tr>
-                <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
-                <td className="px-3 py-2 text-right text-sm font-semibold text-gray-700 tabular-nums">{Math.round(totalNeeded).toLocaleString()}</td>
-                <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${hasShortage ? 'text-red-600' : 'text-green-600'}`}>{Math.round(totalAlloc).toLocaleString()}</td>
-                <td className={`px-3 py-2 text-right text-sm font-bold hidden sm:table-cell tabular-nums ${hasShortage ? 'text-red-500' : 'text-gray-400'}`}>
-                  {hasShortage ? Math.round(totalShort).toLocaleString() : '—'}
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 border-b text-xs">
+              <th className="px-3 py-2 text-left   text-gray-500 font-medium">วัตถุดิบ</th>
+              <th className="px-3 py-2 text-right  text-gray-500 font-medium">ต้องการ</th>
+              <th className="px-3 py-2 text-right  text-gray-500 font-medium">จัดสรร</th>
+              <th className="px-3 py-2 text-right  text-gray-500 font-medium hidden sm:table-cell">ขาด</th>
+              <th className="px-3 py-2 text-left   text-gray-500 font-medium hidden md:table-cell w-36">สัดส่วน</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.items.map((item, i) => (
+              <tr key={i} className={`border-b last:border-0 ${item.shortage_kg > 0.5 ? 'bg-red-50/40' : ''}`}>
+                <td className="px-3 py-2.5 font-medium text-gray-800">{item.raw_name}</td>
+                <td className="px-3 py-2.5 text-right text-gray-600 tabular-nums">{item.needed_kg.toLocaleString()}</td>
+                <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-600' : 'text-gray-800'}`}>
+                  {item.allocated_kg.toLocaleString()}
                 </td>
-                <td className="hidden md:table-cell" />
+                <td className={`px-3 py-2.5 text-right hidden sm:table-cell tabular-nums ${item.shortage_kg > 0.5 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+                  {item.shortage_kg > 0.5 ? item.shortage_kg.toLocaleString() : '—'}
+                </td>
+                <td className="px-3 py-2.5 hidden md:table-cell">
+                  <BarCell allocated={item.allocated_kg} needed={item.needed_kg} />
+                </td>
               </tr>
-            </tfoot>
-          </table>
-        </>
+            ))}
+          </tbody>
+          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+            <tr>
+              <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
+              <td className="px-3 py-2 text-right text-sm font-semibold text-gray-700 tabular-nums">{Math.round(totalNeeded).toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${hasShortage ? 'text-red-600' : 'text-green-600'}`}>{Math.round(totalAlloc).toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right text-sm font-bold hidden sm:table-cell tabular-nums ${hasShortage ? 'text-red-500' : 'text-gray-400'}`}>
+                {hasShortage ? Math.round(totalShort).toLocaleString() : '—'}
+              </td>
+              <td className="hidden md:table-cell" />
+            </tr>
+          </tfoot>
+        </table>
       )}
     </div>
   )
 }
 
+type PhaseMatRow = { raw_name: string; needed_kg: number; allocated_kg: number; shortage_kg: number }
+const normKey = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+
 export default function RmAllocationPage() {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-  const [date, setDate]           = useState(today)
-  const [result, setResult]       = useState<RmAllocationResult | null>(null)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState<string | null>(null)
-  const [showSummary, setShowSummary] = useState(true)
+  const [date, setDate]                 = useState(today)
+  const [result, setResult]             = useState<RmAllocationResult | null>(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [snapshotSaving, setSnapshotSaving] = useState<number | null>(null)
+  const [snapshotMsg, setSnapshotMsg]   = useState<{ phase: number; ok: boolean; msg: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -162,27 +164,61 @@ export default function RmAllocationPage() {
 
   useEffect(() => { load() }, [load])
 
-  const totalRaw       = result?.summary.reduce((s, r) => s + r.total_stock, 0)       ?? 0
-  const totalAllocated = result?.summary.reduce((s, r) => s + r.total_allocated, 0)   ?? 0
-
-  // Sum shortage per raw material across all allocation groups (all phases)
-  const shortageByRaw = new Map<string, number>()
-  const neededByRaw   = new Map<string, number>()
-  for (const group of result?.allocation ?? []) {
-    for (const item of group.items) {
-      const key = item.raw_name.trim().toLowerCase().replace(/\s*-\s*/g, '-')
-      shortageByRaw.set(key, (shortageByRaw.get(key) ?? 0) + item.shortage_kg)
-      neededByRaw.set(key,   (neededByRaw.get(key)   ?? 0) + item.needed_kg)
-    }
+  // Stock lookup by raw_name key (from summary — same stock regardless of phase)
+  const stockByName = new Map<string, number>()
+  for (const s of result?.summary ?? []) {
+    stockByName.set(normKey(s.raw_name), s.total_stock)
   }
 
-  // Group allocation by phase
+  // Per-phase combined summary: aggregate raw materials from allocation groups + WIP(F) items
+  const perPhaseSummary = [1, 2, 3].map(phase => {
+    const rawMap = new Map<string, PhaseMatRow>()
+    for (const group of (result?.allocation ?? []).filter(g => g.phase === phase)) {
+      for (const item of group.items) {
+        const key = normKey(item.raw_name)
+        const cur = rawMap.get(key) ?? { raw_name: item.raw_name, needed_kg: 0, allocated_kg: 0, shortage_kg: 0 }
+        cur.needed_kg    += item.needed_kg
+        cur.allocated_kg += item.allocated_kg
+        cur.shortage_kg  += item.shortage_kg
+        rawMap.set(key, cur)
+      }
+    }
+    const rawItems  = Array.from(rawMap.values()).sort((a, b) => b.needed_kg - a.needed_kg)
+    const wipfItems = (result?.wipNeeds ?? []).find((w: WipPhaseNeeds) => w.phase === phase)?.items ?? []
+    return { phase, rawItems, wipfItems }
+  }).filter(p => p.rawItems.length > 0 || p.wipfItems.length > 0)
+
+  // Group allocation by phase for the detailed GroupCards below
   const phaseGroups = result
     ? [1, 2, 3].map(phase => ({
         phase,
-        groups: result.allocation.filter(g => g.phase === phase),
+        groups: result.allocation.filter((g: AllocationGroup) => g.phase === phase),
       })).filter(p => p.groups.length > 0)
     : []
+
+  const saveSnapshot = async (phase: number) => {
+    const summary = perPhaseSummary.find(p => p.phase === phase)
+    if (!summary || !date) return
+    setSnapshotSaving(phase)
+    try {
+      const res  = await fetch('/api/withdrawal/rm-allocation/snapshot', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          date,
+          phase,
+          period: PHASE_LABEL[phase].period,
+          raw_materials: summary.rawItems,
+          wipf_items:    summary.wipfItems,
+        }),
+      })
+      const data = await res.json()
+      setSnapshotMsg({ phase, ok: res.ok, msg: res.ok ? 'บันทึก Snapshot สำเร็จ' : (data.error ?? 'เกิดข้อผิดพลาด') })
+      setTimeout(() => setSnapshotMsg(null), 3000)
+    } finally {
+      setSnapshotSaving(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -217,12 +253,10 @@ export default function RmAllocationPage() {
         </button>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{error}</div>
       )}
 
-      {/* Loading */}
       {loading && (
         <div className="card text-center py-12 text-gray-400">
           <RefreshCw size={32} className="animate-spin mx-auto mb-3" />
@@ -230,152 +264,173 @@ export default function RmAllocationPage() {
         </div>
       )}
 
-      {/* No data */}
       {!loading && result?.message && (
         <div className="card text-center py-10 text-gray-500">{result.message}</div>
       )}
 
-      {/* Main content */}
       {!loading && result && !result.message && (
         <div className="space-y-8">
 
-          {/* Summary */}
-          <div className="card">
-            <button
-              onClick={() => setShowSummary(s => !s)}
-              className="w-full flex items-center justify-between text-left"
-            >
-              <div>
-                <h2 className="font-semibold text-gray-900">สรุปวัตถุดิบรวม (ทุก Phase)</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Stock รวม {Math.round(totalRaw).toLocaleString()} กก. · จัดสรร {Math.round(totalAllocated).toLocaleString()} กก. · คงเหลือ {Math.round(totalRaw - totalAllocated).toLocaleString()} กก.
-                </p>
-              </div>
-              <ChevronRight size={16} className={`text-gray-400 transition-transform ${showSummary ? 'rotate-90' : ''}`} />
-            </button>
+          {/* ── Per-phase combined summary ── */}
+          <div className="space-y-6">
+            {perPhaseSummary.map(({ phase, rawItems, wipfItems }) => {
+              const ph             = PHASE_LABEL[phase]
+              const totalNeeded    = rawItems.reduce((s, r) => s + r.needed_kg, 0)
+              const totalAlloc     = rawItems.reduce((s, r) => s + r.allocated_kg, 0)
+              const totalShort     = rawItems.reduce((s, r) => s + r.shortage_kg, 0)
+              const totalWipNeeded = wipfItems.reduce((s: number, w: { needed_kg: number }) => s + w.needed_kg, 0)
+              const isSaving       = snapshotSaving === phase
 
-            {showSummary && (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b text-xs">
-                      <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-medium">Stock (กก.)</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการรวม</th>
-                      <th className="px-3 py-2 text-right text-gray-500 font-medium">ขาด (กก.)</th>
-                      <th className="px-3 py-2 text-center text-gray-500 font-medium">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.summary.map((row, i) => {
-                      const key      = row.raw_name.trim().toLowerCase().replace(/\s*-\s*/g, '-')
-                      const shortage = shortageByRaw.get(key) ?? 0
-                      const needed   = neededByRaw.get(key) ?? 0
-                      const hasShort = shortage > 0.5
-                      return (
-                        <tr key={i} className={`border-b last:border-0 ${hasShort ? 'bg-red-50/40' : ''}`}>
-                          <td className="px-3 py-2.5 font-medium text-gray-800">{row.raw_name}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">{Math.round(row.total_stock).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{Math.round(needed).toLocaleString()}</td>
-                          <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${hasShort ? 'text-red-600' : 'text-gray-300'}`}>
-                            {hasShort ? Math.round(shortage).toLocaleString() : '—'}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {hasShort
-                              ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">ขาด</span>
-                              : <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">เพียงพอ</span>}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot className="border-t-2 bg-gray-50">
-                    <tr>
-                      <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums">{Math.round(totalRaw).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-gray-700">{Math.round(Array.from(neededByRaw.values()).reduce((s, v) => s + v, 0)).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">
-                        {Array.from(shortageByRaw.values()).reduce((s, v) => s + v, 0) > 0.5
-                          ? Math.round(Array.from(shortageByRaw.values()).reduce((s, v) => s + v, 0)).toLocaleString()
-                          : '—'}
-                      </td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
+              return (
+                <div key={phase} className={`card border-2 ${totalShort > 0.5 ? 'border-red-300' : 'border-gray-100'}`}>
+                  {/* Phase header */}
+                  <div className="flex items-center gap-3 mb-5 flex-wrap">
+                    <span className={`${ph.bg} ${ph.text} text-sm font-bold px-3 py-1 rounded-lg`}>{ph.label}</span>
+                    <span className="text-sm text-gray-500">{ph.period}</span>
+                    <div className="flex-1 h-px bg-gray-200 min-w-[20px]" />
+                    {totalShort > 0.5 && (
+                      <span className="text-xs text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full">
+                        ขาด {Math.round(totalShort).toLocaleString()} กก.
+                      </span>
+                    )}
+                    <button
+                      onClick={() => saveSnapshot(phase)}
+                      disabled={isSaving}
+                      className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <Camera size={12} className={isSaving ? 'animate-pulse' : ''} />
+                      {isSaving ? 'กำลังบันทึก...' : 'Snapshot'}
+                    </button>
+                  </div>
+
+                  {snapshotMsg?.phase === phase && (
+                    <div className={`mb-4 text-sm px-3 py-2 rounded-lg ${snapshotMsg.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {snapshotMsg.msg}
+                    </div>
+                  )}
+
+                  {/* Raw materials table (warehouse + หมูบด ingredients) */}
+                  {rawItems.length > 0 && (
+                    <div className={wipfItems.length > 0 ? 'mb-5' : ''}>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">วัตถุดิบ Raw Material</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 border-b text-xs">
+                              <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
+                              <th className="px-3 py-2 text-right text-gray-500 font-medium">Stock (กก.)</th>
+                              <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการ</th>
+                              <th className="px-3 py-2 text-right text-gray-500 font-medium">จัดสรร</th>
+                              <th className="px-3 py-2 text-right text-gray-500 font-medium hidden sm:table-cell">ขาด</th>
+                              <th className="px-3 py-2 text-center text-gray-500 font-medium">สถานะ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rawItems.map((item, i) => {
+                              const stock    = stockByName.get(normKey(item.raw_name)) ?? 0
+                              const hasShort = item.shortage_kg > 0.5
+                              return (
+                                <tr key={i} className={`border-b last:border-0 ${hasShort ? 'bg-red-50/40' : ''}`}>
+                                  <td className="px-3 py-2.5 font-medium text-gray-800">{item.raw_name}</td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{Math.round(stock).toLocaleString()}</td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{item.needed_kg.toLocaleString()}</td>
+                                  <td className={`px-3 py-2.5 text-right tabular-nums font-semibold ${hasShort ? 'text-red-600' : 'text-gray-800'}`}>
+                                    {item.allocated_kg.toLocaleString()}
+                                  </td>
+                                  <td className={`px-3 py-2.5 text-right tabular-nums hidden sm:table-cell font-semibold ${hasShort ? 'text-red-500' : 'text-gray-300'}`}>
+                                    {hasShort ? Math.round(item.shortage_kg).toLocaleString() : '—'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    {hasShort
+                                      ? <span className="inline-block text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">ขาด</span>
+                                      : <span className="inline-block text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">เพียงพอ</span>}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                            <tr>
+                              <td className="px-3 py-2 text-xs font-semibold text-gray-500" colSpan={2}>รวม</td>
+                              <td className="px-3 py-2 text-right font-bold tabular-nums text-gray-700">{Math.round(totalNeeded).toLocaleString()}</td>
+                              <td className={`px-3 py-2 text-right font-bold tabular-nums ${totalShort > 0.5 ? 'text-red-600' : 'text-green-600'}`}>{Math.round(totalAlloc).toLocaleString()}</td>
+                              <td className={`px-3 py-2 text-right font-bold tabular-nums hidden sm:table-cell ${totalShort > 0.5 ? 'text-red-500' : 'text-gray-300'}`}>
+                                {totalShort > 0.5 ? Math.round(totalShort).toLocaleString() : '—'}
+                              </td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Divider */}
+                  {rawItems.length > 0 && wipfItems.length > 0 && (
+                    <div className="border-t border-dashed border-gray-200 mb-4" />
+                  )}
+
+                  {/* WIP(F) — in-house produced items */}
+                  {wipfItems.length > 0 && (
+                    <div>
+                      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-2 text-purple-600">
+                        <span className="bg-purple-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">WIP(F)</span>
+                        วัตถุดิบ In-House ที่ต้องเตรียม
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-purple-50 border-b text-xs">
+                              <th className="px-3 py-2 text-left  text-purple-600 font-medium">วัตถุดิบ</th>
+                              <th className="px-3 py-2 text-right text-purple-600 font-medium">ต้องการ (กก.)</th>
+                              <th className="px-3 py-2 text-center text-purple-600 font-medium">สถานะ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {wipfItems.map((item: { raw_sap: string; raw_name: string | null; needed_kg: number }, i: number) => (
+                              <tr key={i} className="border-b last:border-0 bg-purple-50/20">
+                                <td className="px-3 py-2.5">
+                                  <div className="font-medium text-gray-800">{item.raw_name ?? item.raw_sap}</div>
+                                  <div className="text-xs text-gray-400">{item.raw_sap}</div>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-purple-700">
+                                  {item.needed_kg.toLocaleString()}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <span className="inline-block text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">ต้องผลิต</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="border-t-2 border-purple-200 bg-purple-50">
+                            <tr>
+                              <td className="px-3 py-2 text-xs font-semibold text-purple-600">รวม</td>
+                              <td className="px-3 py-2 text-right font-bold tabular-nums text-purple-700">{Math.round(totalWipNeeded).toLocaleString()}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
-          {/* WIP(F) section — in-house produced items สไลด์ needs */}
-          {(result.wipNeeds ?? []).length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="bg-purple-600 text-white text-sm font-bold px-3 py-1 rounded-lg">WIP(F)</span>
-                <span className="text-sm text-gray-500">วัตถุดิบ In-House ที่ต้องเตรียมสำหรับสไลด์</span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-              {(result.wipNeeds ?? []).map((wp: WipPhaseNeeds) => {
-                const ph = PHASE_LABEL[wp.phase]
-                const totalNeeded = wp.items.reduce((s, i) => s + i.needed_kg, 0)
-                return (
-                  <div key={wp.phase} className="card border-2 border-purple-200">
-                    <div className="flex items-center gap-2.5 mb-4">
-                      <span className={`${ph.bg} ${ph.text} text-xs font-bold px-2 py-0.5 rounded-full`}>{ph.label}</span>
-                      <span className="text-sm text-gray-500">{wp.period}</span>
-                      <span className="ml-auto text-xs text-purple-700 font-medium bg-purple-50 px-2 py-0.5 rounded-full">
-                        รวม {Math.round(totalNeeded).toLocaleString()} กก.
-                      </span>
-                    </div>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 border-b text-xs">
-                          <th className="px-3 py-2 text-left  text-gray-500 font-medium">วัตถุดิบ</th>
-                          <th className="px-3 py-2 text-right text-gray-500 font-medium">ต้องการ (กก.)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {wp.items.map((item, i) => (
-                          <tr key={i} className="border-b last:border-0">
-                            <td className="px-3 py-2.5">
-                              <div className="font-medium text-gray-800">{item.raw_name ?? item.raw_sap}</div>
-                              <div className="text-xs text-gray-400">{item.raw_sap}</div>
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-purple-700">
-                              {item.needed_kg.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="border-t-2 border-gray-200 bg-gray-50">
-                        <tr>
-                          <td className="px-3 py-2 text-xs font-semibold text-gray-500">รวม</td>
-                          <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-purple-700">
-                            {Math.round(totalNeeded).toLocaleString()}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Phase sections */}
+          {/* ── Detailed allocation groups per phase ── */}
           {phaseGroups.map(({ phase, groups }) => {
             const ph = PHASE_LABEL[phase]
             return (
               <div key={phase}>
-                {/* Phase header */}
                 <div className="flex items-center gap-3 mb-4">
                   <span className={`${ph.bg} ${ph.text} text-sm font-bold px-3 py-1 rounded-lg`}>{ph.label}</span>
                   <span className="text-sm text-gray-400">{ph.period}</span>
+                  <span className="text-xs text-gray-400">รายละเอียดการจัดสรร</span>
                   <div className="flex-1 h-px bg-gray-200" />
                 </div>
-
                 <div className="space-y-4">
-                  {groups.map((group, i) => (
+                  {groups.map((group: AllocationGroup, i: number) => (
                     <GroupCard key={i} group={group} />
                   ))}
                 </div>
