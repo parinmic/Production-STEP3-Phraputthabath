@@ -490,45 +490,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       {/* Chart body */}
       <div className="divide-y divide-gray-50 relative">
 
-        {/* RM shortage strip */}
-        {(() => {
-          const PHASE_RANGES = [
-            { phase: 1, startMins: 510, endMins: 870 },
-            { phase: 2, startMins: 870, endMins: 990 },
-            { phase: 3, startMins: 990, endMins: 1440 },
-          ]
-          const bands = PHASE_RANGES.map(pr => {
-            const shortage = (rmShortageByPhase ?? {})[pr.phase] ?? 0
-            const bandStart = Math.max(pr.startMins, chartStart)
-            const bandEnd   = Math.min(pr.endMins, chartEnd)
-            if (bandStart >= bandEnd || shortage <= 0.005) return null
-            return { phase: pr.phase, shortage, bandStart, bandEnd }
-          }).filter(Boolean) as { phase: number; shortage: number; bandStart: number; bandEnd: number }[]
-          if (!bands.length) return null
-          return (
-            <div className="flex items-center min-h-[28px] sm:min-h-[32px] relative z-10 bg-red-50/60 border-b border-red-100">
-              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 border-r border-gray-100 flex items-center">
-                <p className="text-[10px] sm:text-xs font-semibold text-red-500 leading-tight">ขาดเนื้อ</p>
-              </div>
-              <div className="flex-1 relative h-6 sm:h-7">
-                {bands.map(band => {
-                  const bandLeft  = Math.max(pct(band.bandStart), 0)
-                  const bandWidth = Math.max(pct(band.bandEnd) - pct(band.bandStart), 0.5)
-                  return (
-                    <div key={band.phase}
-                      className="absolute top-1 bottom-1 rounded flex items-center justify-center overflow-hidden"
-                      style={{ left: `${bandLeft}%`, width: `${bandWidth}%`, backgroundColor: '#fca5a5', border: '1.5px solid #ef4444' }}>
-                      <span className="text-[9px] sm:text-[10px] font-bold text-red-700 truncate px-1 whitespace-nowrap select-none">
-                        ขาด {Math.round(band.shortage).toLocaleString()} กก.
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="w-24 sm:w-32 shrink-0 border-l border-gray-100" />
-            </div>
-          )
-        })()}
 
         {sortedSkus.map(sku => {
           const stat      = skuStats[sku]
@@ -1490,27 +1451,9 @@ export default function TablePage() {
       .then(r => r.json())
       .then(data => {
         const stationLabel = cfg?.label ?? ''
-        const byPhase: Record<number, number> = {}
         const fracByPhase: Record<number, number> = {}
-        for (const group of (data.allocation ?? [])) {
-          // Shortage strip: only count groups for this station
-          if (group.station === stationLabel) {
-            for (const item of (group.items ?? [])) {
-              if ((item.shortage_kg ?? 0) > 0.005) {
-                byPhase[group.phase] = (byPhase[group.phase] ?? 0) + item.shortage_kg
-              }
-              // Cap fraction: minimum allocated/needed across all items in this station+phase
-              if ((item.needed_kg ?? 0) > 0.005) {
-                const frac = Math.min(1, (item.allocated_kg ?? 0) / item.needed_kg)
-                const cur = fracByPhase[group.phase]
-                fracByPhase[group.phase] = cur !== undefined ? Math.min(cur, frac) : frac
-              }
-            }
-          }
-        }
-        // For สไลด์: WIP Crisis/Extra groups each show frac=1 (their own slice is covered),
-        // but the full production plan may need more raw than crisis+extra combined.
-        // wipCapFractionByPhase = total_rm_allocated / full_production_raw_needed per phase.
+        // Bar-split cap fraction is only meaningful for สไลด์ — other stations show
+        // per-SKU deficit via isDeficit segments instead of a station-wide fraction.
         if (stationLabel === 'สไลด์') {
           const wipCap = (data.wipCapFractionByPhase ?? {}) as Record<number, number>
           for (const [ph, frac] of Object.entries(wipCap)) {
@@ -1520,7 +1463,7 @@ export default function TablePage() {
           }
         }
 
-        setRmShortageByPhase(byPhase)
+        setRmShortageByPhase({})
         setRmCapFractionByPhase(fracByPhase)
       })
       .catch(() => {})
