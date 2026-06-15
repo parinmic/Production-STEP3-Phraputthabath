@@ -240,7 +240,58 @@ export default function WipPlanPage() {
         {loading ? (
           <div className="p-10 text-center text-gray-400 text-sm">กำลังโหลด...</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {rows.map((row, i) => {
+              const safetyStock = Math.floor(row.avgKg * 3 * 1.2 / 100) * 100
+              const autoBase    = Math.round(Math.max(0, safetyStock - row.stockKg))
+              const wipCrisis   = Math.max(0, Math.round(row.avgKg * 1.2) - Math.round(row.stockKg))
+              const finalPlan   = autoBase + Math.round(row.quantity || 0)
+              return (
+                <div key={row.sap_code} className="px-4 py-3 space-y-2">
+                  <p className="text-sm font-semibold text-gray-800">{row.sku_name}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div>
+                      <span className="text-gray-400">Stock </span>
+                      <span className="font-mono text-gray-700">{row.stockKg > 0 ? Math.round(row.stockKg).toLocaleString('th-TH') : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">WIP Crisis </span>
+                      {wipCrisis > 0
+                        ? <span className="font-mono font-semibold text-red-600">{wipCrisis.toLocaleString('th-TH')}</span>
+                        : <span className="font-mono text-gray-400">—</span>}
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Safety Stock </span>
+                      <span className="font-mono text-indigo-700">{safetyStock > 0 ? safetyStock.toLocaleString('th-TH') : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Final Plan </span>
+                      <span className="font-mono font-bold text-emerald-700">{finalPlan > 0 ? finalPlan.toLocaleString('th-TH') : '—'}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 shrink-0">เพิ่มเติม (กก.)</span>
+                    <input
+                      type="number" min="0" step="1"
+                      value={row.quantity ? Math.round(row.quantity) : ''}
+                      onChange={e => {
+                        const newRows = [...rows]
+                        newRows[i] = { ...row, quantity: Math.round(Math.max(0, Number(e.target.value) || 0)) }
+                        setRows(newRows); setStatus('idle')
+                      }}
+                      placeholder="0"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600 align-bottom">
@@ -307,6 +358,7 @@ export default function WipPlanPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         <div className="p-5 border-t border-gray-100 flex items-center justify-between gap-4">
