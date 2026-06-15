@@ -204,7 +204,8 @@ export default function WipPlanPage() {
       setMessage('บันทึกสำเร็จ')
     } catch (e: unknown) {
       setStatus('error')
-      setMessage(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+      const msg = e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'เกิดข้อผิดพลาด'
+      setMessage(msg)
     }
   }
 
