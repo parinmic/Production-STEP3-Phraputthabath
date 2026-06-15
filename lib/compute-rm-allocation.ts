@@ -301,13 +301,20 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
             })
             remaining -= allocated
           } else {
-            const ownSap   = ing.sap_code ?? ''
-            const sapAvail = mooOwnStockBySap.get(ownSap) ?? 0
+            const ownSap    = ing.sap_code ?? ''
+            const sapAvail  = mooOwnStockBySap.get(ownSap) ?? 0
             const normAvail = mooOwnStockByNorm.get(normN) ?? 0
-            const avail = ownSap ? sapAvail : normAvail
-            const take  = Math.min(remaining, avail)
+            const avail     = ownSap ? sapAvail : normAvail
+            const take      = Math.min(remaining, avail)
             if (ownSap) mooOwnStockBySap.set(ownSap, sapAvail - take)
             mooOwnStockByNorm.set(normN, Math.max(0, normAvail - take))
+            result.push({
+              raw_sap:      ing.sap_code ?? normN,
+              raw_name:     ing.product_name,
+              needed_kg:    round2(remaining),
+              allocated_kg: round2(take),
+              shortage_kg:  round2(Math.max(0, remaining - take)),
+            })
             remaining -= take
           }
         }
