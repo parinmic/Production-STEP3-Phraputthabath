@@ -266,9 +266,9 @@ export default function WipPlanPage() {
                       <span className="text-gray-400">Safety Stock </span>
                       <span className="font-mono text-indigo-700">{safetyStock > 0 ? safetyStock.toLocaleString('th-TH') : '—'}</span>
                     </div>
-                    <div>
-                      <span className="text-gray-400">Final Plan </span>
-                      <span className="font-mono font-bold text-emerald-700">{finalPlan > 0 ? finalPlan.toLocaleString('th-TH') : '—'}</span>
+                    <div className="col-span-2 flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-1.5 mt-0.5">
+                      <span className="text-xs font-semibold text-emerald-700">Final Plan</span>
+                      <span className="font-mono font-bold text-emerald-700 text-base">{finalPlan > 0 ? finalPlan.toLocaleString('th-TH') : '—'} <span className="text-xs font-normal">กก.</span></span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
