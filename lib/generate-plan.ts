@@ -46,6 +46,16 @@ export interface GeneratePlanResult {
 
 // ========== Utilities ==========
 
+// Sentinel worker for deficit qty that couldn't be bound to any real worker's
+// time (raw material shortage with no worker capacity left). Keeps the row
+// visible to the Raw รอผลิต shortage report instead of silently dropping it.
+export const UNASSIGNED_WORKER_CODE = 'UNASSIGNED'
+export const UNASSIGNED_WORKER_NAME = 'รอจัดสรร (ขาดวัตถุดิบ)'
+
+// Temporary kill-switch: disable all WIP (กลุ่ม WIP) raw-material reservation and
+// worker-assignment logic during plan generation, as if wip_plan didn't exist.
+const ENABLE_WIP = false
+
 function minsToTimeStr(mins: number): string {
   const wrapped = ((mins % 1440) + 1440) % 1440
   const h = Math.floor(wrapped / 60)
@@ -723,8 +733,50 @@ function allocateBalanced(params: {
     }
   }
 
+  // 4b. Deficit blocks that never got (fully) bound to a real worker — e.g. all workers
+  // were already booked by the time Pass 2b ran — still need to surface as raw-material
+  // demand instead of silently disappearing. Emit one placeholder record per shortfall.
+  const unassignedRecords: Record<string, unknown>[] = []
+  for (const block of skuBlocks) {
+    if (!block.isDeficit) continue
+    let scheduledQty = 0
+    for (const w of workers) {
+      scheduledQty += workerSkuQty.get(normName(w.name))?.get(block.normSku) ?? 0
+    }
+    const remainder = block.totalQty - scheduledQty
+    if (remainder <= 0.5 * block.wpb) continue
+
+    const bags = Math.floor(remainder / block.wpb)
+    if (bags < 1) continue
+
+    const channel = block.channels.reduce(
+      (best, c) => c.qty > best.qty ? c : best,
+      { channel: '', qty: -1, isDeficit: false }
+    ).channel
+
+    unassignedRecords.push({
+      production_date: productionDate,
+      table_name:      tableName,
+      worker_code:     UNASSIGNED_WORKER_CODE,
+      worker_name:      UNASSIGNED_WORKER_NAME,
+      sku:              block.rawSku,
+      sku_name:         block.skuName,
+      target_quantity:  bags * block.wpb,
+      unit:             'กก.',
+      period,
+      deadline_time:    minsToTimeStr(phaseEndMins),
+      note:             'รอจัดสรรเวลาคนงาน|deficit',
+      status:           'รอดำเนินการ',
+      channel,
+      is_deficit:       true,
+      // Bypass the per-worker resequencing/truncation pass below (it assumes a real
+      // worker's wall-clock queue) — this isn't a real worker timeslot.
+      isKept:           true,
+    })
+  }
+
   // 5. Build assignment records — one record per (worker, normSku), primary channel = largest qty
-  const result: Record<string, unknown>[] = []
+  const result: Record<string, unknown>[] = [...unassignedRecords]
   for (const w of workers) {
     const nameKey = normName(w.name)
     const sqMap = workerSkuQty.get(nameKey)
@@ -2130,7 +2182,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const wipStockForAlloc = new Map<string, number>()
     let wipBomForAlloc: WipBomRow[] = []
     const wipCrisisQtyBySap = new Map<string, number>() // sap → crisis qty reserved in Phase 1
-    {
+    if (ENABLE_WIP) {
       const { data: wipRows } = await supabase
         .from('wip_plan').select('sap_code, quantity, wip_initial')
         .eq('plan_date', productionDate).gt('quantity', 0)
@@ -2341,7 +2393,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     // Phase 1: top up from the crisis reservation (above) to 25% of Final Plan qty.
     // Phase 2: no WIP raw allocation at all — wipFullCapBySap stays unset (= 0 producible).
     // Phase 3: no priority reservation taken — produce all remaining qty from whatever pool is left.
-    if (selectedPhase !== 2) {
+    if (ENABLE_WIP && selectedPhase !== 2) {
       for (const wip of wipPlanForAlloc) {
         const sap       = String(wip.sap_code).trim()
         const sapNorm   = sap.replace(/^0+/, '')
@@ -2636,7 +2688,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
   // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
-  {
+  if (ENABLE_WIP) {
     const slideWorkers = workersByStation['สไลด์'] ?? []
     if (slideWorkers.length && selectedPhase !== 2) {
       const { data: wipPlanRows } = await supabase
