@@ -454,7 +454,10 @@ function allocateBalanced(params: {
       const bLast = lastSkuSet.has(b.normSku) || lastSkuSet.has(b.rawSku)
       if (aLast !== bLast) return aLast ? 1 : -1
     }
-    return (b.totalQty / b.rate) - (a.totalQty / a.rate)
+    // Sort by the leading channel's qty (not totalQty) so cross-channel-inflated blocks
+    // (e.g. WM/90 + LOTUS/1205 merged as 1295) don't unfairly displace higher-priority
+    // same-channel SKUs (e.g. WM/670). channels[0] is always the primary channel.
+    return (b.channels[0].qty / b.rate) - (a.channels[0].qty / a.rate)
   })
 
   // 2. Helper to check if a worker is eligible for a product group
@@ -2375,7 +2378,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
       mooChōdScale = Math.max(0, 1 - sharedDeficit / mooTotalKg)
     }
-
     // ── Split each SKU target into stock-supported qty (based on allocation ratio) + deficit qty ──
     const splitAssignList: SkuTarget[] = []
     for (const item of assignList) {
@@ -2576,7 +2578,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       for (const [station, stationTargets] of Object.entries(targetsByStation)) {
         const stationWorkers = workersByStation[station] ?? []
         if (!stationWorkers.length) continue
-        assignments.push(...allocateBalanced({
+        const _balResult = allocateBalanced({
           productionDate,
           tableName: station,
           targets: stationTargets,
@@ -2593,7 +2595,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           specialTimeMap,
           skuTotalQtyOverride: globalSkuTotalQty,
           lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
-        }))
+        })
+        assignments.push(..._balResult)
       }
     }
   }

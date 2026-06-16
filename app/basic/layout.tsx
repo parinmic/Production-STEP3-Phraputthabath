@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -11,12 +11,10 @@ const BASIC_STATIONS = [
 ]
 
 const MANPOWER_TYPES = [
-  { label: 'สะโพกพิเศษ',   slug: 'sa-phok-special',  dot: 'bg-orange-500' },
-  { label: 'ไหล่พิเศษ',    slug: 'lai-special',      dot: 'bg-green-500' },
-  { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special',  dot: 'bg-blue-500' },
-  { label: 'หมูบดพิเศษ',   slug: 'moo-chod-special', dot: 'bg-red-500' },
-  { label: 'สไลด์พิเศษ',   slug: 'slide-special',    dot: 'bg-purple-500' },
-  { label: 'กำลังคนแนะนำ', slug: 'recommended',      dot: 'bg-pink-500' },
+  { label: 'สะโพกเบสิค',   slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
+  { label: 'ไหล่เบสิค',    slug: 'lai-basic',      dot: 'bg-green-500' },
+  { label: 'สามชั้นเบสิค', slug: 'sam-chan-basic',  dot: 'bg-blue-500' },
+  { label: 'เปิดหมู',      slug: 'perd-moo',       dot: 'bg-slate-500' },
 ]
 
 const CALCULATION_TYPES = [
@@ -27,7 +25,6 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
   { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
-  { label: 'Mas ตะกร้า Raw',                slug: 'mas-raw-basket',                dot: 'bg-amber-500' },
 ]
 
 function BasicSidebar() {
@@ -296,18 +293,6 @@ function BasicSidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-yellow-500" />Mas หน่วยหยิบสินค้า
               </Link>
-              <Link href="/basic/no-withdrawal"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />Mas SKU ไม่ต้องเบิก
-              </Link>
-              <Link href="/basic/master-logic/moo-chod"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/master-logic/moo-chod' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-red-500" />Mas หมูบด (%ไขมัน)
-              </Link>
-              <Link href="/basic/master-logic/moo-chod-withdrawal"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/master-logic/moo-chod-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-red-400" />Mas เบิกหมูบด
-              </Link>
               <Link href="/basic/mas-yield"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/mas-yield' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />Mas Yield
@@ -337,21 +322,6 @@ function BasicSidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas หน่วยหยิบสินค้า">
                 <Scale size={14} />
-              </Link>
-              <Link href="/basic/no-withdrawal"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/no-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="Mas SKU ไม่ต้องเบิก">
-                <Ban size={14} />
-              </Link>
-              <Link href="/basic/master-logic/moo-chod"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/master-logic/moo-chod' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="Mas หมูบด (%ไขมัน)">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-              </Link>
-              <Link href="/basic/master-logic/moo-chod-withdrawal"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/master-logic/moo-chod-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="Mas เบิกหมูบด">
-                <span className="w-2 h-2 rounded-full bg-red-400" />
               </Link>
             </div>
           )}

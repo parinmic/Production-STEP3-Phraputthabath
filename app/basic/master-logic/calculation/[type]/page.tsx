@@ -19,8 +19,12 @@ export default function BasicCalculationTypePage({ params }: { params: { type: s
   const cfg = TYPE_CONFIG[params.type]
   if (!cfg) return <p className="text-red-500 p-8">ไม่พบประเภทที่ระบุ: {params.type}</p>
 
+  const isSaipan = params.type === 'mas-saipan'
+  const apiEndpoint    = isSaipan ? '/api/upload-mas-sayapan' : `/api/upload-master-logic-calculation?type=${params.type}`
+  const downloadTable  = isSaipan ? 'mas_sayapan' : 'master_logic_calculation'
+
   async function upload(rows: ParsedRow[], filename: string) {
-    const res = await fetch(`/api/upload-master-logic-calculation?type=${params.type}`, {
+    const res = await fetch(apiEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows, filename }),
@@ -33,9 +37,9 @@ export default function BasicCalculationTypePage({ params }: { params: { type: s
       <FileUpload
         title={cfg.label}
         description={cfg.desc}
-        historyEndpoint={`/api/upload-master-logic-calculation?type=${params.type}`}
+        historyEndpoint={apiEndpoint}
         onUpload={upload}
-        downloadTable="master_logic_calculation"
+        downloadTable={downloadTable}
       />
     </div>
   )
