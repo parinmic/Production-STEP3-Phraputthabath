@@ -42,9 +42,20 @@ export interface GeneratePlanResult {
   count?: number
   debug_targets?: { sku: string; wm: number; makro: number; lotus: number; merged: number }[]
   debug_concurrent_pairs?: { source: string; byProduct: string }[]
+  debug_skips?: Record<string, unknown>[]
 }
 
 // ========== Utilities ==========
+
+// Sentinel worker for deficit qty that couldn't be bound to any real worker's
+// time (raw material shortage with no worker capacity left). Keeps the row
+// visible to the Raw รอผลิต shortage report instead of silently dropping it.
+export const UNASSIGNED_WORKER_CODE = 'UNASSIGNED'
+export const UNASSIGNED_WORKER_NAME = 'รอจัดสรร (ขาดวัตถุดิบ)'
+
+// Temporary kill-switch: disable all WIP (กลุ่ม WIP) raw-material reservation and
+// worker-assignment logic during plan generation, as if wip_plan didn't exist.
+const ENABLE_WIP = false
 
 function minsToTimeStr(mins: number): string {
   const wrapped = ((mins % 1440) + 1440) % 1440
@@ -399,11 +410,12 @@ function allocateBalanced(params: {
   specialTimeMap: Map<string, { startMins: number | null; stopMins: number | null }>
   skuTotalQtyOverride?: Map<string, number>
   lastSkuSet?: Set<string>
+  debugSkips?: Record<string, unknown>[]
 }): Record<string, unknown>[] {
   const {
     productionDate, tableName, targets, workers, skuMap, jobAssignMap,
     workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins,
-    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride, lastSkuSet
+    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride, lastSkuSet, debugSkips
   } = params
 
   if (!targets.length || !workers.length) return []
@@ -541,11 +553,22 @@ function allocateBalanced(params: {
   // product group → slide group index (0 or 1); set on first block of each product group
   const slideGroupProductMap = new Map<string, number>()
 
+  const pushSkip = (block: SkuBlock, reason: string, extra?: Record<string, unknown>) => {
+    if (!debugSkips) return
+    debugSkips.push({
+      tableName, sku: block.rawSku, skuName: block.skuName, productGroup: block.productGroup,
+      totalQty: block.totalQty, rate: block.rate, isDeficit: block.isDeficit, reason,
+      workersInTable: workers.length,
+      workerFreeAt: workers.map(w => ({ name: w.name, freeAt: workerFreeAtMins.get(normName(w.name)) ?? null })),
+      ...extra,
+    })
+  }
+
   // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
   for (const block of skuBlocks) {
     const normSku  = block.normSku
     const numBags  = Math.floor(block.totalQty / block.wpb)
-    if (numBags < 1) continue
+    if (numBags < 1) { pushSkip(block, 'numBags<1'); continue }
 
     const maxW         = tableName === 'หมูบด' ? Infinity : getMaxWorkers(normSku)
     const specialTime  = specialTimeMap.get(block.rawSku) ?? specialTimeMap.get(normSku)
@@ -587,7 +610,7 @@ function allocateBalanced(params: {
 
       eligible = groupSubset[chosenGroupIdx] ?? groupSubset[0]
       selected = eligible.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
-      if (!selected.length) continue
+      if (!selected.length) { pushSkip(block, 'slideGroup_no_selected', { limitEnd }); continue }
     } else {
       // Eligible workers sorted: skill ASC → freeAt ASC
       // Exclude workers whose shift starts at or after limitEnd (e.g. กะ 2 in Phase 1)
@@ -596,7 +619,13 @@ function allocateBalanced(params: {
         return freeAt < limitEnd && isWorkerEligible(w, block.productGroup)
       })
       if (!eligible.length) eligible = workers.filter(w => (workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins) < limitEnd)
-      if (!eligible.length) continue
+      if (!eligible.length) {
+        pushSkip(block, 'no_eligible_worker', {
+          limitEnd,
+          eligibleByGroup: workers.filter(w => isWorkerEligible(w, block.productGroup)).map(w => w.name),
+        })
+        continue
+      }
 
       eligible.sort((a, b) => {
         const la = getWorkerSkillLevel(a, block.productGroup)
@@ -619,7 +648,7 @@ function allocateBalanced(params: {
     for (const w of selected)
       blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
     if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
-    if (blockStart >= limitEnd) continue
+    if (blockStart >= limitEnd) { pushSkip(block, 'blockStart>=limitEnd', { blockStart, limitEnd, specialStart, specialStop }); continue }
 
     // Distribute bags equally; remainder goes to last worker
     // key = normSku (channels merged → one continuous block per worker)
@@ -671,6 +700,7 @@ function allocateBalanced(params: {
 
     // Fallback: assign overflow to first eligible worker that can take it
     if (overflow > 0) {
+      let fallbackAssigned = false
       for (const w of eligible) {
         const nameKey      = normName(w.name)
         const qty          = overflow * block.wpb
@@ -702,7 +732,11 @@ function allocateBalanced(params: {
 
         if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
         skuAssignedWorkers.get(normSku)!.add(nameKey)
+        fallbackAssigned = true
         break
+      }
+      if (!fallbackAssigned) {
+        pushSkip(block, 'overflow_unassigned', { overflowBags: overflow, numBags, selectedCount: selected.length, eligibleCount: eligible.length })
       }
     }
 
@@ -723,8 +757,50 @@ function allocateBalanced(params: {
     }
   }
 
+  // 4b. Deficit blocks that never got (fully) bound to a real worker — e.g. all workers
+  // were already booked by the time Pass 2b ran — still need to surface as raw-material
+  // demand instead of silently disappearing. Emit one placeholder record per shortfall.
+  const unassignedRecords: Record<string, unknown>[] = []
+  for (const block of skuBlocks) {
+    if (!block.isDeficit) continue
+    let scheduledQty = 0
+    for (const w of workers) {
+      scheduledQty += workerSkuQty.get(normName(w.name))?.get(block.normSku) ?? 0
+    }
+    const remainder = block.totalQty - scheduledQty
+    if (remainder <= 0.5 * block.wpb) continue
+
+    const bags = Math.floor(remainder / block.wpb)
+    if (bags < 1) continue
+
+    const channel = block.channels.reduce(
+      (best, c) => c.qty > best.qty ? c : best,
+      { channel: '', qty: -1, isDeficit: false }
+    ).channel
+
+    unassignedRecords.push({
+      production_date: productionDate,
+      table_name:      tableName,
+      worker_code:     UNASSIGNED_WORKER_CODE,
+      worker_name:      UNASSIGNED_WORKER_NAME,
+      sku:              block.rawSku,
+      sku_name:         block.skuName,
+      target_quantity:  bags * block.wpb,
+      unit:             'กก.',
+      period,
+      deadline_time:    minsToTimeStr(phaseEndMins),
+      note:             'รอจัดสรรเวลาคนงาน|deficit',
+      status:           'รอดำเนินการ',
+      channel,
+      is_deficit:       true,
+      // Bypass the per-worker resequencing/truncation pass below (it assumes a real
+      // worker's wall-clock queue) — this isn't a real worker timeslot.
+      isKept:           true,
+    })
+  }
+
   // 5. Build assignment records — one record per (worker, normSku), primary channel = largest qty
-  const result: Record<string, unknown>[] = []
+  const result: Record<string, unknown>[] = [...unassignedRecords]
   for (const w of workers) {
     const nameKey = normName(w.name)
     const sqMap = workerSkuQty.get(nameKey)
@@ -1315,6 +1391,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   const isPhase2 = selectedPhase === 2
   const isPhase3 = selectedPhase === 3
+
+  // Temporary debug capture: records why a non-deficit SKU block in allocateBalanced
+  // ended up with zero (or partial) worker time, surfaced via debug_skips in the API response.
+  const debugSkips: Record<string, unknown>[] = []
 
   const phaseCfg = PHASE_CONFIG.find(p => p.phase === selectedPhase)
   if (!phaseCfg) return { success: false, message: 'Phase ไม่ถูกต้อง' }
@@ -2130,7 +2210,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const wipStockForAlloc = new Map<string, number>()
     let wipBomForAlloc: WipBomRow[] = []
     const wipCrisisQtyBySap = new Map<string, number>() // sap → crisis qty reserved in Phase 1
-    {
+    if (ENABLE_WIP) {
       const { data: wipRows } = await supabase
         .from('wip_plan').select('sap_code, quantity, wip_initial')
         .eq('plan_date', productionDate).gt('quantity', 0)
@@ -2341,7 +2421,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     // Phase 1: top up from the crisis reservation (above) to 25% of Final Plan qty.
     // Phase 2: no WIP raw allocation at all — wipFullCapBySap stays unset (= 0 producible).
     // Phase 3: no priority reservation taken — produce all remaining qty from whatever pool is left.
-    if (selectedPhase !== 2) {
+    if (ENABLE_WIP && selectedPhase !== 2) {
       for (const wip of wipPlanForAlloc) {
         const sap       = String(wip.sap_code).trim()
         const sapNorm   = sap.replace(/^0+/, '')
@@ -2500,6 +2580,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         wpbMap,
         specialTimeMap,
         lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
+        debugSkips,
       }))
     }
   }
@@ -2595,6 +2676,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           specialTimeMap,
           skuTotalQtyOverride: globalSkuTotalQty,
           lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
+          debugSkips,
         })
         assignments.push(..._balResult)
       }
@@ -2636,7 +2718,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
   // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
-  {
+  if (ENABLE_WIP) {
     const slideWorkers = workersByStation['สไลด์'] ?? []
     if (slideWorkers.length && selectedPhase !== 2) {
       const { data: wipPlanRows } = await supabase
@@ -2869,6 +2951,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
             wpbMap,
             specialTimeMap,
+            debugSkips,
           }))
         }
       }
@@ -3216,5 +3299,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .map(([sku, v]) => ({ sku, ...v }))
       .sort((a, b) => b.merged - a.merged)
       .slice(0, 30),
+    debug_skips: debugSkips.slice(0, 50),
   }
 }
