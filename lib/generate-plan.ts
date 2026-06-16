@@ -47,12 +47,6 @@ export interface GeneratePlanResult {
 
 // ========== Utilities ==========
 
-// Sentinel worker for deficit qty that couldn't be bound to any real worker's
-// time (raw material shortage with no worker capacity left). Keeps the row
-// visible to the Raw รอผลิต shortage report instead of silently dropping it.
-export const UNASSIGNED_WORKER_CODE = 'UNASSIGNED'
-export const UNASSIGNED_WORKER_NAME = 'รอจัดสรร (ขาดวัตถุดิบ)'
-
 // Kill-switch: disable all WIP (กลุ่ม WIP) raw-material reservation and
 // worker-assignment logic during plan generation, as if wip_plan didn't exist.
 const ENABLE_WIP = true
@@ -757,50 +751,64 @@ function allocateBalanced(params: {
     }
   }
 
-  // 4b. Deficit blocks that never got (fully) bound to a real worker — e.g. all workers
-  // were already booked by the time Pass 2b ran — still need to surface as raw-material
-  // demand instead of silently disappearing. Emit one placeholder record per shortfall.
-  const unassignedRecords: Record<string, unknown>[] = []
+  // 4b. Deficit blocks whose remainder never got bound to a real worker within available
+  // time (e.g. all eligible workers were already booked) — still queue them onto a real
+  // eligible worker (for whenever raw material/time frees up) instead of dropping the row,
+  // so the shortfall stays visible in the Raw รอผลิต shortage report. Doesn't touch
+  // workerFreeAtMins/workerBusySegments — this is backlog, not a real timeslot.
   for (const block of skuBlocks) {
     if (!block.isDeficit) continue
+    const normSku = block.normSku
     let scheduledQty = 0
     for (const w of workers) {
-      scheduledQty += workerSkuQty.get(normName(w.name))?.get(block.normSku) ?? 0
+      scheduledQty += workerSkuQty.get(normName(w.name))?.get(normSku) ?? 0
     }
     const remainder = block.totalQty - scheduledQty
     if (remainder <= 0.5 * block.wpb) continue
-
     const bags = Math.floor(remainder / block.wpb)
     if (bags < 1) continue
+    const qty = bags * block.wpb
 
-    const channel = block.channels.reduce(
-      (best, c) => c.qty > best.qty ? c : best,
-      { channel: '', qty: -1, isDeficit: false }
-    ).channel
-
-    unassignedRecords.push({
-      production_date: productionDate,
-      table_name:      tableName,
-      worker_code:     UNASSIGNED_WORKER_CODE,
-      worker_name:      UNASSIGNED_WORKER_NAME,
-      sku:              block.rawSku,
-      sku_name:         block.skuName,
-      target_quantity:  bags * block.wpb,
-      unit:             'กก.',
-      period,
-      deadline_time:    minsToTimeStr(phaseEndMins),
-      note:             'รอจัดสรรเวลาคนงาน|deficit',
-      status:           'รอดำเนินการ',
-      channel,
-      is_deficit:       true,
-      // Bypass the per-worker resequencing/truncation pass below (it assumes a real
-      // worker's wall-clock queue) — this isn't a real worker timeslot.
-      isKept:           true,
+    let candidates = workers.filter(w => isWorkerEligible(w, block.productGroup))
+    if (!candidates.length) candidates = workers
+    if (!candidates.length) continue
+    // Prefer a worker who doesn't already have a row for this SKU, to avoid merging
+    // backlog qty into an existing real-time row and mislabeling it as deficit.
+    const fresh = candidates.filter(w => !workerSkuQty.get(normName(w.name))?.has(normSku))
+    const pool  = fresh.length ? fresh : candidates
+    pool.sort((a, b) => {
+      const la = getWorkerSkillLevel(a, block.productGroup)
+      const lb = getWorkerSkillLevel(b, block.productGroup)
+      if (la !== lb) return la - lb
+      return (workerFreeAtMins.get(normName(a.name)) ?? phaseStartMins) - (workerFreeAtMins.get(normName(b.name)) ?? phaseStartMins)
     })
+    const w = pool[0]
+    const nameKey = normName(w.name)
+
+    const sqMap = workerSkuQty.get(nameKey) ?? new Map<string, number>()
+    sqMap.set(normSku, (sqMap.get(normSku) ?? 0) + qty)
+    workerSkuQty.set(nameKey, sqMap)
+
+    const sdMap = workerSkuDeficit.get(nameKey) ?? new Map<string, boolean>()
+    sdMap.set(normSku, true)
+    workerSkuDeficit.set(nameKey, sdMap)
+
+    const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
+    const rMap  = srMap.get(normSku) ?? new Map<number, number>()
+    rMap.set(phaseEndMins, (rMap.get(phaseEndMins) ?? 0) + qty)
+    srMap.set(normSku, rMap)
+    workerSkuRoundQty.set(nameKey, srMap)
+
+    const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
+    if (!seMap.has(normSku)) seMap.set(normSku, phaseEndMins)
+    workerSkuEarliestStart.set(nameKey, seMap)
+
+    if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
+    skuAssignedWorkers.get(normSku)!.add(nameKey)
   }
 
   // 5. Build assignment records — one record per (worker, normSku), primary channel = largest qty
-  const result: Record<string, unknown>[] = [...unassignedRecords]
+  const result: Record<string, unknown>[] = []
   for (const w of workers) {
     const nameKey = normName(w.name)
     const sqMap = workerSkuQty.get(nameKey)
