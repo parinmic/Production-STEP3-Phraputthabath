@@ -9,7 +9,7 @@ interface WipRow {
   station: string
   stockKg: number
   avgKg: number
-  quantity: number  // extra add-on above auto; finalPlan = auto + quantity
+  quantity: number  // directly-entered final plan (0 = use auto)
 }
 
 export default function WipPlanPage() {
@@ -162,15 +162,12 @@ export default function WipPlanPage() {
       const savedQtyMap = new Map<string, number>()
       for (const p of planData ?? []) savedQtyMap.set(String(p.sap_code), Number(p.quantity))
 
-      // quantity stored = extra add-on: if previously saved, compute extra = savedFinalPlan - currentAuto
+      // quantity = savedFinalPlan directly (0 = no saved plan, use auto)
       setRows(wipSkus.map(s => {
-        const stockKg    = stockKgByName.get(s.sku_name) ?? 0
-        const avgKg      = avgKgByWip.get(s.sap_code) ?? 0
-        const safetyStock = Math.floor(avgKg * 3 * 1.2 / 100) * 100
-        const autoBase   = Math.max(0, safetyStock - stockKg)
-        const savedQty   = savedQtyMap.get(s.sap_code) ?? 0
-        const extra      = Math.max(0, savedQty - autoBase)
-        return { ...s, stockKg, avgKg, quantity: extra }
+        const stockKg = stockKgByName.get(s.sku_name) ?? 0
+        const avgKg   = avgKgByWip.get(s.sap_code) ?? 0
+        const savedQty = savedQtyMap.get(s.sap_code) ?? 0
+        return { ...s, stockKg, avgKg, quantity: savedQty }
       }))
     } finally {
       setLoading(false)
@@ -186,12 +183,12 @@ export default function WipPlanPage() {
       const upserts = rows.map(r => {
         const safetyStock = Math.floor(r.avgKg * 3 * 1.2 / 100) * 100
         const autoBase    = Math.round(Math.max(0, safetyStock - r.stockKg))
-        const finalPlan   = autoBase + Math.round(r.quantity || 0)
+        const finalPlan   = Math.round(r.quantity) > 0 ? Math.round(r.quantity) : autoBase
         return {
           plan_date:   date,
           sap_code:    r.sap_code,
           quantity:    finalPlan,
-          is_manual:   r.quantity > 0,
+          is_manual:   Math.round(r.quantity) > 0,
           wip_initial: safetyStock,
           updated_at:  new Date().toISOString(),
         }
@@ -213,7 +210,7 @@ export default function WipPlanPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">แผนผลิต WIP</h1>
-        <p className="text-gray-500 mt-1 text-sm">กรอกจำนวน (กก.) ที่ต้องการผลิตเพิ่มจากค่าอัตโนมัติสำหรับสินค้ากลุ่ม WIP</p>
+        <p className="text-gray-500 mt-1 text-sm">กรอก Final Plan (กก.) โดยตรง — ถ้าว่างไว้จะใช้ค่าอัตโนมัติ</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-200">
@@ -252,8 +249,8 @@ export default function WipPlanPage() {
                   <th className="px-4 py-3 w-36 text-right text-blue-700 whitespace-nowrap">Average 7 วัน (กก.)</th>
                   <th className="px-4 py-3 w-36 text-right text-red-600 whitespace-nowrap">WIP Crisis (กก.)</th>
                   <th className="px-4 py-3 w-36 text-right text-indigo-700 whitespace-nowrap">Safety Stock (กก.)</th>
-                  <th className="px-4 py-3 w-40 text-right whitespace-nowrap">เพิ่มเติม (กก.)</th>
-                  <th className="px-4 py-3 w-32 text-right text-emerald-700 whitespace-nowrap">Final Plan (กก.)</th>
+                  <th className="px-4 py-3 w-40 text-right whitespace-nowrap">Final Plan (กรอก)</th>
+                  <th className="px-4 py-3 w-32 text-right text-emerald-700 whitespace-nowrap">Final Plan จริง</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -261,7 +258,7 @@ export default function WipPlanPage() {
                   const safetyStock = Math.floor(row.avgKg * 3 * 1.2 / 100) * 100
                   const autoBase    = Math.round(Math.max(0, safetyStock - row.stockKg))
                   const wipCrisis   = Math.max(0, Math.round(row.avgKg * 1.2) - Math.round(row.stockKg))
-                  const finalPlan   = autoBase + Math.round(row.quantity || 0)
+                  const finalPlan   = Math.round(row.quantity) > 0 ? Math.round(row.quantity) : autoBase
                   return (
                     <tr key={row.sap_code} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3 text-center text-xs text-gray-400 font-mono">{i + 1}</td>
@@ -294,7 +291,7 @@ export default function WipPlanPage() {
                             setRows(newRows)
                             setStatus('idle')
                           }}
-                          placeholder="0"
+                          placeholder={autoBase > 0 ? autoBase.toString() : '0'}
                           className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                         />
                       </td>
