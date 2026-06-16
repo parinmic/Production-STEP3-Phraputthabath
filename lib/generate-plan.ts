@@ -2126,6 +2126,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     let wipPlanForAlloc: WipAllocRow[] = []
     const wipStockForAlloc = new Map<string, number>()
     let wipBomForAlloc: WipBomRow[] = []
+    const wipCrisisQtyBySap = new Map<string, number>() // sap → crisis qty reserved in Phase 1
     {
       const { data: wipRows } = await supabase
         .from('wip_plan').select('sap_code, quantity, wip_initial')
@@ -2155,19 +2156,26 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           .in('product_sap', wipSapList)
         wipBomForAlloc = (bomRows ?? []) as WipBomRow[]
 
-        for (const wip of wipPlanForAlloc) {
-          const sap     = String(wip.sap_code).trim()
-          const sapNorm = sap.replace(/^0+/, '')
-          const qty     = Number(wip.quantity)
-          const wipInit = Number(wip.wip_initial ?? 0)
-          const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
-          const effectiveQty = wipInit > 0 ? Math.min(qty, Math.max(0, wipInit - stockKg)) : qty
-          if (effectiveQty < 0.005) continue
-          for (const b of wipBomForAlloc.filter(b =>
-            b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm
-          )) {
-            if (!b.raw_name) continue
-            takeFromPoolLocal(b.raw_name, b.raw_sap, b.yield_pct > 0 ? effectiveQty / b.yield_pct : effectiveQty)
+        // Phase 1 only: reserve WIP Crisis amount (max(0, wip_initial/3 − stock), capped at 25%
+        // of the Final Plan qty) before other stations claim the pool. Phase 2/3 get no priority
+        // reservation — they only take whatever's left after order-driven stations (below).
+        if (selectedPhase === 1) {
+          for (const wip of wipPlanForAlloc) {
+            const sap     = String(wip.sap_code).trim()
+            const sapNorm = sap.replace(/^0+/, '')
+            const qty     = Number(wip.quantity)
+            const wipInit = Number(wip.wip_initial ?? 0)
+            const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
+            const crisisQty    = wipInit > 0 ? Math.max(0, wipInit / 3 - stockKg) : qty
+            const effectiveQty = Math.min(qty * 0.25, crisisQty)
+            if (effectiveQty < 0.005) continue
+            wipCrisisQtyBySap.set(sap, effectiveQty)
+            for (const b of wipBomForAlloc.filter(b =>
+              b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm
+            )) {
+              if (!b.raw_name) continue
+              takeFromPoolLocal(b.raw_name, b.raw_sap, b.yield_pct > 0 ? effectiveQty / b.yield_pct : effectiveQty)
+            }
           }
         }
       }
@@ -2326,31 +2334,34 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
 
-    // ── After station allocations: take remaining pool for WIP full production ──
-    // Buffer (wip_initial) was already taken above; now allocate whatever pool remains for qty > buffer
-    for (const wip of wipPlanForAlloc) {
-      const sap     = String(wip.sap_code).trim()
-      const sapNorm = sap.replace(/^0+/, '')
-      const qty     = Number(wip.quantity)
-      const wipInit = Number(wip.wip_initial ?? 0)
-      const stockKg = wipStockForAlloc.get(sapNorm) ?? 0
-      const bufferQty = wipInit > 0 ? Math.min(qty, Math.max(0, wipInit - stockKg)) : qty
+    // ── After station allocations: take remaining pool for WIP production ──
+    // Phase 1: top up from the crisis reservation (above) to 25% of Final Plan qty.
+    // Phase 2: no WIP raw allocation at all — wipFullCapBySap stays unset (= 0 producible).
+    // Phase 3: no priority reservation taken — produce all remaining qty from whatever pool is left.
+    if (selectedPhase !== 2) {
+      for (const wip of wipPlanForAlloc) {
+        const sap       = String(wip.sap_code).trim()
+        const sapNorm   = sap.replace(/^0+/, '')
+        const qty       = Number(wip.quantity)
+        const targetQty = selectedPhase === 1 ? qty * 0.25 : qty
+        const bufferQty = wipCrisisQtyBySap.get(sap) ?? 0
 
-      const boms = wipBomForAlloc.filter(b =>
-        (b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm) && b.raw_name
-      )
-      if (!boms.length) { wipFullCapBySap.set(sap, qty); continue }
+        const boms = wipBomForAlloc.filter(b =>
+          (b.product_sap === sap || b.product_sap.replace(/^0+/, '') === sapNorm) && b.raw_name
+        )
+        if (!boms.length) { wipFullCapBySap.set(sap, targetQty); continue }
 
-      let minScale = 1.0
-      for (const b of boms) {
-        const rawTotal  = b.yield_pct > 0 ? qty / b.yield_pct : qty
-        const rawBuffer = b.yield_pct > 0 ? bufferQty / b.yield_pct : bufferQty
-        const rawExtra  = Math.max(0, rawTotal - rawBuffer)
-        if (rawExtra < 0.005) continue // buffer already covers full qty, no extra needed
-        const extraTaken = takeFromPoolLocal(b.raw_name!, b.raw_sap, rawExtra)
-        if (rawTotal > 0.005) minScale = Math.min(minScale, (rawBuffer + extraTaken) / rawTotal)
+        let minScale = 1.0
+        for (const b of boms) {
+          const rawTotal  = b.yield_pct > 0 ? targetQty / b.yield_pct : targetQty
+          const rawBuffer = b.yield_pct > 0 ? bufferQty / b.yield_pct : bufferQty
+          const rawExtra  = Math.max(0, rawTotal - rawBuffer)
+          if (rawExtra < 0.005) continue // buffer already covers target qty, no extra needed
+          const extraTaken = takeFromPoolLocal(b.raw_name!, b.raw_sap, rawExtra)
+          if (rawTotal > 0.005) minScale = Math.min(minScale, (rawBuffer + extraTaken) / rawTotal)
+        }
+        wipFullCapBySap.set(sap, targetQty * minScale)
       }
-      wipFullCapBySap.set(sap, qty * minScale)
     }
 
     // หมูบด scale: (total - sharedDeficit) / total — accounts for P1/P2 own-stock coverage
@@ -2621,9 +2632,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   runChannelPass(primaryDeficitList)
 
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
+  // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
   {
     const slideWorkers = workersByStation['สไลด์'] ?? []
-    if (slideWorkers.length) {
+    if (slideWorkers.length && selectedPhase !== 2) {
       const { data: wipPlanRows } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity, is_manual, wip_initial')
@@ -2791,7 +2803,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           // Multi-phase cap: subtract what's already assigned in previous periods
           const alreadyAssigned = alreadyAssignedByWip.get(sapRaw) ?? alreadyAssignedByWip.get(sap) ?? 0
-          const remainingQty    = Math.max(0, qty - alreadyAssigned)
+          let remainingQty       = Math.max(0, qty - alreadyAssigned)
+          // Phase 1: hard cap production at 25% of Final Plan qty (WIP Crisis only)
+          if (selectedPhase === 1) remainingQty = Math.min(remainingQty, qty * 0.25)
           if (remainingQty < 1) continue
 
           // Split into stock-supported vs deficit based on raw material allocation
