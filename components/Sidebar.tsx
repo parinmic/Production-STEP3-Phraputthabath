@@ -234,6 +234,13 @@ export default function Sidebar() {
             <span className={labelCls}>แผนผลิต WIP</span>
           </Link>
 
+          <Link href="/withdrawal/rm-allocation"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/withdrawal/rm-allocation')}`}
+            title="จัดสรรเนื้อ Raw Mat">
+            <Beef size={18} className="shrink-0" />
+            <span className={labelCls}>จัดสรรเนื้อ Raw Mat</span>
+          </Link>
+
           <div className="hidden md:block space-y-1">
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
@@ -425,12 +432,6 @@ export default function Sidebar() {
             title="จัดการแผนผลิต">
             <ShieldAlert size={18} className="shrink-0" />
             <span className={labelCls}>จัดการแผนผลิต</span>
-          </Link>
-          <Link href="/withdrawal/rm-allocation"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/withdrawal/rm-allocation')}`}
-            title="จัดสรรเนื้อ Raw Mat">
-            <Beef size={18} className="shrink-0" />
-            <span className={labelCls}>จัดสรรเนื้อ Raw Mat</span>
           </Link>
 
           </div>{/* end hidden md:block */}
