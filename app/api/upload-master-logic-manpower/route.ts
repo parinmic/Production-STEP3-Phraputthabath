@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-const VALID_TYPES = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
+const VALID_TYPES = [
+  'sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special',
+  'sa-phok-basic', 'lai-basic', 'sam-chan-basic', 'perd-moo',
+]
 
 const TYPE_LABEL: Record<string, string> = {
-  'sa-phok-special':   'สะโพกพิเศษ',
-  'lai-special':       'ไหล่พิเศษ',
-  'sam-chan-special':   'สามชั้นพิเศษ',
-  'moo-chod-special':  'หมูบดพิเศษ',
-  'slide-special':     'สไลด์พิเศษ',
+  'sa-phok-special':  'สะโพกพิเศษ',
+  'lai-special':      'ไหล่พิเศษ',
+  'sam-chan-special':  'สามชั้นพิเศษ',
+  'moo-chod-special': 'หมูบดพิเศษ',
+  'slide-special':    'สไลด์พิเศษ',
+  'sa-phok-basic':    'สะโพกเบสิค',
+  'lai-basic':        'ไหล่เบสิค',
+  'sam-chan-basic':    'สามชั้นเบสิค',
+  'perd-moo':         'เปิดหมู',
 }
 
 export async function GET(req: NextRequest) {

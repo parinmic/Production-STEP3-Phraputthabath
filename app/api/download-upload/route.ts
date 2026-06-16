@@ -154,6 +154,21 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       loss_pct:     'Loss %',
     },
   },
+  bom_items_basic: {
+    cols: ['pg', 'pg_name', 'product_code', 'product_sap', 'product_name', 'raw_code', 'raw_sap', 'raw_name', 'yield_pct', 'loss_pct'],
+    headers: {
+      pg:           'PG',
+      pg_name:      'ชื่อ PG',
+      product_code: 'รหัสสินค้า',
+      product_sap:  'รหัส SAP สินค้า',
+      product_name: 'ชื่อสินค้า',
+      raw_code:     'รหัสวัตถุดิบ',
+      raw_sap:      'รหัส SAP วัตถุดิบ',
+      raw_name:     'ชื่อวัตถุดิบ',
+      yield_pct:    'Yield %',
+      loss_pct:     'Loss %',
+    },
+  },
   no_withdrawal_skus: {
     cols: ['work_station', 'product_group', 'sap', 'product_name'],
     headers: {
@@ -164,6 +179,17 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
     },
   },
   picking_unit_master: {
+    cols: ['step', 'unix_code', 'sap', 'product_name', 'weight_per_bag', 'unit'],
+    headers: {
+      step:           'ขั้นตอน',
+      unix_code:      'รหัส Unix',
+      sap:            'SAP',
+      product_name:   'ชื่อสินค้า',
+      weight_per_bag: 'น้ำหนักต่อถุง',
+      unit:           'หน่วย',
+    },
+  },
+  picking_unit_master_basic: {
     cols: ['step', 'unix_code', 'sap', 'product_name', 'weight_per_bag', 'unit'],
     headers: {
       step:           'ขั้นตอน',
@@ -192,6 +218,13 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       sap_code:        'SAP',
       product_name:    'ชื่อวัตถุดิบ',
       fat_percent:     '%ไขมัน',
+    },
+  },
+  mas_sayapan: {
+    cols: ['product_group', 'station'],
+    headers: {
+      product_group: 'กลุ่มชิ้นส่วน',
+      station:       'สายพาน/สถานี',
     },
   },
 }
