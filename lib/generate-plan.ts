@@ -549,6 +549,8 @@ function allocateBalanced(params: {
     const specialStart = specialTime?.startMins ?? null
     const specialStop  = specialTime?.stopMins  ?? null
     const limitEnd     = specialStop !== null ? Math.min(phaseEndMins, specialStop) : phaseEndMins
+    const _isMooDebug  = tableName === 'หมูบด' && normSku === '23057698'
+    if (_isMooDebug) console.log(`[DEBUG2] 23057698 block: totalQty=${block.totalQty} numBags=${numBags} wpb=${block.wpb} rate=${block.rate} phaseEndMins=${phaseEndMins} limitEnd=${limitEnd} specialStop=${specialStop}`)
 
     let eligible: WorkforceRow[]
     let selected: WorkforceRow[]
@@ -616,7 +618,8 @@ function allocateBalanced(params: {
     for (const w of selected)
       blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
     if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
-    if (blockStart >= limitEnd) continue
+    if (_isMooDebug) console.log(`[DEBUG2] 23057698 blockStart=${blockStart} selected=${selected.length} eligible=${eligible.length}`)
+    if (blockStart >= limitEnd) { if (_isMooDebug) console.log(`[DEBUG2] 23057698 SKIP: blockStart(${blockStart}) >= limitEnd(${limitEnd})`); continue }
 
     // Distribute bags equally; remainder goes to last worker
     // key = normSku (channels merged → one continuous block per worker)
@@ -2018,6 +2021,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return { ...item, targetQty: newQty }
   }).filter(item => item.targetQty > 0)
 
+  console.log(`[DEBUG] assignList หมูบด SKUs:`, assignList.filter(i => ['23057698','23039556','23090969'].includes(i.sku.replace(/^0+/,''))).map(i => `${i.channel}|${i.sku.replace(/^0+/,'')}|${i.targetQty}kg`))
+
   // WIP full-production cap: populated inside split block, consumed in WIP plan block
   const wipFullCapBySap = new Map<string, number>() // SAP (raw) → max producible kg given raw pool
 
@@ -2364,6 +2369,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
       mooChōdScale = Math.max(0, 1 - sharedDeficit / mooTotalKg)
     }
+    console.log(`[DEBUG] mooTotalKg=${mooTotalKg.toFixed(1)} sharedDeficit=${(() => { let d=0; for (const [k,n] of stationRawTotalNeeded.entries()) { if (!k.startsWith('หมูบด|||')) continue; const a=stationRawAllocated.get(k)??n; d+=Math.max(0,n-a) } return d })().toFixed(1)} mooChōdScale=${mooChōdScale.toFixed(4)}`)
 
     // ── Split each SKU target into stock-supported qty (based on allocation ratio) + deficit qty ──
     const splitAssignList: SkuTarget[] = []
@@ -2405,6 +2411,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (deficitBagQty > 0.01) splitAssignList.push({ ...item, targetQty: deficitBagQty, isDeficit: true })
     }
     assignList = splitAssignList
+    const mooDebug = assignList.filter(i => ['23057698','23039556','23090969'].includes(i.sku.replace(/^0+/,'')))
+    console.log(`[DEBUG] หมูบด in splitAssignList:`, mooDebug.map(i => `${i.channel}|${i.sku.replace(/^0+/,'')}|${i.targetQty}kg|deficit=${i.isDeficit}`))
   }
 
   // Special time SKUs first
@@ -2565,7 +2573,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       for (const [station, stationTargets] of Object.entries(targetsByStation)) {
         const stationWorkers = workersByStation[station] ?? []
         if (!stationWorkers.length) continue
-        assignments.push(...allocateBalanced({
+        if (station === 'หมูบด') console.log(`[DEBUG] allocateBalanced หมูบด ch=${ch} targets=`, stationTargets.map(t => `${t.channel}|${t.sku.replace(/^0+/,'')}|${t.targetQty}kg|deficit=${t.isDeficit}`), `workers=${stationWorkers.length}`)
+        const _balResult = allocateBalanced({
           productionDate,
           tableName: station,
           targets: stationTargets,
@@ -2582,7 +2591,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           specialTimeMap,
           skuTotalQtyOverride: globalSkuTotalQty,
           lastSkuSet: station === 'หมูบด' ? mooChōd50PctSapSet : undefined,
-        }))
+        })
+        if (station === 'หมูบด') console.log(`[DEBUG] allocateBalanced หมูบด ch=${ch} result rows=${_balResult.length} total=${_balResult.reduce((s,r)=>s+Number((r as any).target_quantity??0),0)}kg`)
+        assignments.push(..._balResult)
       }
     }
   }

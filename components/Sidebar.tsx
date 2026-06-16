@@ -227,6 +227,13 @@ export default function Sidebar() {
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </Link>
 
+          <Link href="/wip-plan"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/wip-plan')}`}
+            title="แผนผลิต WIP">
+            <Layers size={18} className="shrink-0" />
+            <span className={labelCls}>แผนผลิต WIP</span>
+          </Link>
+
           <div className="hidden md:block space-y-1">
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
@@ -279,7 +286,7 @@ export default function Sidebar() {
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material' },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้' },
-          ].map((m) => (
+          ].filter(m => m.href !== '/wip-plan').map((m) => (
             <Link key={m.href} href={m.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a(m.href)}`}
               title={m.label}>
