@@ -342,7 +342,7 @@ export default function WithdrawalPage() {
             <p className="text-gray-500 mt-1 text-sm hidden sm:block">คำนวณจากคำสั่งผลิต + BOM หรือดูรายการที่บันทึกไว้</p>
           </div>
           <button onClick={openPrintModal}
-            className="no-print hidden sm:flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors text-sm">
+            className="no-print flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors text-sm">
             <Printer size={16} /> พิมพ์ PDF
           </button>
         </div>
