@@ -380,13 +380,15 @@ function allocateBalanced(params: {
   for (const block of skuBlocks) {
     const { normSku, rawSku, skuName, totalQty, productGroup, rate, wpb, channels } = block
 
-    const eligibleWorkers = workers.filter(w => isWorkerEligible(w, productGroup))
+    let eligibleWorkers = workers.filter(w => isWorkerEligible(w, productGroup))
+    if (!eligibleWorkers.length) eligibleWorkers = workers
     if (!eligibleWorkers.length) continue
 
     const maxW = getMaxWorkers(normSku)
 
     let remaining = totalQty
     const workersForSku: WorkforceRow[] = []
+    const forcedDeficitWorkers = new Set<string>()
 
     const assignedSet = skuAssignedWorkers.get(normSku) ?? new Set<string>()
 
@@ -417,7 +419,18 @@ function allocateBalanced(params: {
       workersForSku.push(worker)
     }
 
-    if (!workersForSku.length) continue
+    if (!workersForSku.length) {
+      // No one fit within available time — for deficit (raw-material-short) blocks,
+      // still queue it onto the best-matching real worker instead of dropping the row,
+      // so it stays visible in the Raw รอผลิต shortage report. Free time isn't advanced
+      // for them below — this is backlog, not a real timeslot.
+      if (block.isDeficit && sortedWorkers.length) {
+        workersForSku.push(sortedWorkers[0])
+        forcedDeficitWorkers.add(normName(sortedWorkers[0].name))
+      } else {
+        continue
+      }
+    }
 
     skuAssignedWorkers.set(normSku, new Set([...assignedSet, ...workersForSku.map(w => normName(w.name))]))
 
@@ -428,7 +441,9 @@ function allocateBalanced(params: {
       const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
       const specialEntry = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
       const specialStart = specialEntry?.startMins ?? null
-      const startMins = specialStart !== null ? Math.max(freeAt, specialStart) : freeAt
+      const startMins = forcedDeficitWorkers.has(nameKey)
+        ? phaseEndMins
+        : (specialStart !== null ? Math.max(freeAt, specialStart) : freeAt)
       const roundMins = getRoundMinsLocal(startMins, phaseRoundMins)
       const bagQty = wpb > 0 ? Math.floor(perWorker / wpb) * wpb : perWorker
       const finalQty = Math.max(bagQty, wpb > 0 ? wpb : bagQty)
@@ -453,14 +468,16 @@ function allocateBalanced(params: {
       const cur = startMap.get(normSku)
       if (cur === undefined || startMins < cur) startMap.set(normSku, startMins)
 
-      // Advance worker free time
-      const dur = finalQty / rate * 60
-      const endMins = wallClockFinish(startMins, dur)
-      const busySegs = workerBusySegments.get(nameKey) ?? []
-      if (specialStart === null) {
-        workerFreeAtMins.set(nameKey, endMins)
-        busySegs.push({ start: startMins, end: endMins })
-        workerBusySegments.set(nameKey, busySegs)
+      // Advance worker free time — skip for forced deficit backlog (not a real timeslot)
+      if (!forcedDeficitWorkers.has(nameKey)) {
+        const dur = finalQty / rate * 60
+        const endMins = wallClockFinish(startMins, dur)
+        const busySegs = workerBusySegments.get(nameKey) ?? []
+        if (specialStart === null) {
+          workerFreeAtMins.set(nameKey, endMins)
+          busySegs.push({ start: startMins, end: endMins })
+          workerBusySegments.set(nameKey, busySegs)
+        }
       }
     }
 
