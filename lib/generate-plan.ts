@@ -332,43 +332,35 @@ function getWorkerFreeAt(
   return freeAt
 }
 
-function estimateWorkerFinish(
+// Consumes as much available time as it can before limitEnd (accounting for busy
+// segments/breaks) and reports how much of durationMins was actually used
+// (usedMins <= durationMins) instead of failing outright when it doesn't all fit.
+function consumeAvailableTime(
   freeAt: number,
   durationMins: number,
   busySegments: { start: number; end: number }[],
   limitEnd: number,
-  specialStart: number | null,
-  specialStop: number | null,
-): number | null {
-  let pos = (specialStart !== null) ? Math.max(freeAt, specialStart) : freeAt
-  let targetEnd = (specialStop !== null) ? Math.min(limitEnd, specialStop) : limitEnd
+): { finish: number; usedMins: number } {
+  let pos = freeAt
   let remaining = durationMins
+  let used = 0
   const sortedSegs = [...busySegments].sort((a, b) => a.start - b.start)
 
   while (remaining > 0.01) {
     let advanced = true
     while (advanced) {
       advanced = false
-      // Overlap with busy segments
       for (const seg of sortedSegs) {
-        if (pos >= seg.start - 0.01 && pos < seg.end) {
-          pos = seg.end
-          advanced = true
-        }
+        if (pos >= seg.start - 0.01 && pos < seg.end) { pos = seg.end; advanced = true }
       }
-      // Overlap with breaks
       for (const [bs, be] of BREAKS) {
-        if (pos >= bs && pos < be) {
-          pos = be
-          advanced = true
-        }
+        if (pos >= bs && pos < be) { pos = be; advanced = true }
       }
     }
 
-    if (pos >= targetEnd) return null // exceeds limit/deadline
+    if (pos >= limitEnd) break // no more room before the limit
 
-    // Find next event (next busy segment start, next break start, or targetEnd)
-    let nextEvent = targetEnd
+    let nextEvent = limitEnd
     for (const seg of sortedSegs) {
       if (seg.start > pos) nextEvent = Math.min(nextEvent, seg.start)
     }
@@ -378,13 +370,38 @@ function estimateWorkerFinish(
 
     const chunk = nextEvent - pos
     if (remaining <= chunk) {
-      return pos + remaining
+      pos += remaining
+      used += remaining
+      remaining = 0
     } else {
+      used += chunk
       remaining -= chunk
       pos = nextEvent
     }
   }
-  return pos
+  return { finish: pos, usedMins: used }
+}
+
+// Distributes as many whole bags as fit into the worker's remaining time before limitEnd,
+// instead of an all-or-nothing fit. Returns { bags: 0, finish: startAt } if nothing fits.
+function fitMaxBags(
+  startAt: number,
+  bags: number,
+  wpb: number,
+  rate: number,
+  busySegments: { start: number; end: number }[],
+  limitEnd: number,
+): { bags: number; finish: number } {
+  if (bags < 1 || rate <= 0) return { bags: 0, finish: startAt }
+  const durationMins = (bags * wpb / rate) * 60
+  const { finish, usedMins } = consumeAvailableTime(startAt, durationMins, busySegments, limitEnd)
+  if (usedMins >= durationMins - 0.01) return { bags, finish }
+
+  const fitBags = Math.floor((usedMins * rate / 60) / wpb)
+  if (fitBags < 1) return { bags: 0, finish: startAt }
+  const fitDuration = (fitBags * wpb / rate) * 60
+  const { finish: fitFinish } = consumeAvailableTime(startAt, fitDuration, busySegments, limitEnd)
+  return { bags: fitBags, finish: fitFinish }
 }
 
 function allocateBalanced(params: {
@@ -658,13 +675,13 @@ function allocateBalanced(params: {
       overflow = 0
       if (bags < 1) continue
 
-      const qty          = bags * block.wpb
-      const durationMins = (qty / block.rate) * 60
-      const segs         = workerBusySegments.get(nameKey) ?? []
-      const newFinish    = estimateWorkerFinish(blockStart, durationMins, segs, limitEnd, null, null)
-      if (newFinish === null) { overflow += bags; continue }
+      const segs = workerBusySegments.get(nameKey) ?? []
+      const fit  = fitMaxBags(blockStart, bags, block.wpb, block.rate, segs, limitEnd)
+      if (fit.bags < 1) { overflow += bags; continue }
+      if (fit.bags < bags) overflow += bags - fit.bags
 
-      segs.push({ start: blockStart, end: newFinish })
+      const qty = fit.bags * block.wpb
+      segs.push({ start: blockStart, end: fit.finish })
       workerBusySegments.set(nameKey, segs)
       workerFreeAtMins.set(nameKey, getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins))
       workerHours.set(nameKey, Math.max(0, (workerHours.get(nameKey) ?? 0) - qty / block.rate))
@@ -692,19 +709,22 @@ function allocateBalanced(params: {
       skuAssignedWorkers.get(normSku)!.add(nameKey)
     }
 
-    // Fallback: assign overflow to first eligible worker that can take it
+    // Fallback: spread remaining overflow across eligible workers, taking whatever
+    // partial amount fits in each one's remaining time rather than requiring the
+    // whole overflow to fit on a single worker.
     if (overflow > 0) {
-      let fallbackAssigned = false
+      const overflowStart = overflow
       for (const w of eligible) {
-        const nameKey      = normName(w.name)
-        const qty          = overflow * block.wpb
-        const durationMins = (qty / block.rate) * 60
-        const segs         = workerBusySegments.get(nameKey) ?? []
-        const startAt      = Math.max(blockStart, workerFreeAtMins.get(nameKey) ?? phaseStartMins)
-        const newFinish    = estimateWorkerFinish(startAt, durationMins, segs, phaseEndMins, null, null)
-        if (newFinish === null) continue
+        if (overflow < 1) break
+        const nameKey = normName(w.name)
+        const segs    = workerBusySegments.get(nameKey) ?? []
+        const startAt = Math.max(blockStart, workerFreeAtMins.get(nameKey) ?? phaseStartMins)
+        const fit     = fitMaxBags(startAt, overflow, block.wpb, block.rate, segs, phaseEndMins)
+        if (fit.bags < 1) continue
 
-        segs.push({ start: startAt, end: newFinish })
+        const qty = fit.bags * block.wpb
+        overflow -= fit.bags
+        segs.push({ start: startAt, end: fit.finish })
         workerBusySegments.set(nameKey, segs)
         workerFreeAtMins.set(nameKey, getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins))
         workerHours.set(nameKey, Math.max(0, (workerHours.get(nameKey) ?? 0) - qty / block.rate))
@@ -726,11 +746,9 @@ function allocateBalanced(params: {
 
         if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
         skuAssignedWorkers.get(normSku)!.add(nameKey)
-        fallbackAssigned = true
-        break
       }
-      if (!fallbackAssigned) {
-        pushSkip(block, 'overflow_unassigned', { overflowBags: overflow, numBags, selectedCount: selected.length, eligibleCount: eligible.length })
+      if (overflow > 0) {
+        pushSkip(block, 'overflow_unassigned', { overflowBags: overflow, overflowStart, numBags, selectedCount: selected.length, eligibleCount: eligible.length })
       }
     }
 
