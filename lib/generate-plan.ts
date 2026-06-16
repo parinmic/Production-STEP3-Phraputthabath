@@ -53,9 +53,9 @@ export interface GeneratePlanResult {
 export const UNASSIGNED_WORKER_CODE = 'UNASSIGNED'
 export const UNASSIGNED_WORKER_NAME = 'รอจัดสรร (ขาดวัตถุดิบ)'
 
-// Temporary kill-switch: disable all WIP (กลุ่ม WIP) raw-material reservation and
+// Kill-switch: disable all WIP (กลุ่ม WIP) raw-material reservation and
 // worker-assignment logic during plan generation, as if wip_plan didn't exist.
-const ENABLE_WIP = false
+const ENABLE_WIP = true
 
 function minsToTimeStr(mins: number): string {
   const wrapped = ((mins % 1440) + 1440) % 1440
