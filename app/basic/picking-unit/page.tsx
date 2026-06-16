@@ -1,0 +1,25 @@
+'use client'
+import FileUpload from '@/components/FileUpload'
+import { parsePickingUnit, ParsedRow } from '@/lib/parser'
+
+async function upload(rows: ParsedRow[], filename: string) {
+  const res = await fetch('/api/upload-picking-unit-basic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows, filename }),
+  })
+  return res.json()
+}
+
+export default function BasicPickingUnitPage() {
+  return (
+    <FileUpload
+      title="Mas หน่วยหยิบสินค้า (เบสิค)"
+      description="ตารางเทียบน้ำหนัก (กก.) เป็นจำนวนถุง — คอลัมน์: SAP, ชื่อสินค้า, น้ำหนักต่อถุง (กก.), หน่วย"
+      historyEndpoint="/api/upload-picking-unit-basic"
+      onUpload={upload}
+      parseFileFn={parsePickingUnit}
+      downloadTable="picking_unit_master_basic"
+    />
+  )
+}
