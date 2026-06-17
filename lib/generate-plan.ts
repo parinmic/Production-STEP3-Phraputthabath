@@ -140,7 +140,7 @@ const normName = (s: string) => {
 // ========== Workforce ==========
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special', 'pao-kha-special', 'loa-kha-special']
   const workforce: WorkforceRow[] = []
 
   const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
