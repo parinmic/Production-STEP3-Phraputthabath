@@ -246,8 +246,13 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
             let startMins: number
             if (t.deadline_time) {
               const [dh, dm] = t.deadline_time.split(':').map(Number)
-              const deadlineMins = (!isNaN(dh) && !isNaN(dm)) ? dh * 60 + dm : curMins
-              startMins = isConcurrent ? deadlineMins : Math.max(curMins, deadlineMins)
+              if (!isNaN(dh) && !isNaN(dm)) {
+                const raw = dh * 60 + dm
+                const deadlineMins = (t.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
+                startMins = isConcurrent ? deadlineMins : Math.max(curMins, deadlineMins)
+              } else {
+                startMins = curMins
+              }
             } else {
               startMins = curMins
             }
@@ -391,7 +396,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
         if (!isNaN(dh) && !isNaN(dm)) {
-          const dl = dh * 60 + dm
+          const raw = dh * 60 + dm
+          const dl = (task.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
           startMin = isConcurrent ? dl : Math.max(startMin, dl)
         }
       }
@@ -429,7 +435,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
         if (!isNaN(dh) && !isNaN(dm)) {
-          const dl = dh * 60 + dm
+          const raw = dh * 60 + dm
+          const dl = (task.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
           startMin = isConcurrentRaw ? dl : Math.max(startMin, dl)
         }
       }
