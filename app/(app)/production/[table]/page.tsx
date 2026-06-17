@@ -1027,9 +1027,11 @@ interface WorkerCardViewProps {
   nameMap: Record<string, string>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
+  ackedWorkers: Set<string>
+  onToggleAck: (name: string) => void
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
+function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor, ackedWorkers, onToggleAck }: WorkerCardViewProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1128,6 +1130,23 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
                 )
               })}
             </div>
+
+            {/* Acknowledgment checkbox */}
+            <button
+              onClick={() => onToggleAck(name)}
+              className={`mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                ackedWorkers.has(name)
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+              }`}
+            >
+              <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                ackedWorkers.has(name) ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+              }`}>
+                {ackedWorkers.has(name) && <span className="text-white text-[9px] leading-none font-black">✓</span>}
+              </span>
+              {ackedWorkers.has(name) ? 'เห็นแผนแล้ว' : 'กด tick ว่าเห็นแผนแล้ว'}
+            </button>
           </div>
         )
       })}
@@ -1384,6 +1403,32 @@ export default function TablePage() {
   useEffect(() => {
     localStorage.setItem('midRecalEnabled', String(midRecal))
   }, [midRecal])
+
+  const [ackedWorkers, setAckedWorkers] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`plan_ack_${date}_${tableSlug}_${selectedPhase}`)
+      setAckedWorkers(new Set(JSON.parse(raw ?? '[]') as string[]))
+    } catch { setAckedWorkers(new Set()) }
+  }, [date, tableSlug, selectedPhase])
+
+  useEffect(() => {
+    if (!ackedWorkers.size) return
+    localStorage.setItem(
+      `plan_ack_${date}_${tableSlug}_${selectedPhase}`,
+      JSON.stringify(Array.from(ackedWorkers))
+    )
+  }, [ackedWorkers, date, tableSlug, selectedPhase])
+
+  const toggleAck = useCallback((workerName: string) => {
+    setAckedWorkers(prev => {
+      const next = new Set(prev)
+      if (next.has(workerName)) next.delete(workerName)
+      else next.add(workerName)
+      return next
+    })
+  }, [])
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1663,6 +1708,8 @@ export default function TablePage() {
                 nameMap={nameMap}
                 bagMap={bagMap}
                 skuColor={skuColor}
+                ackedWorkers={ackedWorkers}
+                onToggleAck={toggleAck}
               />
             )}
             {viewMode === 'worker' && (
@@ -1695,6 +1742,60 @@ export default function TablePage() {
                 tableName={cfg.label}
               />
             )}
+
+            {/* ─── Worker acknowledgment panel ─────────────────────────────── */}
+            {(() => {
+              const workerNames = Array.from(new Set(filtered.map(a => a.worker_name))).sort()
+              if (!workerNames.length) return null
+              const ackedCount = workerNames.filter(n => ackedWorkers.has(n)).length
+              const allAcked = ackedCount === workerNames.length
+              return (
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700">เห็นแผนแล้ว</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        allAcked ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {ackedCount}/{workerNames.length} คน
+                      </span>
+                    </div>
+                    {ackedCount > 0 && (
+                      <button
+                        onClick={() => setAckedWorkers(new Set())}
+                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        รีเซ็ต
+                      </button>
+                    )}
+                  </div>
+                  <div className="p-3 flex flex-wrap gap-2">
+                    {workerNames.map(name => {
+                      const display = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
+                      const acked = ackedWorkers.has(name)
+                      return (
+                        <button
+                          key={name}
+                          onClick={() => toggleAck(name)}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                            acked
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                          }`}
+                        >
+                          <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            acked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+                          }`}>
+                            {acked && <span className="text-white text-[8px] leading-none font-black">✓</span>}
+                          </span>
+                          {display}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
         </div>
       )}
     </div>

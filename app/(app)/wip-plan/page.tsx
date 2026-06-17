@@ -203,8 +203,20 @@ export default function WipPlanPage() {
         .from('wip_plan')
         .upsert(upserts, { onConflict: 'plan_date,sap_code' })
       if (error) throw error
+
+      // Generate Phase 1 plan after saving WIP (Phase 2/3 are unaffected)
+      const genRes = await fetch('/api/production/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase: 1 }),
+      })
+      const genJson = await genRes.json()
+      if (!genJson.success) throw new Error(`สร้างแผน Phase 1 ไม่สำเร็จ: ${genJson.message}`)
+
       setStatus('success')
-      setMessage('บันทึกสำเร็จ')
+      setMessage(genJson.isScheduled
+        ? `บันทึกสำเร็จ · แผน Phase 1 จะมีผลเวลา ${genJson.effectiveFrom ?? ''} น.`
+        : 'บันทึกสำเร็จ · สร้างแผน Phase 1 แล้ว')
     } catch (e: unknown) {
       setStatus('error')
       const msg = e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'เกิดข้อผิดพลาด'
