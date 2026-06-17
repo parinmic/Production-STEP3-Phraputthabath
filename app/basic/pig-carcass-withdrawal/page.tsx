@@ -13,9 +13,10 @@ function fmt(n: number, decimals = 2) {
 }
 
 export default function PigCarcassWithdrawalPage() {
-  const [rows,    setRows]    = useState<LotRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState('')
+  const [rows,       setRows]       = useState<LotRow[]>([])
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState('')
+  const [sourceFile, setSourceFile] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -28,6 +29,7 @@ export default function PigCarcassWithdrawalPage() {
         a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1))
       )
       setRows(sorted)
+      setSourceFile(json.source_file ?? '')
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -47,6 +49,9 @@ export default function PigCarcassWithdrawalPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">เบิกหมูซีก</h1>
           <p className="text-gray-500 mt-1">ข้อมูลจาก Stock คลัง 20 — รหัสสินค้า 90007</p>
+          {sourceFile && (
+            <p className="text-xs text-gray-400 mt-0.5">ไฟล์ล่าสุด: {sourceFile}</p>
+          )}
         </div>
         <button
           onClick={load}
