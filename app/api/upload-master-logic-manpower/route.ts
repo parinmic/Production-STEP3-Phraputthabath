@@ -13,6 +13,8 @@ const TYPE_LABEL: Record<string, string> = {
   'sam-chan-special':  'สามชั้นพิเศษ',
   'moo-chod-special': 'หมูบดพิเศษ',
   'slide-special':    'สไลด์พิเศษ',
+  'pao-kha-special':  'เผาขาพิเศษ',
+  'loa-kha-special':  'เลาะขาพิเศษ',
   'sa-phok-basic':    'สะโพกเบสิค',
   'lai-basic':        'ไหล่เบสิค',
   'sam-chan-basic':    'สามชั้นเบสิค',
