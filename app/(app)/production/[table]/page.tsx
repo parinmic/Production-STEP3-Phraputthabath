@@ -1511,6 +1511,8 @@ export default function TablePage() {
 
   const phaseConfig  = selectedPhase === 'all' ? null : PHASES.find(p => p.phase === selectedPhase)!
   const filtered     = selectedPhase === 'all' ? items : items.filter(a => a.period === phaseConfig!.period)
+  const manualItems  = filtered.filter(a => a.channel === 'Manual')
+  const displayItems = filtered.filter(a => a.channel !== 'Manual')
   const viewStartH   = selectedPhase === 'all' ? PHASES[0].startH  : phaseConfig!.startH
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -1651,7 +1653,7 @@ export default function TablePage() {
       {loading && (
         <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>
       )}
-      {!loading && filtered.length === 0 && (
+      {!loading && displayItems.length === 0 && manualItems.length === 0 && (
         <div className="card text-center py-16 text-gray-400">
           <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
           {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
@@ -1659,7 +1661,7 @@ export default function TablePage() {
       )}
 
       {/* Content */}
-      {!loading && filtered.length > 0 && (
+      {!loading && displayItems.length > 0 && (
         <div className="space-y-3">
             {/* View toggle */}
             <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
@@ -1687,7 +1689,7 @@ export default function TablePage() {
 
             {viewMode === 'sku' && (
               <SkuScheduleView
-                items={filtered}
+                items={displayItems}
                 phaseStart={viewStartH}
                 phaseEnd={viewEndH}
                 rateMap={rateMap}
@@ -1700,7 +1702,7 @@ export default function TablePage() {
             )}
             {viewMode === 'gantt' && (
               <WorkerCardView
-                items={filtered}
+                items={displayItems}
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
@@ -1710,7 +1712,7 @@ export default function TablePage() {
             )}
             {viewMode === 'worker' && (
               <WorkerTable
-                items={filtered}
+                items={displayItems}
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
@@ -1720,7 +1722,7 @@ export default function TablePage() {
             )}
             {viewMode === 'time' && (
               <CurrentTimeView
-                items={filtered}
+                items={displayItems}
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 nameMap={nameMap}
@@ -1730,7 +1732,7 @@ export default function TablePage() {
             )}
             {viewMode === 'summary' && (
               <ProductionSummaryView
-                items={filtered}
+                items={displayItems}
                 phaseStart={viewStartH}
                 rateMap={rateMap}
                 bagMap={bagMap}
@@ -1739,6 +1741,34 @@ export default function TablePage() {
               />
             )}
 
+        </div>
+      )}
+
+      {/* แผนผลิต Raw ล่วงหน้า */}
+      {!loading && manualItems.length > 0 && (
+        <div className="card">
+          <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+            แผนผลิต Raw ล่วงหน้า
+          </h3>
+          {Array.from(
+            manualItems.reduce((map, a) => {
+              const cur = map.get(a.sku) ?? { sku_name: a.sku_name, qty: 0 }
+              cur.qty += Number(a.target_quantity)
+              map.set(a.sku, cur)
+              return map
+            }, new Map<string, { sku_name: string | null; qty: number }>())
+          ).map(([sku, { sku_name, qty }]) => (
+            <div key={sku} className="flex items-center justify-between py-2 border-t border-gray-100 first:border-0">
+              <div>
+                <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
+                <p className="text-xs text-gray-400 mt-0.5">เริ่ม 21:00 น. · {manualItems.filter(a => a.sku === sku).length} คน</p>
+              </div>
+              <p className="text-xl font-bold text-gray-900">
+                {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
+              </p>
+            </div>
+          ))}
         </div>
       )}
     </div>
