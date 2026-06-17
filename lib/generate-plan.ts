@@ -3280,6 +3280,83 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   assignments.length = 0
   assignments.push(...resequenced)
 
+  // =========== ซี่โครง Manual (Phase 3 only) ===========
+  if (isPhase3) {
+    const SKB_RAW_SAP  = '23038376'
+    const SKB_RAW_NAME = 'ซี่โครงตัดเส้น 2 นิ้ว - Raw'
+    const SKB_START    = '21:00:00'
+    const SKB_STATION  = 'สามชั้น'
+    const SKB_GROUP    = 'กลุ่ม Raw'
+
+    // BOM reverse lookup: find all final products that use 23038376 as raw material
+    const { data: skbBomRows } = await supabase
+      .from('bom_items').select('product_sap, yield_pct').eq('raw_sap', SKB_RAW_SAP)
+
+    const productYield = new Map<string, number>()
+    for (const b of skbBomRows ?? []) {
+      if (!b.product_sap || !(b.yield_pct > 0)) continue
+      const normSku = String(b.product_sap).replace(/^0+/, '')
+      productYield.set(normSku, b.yield_pct)
+      productYield.set(String(b.product_sap), b.yield_pct)
+    }
+
+    if (productYield.size > 0) {
+      // Aggregate daily raw qty from hist orders across all channels (rawQty = finQty / yield_pct)
+      const allHistOrders: OrderRow[] = [
+        ...(wmHistRaw ?? []),
+        ...(lotusHistRaw ?? []),
+        ...(makroHistRaw ?? []),
+      ]
+      const dailyRawQty = new Map<string, number>()
+      for (const ord of allHistOrders) {
+        const normSku = String(ord.sku).replace(/^0+/, '')
+        const yld = productYield.get(normSku) ?? productYield.get(String(ord.sku))
+        if (!yld) continue
+        const prev = dailyRawQty.get(ord.delivery_date) ?? 0
+        dailyRawQty.set(ord.delivery_date, prev + Number(ord.quantity) / yld)
+      }
+
+      const dailyVals = Array.from(dailyRawQty.values()).filter(v => v > 0)
+      const avgRawQty = dailyVals.length > 0
+        ? dailyVals.reduce((s, v) => s + v, 0) / dailyVals.length
+        : 0
+
+      if (avgRawQty > 0) {
+        // Filter กลุ่ม Raw workers at สามชั้น
+        const skbWorkers = (workersByStation[SKB_STATION] ?? []).filter(w =>
+          jobAssignMap.get(normName(w.name))?.groups.has(SKB_GROUP) ?? false
+        )
+
+        if (skbWorkers.length > 0) {
+          const qtyPerWorker = Math.round((avgRawQty / skbWorkers.length) * 100) / 100
+          const baseSeq = assignments.length
+          for (let i = 0; i < skbWorkers.length; i++) {
+            const w = skbWorkers[i]
+            assignments.push({
+              production_date: productionDate,
+              table_name:      SKB_STATION,
+              worker_code:     w.emp_id,
+              worker_name:     w.name,
+              sku:             SKB_RAW_SAP,
+              sku_name:        SKB_RAW_NAME,
+              target_quantity: qtyPerWorker,
+              unit:            'กก.',
+              period:          phaseCfg.period,
+              deadline_time:   SKB_START,
+              note:            'ซี่โครง manual',
+              status:          'รอดำเนินการ',
+              channel:         'Manual',
+              is_deficit:      false,
+              seq:             baseSeq + i,
+              effective_from:  effectiveFromISO,
+            })
+          }
+        }
+      }
+    }
+  }
+  // =========== End ซี่โครง Manual ===========
+
   const { error } = await supabase.from('production_assignments').insert(assignments)
   if (error) throw error
 
