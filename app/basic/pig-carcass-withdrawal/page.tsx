@@ -57,6 +57,11 @@ export default function PigCarcassWithdrawalPage() {
   const totalWgt = rows.reduce((s, r) => s + r.weight_3, 0)
   const totalAvg = totalQty > 0 ? totalWgt / totalQty : 0
 
+  const selRows  = rows.filter(r => selected.has(r.spec_code))
+  const selQty   = selRows.reduce((s, r) => s + r.qty_3,    0)
+  const selWgt   = selRows.reduce((s, r) => s + r.weight_3, 0)
+  const selAvg   = selQty > 0 ? selWgt / selQty : 0
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -97,6 +102,35 @@ export default function PigCarcassWithdrawalPage() {
         <div className="text-center py-14 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
           <p>ไม่พบข้อมูล — กรุณาอัพโหลดไฟล์ Stock คลัง 20 ก่อน</p>
+        </div>
+      )}
+
+      {/* Selected summary */}
+      {!loading && rows.length > 0 && (
+        <div className={`rounded-xl border px-5 py-4 flex flex-wrap gap-6 items-center transition-colors ${selected.size > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+          <div className="text-center">
+            <p className="text-xs text-gray-500 mb-0.5">ล็อตที่เลือก</p>
+            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+              {selected.size} <span className="text-sm font-normal">ล็อต</span>
+            </p>
+          </div>
+          <div className="w-px h-10 bg-gray-200" />
+          <div className="text-center">
+            <p className="text-xs text-gray-500 mb-0.5">จำนวนตัวที่เลือก</p>
+            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+              {selected.size > 0 ? selQty.toLocaleString('th-TH') : '—'} <span className="text-sm font-normal">ตัว</span>
+            </p>
+          </div>
+          <div className="w-px h-10 bg-gray-200" />
+          <div className="text-center">
+            <p className="text-xs text-gray-500 mb-0.5">น้ำหนักเฉลี่ย</p>
+            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-orange-600' : 'text-gray-300'}`}>
+              {selected.size > 0 ? fmt(selAvg) : '—'} <span className="text-sm font-normal">กก./ตัว</span>
+            </p>
+          </div>
+          {selected.size === 0 && (
+            <p className="text-sm text-gray-400 ml-2">— ติ๊กเลือก Lot เพื่อดูสรุป</p>
+          )}
         </div>
       )}
 
