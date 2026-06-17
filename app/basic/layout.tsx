@@ -93,6 +93,14 @@ function BasicSidebar() {
           <p className={sectionCls}>คำสั่งเบิกและผลิต</p>
           <div className={dividerCls} />
 
+          {/* เบิกหมูซีก */}
+          <Link href="/basic/pig-carcass-withdrawal"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/pig-carcass-withdrawal')}`}
+            title="เบิกหมูซีก">
+            <Package size={18} className="shrink-0" />
+            <span className={labelCls}>เบิกหมูซีก</span>
+          </Link>
+
           {/* รายการ Raw รอผลิต */}
           <button
             onClick={() => setOpenShortage(!openShortage)}
