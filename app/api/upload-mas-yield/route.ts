@@ -29,8 +29,12 @@ export async function POST(req: NextRequest) {
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลที่ใช้งานได้' }, { status: 400 })
 
     await supabase.from('mas_yield').delete().eq('source_file', filename ?? 'unknown')
-    const { error } = await supabase.from('mas_yield').insert(records)
-    if (error) throw error
+
+    const BATCH = 500
+    for (let i = 0; i < records.length; i += BATCH) {
+      const { error } = await supabase.from('mas_yield').insert(records.slice(i, i + BATCH))
+      if (error) throw error
+    }
 
     await supabase.from('upload_log').insert({
       table_name:   'mas_yield',
