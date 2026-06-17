@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
       .from('mas_sayapan')
       .select('product_group, station, source_file')
       .eq('source_file', file)
+      .order('id', { ascending: true })
     return NextResponse.json({ data: data ?? [] })
   }
   const { data } = await supabase
@@ -24,16 +25,41 @@ export async function POST(req: NextRequest) {
     const { rows, filename } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
-    const records = (rows as Record<string, unknown>[]).map(r => {
-      const keys = Object.keys(r)
-      const groupKey   = keys.find(k => /กลุ่ม|product_group/i.test(k)) ?? keys[0]
-      const stationKey = keys.find(k => /สายพาน|station/i.test(k))      ?? keys[1]
-      return {
-        product_group: String(r[groupKey]   ?? ''),
-        station:       String(r[stationKey] ?? ''),
-        source_file:   filename ?? 'unknown',
+    // Build records sorted by station then slot order (insertion order = preserved order)
+    const records: { station: string; product_group: string; source_file: string }[] = []
+
+    for (const row of rows as Record<string, unknown>[]) {
+      const keys = Object.keys(row)
+
+      // New wide format: "สายพาน" column + "กลุ่มสินค้าที่ N" columns
+      const stationKey = keys.find(k => /^สายพาน$|^station$/i.test(k.trim()))
+      const groupKeys  = keys
+        .filter(k => /กลุ่มสินค้าที่\s*\d+/i.test(k))
+        .sort((a, b) => {
+          const na = parseInt(a.match(/\d+/)?.[0] ?? '0')
+          const nb = parseInt(b.match(/\d+/)?.[0] ?? '0')
+          return na - nb
+        })
+
+      if (stationKey && groupKeys.length > 0) {
+        const station = String(row[stationKey] ?? '').trim()
+        if (!station) continue
+        for (const gk of groupKeys) {
+          const group = String(row[gk] ?? '').trim()
+          if (!group) continue
+          records.push({ station, product_group: group, source_file: filename ?? 'unknown' })
+        }
+      } else {
+        // Fallback: old long format (product_group, station)
+        const groupKey = keys.find(k => /กลุ่ม|product_group/i.test(k)) ?? keys[0]
+        const sKey     = keys.find(k => /สายพาน|station/i.test(k))      ?? keys[1]
+        const station  = String(row[sKey]     ?? '').trim()
+        const group    = String(row[groupKey] ?? '').trim()
+        if (station && group) records.push({ station, product_group: group, source_file: filename ?? 'unknown' })
       }
-    })
+    }
+
+    if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลที่ใช้งานได้' }, { status: 400 })
 
     const { error: delErr } = await supabase.from('mas_sayapan').delete().gte('id', 1)
     if (delErr) throw delErr
