@@ -7,6 +7,7 @@ export async function GET() {
     .select('carcass_weight, product_group, yield_pct')
     .order('carcass_weight', { ascending: true })
     .order('product_group',  { ascending: true })
+    .range(0, 1999)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
