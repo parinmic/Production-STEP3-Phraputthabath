@@ -400,7 +400,7 @@ export function parseBom(file: File): Promise<ParsedRow[]> {
               yield_pct:        Number(r[8]) || 0,
               loss_pct:         Number(r[9]) || 0,
               by_products_json: JSON.stringify(byProducts),
-              priority: (r[10] !== null && r[10] !== undefined && r[10] !== '') ? (Number(r[10]) || null) : null,
+              priority: (r[11] !== null && r[11] !== undefined && r[11] !== '') ? (Number(r[11]) || null) : null,
             },
           }
         }
