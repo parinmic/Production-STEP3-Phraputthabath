@@ -3288,9 +3288,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const SKB_STATION  = 'สามชั้น'
     const SKB_GROUP    = 'กลุ่ม Raw'
 
-    // BOM reverse lookup: find all final products that use 23038376 as raw material
+    // BOM reverse lookup: find all final products that use 23034418 (ซี่โครงแผ่น-Raw) as raw material
     const { data: skbBomRows } = await supabase
-      .from('bom_items').select('product_sap, yield_pct').eq('raw_sap', SKB_RAW_SAP)
+      .from('bom_items').select('product_sap, yield_pct').eq('raw_sap', '23034418')
 
     const productYield = new Map<string, number>()
     for (const b of skbBomRows ?? []) {
