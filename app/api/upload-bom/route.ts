@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       yield_pct:    Number(r['yield_pct']) || 0,
       loss_pct:     Number(r['loss_pct']) || 0,
       by_products:  (() => { try { return JSON.parse(String(r['by_products_json'] ?? '[]')) } catch { return [] } })(),
+      priority:     (r['priority'] !== null && r['priority'] !== undefined && r['priority'] !== '') ? (Number(r['priority']) || null) : null,
     })).filter((r: { product_sap: string }) => r.product_sap)
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง' }, { status: 400 })

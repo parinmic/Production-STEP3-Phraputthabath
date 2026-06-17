@@ -31,6 +31,7 @@ interface CalcItem {
   lots?: LotInfo[]
   for_products?: ForProduct[]
   withdrawal_round?: string  // "08:00"
+  bom_priority?: number | null
 }
 
 type RowItem = CalcItem
@@ -233,7 +234,12 @@ export default function WithdrawalPage() {
                             : <ChevronRight size={14} className="text-gray-400 shrink-0 mt-0.5" />
                         )}
                         <div>
-                          <span>{item.sku_name ?? '-'}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{item.sku_name ?? '-'}</span>
+                            {item.bom_priority != null && (
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">P{item.bom_priority}</span>
+                            )}
+                          </div>
                           <p className="md:hidden text-xs font-mono text-gray-400 mt-0.5">{item.sku}</p>
                         </div>
                       </div>

@@ -112,14 +112,16 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     }
   }
 
-  // 2. BOM for WIP
+  // 2. BOM for WIP — only priority 1 (or no priority) for shortage display
   const wipSapsExpanded = Array.from(new Set([...wipSaps, ...wipSaps.map(s => s.replace(/^0+/, ''))]))
   const { data: wipBomRows } = wipSapsExpanded.length
-    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSapsExpanded)
+    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct, priority').in('product_sap', wipSapsExpanded)
     : { data: [] }
 
   const wipBomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
   for (const b of wipBomRows ?? []) {
+    const prio = (b as { priority?: number | null }).priority ?? null
+    if (prio !== null && prio !== 1) continue  // only use priority 1 or no-priority rows
     const entry = { raw_sap: b.raw_sap, raw_name: b.raw_name ?? '', yield_pct: Number(b.yield_pct) }
     for (const k of [b.product_sap, b.product_sap.replace(/^0+/, '')]) {
       const list = wipBomMap.get(k) ?? []
@@ -149,14 +151,16 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
     pm.set(k, cur)
   }
 
-  // 4. BOM for assignment SKUs
+  // 4. BOM for assignment SKUs — only priority 1 (or no priority) for shortage display
   const assnSkus = Array.from(new Set((assnRows ?? []).map(a => a.sku)))
   const { data: assnBomRows } = await supabase
-    .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct')
+    .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct, priority')
     .in('product_sap', assnSkus.length ? assnSkus : ['__none__'])
 
   const assnBomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
   for (const b of assnBomRows ?? []) {
+    const prio = (b as { priority?: number | null }).priority ?? null
+    if (prio !== null && prio !== 1) continue  // only use priority 1 or no-priority rows
     const list = assnBomMap.get(b.product_sap) ?? []
     list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? '', yield_pct: Number(b.yield_pct) })
     assnBomMap.set(b.product_sap, list)

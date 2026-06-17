@@ -283,20 +283,20 @@ export async function POST(req: NextRequest) {
   // 4. Fetch BOM
   const skus = Array.from(skuSet)
   const { data: bomRows, error: e2 } = skus.length > 0
-    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', skus)
+    ? await supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct, priority').in('product_sap', skus)
     : { data: [], error: null }
   if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
 
-  const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
+  const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number; priority: number | null }[]>()
   for (const b of bomRows ?? []) {
     if (!b.raw_sap) continue
     const list = bomMap.get(b.product_sap) ?? []
-    list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0 })
+    list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0, priority: (b as { priority?: number | null }).priority ?? null })
     bomMap.set(b.product_sap, list)
   }
 
   // 5. Calculate raw material per (station, raw_sap, round)
-  interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
+  interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number; bom_priority: number | null }
   const rawMap      = new Map<string, RawEntry>()
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
@@ -315,8 +315,15 @@ export async function POST(req: NextRequest) {
         const rawQty = b.yield_pct > 0 ? finQty / b.yield_pct : finQty
         const rawKey = `${station}|||${b.raw_sap}|||${rm}`
         const cur = rawMap.get(rawKey)
-        if (cur) { cur.qty += rawQty }
-        else { rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm }) }
+        if (cur) {
+          cur.qty += rawQty
+          // keep the lowest (most urgent) priority
+          if (b.priority !== null && (cur.bom_priority === null || b.priority < cur.bom_priority)) {
+            cur.bom_priority = b.priority
+          }
+        } else {
+          rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm, bom_priority: b.priority })
+        }
         const prodList = rawToProducts.get(rawKey) ?? []
         prodList.push({ sku, sku_name, qty: finQty, rawQty })
         rawToProducts.set(rawKey, prodList)
@@ -400,10 +407,11 @@ export async function POST(req: NextRequest) {
 
   const rawItems = Array.from(rawMap.values())
     .sort((a, b) =>
+      (a.bom_priority ?? 99) - (b.bom_priority ?? 99) ||
       (STATION_PRIORITY[a.station] ?? 9) - (STATION_PRIORITY[b.station] ?? 9) ||
       a.roundMins - b.roundMins
     )
-    .flatMap(({ station, raw_sap, raw_name, qty, roundMins }) => {
+    .flatMap(({ station, raw_sap, raw_name, qty, roundMins, bom_priority }) => {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
@@ -413,16 +421,18 @@ export async function POST(req: NextRequest) {
       const lotsResult = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
       const allocated = Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
       if (allocated <= 0.005 && lotsResult.every(l => l.insufficient)) return []
+      const noteBase = bom_priority !== null ? `P${bom_priority} — คำนวณจาก BOM` : 'คำนวณจาก BOM'
       return [{
         sku:              raw_sap,
         sku_name:         raw_name,
         quantity:         allocated,
         unit:             'กก.',
         work_station:     station,
-        note:             'คำนวณจาก BOM',
+        note:             noteBase,
         lots:             lotsResult,
         for_products:     rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
+        bom_priority,
       }]
     })
 
@@ -523,9 +533,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Combine and sort
+  // Combine and sort: round first, then bom_priority (P1 before null), then station, sku
   const items = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
+    ((a as { bom_priority?: number | null }).bom_priority ?? 99) - ((b as { bom_priority?: number | null }).bom_priority ?? 99) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
     (a.sku ?? '').localeCompare(b.sku ?? '')
   )
