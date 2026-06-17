@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const { error: delErr } = await supabase.from('mas_sayapan').delete().gte('id', 1)
     if (delErr) throw delErr
 
-    const { error } = await supabase.from('mas_sayapan').insert(records)
+    const { error } = await supabase.rpc('insert_mas_sayapan_rows', { records: JSON.stringify(records) })
     if (error) throw error
 
     await supabase.from('upload_log').delete().eq('table_name', 'mas_sayapan')
