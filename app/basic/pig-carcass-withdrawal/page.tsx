@@ -75,6 +75,20 @@ export default function PigCarcassWithdrawalPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Save selected lots to localStorage so Yield page can read them
+  useEffect(() => {
+    const selected = rows
+      .filter(r => lotOrder[r.spec_code])
+      .map(r => ({
+        spec_code:  r.spec_code,
+        qty:        r.qty_3,
+        avg_weight: r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0,
+        order:      Number(lotOrder[r.spec_code]),
+      }))
+      .sort((a, b) => a.order - b.order)
+    localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
+  }, [lotOrder, rows])
+
   const totalQty = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt = rows.reduce((s, r) => s + r.weight_3, 0)
   const totalAvg = totalQty > 0 ? totalWgt / totalQty : 0
