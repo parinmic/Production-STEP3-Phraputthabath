@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -137,6 +137,14 @@ function BasicSidebar() {
               ))}
             </div>
           )}
+
+          {/* Yield หมูซีก */}
+          <Link href="/basic/carcass-yield"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-yield')}`}
+            title="Yield หมูซีก">
+            <FlaskConical size={18} className="shrink-0" />
+            <span className={labelCls}>Yield หมูซีก</span>
+          </Link>
 
           {/* คำสั่งผลิตราย Station */}
           <button
