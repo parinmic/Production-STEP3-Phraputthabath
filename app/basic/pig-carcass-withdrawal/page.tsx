@@ -30,8 +30,8 @@ function TempCell({ value, onChange }: { value: string; onChange: (v: string) =>
   return (
     <div className="flex items-center justify-center gap-1">
       <input
-        type="number"
-        step="0.01"
+        type="text"
+        inputMode="decimal"
         value={value}
         onChange={e => onChange(e.target.value)}
         onClick={e => e.stopPropagation()}
@@ -208,8 +208,8 @@ export default function PigCarcassWithdrawalPage() {
                     <div>อุณหภูมิ</div>
                     <div className="font-normal text-cyan-400">(องศาเซลเซียส)</div>
                   </th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-500 w-20">
-                    เลือก
+                  <th className="px-3 py-3 text-center font-semibold text-gray-500 w-24">
+                    ลำดับตัดแต่ง
                   </th>
                 </tr>
               </thead>
