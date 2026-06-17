@@ -9,6 +9,7 @@ interface ProductivityRow { station: string; product_group: string; sku: string;
 const BREAKS: [number, number][] = [[720, 780], [1020, 1080]]
 const STATION_TABLE: Record<string, string> = {
   'สามชั้นพิเศษ': 'สามชั้น', 'ไหล่พิเศษ': 'ไหล่', 'สะโพกพิเศษ': 'สะโพก',
+  'เผาขาพิเศษ': 'เผาขา', 'เลาะขาพิเศษ': 'เลาะขา',
 }
 
 const normName       = (s: string) => {
@@ -18,7 +19,7 @@ const normName       = (s: string) => {
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
 
 async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special', 'pao-kha-special', 'loa-kha-special']
   const workforce: WorkforceRow[] = []
 
   const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
@@ -69,6 +70,8 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
     'lai-special':      'ไหล่พิเศษ',
     'moo-chod-special': 'หมูบดพิเศษ',
     'slide-special':    'สไลด์พิเศษ',
+    'pao-kha-special':  'เผาขาพิเศษ',
+    'loa-kha-special':  'เลาะขาพิเศษ',
   }
 
   // Fetch status overrides for the production date
