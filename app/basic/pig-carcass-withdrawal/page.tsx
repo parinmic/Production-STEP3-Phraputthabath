@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Package, ArrowUp, ArrowDown, CheckCircle2, XCircle, Lock, RotateCcw } from 'lucide-react'
+import { RefreshCw, Package, ArrowUp, ArrowDown, CheckCircle2, XCircle, Lock, RotateCcw, Pencil } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -54,6 +54,7 @@ export default function PigCarcassWithdrawalPage() {
   const [lotOrder,      setLotOrder]      = useState<Record<string, string>>({})
   const [temps,         setTemps]         = useState<Record<string, string>>({})
   const [trimmingQty,   setTrimmingQty]   = useState('')
+  const [unlocked,      setUnlocked]      = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -96,7 +97,16 @@ export default function PigCarcassWithdrawalPage() {
     setLotOrder({})
     setTemps({})
     setTrimmingQty('')
+    setUnlocked(new Set())
     localStorage.removeItem('pig_carcass_selected')
+  }
+
+  function toggleUnlock(code: string) {
+    setUnlocked(prev => {
+      const n = new Set(prev)
+      n.has(code) ? n.delete(code) : n.add(code)
+      return n
+    })
   }
 
   const totalQty   = rows.reduce((s, r) => s + r.qty_3,    0)
@@ -272,17 +282,27 @@ export default function PigCarcassWithdrawalPage() {
 
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
-                  const avg     = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const picked  = !!lotOrder[r.spec_code]
-                  const hasTemp = (temps[r.spec_code] ?? '') !== ''
-                  const locked  = picked || hasTemp
-                  const tStatus = tempStatus(temps[r.spec_code] ?? '')
+                  const avg        = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const picked     = !!lotOrder[r.spec_code]
+                  const hasTemp    = (temps[r.spec_code] ?? '') !== ''
+                  const hasValue   = picked || hasTemp
+                  const isUnlocked = unlocked.has(r.spec_code)
+                  const locked     = hasValue && !isUnlocked
+                  const tStatus    = tempStatus(temps[r.spec_code] ?? '')
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${picked ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
                       <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">
                         <div className="flex items-center gap-1.5">
-                          {locked && <Lock size={11} className="text-gray-400 shrink-0" />}
+                          {hasValue && (
+                            <button
+                              onClick={() => toggleUnlock(r.spec_code)}
+                              title={isUnlocked ? 'คลิกเพื่อล็อค' : 'คลิกเพื่อแก้ไข'}
+                              className={`p-0.5 rounded transition-colors ${isUnlocked ? 'text-blue-500 hover:text-blue-700' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                              {isUnlocked ? <Pencil size={11} /> : <Lock size={11} />}
+                            </button>
+                          )}
                           {r.spec_code}
                         </div>
                       </td>
@@ -292,14 +312,14 @@ export default function PigCarcassWithdrawalPage() {
                       <td className="px-3 py-2">
                         <TempCell
                           value={temps[r.spec_code] ?? ''}
-                          onChange={v => !locked && setTemps(prev => ({ ...prev, [r.spec_code]: v }))}
+                          onChange={v => setTemps(prev => ({ ...prev, [r.spec_code]: v }))}
                           locked={locked}
                         />
                       </td>
                       <td className="px-3 py-2 text-center">
                         <select
                           value={lotOrder[r.spec_code] ?? ''}
-                          onChange={e => !locked && setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
+                          onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
                           disabled={locked}
                           className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:cursor-not-allowed ${
                             picked
