@@ -23,7 +23,7 @@ function parseYieldFile(file: File): Promise<SapResult[]> {
         const agg: Record<string, number> = {}
         for (const row of rows as unknown[][]) {
           const colC = String(row[2] ?? '').trim()   // column C = index 2
-          if (colC !== '168' && colC !== '169M') continue
+          if (colC !== '168' && colC !== '169M' && colC !== '224M') continue
           const sapCode = String(row[6] ?? '').trim() // column G = index 6
           const bagsRaw = row[9]                      // column J = index 9
           if (!sapCode) continue
@@ -33,7 +33,7 @@ function parseYieldFile(file: File): Promise<SapResult[]> {
         }
 
         const results = Object.entries(agg).map(([sapCode, bags]) => ({ sapCode, bags }))
-        if (!results.length) throw new Error('ไม่พบข้อมูลรหัส 168 หรือ 169M ในไฟล์')
+        if (!results.length) throw new Error('ไม่พบข้อมูลรหัส 168, 169M หรือ 224M ในไฟล์')
         resolve(results)
       } catch (err) {
         reject(err)
@@ -177,7 +177,7 @@ export default function YieldPage() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="font-semibold text-gray-800">สรุปรับผลได้ ({sapResults.length} รหัส SAP)</p>
-              <p className="text-xs text-gray-500 mt-0.5">วันที่: {workDate || '—'} · กรองเฉพาะรหัส 168, 169M</p>
+              <p className="text-xs text-gray-500 mt-0.5">วันที่: {workDate || '—'} · กรองเฉพาะรหัส 168, 169M, 224M</p>
             </div>
             <button onClick={() => { setSapResults([]); setFilename(''); inputRef.current!.value = '' }}
               className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
