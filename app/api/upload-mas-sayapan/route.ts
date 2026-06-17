@@ -6,10 +6,9 @@ export async function GET(req: NextRequest) {
   if (file) {
     const { data } = await supabase
       .from('mas_sayapan')
-      .select('product_group, station, slot_order, source_file')
+      .select('product_group, station, source_file')
       .eq('source_file', file)
-      .order('station',    { ascending: true })
-      .order('slot_order', { ascending: true })
+      .order('id', { ascending: true })
     return NextResponse.json({ data: data ?? [] })
   }
   const { data } = await supabase
@@ -26,7 +25,8 @@ export async function POST(req: NextRequest) {
     const { rows, filename } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
-    const records: { station: string; product_group: string; slot_order: number; source_file: string }[] = []
+    // Build records sorted by station then slot order (insertion order = preserved order)
+    const records: { station: string; product_group: string; source_file: string }[] = []
 
     for (const row of rows as Record<string, unknown>[]) {
       const keys = Object.keys(row)
@@ -42,24 +42,20 @@ export async function POST(req: NextRequest) {
         })
 
       if (stationKey && groupKeys.length > 0) {
-        // Wide format row
         const station = String(row[stationKey] ?? '').trim()
         if (!station) continue
         for (const gk of groupKeys) {
           const group = String(row[gk] ?? '').trim()
           if (!group) continue
-          const slotNum = parseInt(gk.match(/\d+/)?.[0] ?? '0')
-          records.push({ station, product_group: group, slot_order: slotNum, source_file: filename ?? 'unknown' })
+          records.push({ station, product_group: group, source_file: filename ?? 'unknown' })
         }
       } else {
         // Fallback: old long format (product_group, station)
-        const groupKey   = keys.find(k => /กลุ่ม|product_group/i.test(k)) ?? keys[0]
-        const sKey       = keys.find(k => /สายพาน|station/i.test(k))      ?? keys[1]
-        const station    = String(row[sKey]     ?? '').trim()
-        const group      = String(row[groupKey] ?? '').trim()
-        if (station && group) {
-          records.push({ station, product_group: group, slot_order: 0, source_file: filename ?? 'unknown' })
-        }
+        const groupKey = keys.find(k => /กลุ่ม|product_group/i.test(k)) ?? keys[0]
+        const sKey     = keys.find(k => /สายพาน|station/i.test(k))      ?? keys[1]
+        const station  = String(row[sKey]     ?? '').trim()
+        const group    = String(row[groupKey] ?? '').trim()
+        if (station && group) records.push({ station, product_group: group, source_file: filename ?? 'unknown' })
       }
     }
 
@@ -68,7 +64,7 @@ export async function POST(req: NextRequest) {
     const { error: delErr } = await supabase.from('mas_sayapan').delete().gte('id', 1)
     if (delErr) throw delErr
 
-    const { error } = await supabase.rpc('insert_mas_sayapan_rows', { records: JSON.stringify(records) })
+    const { error } = await supabase.from('mas_sayapan').insert(records)
     if (error) throw error
 
     await supabase.from('upload_log').delete().eq('table_name', 'mas_sayapan')
