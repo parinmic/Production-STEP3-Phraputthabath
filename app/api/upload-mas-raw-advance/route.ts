@@ -31,16 +31,22 @@ export async function POST(req: NextRequest) {
 
       if (!station || !fgSap || !rawSap) return []
 
-      // Normalize time to HH:MM:SS
+      // Normalize station: สามชั้นพิเศษ → สามชั้น etc.
+      const STATION_MAP: Record<string, string> = {
+        'สามชั้นพิเศษ': 'สามชั้น', 'ไหล่พิเศษ': 'ไหล่',
+        'สะโพกพิเศษ': 'สะโพก', 'หมูบดพิเศษ': 'หมูบด', 'สไลด์พิเศษ': 'สไลด์',
+      }
+      const normStation = STATION_MAP[station] ?? station
+
+      // Normalize time to HH:MM:SS — handle Excel Date objects like "Sat Dec 30 1899 21:00:00 GMT+..."
       const normalizeTime = (t: string) => {
         if (!t) return '00:00:00'
-        const parts = t.replace(/[^\d:]/g, '').split(':')
-        const hh = (parts[0] ?? '0').padStart(2, '0')
-        const mm = (parts[1] ?? '0').padStart(2, '0')
-        return `${hh}:${mm}:00`
+        const match = String(t).match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+        if (match) return `${match[1].padStart(2, '0')}:${match[2]}:00`
+        return '00:00:00'
       }
 
-      return [{ station, start_time: normalizeTime(startTime), fg_sap: fgSap, fg_name: fgName || null, raw_sap: rawSap, raw_name: rawName || null }]
+      return [{ station: normStation, start_time: normalizeTime(startTime), fg_sap: fgSap, fg_name: fgName || null, raw_sap: rawSap, raw_name: rawName || null }]
     })
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง (ต้องมี สายพาน, SAP FG, SAP Raw)' }, { status: 400 })
