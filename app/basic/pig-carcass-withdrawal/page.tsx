@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Package, ArrowUp, ArrowDown, CheckCircle2, XCircle, Lock, RotateCcw, Pencil } from 'lucide-react'
+import { RefreshCw, Package, ArrowUp, ArrowDown, CheckCircle2, XCircle, RotateCcw } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -20,12 +20,11 @@ function tempStatus(value: string): 'green' | 'red-low' | 'red-high' | 'none' {
   return 'red-high'
 }
 
-function TempCell({ value, onChange, locked }: { value: string; onChange: (v: string) => void; locked: boolean }) {
+function TempCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const status = tempStatus(value)
   const inputCls =
-    status === 'green' ? 'border-green-400 text-green-700 bg-green-50' :
-    status !== 'none'  ? 'border-red-400 text-red-700 bg-red-50' :
-    locked             ? 'border-gray-200 text-gray-400 bg-gray-50' :
+    status === 'green' ? 'border-green-400 text-green-700 bg-green-50 focus:ring-green-500 focus:border-green-500' :
+    status !== 'none'  ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500' :
                          'border-gray-300 text-gray-700 focus:ring-blue-500 focus:border-blue-500'
 
   return (
@@ -37,8 +36,7 @@ function TempCell({ value, onChange, locked }: { value: string; onChange: (v: st
         onChange={e => onChange(e.target.value)}
         onClick={e => e.stopPropagation()}
         placeholder="—"
-        disabled={locked}
-        className={`w-20 text-right text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-colors disabled:cursor-not-allowed ${inputCls}`}
+        className={`w-20 text-right text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-colors ${inputCls}`}
       />
       {status === 'red-low'  && <ArrowUp   size={14} className="text-red-500 shrink-0" />}
       {status === 'red-high' && <ArrowDown size={14} className="text-red-500 shrink-0" />}
@@ -54,7 +52,6 @@ export default function PigCarcassWithdrawalPage() {
   const [lotOrder,      setLotOrder]      = useState<Record<string, string>>({})
   const [temps,         setTemps]         = useState<Record<string, string>>({})
   const [trimmingQty,   setTrimmingQty]   = useState('')
-  const [unlocked,      setUnlocked]      = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -68,8 +65,6 @@ export default function PigCarcassWithdrawalPage() {
         .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
-      setLotOrder({})
-      setTemps({})
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -77,10 +72,22 @@ export default function PigCarcassWithdrawalPage() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
-
-  // Save selected lots to localStorage so Yield page can read them
   useEffect(() => {
+    // Restore persisted user input on mount
+    try {
+      const savedOrder    = localStorage.getItem('pig_carcass_lot_order')
+      const savedTemps    = localStorage.getItem('pig_carcass_temps')
+      const savedTrimming = localStorage.getItem('pig_carcass_trimming')
+      if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
+      if (savedTemps)    setTemps(JSON.parse(savedTemps))
+      if (savedTrimming) setTrimmingQty(savedTrimming)
+    } catch { /* ignore */ }
+    load()
+  }, [load])
+
+  // Persist lotOrder and sync enriched data for Yield page
+  useEffect(() => {
+    localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))
     const selected = rows
       .filter(r => lotOrder[r.spec_code])
       .map(r => ({
@@ -93,20 +100,18 @@ export default function PigCarcassWithdrawalPage() {
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
   }, [lotOrder, rows])
 
+  // Persist temps and trimmingQty
+  useEffect(() => { localStorage.setItem('pig_carcass_temps', JSON.stringify(temps)) }, [temps])
+  useEffect(() => { localStorage.setItem('pig_carcass_trimming', trimmingQty) }, [trimmingQty])
+
   function resetAll() {
     setLotOrder({})
     setTemps({})
     setTrimmingQty('')
-    setUnlocked(new Set())
     localStorage.removeItem('pig_carcass_selected')
-  }
-
-  function toggleUnlock(code: string) {
-    setUnlocked(prev => {
-      const n = new Set(prev)
-      n.has(code) ? n.delete(code) : n.add(code)
-      return n
-    })
+    localStorage.removeItem('pig_carcass_lot_order')
+    localStorage.removeItem('pig_carcass_temps')
+    localStorage.removeItem('pig_carcass_trimming')
   }
 
   const totalQty   = rows.reduce((s, r) => s + r.qty_3,    0)
@@ -282,30 +287,13 @@ export default function PigCarcassWithdrawalPage() {
 
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
-                  const avg        = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const picked     = !!lotOrder[r.spec_code]
-                  const hasTemp    = (temps[r.spec_code] ?? '') !== ''
-                  const hasValue   = picked || hasTemp
-                  const isUnlocked = unlocked.has(r.spec_code)
-                  const locked     = hasValue && !isUnlocked
-                  const tStatus    = tempStatus(temps[r.spec_code] ?? '')
+                  const avg     = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const picked  = !!lotOrder[r.spec_code]
+                  const tStatus = tempStatus(temps[r.spec_code] ?? '')
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${picked ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
-                      <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">
-                        <div className="flex items-center gap-1.5">
-                          {hasValue && (
-                            <button
-                              onClick={() => toggleUnlock(r.spec_code)}
-                              title={isUnlocked ? 'คลิกเพื่อล็อค' : 'คลิกเพื่อแก้ไข'}
-                              className={`p-0.5 rounded transition-colors ${isUnlocked ? 'text-blue-500 hover:text-blue-700' : 'text-gray-400 hover:text-gray-600'}`}
-                            >
-                              {isUnlocked ? <Pencil size={11} /> : <Lock size={11} />}
-                            </button>
-                          )}
-                          {r.spec_code}
-                        </div>
-                      </td>
+                      <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
                       <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
                       <td className="px-4 py-2.5 text-right text-emerald-700">{fmt(r.weight_3)}</td>
                       <td className="px-4 py-2.5 text-right text-orange-700">{fmt(avg)}</td>
@@ -313,20 +301,17 @@ export default function PigCarcassWithdrawalPage() {
                         <TempCell
                           value={temps[r.spec_code] ?? ''}
                           onChange={v => setTemps(prev => ({ ...prev, [r.spec_code]: v }))}
-                          locked={locked}
                         />
                       </td>
                       <td className="px-3 py-2 text-center">
                         <select
                           value={lotOrder[r.spec_code] ?? ''}
                           onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
-                          disabled={locked}
-                          className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:cursor-not-allowed ${
+                          className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
                             picked
                               ? tStatus === 'green' ? 'border-green-400 bg-green-50 text-green-700'
                               : tStatus !== 'none'  ? 'border-red-400 bg-red-50 text-red-700'
                               : 'border-blue-400 bg-blue-50 text-blue-700'
-                              : locked ? 'border-gray-200 bg-gray-50 text-gray-400'
                               : 'border-gray-300 bg-white text-gray-500'
                           }`}
                         >
