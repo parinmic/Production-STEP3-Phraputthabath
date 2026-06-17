@@ -381,6 +381,10 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/priority-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-indigo-500" />Mas Priority เบิก RM
               </Link>
+              <Link href="/master-logic/raw-advance"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/raw-advance' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-orange-500" />Mas ผลิต Raw ล่วงหน้า
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -421,6 +425,11 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/priority-withdrawal' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas Priority เบิก RM">
                 <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              </Link>
+              <Link href="/master-logic/raw-advance"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/raw-advance' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas ผลิต Raw ล่วงหน้า">
+                <span className="w-2 h-2 rounded-full bg-orange-500" />
               </Link>
             </div>
           )}
