@@ -20,7 +20,7 @@ const PHASE_CONFIG = {
   '3': { label: 'Phase 3 — แผน 100%', dotColor: 'bg-purple-500' },
 } as const
 
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
@@ -28,6 +28,8 @@ const STATION_COLORS: Record<string, string> = {
   'ไหล่':    'bg-green-100 text-green-700',
   'หมูบด':   'bg-red-100 text-red-700',
   'สไลด์':   'bg-purple-100 text-purple-700',
+  'เผาขา':   'bg-fuchsia-100 text-fuchsia-700',
+  'เลาะขา':  'bg-teal-100 text-teal-700',
 }
 
 const STATION_DISPLAY: Record<string, string> = {
@@ -36,6 +38,8 @@ const STATION_DISPLAY: Record<string, string> = {
   'ไหล่':    'ไหล่พิเศษ',
   'หมูบด':   'หมูบดพิเศษ',
   'สไลด์':   'สไลด์พิเศษ',
+  'เผาขา':   'เผาขาพิเศษ',
+  'เลาะขา':  'เลาะขาพิเศษ',
 }
 
 

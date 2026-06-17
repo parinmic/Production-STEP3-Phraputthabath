@@ -19,6 +19,8 @@ const stations = [
   { value: 'lai-special',      label: 'ไหล่พิเศษ' },
   { value: 'moo-chod-special', label: 'หมูบดพิเศษ' },
   { value: 'slide-special',    label: 'สไลด์พิเศษ' },
+  { value: 'pao-kha-special',  label: 'เผาขาพิเศษ' },
+  { value: 'loa-kha-special',  label: 'เลาะขาพิเศษ' },
 ]
 
 export default function WorkforceDailyStatusPage() {

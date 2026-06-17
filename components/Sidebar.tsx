@@ -10,6 +10,8 @@ const TABLES = [
   { label: 'Station ไหล่',    slug: 'lai',      dot: 'bg-green-500' },
   { label: 'Station หมูบด',   slug: 'moo-chod', dot: 'bg-red-500' },
   { label: 'Station สไลด์',   slug: 'slide',    dot: 'bg-purple-500' },
+  { label: 'Station เผาขา',   slug: 'pao-kha',  dot: 'bg-fuchsia-500' },
+  { label: 'Station เลาะขา',  slug: 'loa-kha',  dot: 'bg-teal-500' },
 ]
 
 const MANPOWER_TYPES = [
@@ -18,6 +20,8 @@ const MANPOWER_TYPES = [
   { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special',  dot: 'bg-blue-500' },
   { label: 'หมูบดพิเศษ',   slug: 'moo-chod-special', dot: 'bg-red-500' },
   { label: 'สไลด์พิเศษ',   slug: 'slide-special',    dot: 'bg-purple-500' },
+  { label: 'เผาขาพิเศษ',   slug: 'pao-kha-special',  dot: 'bg-fuchsia-500' },
+  { label: 'เลาะขาพิเศษ',  slug: 'loa-kha-special',  dot: 'bg-teal-500' },
   { label: 'กำลังคนแนะนำ', slug: 'recommended',      dot: 'bg-pink-500' },
 ]
 

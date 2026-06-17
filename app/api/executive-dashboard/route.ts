@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       .from('production_assignments')
       .select('table_name, sku, sku_name, target_quantity, period')
       .eq('production_date', date)
-      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']),
+      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']),
     supabase
       .from('wet_market_orders')
       .select('sku, sku_name, quantity, upload_round')
@@ -231,7 +231,7 @@ export async function GET(req: NextRequest) {
 
   // ── Build result rows (sorted by station then sku_name)
   const round1 = (n: number) => Math.round(n * 10) / 10
-  const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
+  const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
   const rows = Array.from(prodMap.entries()).map(([key, prod]) => {
     const sep = key.indexOf('|||')

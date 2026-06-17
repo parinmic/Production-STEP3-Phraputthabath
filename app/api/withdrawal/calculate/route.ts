@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
     .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
     .eq('production_date', date)
     .eq('period', period)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
 
   if (e1) return NextResponse.json({ error: e1.message }, { status: 500 })
   if (!assignments?.length) {
@@ -402,6 +402,8 @@ export async function POST(req: NextRequest) {
     'สามชั้น': 2,
     'สะโพก':   2,
     'ไหล่':    2,
+    'เผาขา':   2,
+    'เลาะขา':  2,
     'หมูบด':   3,
   }
 

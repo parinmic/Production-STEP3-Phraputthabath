@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     .from('production_assignments')
     .select('period, effective_from')
     .eq('production_date', date)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
     .order('effective_from', { ascending: false })
 
   const maxEffective: Record<string, string> = {}
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       .eq('production_date', date)
       .eq('period', period)
       .eq('effective_from', effectiveFrom)
-      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
+      .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
     if (data) allAssignments.push(...data)
   }
 
@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ─── Sort: station → channel → sku ────────────────────────────────────────
-  const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่']
+  const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'เผาขา', 'เลาะขา']
   const CH_ORDER      = ['Makro', 'Wet Market', 'LOTUS']
   rows.sort((a, b) => {
     const si = STATION_ORDER.indexOf(a.station) - STATION_ORDER.indexOf(b.station)

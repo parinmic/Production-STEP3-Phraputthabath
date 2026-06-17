@@ -128,6 +128,8 @@ const STATION_TABLE: Record<string, string> = {
   'สะโพกพิเศษ':   'สะโพก',
   'หมูบดพิเศษ':   'หมูบด',
   'สไลด์พิเศษ':   'สไลด์',
+  'เผาขาพิเศษ':   'เผาขา',
+  'เลาะขาพิเศษ':  'เลาะขา',
 }
 
 const normName = (s: string) => {
@@ -183,6 +185,8 @@ async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRo
     'lai-special':      'ไหล่พิเศษ',
     'moo-chod-special': 'หมูบดพิเศษ',
     'slide-special':    'สไลด์พิเศษ',
+    'pao-kha-special':  'เผาขาพิเศษ',
+    'loa-kha-special':  'เลาะขาพิเศษ',
   }
 
   const { data: statusOverrides } = await supabase
@@ -1056,7 +1060,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     .from('production_assignments')
     .select('table_name, sku, sku_name, target_quantity, deadline_time, note')
     .eq('production_date', productionDate).eq('period', period)
-    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
+    .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
@@ -2426,7 +2430,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     // ── Allocate pool in station priority order ──
     const stationRawAllocated   = new Map<string, number>() // "station|||rawNorm" → allocatedKg
-    const ALLOC_PRIORITY_STNS   = ['สไลด์', 'สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด']
+    const ALLOC_PRIORITY_STNS   = ['สไลด์', 'สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'เผาขา', 'เลาะขา']
     const allNeededStns = Array.from(new Set(
       Array.from(stationRawTotalNeeded.keys()).map(k => k.split('|||')[0])
     ))

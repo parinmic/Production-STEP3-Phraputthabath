@@ -70,13 +70,15 @@ async function runSync() {
     }
 
     // 3. Resolve station for Present+Late via workforce_weekly
-    const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special']
+    const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special', 'pao-kha-special', 'loa-kha-special']
     const stationMap: Record<string, string> = {
       'sa-phok-special':  'สะโพกพิเศษ',
       'sam-chan-special':  'สามชั้นพิเศษ',
       'lai-special':      'ไหล่พิเศษ',
       'moo-chod-special': 'หมูบดพิเศษ',
       'slide-special':    'สไลด์พิเศษ',
+      'pao-kha-special':  'เผาขาพิเศษ',
+      'loa-kha-special':  'เลาะขาพิเศษ',
     }
 
     // stationResolved: normName → work_station

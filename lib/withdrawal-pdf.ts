@@ -18,6 +18,8 @@ const STATION_DISPLAY: Record<string, string> = {
   'สามชั้น': 'สามชั้นพิเศษ',
   'สะโพก':   'สะโพกพิเศษ',
   'ไหล่':    'ไหล่พิเศษ',
+  'เผาขา':   'เผาขาพิเศษ',
+  'เลาะขา':  'เลาะขาพิเศษ',
 }
 const PHASE_COLOR: Record<string, [number, number, number]> = {
   blue:   [37,  99,  235],

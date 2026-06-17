@@ -228,6 +228,20 @@ const themes = {
     bg: 'bg-orange-600',
     hoverBg: 'hover:bg-orange-700',
   },
+  'pao-kha-special': {
+    border: 'border-t-4 border-fuchsia-500',
+    hoverBorder: 'hover:border-fuchsia-400',
+    text: 'text-fuchsia-500',
+    bg: 'bg-fuchsia-600',
+    hoverBg: 'hover:bg-fuchsia-700',
+  },
+  'loa-kha-special': {
+    border: 'border-t-4 border-teal-500',
+    hoverBorder: 'hover:border-teal-400',
+    text: 'text-teal-500',
+    bg: 'bg-teal-600',
+    hoverBg: 'hover:bg-teal-700',
+  },
   'sam-chan-special': {
     border: 'border-t-4 border-blue-500',
     hoverBorder: 'hover:border-blue-400',
@@ -272,6 +286,8 @@ export default function WeeklyWorkforcePage() {
         <WeeklyUploader type="lai-special"       label="ไหล่พิเศษ"     theme={themes['lai-special']} />
         <WeeklyUploader type="moo-chod-special"  label="หมูบดพิเศษ"   theme={themes['moo-chod-special']} />
         <WeeklyUploader type="slide-special"     label="สไลด์พิเศษ"   theme={themes['slide-special']} />
+        <WeeklyUploader type="pao-kha-special"   label="เผาขาพิเศษ"   theme={themes['pao-kha-special']} />
+        <WeeklyUploader type="loa-kha-special"   label="เลาะขาพิเศษ"  theme={themes['loa-kha-special']} />
       </div>
     </div>
   )

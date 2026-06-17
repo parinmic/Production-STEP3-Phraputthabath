@@ -23,8 +23,8 @@ export interface RmGroup {
 type StockRow  = { material_code: string; material_name: string | null; weight_total: number }
 type SkuQtyMap = Map<string, { station: string; qty: number; channel: string | null }>
 
-const ALL_NON_SLIDE  = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด']
-const OTHER_STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่']
+const ALL_NON_SLIDE  = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'เผาขา', 'เลาะขา']
+const OTHER_STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่', 'เผาขา', 'เลาะขา']
 const PHASE_PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
 function extractCondChannel(condition: string): string | null {

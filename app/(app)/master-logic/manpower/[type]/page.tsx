@@ -8,6 +8,8 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string }> = {
   'sam-chan-special':   { label: 'สามชั้นพิเศษ', desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สามชั้นพิเศษ' },
   'moo-chod-special':  { label: 'หมูบดพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์หมูบดพิเศษ' },
   'slide-special':     { label: 'สไลด์พิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์สไลด์พิเศษ' },
+  'pao-kha-special':   { label: 'เผาขาพิเศษ',   desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์เผาขาพิเศษ' },
+  'loa-kha-special':   { label: 'เลาะขาพิเศษ',  desc: 'อัพโหลด Master Logic กำลังคนสำหรับผลิตภัณฑ์เลาะขาพิเศษ' },
 }
 
 export default function ManpowerTypePage({ params }: { params: { type: string } }) {

@@ -57,12 +57,16 @@ const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
+  'เผาขา':   'bg-fuchsia-100 text-fuchsia-700',
+  'เลาะขา':  'bg-teal-100 text-teal-700',
 }
 
 const STATION_DISPLAY: Record<string, string> = {
   'สามชั้น': 'สามชั้นพิเศษ',
   'สะโพก':   'สะโพกพิเศษ',
   'ไหล่':    'ไหล่พิเศษ',
+  'เผาขา':   'เผาขาพิเศษ',
+  'เลาะขา':  'เลาะขาพิเศษ',
 }
 
 export default function WithdrawalPage() {

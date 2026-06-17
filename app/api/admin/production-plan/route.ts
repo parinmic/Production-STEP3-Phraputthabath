@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 const PERIODS       = ['เช้า', 'บ่าย', 'ค่ำ']
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
 // GET /api/admin/production-plan?date=2026-05-18&period=เช้า
 // Returns data aggregated by SKU + Channel with 3-day history

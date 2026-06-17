@@ -17,6 +17,8 @@ const STATION_BADGE: Record<string, string> = {
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100  text-green-700',
   'หมูบด':   'bg-red-100    text-red-700',
+  'เผาขา':   'bg-fuchsia-100 text-fuchsia-700',
+  'เลาะขา':  'bg-teal-100   text-teal-700',
 }
 
 const PHASE_LABEL: Record<number, { label: string; period: string; bg: string; text: string; border: string }> = {

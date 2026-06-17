@@ -3,13 +3,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Calendar, RefreshCw, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์']
+const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 const STATION_COLORS: Record<string, string> = {
   'สามชั้น': 'bg-blue-100 text-blue-700',
   'สะโพก':   'bg-orange-100 text-orange-700',
   'ไหล่':    'bg-green-100 text-green-700',
   'หมูบด':   'bg-red-100 text-red-700',
   'สไลด์':   'bg-purple-100 text-purple-700',
+  'เผาขา':   'bg-fuchsia-100 text-fuchsia-700',
+  'เลาะขา':  'bg-teal-100 text-teal-700',
 }
 const FILTER_STATIONS = ['ทั้งหมด', ...STATION_ORDER]
 
