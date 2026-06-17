@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Package } from 'lucide-react'
+import { RefreshCw, Package, ArrowUp, ArrowDown } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -12,12 +12,48 @@ function fmt(n: number, decimals = 2) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
+function TempCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const num = parseFloat(value)
+  const valid = !isNaN(num)
+
+  let indicator: React.ReactNode = null
+  let inputCls = 'border-gray-300 text-gray-700 focus:ring-blue-500 focus:border-blue-500'
+
+  if (valid) {
+    if (num >= 4 && num <= 7) {
+      inputCls = 'border-green-400 text-green-700 bg-green-50 focus:ring-green-500 focus:border-green-500'
+    } else if (num < 4) {
+      inputCls = 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500'
+      indicator = <ArrowUp size={14} className="text-red-500 shrink-0" />
+    } else {
+      inputCls = 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500'
+      indicator = <ArrowDown size={14} className="text-red-500 shrink-0" />
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <input
+        type="number"
+        step="0.01"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onClick={e => e.stopPropagation()}
+        placeholder="—"
+        className={`w-20 text-right text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-colors ${inputCls}`}
+      />
+      {indicator}
+    </div>
+  )
+}
+
 export default function PigCarcassWithdrawalPage() {
   const [rows,       setRows]       = useState<LotRow[]>([])
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [sourceFile, setSourceFile] = useState('')
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [temps,      setTemps]      = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -32,6 +68,7 @@ export default function PigCarcassWithdrawalPage() {
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
       setSelected(new Set())
+      setTemps({})
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -53,14 +90,18 @@ export default function PigCarcassWithdrawalPage() {
     setSelected(prev => prev.size === rows.length ? new Set() : new Set(rows.map(r => r.spec_code)))
   }
 
+  function setTemp(code: string, val: string) {
+    setTemps(prev => ({ ...prev, [code]: val }))
+  }
+
   const totalQty = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt = rows.reduce((s, r) => s + r.weight_3, 0)
   const totalAvg = totalQty > 0 ? totalWgt / totalQty : 0
 
-  const selRows  = rows.filter(r => selected.has(r.spec_code))
-  const selQty   = selRows.reduce((s, r) => s + r.qty_3,    0)
-  const selWgt   = selRows.reduce((s, r) => s + r.weight_3, 0)
-  const selAvg   = selQty > 0 ? selWgt / selQty : 0
+  const selRows = rows.filter(r => selected.has(r.spec_code))
+  const selQty  = selRows.reduce((s, r) => s + r.qty_3,    0)
+  const selWgt  = selRows.reduce((s, r) => s + r.weight_3, 0)
+  const selAvg  = selQty > 0 ? selWgt / selQty : 0
 
   return (
     <div className="space-y-6">
@@ -155,6 +196,10 @@ export default function PigCarcassWithdrawalPage() {
                     <div>น้ำหนักเฉลี่ย</div>
                     <div className="font-normal text-orange-400">(กก./ตัว)</div>
                   </th>
+                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
+                    <div>อุณหภูมิ</div>
+                    <div className="font-normal text-cyan-400">(องศาเซลเซียส)</div>
+                  </th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-500 w-16">
                     <input
                       type="checkbox"
@@ -184,6 +229,12 @@ export default function PigCarcassWithdrawalPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right text-emerald-700">{fmt(r.weight_3)}</td>
                       <td className="px-4 py-2.5 text-right text-orange-700">{fmt(avg)}</td>
+                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                        <TempCell
+                          value={temps[r.spec_code] ?? ''}
+                          onChange={v => setTemp(r.spec_code, v)}
+                        />
+                      </td>
                       <td className="px-3 py-2.5 text-center">
                         <input
                           type="checkbox"
@@ -207,6 +258,7 @@ export default function PigCarcassWithdrawalPage() {
                   </td>
                   <td className="px-4 py-3 text-right text-emerald-700">{fmt(totalWgt)}</td>
                   <td className="px-4 py-3 text-right text-orange-700">{fmt(totalAvg)}</td>
+                  <td className="px-4 py-3" />
                   <td className="px-3 py-3 text-center text-xs text-gray-400">
                     {selected.size > 0 ? `${selected.size} เลือก` : ''}
                   </td>
@@ -217,7 +269,7 @@ export default function PigCarcassWithdrawalPage() {
         </div>
       )}
 
-      {/* Selected summary */}
+      {/* Selected lot list */}
       {selected.size > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center gap-3 text-sm">
           <span className="text-blue-700 font-semibold">เลือกแล้ว {selected.size} ล็อต:</span>
