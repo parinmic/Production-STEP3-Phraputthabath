@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Package, ArrowUp, ArrowDown } from 'lucide-react'
+import { RefreshCw, Package, ArrowUp, ArrowDown, CheckCircle2, XCircle } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -12,24 +12,20 @@ function fmt(n: number, decimals = 2) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
+function tempStatus(value: string): 'green' | 'red-low' | 'red-high' | 'none' {
+  const n = parseFloat(value)
+  if (isNaN(n)) return 'none'
+  if (n >= 4 && n <= 7) return 'green'
+  if (n < 4) return 'red-low'
+  return 'red-high'
+}
+
 function TempCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const num = parseFloat(value)
-  const valid = !isNaN(num)
-
-  let indicator: React.ReactNode = null
-  let inputCls = 'border-gray-300 text-gray-700 focus:ring-blue-500 focus:border-blue-500'
-
-  if (valid) {
-    if (num >= 4 && num <= 7) {
-      inputCls = 'border-green-400 text-green-700 bg-green-50 focus:ring-green-500 focus:border-green-500'
-    } else if (num < 4) {
-      inputCls = 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500'
-      indicator = <ArrowUp size={14} className="text-red-500 shrink-0" />
-    } else {
-      inputCls = 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500'
-      indicator = <ArrowDown size={14} className="text-red-500 shrink-0" />
-    }
-  }
+  const status = tempStatus(value)
+  const inputCls =
+    status === 'green'    ? 'border-green-400 text-green-700 bg-green-50 focus:ring-green-500 focus:border-green-500' :
+    status !== 'none'     ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500' :
+                            'border-gray-300 text-gray-700 focus:ring-blue-500 focus:border-blue-500'
 
   return (
     <div className="flex items-center justify-center gap-1">
@@ -42,7 +38,8 @@ function TempCell({ value, onChange }: { value: string; onChange: (v: string) =>
         placeholder="—"
         className={`w-20 text-right text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-colors ${inputCls}`}
       />
-      {indicator}
+      {status === 'red-low'  && <ArrowUp   size={14} className="text-red-500 shrink-0" />}
+      {status === 'red-high' && <ArrowDown  size={14} className="text-red-500 shrink-0" />}
     </div>
   )
 }
@@ -52,7 +49,7 @@ export default function PigCarcassWithdrawalPage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [sourceFile, setSourceFile] = useState('')
-  const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [lotOrder,   setLotOrder]   = useState<Record<string, string>>({})
   const [temps,      setTemps]      = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
@@ -67,7 +64,7 @@ export default function PigCarcassWithdrawalPage() {
         .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
-      setSelected(new Set())
+      setLotOrder({})
       setTemps({})
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
@@ -78,30 +75,18 @@ export default function PigCarcassWithdrawalPage() {
 
   useEffect(() => { load() }, [load])
 
-  function toggle(code: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(code) ? next.delete(code) : next.add(code)
-      return next
-    })
-  }
-
-  function toggleAll() {
-    setSelected(prev => prev.size === rows.length ? new Set() : new Set(rows.map(r => r.spec_code)))
-  }
-
-  function setTemp(code: string, val: string) {
-    setTemps(prev => ({ ...prev, [code]: val }))
-  }
-
   const totalQty = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt = rows.reduce((s, r) => s + r.weight_3, 0)
   const totalAvg = totalQty > 0 ? totalWgt / totalQty : 0
 
-  const selRows = rows.filter(r => selected.has(r.spec_code))
-  const selQty  = selRows.reduce((s, r) => s + r.qty_3,    0)
-  const selWgt  = selRows.reduce((s, r) => s + r.weight_3, 0)
-  const selAvg  = selQty > 0 ? selWgt / selQty : 0
+  const selRows  = rows.filter(r => lotOrder[r.spec_code])
+  const selQty   = selRows.reduce((s, r) => s + r.qty_3,    0)
+  const selWgt   = selRows.reduce((s, r) => s + r.weight_3, 0)
+  const selAvg   = selQty > 0 ? selWgt / selQty : 0
+  const goodCount = selRows.filter(r => tempStatus(temps[r.spec_code] ?? '') === 'green').length
+  const badCount  = selRows.length - goodCount
+
+  const dropdownOptions = Array.from({ length: rows.length }, (_, i) => i + 1)
 
   return (
     <div className="space-y-6">
@@ -146,31 +131,54 @@ export default function PigCarcassWithdrawalPage() {
         </div>
       )}
 
-      {/* Selected summary */}
+      {/* Summary card */}
       {!loading && rows.length > 0 && (
-        <div className={`rounded-xl border px-5 py-4 flex flex-wrap gap-6 items-center transition-colors ${selected.size > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`rounded-xl border px-5 py-4 flex flex-wrap gap-6 items-center transition-colors ${selRows.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-0.5">ล็อตที่เลือก</p>
-            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-              {selected.size} <span className="text-sm font-normal">ล็อต</span>
+            <p className={`text-2xl font-bold ${selRows.length > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+              {selRows.length} <span className="text-sm font-normal">ล็อต</span>
             </p>
           </div>
           <div className="w-px h-10 bg-gray-200" />
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-0.5">จำนวนตัวที่เลือก</p>
-            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-              {selected.size > 0 ? selQty.toLocaleString('th-TH') : '—'} <span className="text-sm font-normal">ตัว</span>
+            <p className={`text-2xl font-bold ${selRows.length > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+              {selRows.length > 0 ? selQty.toLocaleString('th-TH') : '—'} <span className="text-sm font-normal">ตัว</span>
             </p>
           </div>
           <div className="w-px h-10 bg-gray-200" />
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-0.5">น้ำหนักเฉลี่ย</p>
-            <p className={`text-2xl font-bold ${selected.size > 0 ? 'text-orange-600' : 'text-gray-300'}`}>
-              {selected.size > 0 ? fmt(selAvg) : '—'} <span className="text-sm font-normal">กก./ตัว</span>
+            <p className={`text-2xl font-bold ${selRows.length > 0 ? 'text-orange-600' : 'text-gray-300'}`}>
+              {selRows.length > 0 ? fmt(selAvg) : '—'} <span className="text-sm font-normal">กก./ตัว</span>
             </p>
           </div>
-          {selected.size === 0 && (
-            <p className="text-sm text-gray-400 ml-2">— ติ๊กเลือก Lot เพื่อดูสรุป</p>
+          <div className="w-px h-10 bg-gray-200" />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
+              <div>
+                <p className="text-xs text-gray-500">อุณหภูมิเหมาะสม</p>
+                <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
+                  {goodCount} <span className="text-sm font-normal">ล็อต</span>
+                </p>
+              </div>
+            </div>
+            {badCount > 0 && (
+              <div className="flex items-center gap-1.5">
+                <XCircle size={18} className="text-red-400" />
+                <div>
+                  <p className="text-xs text-gray-500">ไม่เหมาะสม</p>
+                  <p className="text-xl font-bold leading-tight text-red-500">
+                    {badCount} <span className="text-sm font-normal">ล็อต</span>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          {selRows.length === 0 && (
+            <p className="text-sm text-gray-400 ml-2">— เลือก Lot จาก dropdown เพื่อดูสรุป</p>
           )}
         </div>
       )}
@@ -200,27 +208,21 @@ export default function PigCarcassWithdrawalPage() {
                     <div>อุณหภูมิ</div>
                     <div className="font-normal text-cyan-400">(องศาเซลเซียส)</div>
                   </th>
-                  <th className="px-3 py-3 text-center font-semibold text-gray-500 w-16">
-                    <input
-                      type="checkbox"
-                      checked={selected.size === rows.length && rows.length > 0}
-                      onChange={toggleAll}
-                      className="w-4 h-4 accent-blue-600 cursor-pointer"
-                      title="เลือกทั้งหมด"
-                    />
+                  <th className="px-3 py-3 text-center font-semibold text-gray-500 w-20">
+                    เลือก
                   </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
-                  const avg     = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const checked = selected.has(r.spec_code)
+                  const avg      = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const picked   = !!lotOrder[r.spec_code]
+                  const tStatus  = tempStatus(temps[r.spec_code] ?? '')
                   return (
                     <tr
                       key={r.spec_code}
-                      onClick={() => toggle(r.spec_code)}
-                      className={`cursor-pointer transition-colors ${checked ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}
+                      className={`transition-colors ${picked ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}
                     >
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
                       <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
@@ -229,20 +231,29 @@ export default function PigCarcassWithdrawalPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right text-emerald-700">{fmt(r.weight_3)}</td>
                       <td className="px-4 py-2.5 text-right text-orange-700">{fmt(avg)}</td>
-                      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                      <td className="px-3 py-2">
                         <TempCell
                           value={temps[r.spec_code] ?? ''}
-                          onChange={v => setTemp(r.spec_code, v)}
+                          onChange={v => setTemps(prev => ({ ...prev, [r.spec_code]: v }))}
                         />
                       </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggle(r.spec_code)}
-                          onClick={e => e.stopPropagation()}
-                          className="w-4 h-4 accent-blue-600 cursor-pointer"
-                        />
+                      <td className="px-3 py-2 text-center">
+                        <select
+                          value={lotOrder[r.spec_code] ?? ''}
+                          onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
+                          className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors ${
+                            picked
+                              ? tStatus === 'green' ? 'border-green-400 bg-green-50 text-green-700'
+                              : tStatus !== 'none'  ? 'border-red-400 bg-red-50 text-red-700'
+                              : 'border-blue-400 bg-blue-50 text-blue-700'
+                              : 'border-gray-300 bg-white text-gray-500'
+                          }`}
+                        >
+                          <option value="">—</option>
+                          {dropdownOptions.map(n => (
+                            <option key={n} value={String(n)}>{n}</option>
+                          ))}
+                        </select>
                       </td>
                     </tr>
                   )
@@ -260,22 +271,12 @@ export default function PigCarcassWithdrawalPage() {
                   <td className="px-4 py-3 text-right text-orange-700">{fmt(totalAvg)}</td>
                   <td className="px-4 py-3" />
                   <td className="px-3 py-3 text-center text-xs text-gray-400">
-                    {selected.size > 0 ? `${selected.size} เลือก` : ''}
+                    {selRows.length > 0 ? `${selRows.length} เลือก` : ''}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* Selected lot list */}
-      {selected.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center gap-3 text-sm">
-          <span className="text-blue-700 font-semibold">เลือกแล้ว {selected.size} ล็อต:</span>
-          <span className="text-blue-600 font-mono">
-            {rows.filter(r => selected.has(r.spec_code)).map(r => r.spec_code).join(', ')}
-          </span>
         </div>
       )}
     </div>
