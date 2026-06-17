@@ -1130,23 +1130,6 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor,
                 )
               })}
             </div>
-
-            {/* Acknowledgment checkbox */}
-            <button
-              onClick={() => onToggleAck(name)}
-              className={`mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                ackedWorkers.has(name)
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-              }`}
-            >
-              <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                ackedWorkers.has(name) ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
-              }`}>
-                {ackedWorkers.has(name) && <span className="text-white text-[9px] leading-none font-black">✓</span>}
-              </span>
-              {ackedWorkers.has(name) ? 'เห็นแผนแล้ว' : 'กด tick ว่าเห็นแผนแล้ว'}
-            </button>
           </div>
         )
       })}
@@ -1690,15 +1673,70 @@ export default function TablePage() {
             </div>
 
             {viewMode === 'sku' && (
-              <SkuScheduleView
-                items={filtered}
-                phaseStart={viewStartH}
-                phaseEnd={viewEndH}
-                rateMap={rateMap}
-                bagMap={bagMap}
-                skuColor={skuColor}
-                nameMap={nameMap}
-              />
+              <>
+                <SkuScheduleView
+                  items={filtered}
+                  phaseStart={viewStartH}
+                  phaseEnd={viewEndH}
+                  rateMap={rateMap}
+                  bagMap={bagMap}
+                  skuColor={skuColor}
+                  nameMap={nameMap}
+                />
+                {/* ─── Worker acknowledgment panel (Gantt view only) ── */}
+                {(() => {
+                  const workerNames = Array.from(new Set(filtered.map(a => a.worker_name))).sort()
+                  if (!workerNames.length) return null
+                  const ackedCount = workerNames.filter(n => ackedWorkers.has(n)).length
+                  const allAcked = ackedCount === workerNames.length
+                  return (
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-700">เห็นแผนแล้ว</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            allAcked ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {ackedCount}/{workerNames.length} คน
+                          </span>
+                        </div>
+                        {ackedCount > 0 && (
+                          <button
+                            onClick={() => setAckedWorkers(new Set())}
+                            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            รีเซ็ต
+                          </button>
+                        )}
+                      </div>
+                      <div className="p-3 flex flex-wrap gap-2">
+                        {workerNames.map(name => {
+                          const display = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
+                          const acked = ackedWorkers.has(name)
+                          return (
+                            <button
+                              key={name}
+                              onClick={() => toggleAck(name)}
+                              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                acked
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                  : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                              }`}
+                            >
+                              <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                acked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+                              }`}>
+                                {acked && <span className="text-white text-[8px] leading-none font-black">✓</span>}
+                              </span>
+                              {display}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>
             )}
             {viewMode === 'gantt' && (
               <WorkerCardView
@@ -1743,59 +1781,6 @@ export default function TablePage() {
               />
             )}
 
-            {/* ─── Worker acknowledgment panel ─────────────────────────────── */}
-            {(() => {
-              const workerNames = Array.from(new Set(filtered.map(a => a.worker_name))).sort()
-              if (!workerNames.length) return null
-              const ackedCount = workerNames.filter(n => ackedWorkers.has(n)).length
-              const allAcked = ackedCount === workerNames.length
-              return (
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-700">เห็นแผนแล้ว</span>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        allAcked ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {ackedCount}/{workerNames.length} คน
-                      </span>
-                    </div>
-                    {ackedCount > 0 && (
-                      <button
-                        onClick={() => setAckedWorkers(new Set())}
-                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                      >
-                        รีเซ็ต
-                      </button>
-                    )}
-                  </div>
-                  <div className="p-3 flex flex-wrap gap-2">
-                    {workerNames.map(name => {
-                      const display = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
-                      const acked = ackedWorkers.has(name)
-                      return (
-                        <button
-                          key={name}
-                          onClick={() => toggleAck(name)}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                            acked
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                              : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-                          }`}
-                        >
-                          <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                            acked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
-                          }`}>
-                            {acked && <span className="text-white text-[8px] leading-none font-black">✓</span>}
-                          </span>
-                          {display}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })()}
         </div>
       )}
     </div>
