@@ -336,9 +336,11 @@ interface SkuScheduleViewProps {
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
+  ackedSkus: Set<string>
+  onToggleSkuAck: (sku: string) => void
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -517,10 +519,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
           return (
             <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px] relative z-10 bg-white">
-              {/* Y-axis: SKU name */}
-              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100 bg-white">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+              {/* Y-axis: SKU name + ack checkbox */}
+              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-2 border-r border-gray-100 bg-white">
+                <div className="flex items-start gap-1.5 sm:gap-2">
+                  <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0 mt-0.5" style={{ backgroundColor: col.bg }} />
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
@@ -537,6 +539,19 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       })()}
                       <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                     </p>
+                    <button
+                      onClick={e => { e.stopPropagation(); onToggleSkuAck(sku) }}
+                      className={`mt-1.5 flex items-center gap-1 text-[10px] font-semibold transition-colors ${
+                        ackedSkus.has(sku) ? 'text-emerald-600' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded border-[1.5px] flex items-center justify-center shrink-0 ${
+                        ackedSkus.has(sku) ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+                      }`}>
+                        {ackedSkus.has(sku) && <span className="text-white text-[7px] leading-none font-black">✓</span>}
+                      </span>
+                      {ackedSkus.has(sku) ? 'เห็นแล้ว' : 'tick'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1027,11 +1042,9 @@ interface WorkerCardViewProps {
   nameMap: Record<string, string>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
-  ackedWorkers: Set<string>
-  onToggleAck: (name: string) => void
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor, ackedWorkers, onToggleAck }: WorkerCardViewProps) {
+function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1387,28 +1400,28 @@ export default function TablePage() {
     localStorage.setItem('midRecalEnabled', String(midRecal))
   }, [midRecal])
 
-  const [ackedWorkers, setAckedWorkers] = useState<Set<string>>(new Set())
+  const [ackedSkus, setAckedSkus] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(`plan_ack_${date}_${tableSlug}_${selectedPhase}`)
-      setAckedWorkers(new Set(JSON.parse(raw ?? '[]') as string[]))
-    } catch { setAckedWorkers(new Set()) }
+      const raw = localStorage.getItem(`plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`)
+      setAckedSkus(new Set(JSON.parse(raw ?? '[]') as string[]))
+    } catch { setAckedSkus(new Set()) }
   }, [date, tableSlug, selectedPhase])
 
   useEffect(() => {
-    if (!ackedWorkers.size) return
+    if (!ackedSkus.size) return
     localStorage.setItem(
-      `plan_ack_${date}_${tableSlug}_${selectedPhase}`,
-      JSON.stringify(Array.from(ackedWorkers))
+      `plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`,
+      JSON.stringify(Array.from(ackedSkus))
     )
-  }, [ackedWorkers, date, tableSlug, selectedPhase])
+  }, [ackedSkus, date, tableSlug, selectedPhase])
 
-  const toggleAck = useCallback((workerName: string) => {
-    setAckedWorkers(prev => {
+  const toggleSkuAck = useCallback((sku: string) => {
+    setAckedSkus(prev => {
       const next = new Set(prev)
-      if (next.has(workerName)) next.delete(workerName)
-      else next.add(workerName)
+      if (next.has(sku)) next.delete(sku)
+      else next.add(sku)
       return next
     })
   }, [])
@@ -1673,70 +1686,17 @@ export default function TablePage() {
             </div>
 
             {viewMode === 'sku' && (
-              <>
-                <SkuScheduleView
-                  items={filtered}
-                  phaseStart={viewStartH}
-                  phaseEnd={viewEndH}
-                  rateMap={rateMap}
-                  bagMap={bagMap}
-                  skuColor={skuColor}
-                  nameMap={nameMap}
-                />
-                {/* ─── Worker acknowledgment panel (Gantt view only) ── */}
-                {(() => {
-                  const workerNames = Array.from(new Set(filtered.map(a => a.worker_name))).sort()
-                  if (!workerNames.length) return null
-                  const ackedCount = workerNames.filter(n => ackedWorkers.has(n)).length
-                  const allAcked = ackedCount === workerNames.length
-                  return (
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-700">เห็นแผนแล้ว</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                            allAcked ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {ackedCount}/{workerNames.length} คน
-                          </span>
-                        </div>
-                        {ackedCount > 0 && (
-                          <button
-                            onClick={() => setAckedWorkers(new Set())}
-                            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                          >
-                            รีเซ็ต
-                          </button>
-                        )}
-                      </div>
-                      <div className="p-3 flex flex-wrap gap-2">
-                        {workerNames.map(name => {
-                          const display = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
-                          const acked = ackedWorkers.has(name)
-                          return (
-                            <button
-                              key={name}
-                              onClick={() => toggleAck(name)}
-                              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                                acked
-                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                  : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-                              }`}
-                            >
-                              <span className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                                acked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
-                              }`}>
-                                {acked && <span className="text-white text-[8px] leading-none font-black">✓</span>}
-                              </span>
-                              {display}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })()}
-              </>
+              <SkuScheduleView
+                items={filtered}
+                phaseStart={viewStartH}
+                phaseEnd={viewEndH}
+                rateMap={rateMap}
+                bagMap={bagMap}
+                skuColor={skuColor}
+                nameMap={nameMap}
+                ackedSkus={ackedSkus}
+                onToggleSkuAck={toggleSkuAck}
+              />
             )}
             {viewMode === 'gantt' && (
               <WorkerCardView
@@ -1746,8 +1706,6 @@ export default function TablePage() {
                 nameMap={nameMap}
                 bagMap={bagMap}
                 skuColor={skuColor}
-                ackedWorkers={ackedWorkers}
-                onToggleAck={toggleAck}
               />
             )}
             {viewMode === 'worker' && (
