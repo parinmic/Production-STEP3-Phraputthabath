@@ -17,6 +17,7 @@ export default function PigCarcassWithdrawalPage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [sourceFile, setSourceFile] = useState('')
+  const [selected,   setSelected]   = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -25,11 +26,12 @@ export default function PigCarcassWithdrawalPage() {
       const res  = await fetch('/api/pig-carcass-withdrawal')
       const json = await res.json()
       if (json.error) { setError(json.error); return }
-      const sorted: LotRow[] = (json.rows as LotRow[]).sort((a, b) =>
-        a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1))
-      )
+      const sorted: LotRow[] = (json.rows as LotRow[])
+        .filter(r => r.qty_3 > 0)
+        .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
+      setSelected(new Set())
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -38,6 +40,18 @@ export default function PigCarcassWithdrawalPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  function toggle(code: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(code) ? next.delete(code) : next.add(code)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    setSelected(prev => prev.size === rows.length ? new Set() : new Set(rows.map(r => r.spec_code)))
+  }
 
   const totalQty = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt = rows.reduce((s, r) => s + r.weight_3, 0)
@@ -107,14 +121,28 @@ export default function PigCarcassWithdrawalPage() {
                     <div>น้ำหนักเฉลี่ย</div>
                     <div className="font-normal text-orange-400">(กก./ตัว)</div>
                   </th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-500 w-16">
+                    <input
+                      type="checkbox"
+                      checked={selected.size === rows.length && rows.length > 0}
+                      onChange={toggleAll}
+                      className="w-4 h-4 accent-blue-600 cursor-pointer"
+                      title="เลือกทั้งหมด"
+                    />
+                  </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
-                  const avg = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const avg     = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const checked = selected.has(r.spec_code)
                   return (
-                    <tr key={r.spec_code} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={r.spec_code}
+                      onClick={() => toggle(r.spec_code)}
+                      className={`cursor-pointer transition-colors ${checked ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}
+                    >
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
                       <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
                       <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">
@@ -122,6 +150,15 @@ export default function PigCarcassWithdrawalPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right text-emerald-700">{fmt(r.weight_3)}</td>
                       <td className="px-4 py-2.5 text-right text-orange-700">{fmt(avg)}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(r.spec_code)}
+                          onClick={e => e.stopPropagation()}
+                          className="w-4 h-4 accent-blue-600 cursor-pointer"
+                        />
+                      </td>
                     </tr>
                   )
                 })}
@@ -136,10 +173,23 @@ export default function PigCarcassWithdrawalPage() {
                   </td>
                   <td className="px-4 py-3 text-right text-emerald-700">{fmt(totalWgt)}</td>
                   <td className="px-4 py-3 text-right text-orange-700">{fmt(totalAvg)}</td>
+                  <td className="px-3 py-3 text-center text-xs text-gray-400">
+                    {selected.size > 0 ? `${selected.size} เลือก` : ''}
+                  </td>
                 </tr>
               </tfoot>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Selected summary */}
+      {selected.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center gap-3 text-sm">
+          <span className="text-blue-700 font-semibold">เลือกแล้ว {selected.size} ล็อต:</span>
+          <span className="text-blue-600 font-mono">
+            {rows.filter(r => selected.has(r.spec_code)).map(r => r.spec_code).join(', ')}
+          </span>
         </div>
       )}
     </div>
