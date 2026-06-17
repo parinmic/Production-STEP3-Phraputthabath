@@ -67,13 +67,14 @@ export default function CarcassYieldPage() {
 
     const computed: LotResult[] = lots.map(lot => {
       const matched = findClosestWeight(lot.avg_weight, uniqueWeights)
-      const parts   = master
+      const parts = master
         .filter(r => r.carcass_weight === matched)
         .map(r => ({
           product_group: r.product_group,
           yield_pct:     r.yield_pct,
           total_kg:      (r.yield_pct / 100) * lot.avg_weight * lot.qty,
         }))
+        .sort((a, b) => b.yield_pct - a.yield_pct)
       return { lot, matched_weight: matched, parts }
     })
 
@@ -138,6 +139,63 @@ export default function CarcassYieldPage() {
           ไม่พบข้อมูล Mas Yield — กรุณาอัพโหลดที่เมนู Master Calculation → Mas Yield
         </div>
       )}
+
+      {/* Summary table: total kg per product group across all lots */}
+      {!loading && results.length > 0 && (() => {
+        const groupMap = new Map<string, { yield_pct: number; total_kg: number }>()
+        for (const res of results) {
+          for (const p of res.parts) {
+            const existing = groupMap.get(p.product_group)
+            if (existing) {
+              existing.total_kg += p.total_kg
+            } else {
+              groupMap.set(p.product_group, { yield_pct: p.yield_pct, total_kg: p.total_kg })
+            }
+          }
+        }
+        const summary = [...groupMap.entries()]
+          .map(([group, v]) => ({ product_group: group, yield_pct: v.yield_pct, total_kg: v.total_kg }))
+          .sort((a, b) => b.yield_pct - a.yield_pct)
+        const grandTotal = summary.reduce((s, g) => s + g.total_kg, 0)
+
+        return (
+          <div className="border border-blue-200 rounded-2xl overflow-hidden">
+            <div className="bg-blue-600 px-5 py-3">
+              <h2 className="text-white font-bold text-sm">สรุปรวม — หมูซีกทั้งหมด {results.length} Lot</h2>
+              <p className="text-blue-200 text-xs mt-0.5">น้ำหนักชิ้นส่วนที่คาดว่าจะได้ทั้งหมด (กก.)</p>
+            </div>
+            <table className="w-full text-sm bg-white">
+              <thead className="bg-blue-50 border-b border-blue-100 text-xs">
+                <tr>
+                  <th className="px-5 py-2.5 text-left font-semibold text-gray-700">กลุ่มชิ้นส่วน</th>
+                  <th className="px-5 py-2.5 text-right font-semibold text-purple-700">
+                    <div>Yield</div><div className="font-normal text-purple-400">(%)</div>
+                  </th>
+                  <th className="px-5 py-2.5 text-right font-semibold text-emerald-700">
+                    <div>น้ำหนักรวมทั้งหมด</div><div className="font-normal text-emerald-400">(กก.)</div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {summary.map(g => (
+                  <tr key={g.product_group} className="hover:bg-blue-50">
+                    <td className="px-5 py-2.5 font-medium text-gray-800">{g.product_group}</td>
+                    <td className="px-5 py-2.5 text-right text-purple-700">{fmt(g.yield_pct, 2)}</td>
+                    <td className="px-5 py-2.5 text-right font-bold text-emerald-700">{fmt(g.total_kg)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-blue-50 border-t-2 border-blue-300">
+                <tr className="font-bold text-sm">
+                  <td className="px-5 py-2.5 text-blue-800">รวมทั้งหมด</td>
+                  <td className="px-5 py-2.5" />
+                  <td className="px-5 py-2.5 text-right text-blue-800 text-base">{fmt(grandTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )
+      })()}
 
       {/* Results: one card per lot */}
       {!loading && results.map((res, idx) => (
