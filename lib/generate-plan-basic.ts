@@ -1345,6 +1345,52 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     })
   assignList = [...specialList, ...assignList.filter(i => !hasSpecialTimes(i.sku))]
 
+  // Cap assignList to carcass yield per product group (assignList is already priority-ordered)
+  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
+    const capLots    = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
+    const capRate    = params.carcassRate
+    const capYield   = masYieldRaw as { carcass_weight: number; product_group: string; yield_pct: number }[]
+    const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
+
+    let capPoolIdx = 0
+    const groupYieldCap: Record<string, number> = {}
+
+    for (const seg of CARCASS_ACTIVE_SEGS) {
+      const pigs = Math.floor((seg.mins * 60) / capRate)
+      let need   = pigs
+      const usages: { qty: number; avg: number }[] = []
+      while (need > 0 && capPoolIdx < capLots.length) {
+        const lot  = capLots[capPoolIdx]
+        const take = Math.min(need, lot.remaining)
+        if (take > 0) { usages.push({ qty: take, avg: lot.avg_weight }); lot.remaining -= take; need -= take }
+        if (lot.remaining === 0) capPoolIdx++
+      }
+      if (seg.phase !== selectedPhase) continue
+      for (const u of usages) {
+        const wt = capUniqWts.reduce((b, w) => Math.abs(w - u.avg) < Math.abs(b - u.avg) ? w : b, capUniqWts[0] ?? 0)
+        for (const my of capYield) {
+          if (my.carcass_weight !== wt) continue
+          const kg = (my.yield_pct / 100) * u.avg * u.qty
+          groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
+        }
+      }
+    }
+
+    // Deduct per item in priority order; items exceeding the remaining cap are trimmed
+    const groupRemaining = { ...groupYieldCap }
+    for (const item of assignList) {
+      const normSku = item.sku.replace(/^0+/, '')
+      const prod    = skuMap.get(normSku) ?? skuMap.get(item.sku)
+      if (!prod?.product_group) continue
+      const grp       = prod.product_group
+      const remaining = groupRemaining[grp] ?? 0
+      if (remaining <= 0) { item.targetQty = 0; continue }
+      if (item.targetQty > remaining) item.targetQty = roundDownToBag(normSku, remaining)
+      groupRemaining[grp] = Math.max(0, remaining - item.targetQty)
+    }
+    assignList = assignList.filter(item => item.targetQty > 0)
+  }
+
   // Assign workers per channel pass
   const assignments: Record<string, unknown>[] = []
 
