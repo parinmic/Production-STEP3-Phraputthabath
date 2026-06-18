@@ -20,27 +20,30 @@ interface SayapanRow {
   station:       string
 }
 
-
 const SEGS = [
-  { id: 'p1a', label: 'Phase 1',     sub: '08:30–12:00', mins: 210, isBreak: false,
+  { id: 'p1a', label: 'Phase 1',     sub: '08:30–12:00', mins: 210, isBreak: false, phase: 1,
     barColor: '#38bdf8', headerBg: '#0ea5e9', textColor: '#0c4a6e' },
-  { id: 'brk', label: 'พักกลางวัน', sub: '12:00–13:00', mins: 60,  isBreak: true,
+  { id: 'brk', label: 'พักกลางวัน', sub: '12:00–13:00', mins: 60,  isBreak: true,  phase: 1,
     barColor: '#e5e7eb', headerBg: '#d1d5db', textColor: '#6b7280' },
-  { id: 'p1b', label: 'Phase 1 ต่อ', sub: '13:00–14:30', mins: 90,  isBreak: false,
+  { id: 'p1b', label: 'Phase 1 ต่อ', sub: '13:00–14:30', mins: 90,  isBreak: false, phase: 1,
     barColor: '#38bdf8', headerBg: '#0ea5e9', textColor: '#0c4a6e' },
-  { id: 'p2',  label: 'Phase 2',     sub: '14:30–16:00', mins: 90,  isBreak: false,
+  { id: 'p2',  label: 'Phase 2',     sub: '14:30–16:00', mins: 90,  isBreak: false, phase: 2,
     barColor: '#c084fc', headerBg: '#a855f7', textColor: '#3b0764' },
-  { id: 'p3',  label: 'Phase 3',     sub: '16:00–17:00', mins: 60,  isBreak: false,
+  { id: 'p3',  label: 'Phase 3',     sub: '16:00–17:00', mins: 60,  isBreak: false, phase: 3,
     barColor: '#fb923c', headerBg: '#f97316', textColor: '#431407' },
 ]
 
-const TOTAL_MINS = SEGS.reduce((s, seg) => s + seg.mins, 0) // 510
+const PHASE_SEG_IDS: Record<string, string[]> = {
+  '1':   ['p1a', 'brk', 'p1b'],
+  '2':   ['p2'],
+  '3':   ['p3'],
+  'all': ['p1a', 'brk', 'p1b', 'p2', 'p3'],
+}
 
 interface GroupData {
   product_group: string
   total_kg:      number
-  segKg:         Record<string, number>  // seg.id → kg
-  segPigs:       Record<string, number>  // seg.id → pigs used
+  segKg:         Record<string, number>
 }
 
 function findClosest(avg: number, weights: number[]) {
@@ -53,7 +56,13 @@ function fmtKg(n: number) {
   return n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
 }
 
-export default function CarcassGanttPanel({ stationName }: { stationName: string }) {
+export default function CarcassGanttPanel({
+  stationName,
+  selectedPhase,
+}: {
+  stationName:   string
+  selectedPhase: number | 'all'
+}) {
   const [rate,    setRate]    = useState(90)
   const [lots,    setLots]    = useState<SelectedLot[]>([])
   const [master,  setMaster]  = useState<MasYieldRow[]>([])
@@ -90,24 +99,26 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
     loadData()
   }, [loadData])
 
-  // silently hide if no lots selected
-  if (!loading && !error && lots.length === 0) return null
+  // Determine visible segments for this phase
+  const phaseKey     = String(selectedPhase)
+  const visSegIds    = PHASE_SEG_IDS[phaseKey] ?? PHASE_SEG_IDS['all']
+  const visibleSegs  = SEGS.filter(s => visSegIds.includes(s.id))
+  const VISIBLE_MINS = visibleSegs.reduce((s, seg) => s + seg.mins, 0)
 
-  // Derive product groups for this station only (in sayapan insertion order)
+  // Product groups for this station (from sayapan)
   const allGroups: string[] = []
   for (const r of sayapan.filter(r => r.station === stationName)) {
     if (!allGroups.includes(r.product_group)) allGroups.push(r.product_group)
   }
 
-  // Compute segment results (pool consumed once, shared across stations)
+  // Compute all segments in order (pool consumed sequentially across phases)
   const uniqueWeights = [...new Set(master.map(r => r.carcass_weight))].sort((a, b) => a - b)
   const pool = lots.map(l => ({ ...l, remaining: l.qty }))
   let poolIdx = 0
 
   const groupMap: Record<string, GroupData> = {}
-  for (const g of allGroups) groupMap[g] = { product_group: g, total_kg: 0, segKg: {}, segPigs: {} }
+  for (const g of allGroups) groupMap[g] = { product_group: g, total_kg: 0, segKg: {} }
 
-  // Track pigs per segment for display
   const segPigsTotal: Record<string, number> = {}
 
   for (const seg of SEGS) {
@@ -118,7 +129,7 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
     const usages: { qty_used: number; avg_weight: number }[] = []
 
     while (need > 0 && poolIdx < pool.length) {
-      const lot = pool[poolIdx]
+      const lot  = pool[poolIdx]
       const take = Math.min(need, lot.remaining)
       if (take > 0) {
         usages.push({ qty_used: take, avg_weight: lot.avg_weight })
@@ -135,25 +146,42 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
         const mr = mrs.find(r => r.product_group === g)
         if (!mr) continue
         const kg = (mr.yield_pct / 100) * usage.avg_weight * usage.qty_used
-        if (!groupMap[g]) groupMap[g] = { product_group: g, total_kg: 0, segKg: {}, segPigs: {} }
+        if (!groupMap[g]) groupMap[g] = { product_group: g, total_kg: 0, segKg: {} }
         groupMap[g].segKg[seg.id] = (groupMap[g].segKg[seg.id] ?? 0) + kg
         groupMap[g].total_kg += kg
       }
     }
   }
 
-  const groups = allGroups.map(g => groupMap[g]).filter(g => g.total_kg > 0).sort((a, b) => b.total_kg - a.total_kg)
-  const grandTotal = groups.reduce((s, g) => s + g.total_kg, 0)
-  const totalPigs  = lots.reduce((s, l) => s + l.qty, 0)
+  // For display: total only across visible (non-break) segments
+  const groups = allGroups
+    .map(g => {
+      const visKg = visibleSegs
+        .filter(s => !s.isBreak)
+        .reduce((s, seg) => s + (groupMap[g]?.segKg[seg.id] ?? 0), 0)
+      return { ...groupMap[g], vis_kg: visKg }
+    })
+    .filter(g => g.vis_kg > 0)
+    .sort((a, b) => b.vis_kg - a.vis_kg)
+
+  const grandTotal  = groups.reduce((s, g) => s + g.vis_kg, 0)
+  const phasePigs   = visibleSegs.filter(s => !s.isBreak).reduce((s, seg) => s + (segPigsTotal[seg.id] ?? 0), 0)
+  const totalPigs   = lots.reduce((s, l) => s + l.qty, 0)
+  const phaseLabel  = selectedPhase === 'all' ? 'ทั้งวัน' : `Phase ${selectedPhase}`
 
   return (
     <div className="rounded-2xl border border-gray-200 overflow-hidden mt-4">
-      {/* Panel header */}
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-700 to-slate-600">
         <div>
           <span className="text-white font-bold text-sm">แผนผลิตจากหมูซีก — {stationName}</span>
           <span className="text-slate-300 text-xs ml-3">
-            {totalPigs.toLocaleString('th-TH')} ตัว · อัตรา {rate} วิ/ตัว · รวม {grandTotal.toLocaleString('th-TH', { maximumFractionDigits: 0 })} กก.
+            {totalPigs > 0
+              ? `${totalPigs.toLocaleString('th-TH')} ตัว · `
+              : ''}
+            อัตรา {rate} วิ/ตัว
+            {phasePigs > 0 && ` · ${phaseLabel}: ${phasePigs.toLocaleString('th-TH')} ตัว`}
+            {grandTotal > 0 && ` · ${grandTotal.toLocaleString('th-TH', { maximumFractionDigits: 0 })} กก.`}
           </span>
         </div>
         <button onClick={loadData} disabled={loading}
@@ -172,25 +200,35 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
         <div className="bg-white px-5 py-3 text-red-600 text-sm">{error}</div>
       )}
 
-      {!loading && !error && groups.length === 0 && (
+      {!loading && !error && lots.length === 0 && (
+        <div className="bg-white px-5 py-4 text-gray-400 text-sm text-center">
+          ยังไม่ได้เลือกล็อตหมูซีก — ไปที่หน้าเบิกหมูซีกเพื่อเลือกล็อต
+        </div>
+      )}
+
+      {!loading && !error && lots.length > 0 && allGroups.length === 0 && (
         <div className="bg-white px-5 py-4 text-gray-400 text-sm text-center">
           ไม่พบข้อมูล — กรุณาอัพโหลด Mas สายพาน และ Mas Yield
         </div>
       )}
 
-      {!loading && !error && groups.length > 0 && (
+      {!loading && !error && lots.length > 0 && allGroups.length > 0 && groups.length === 0 && (
+        <div className="bg-white px-5 py-4 text-gray-400 text-sm text-center">
+          ไม่มีการผลิตใน{phaseLabel}
+        </div>
+      )}
+
+      {!loading && !error && lots.length > 0 && groups.length > 0 && (
         <div className="bg-white">
           {/* Time header */}
           <div className="flex border-b border-gray-100 bg-gray-50">
-            {/* Left label col */}
             <div className="w-44 shrink-0 border-r border-gray-100 px-4 py-2">
               <span className="text-xs font-semibold text-gray-500">กลุ่มชิ้นส่วน</span>
             </div>
-            {/* Segment header cols */}
             <div className="flex flex-1">
-              {SEGS.map(seg => (
+              {visibleSegs.map(seg => (
                 <div key={seg.id}
-                  style={{ width: `${(seg.mins / TOTAL_MINS) * 100}%` }}
+                  style={{ width: `${(seg.mins / VISIBLE_MINS) * 100}%` }}
                   className="flex flex-col items-center justify-center py-2 border-r border-gray-100 last:border-r-0">
                   {seg.isBreak ? (
                     <Coffee size={12} className="text-gray-400 mb-0.5" />
@@ -209,7 +247,6 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
                 </div>
               ))}
             </div>
-            {/* Right total col */}
             <div className="w-24 shrink-0 border-l border-gray-100 px-3 py-2 text-right">
               <span className="text-xs font-semibold text-gray-500">รวม (กก.)</span>
             </div>
@@ -219,17 +256,15 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
           <div className="divide-y divide-gray-50">
             {groups.map((g, i) => (
               <div key={g.product_group} className={`flex items-stretch min-h-[40px] ${i % 2 === 1 ? 'bg-gray-50/50' : 'bg-white'}`}>
-                {/* Left: group name */}
                 <div className="w-44 shrink-0 border-r border-gray-100 px-4 py-2 flex items-center">
                   <span className="text-xs font-semibold text-gray-800 leading-tight">{g.product_group}</span>
                 </div>
-                {/* Segment cells */}
                 <div className="flex flex-1 items-stretch">
-                  {SEGS.map(seg => {
+                  {visibleSegs.map(seg => {
                     const kg = g.segKg[seg.id] ?? 0
                     return (
                       <div key={seg.id}
-                        style={{ width: `${(seg.mins / TOTAL_MINS) * 100}%` }}
+                        style={{ width: `${(seg.mins / VISIBLE_MINS) * 100}%` }}
                         className="border-r border-gray-100 last:border-r-0 flex items-center justify-center px-1 py-1.5">
                         {seg.isBreak ? (
                           <div className="w-full h-full bg-gray-100 rounded" />
@@ -248,10 +283,9 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
                     )
                   })}
                 </div>
-                {/* Right: total */}
                 <div className="w-24 shrink-0 border-l border-gray-100 px-3 py-2 flex items-center justify-end">
                   <span className="text-xs font-bold text-emerald-700">
-                    {g.total_kg.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                    {g.vis_kg.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
                   </span>
                 </div>
               </div>
@@ -264,11 +298,11 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
               <span className="text-xs font-bold text-gray-700">รวมทั้งหมด</span>
             </div>
             <div className="flex flex-1">
-              {SEGS.map(seg => {
+              {visibleSegs.map(seg => {
                 const segTotal = seg.isBreak ? 0 : groups.reduce((s, g) => s + (g.segKg[seg.id] ?? 0), 0)
                 return (
                   <div key={seg.id}
-                    style={{ width: `${(seg.mins / TOTAL_MINS) * 100}%` }}
+                    style={{ width: `${(seg.mins / VISIBLE_MINS) * 100}%` }}
                     className="border-r border-gray-100 last:border-r-0 flex items-center justify-center px-1 py-2">
                     {!seg.isBreak && segTotal > 0 && (
                       <span className="text-[11px] font-bold" style={{ color: seg.headerBg }}>
