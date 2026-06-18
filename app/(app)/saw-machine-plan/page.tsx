@@ -23,7 +23,7 @@ const LANE_H = 28  // px per lane in gantt
 const PHASE_END: Record<string, number> = {
   'เช้า': 870,   // 14:30 — Phase 1 end
   'บ่าย': 990,   // 16:30 — Phase 2 end
-  'ค่ำ':  1440,  // 24:00 — Phase 3 runs to end of day
+  'ค่ำ':  1800,  // 06:00 next day (+1440) — Phase 3 overnight
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
