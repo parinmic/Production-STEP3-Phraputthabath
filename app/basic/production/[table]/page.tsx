@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Layers } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
+import CarcassProductionView from './carcass-view'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -1273,7 +1274,7 @@ export default function BasicTablePage() {
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
-  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
+  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary' | 'carcass'>('sku')
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1431,14 +1432,14 @@ export default function BasicTablePage() {
       </div>
 
       {loading && <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>}
-      {!loading && filtered.length === 0 && (
+      {!loading && filtered.length === 0 && viewMode !== 'carcass' && (
         <div className="card text-center py-16 text-gray-400">
           <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
           {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && (filtered.length > 0 || viewMode === 'carcass') && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
@@ -1446,6 +1447,7 @@ export default function BasicTablePage() {
               { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
               { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
               { mode: 'summary', icon: ClipboardList, label: 'สรุปแผนผลิต' },
+              { mode: 'carcass', icon: Layers,        label: 'แผนหมูซีก' },
             ] as const).map(({ mode, icon: Icon, label }) => (
               <button key={mode}
                 onClick={() => setViewMode(mode)}
@@ -1476,6 +1478,9 @@ export default function BasicTablePage() {
           )}
           {viewMode === 'summary' && (
             <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} />
+          )}
+          {viewMode === 'carcass' && (
+            <CarcassProductionView stationName={cfg.label} />
           )}
         </div>
       )}
