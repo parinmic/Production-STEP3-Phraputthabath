@@ -2746,6 +2746,82 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // the same channel+SKU as stock items.
   runChannelPass(primaryDeficitList)
 
+  // Cross-table pass (Phase 1 only): eligible สะโพกพิเศษ workers cover remaining
+  // ซี่โครง-group demand from สามชั้นพิเศษ using their leftover Phase 1 capacity.
+  // Assignments get table_name='สะโพก' (appear in สะโพก gantt) and are re-attributed
+  // to สามชั้น for RM withdrawal via the 'cross:สามชั้น' note tag.
+  if (!isPhase2 && !isPhase3) {
+    const CROSS_TAG = 'cross:สามชั้น'
+
+    // Identify ซี่โครง SKUs from สามชั้น's productivity master
+    const zikrongSkus = new Set<string>()
+    for (const [, prod] of skuMap) {
+      const st = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+      if (st === 'สามชั้น' && prod.product_group.includes('ซี่โครง'))
+        zikrongSkus.add(prod.sku.replace(/^0+/, ''))
+    }
+
+    if (zikrongSkus.size > 0) {
+      // Sum what สามชั้น workers were already assigned for ซี่โครง SKUs this run
+      const zikrongDone = new Map<string, number>()
+      for (const a of assignments) {
+        if (String(a.table_name ?? '') !== 'สามชั้น') continue
+        const ns = String(a.sku ?? '').replace(/^0+/, '')
+        if (zikrongSkus.has(ns))
+          zikrongDone.set(ns, (zikrongDone.get(ns) ?? 0) + Number(a.target_quantity))
+      }
+
+      // Aggregate assignList by normSku to find remaining per SKU (merge channels)
+      const zikrongTotal = new Map<string, { totalQty: number; channel: string; skuName: string | null }>()
+      for (const item of assignList) {
+        const ns = item.sku.replace(/^0+/, '')
+        if (!zikrongSkus.has(ns)) continue
+        const cur = zikrongTotal.get(ns)
+        if (cur) { cur.totalQty += item.targetQty } else {
+          zikrongTotal.set(ns, { totalQty: item.targetQty, channel: item.channel, skuName: item.skuName })
+        }
+      }
+
+      // Build cross-table targets from what remains after สามชั้น assignment
+      const crossTargets: SkuTarget[] = []
+      for (const [ns, info] of zikrongTotal) {
+        const rem = Math.max(0, info.totalQty - (zikrongDone.get(ns) ?? 0))
+        if (rem > 0) crossTargets.push({ sku: ns, skuName: info.skuName, targetQty: rem, channel: info.channel })
+      }
+
+      if (crossTargets.length > 0) {
+        // Eligible: สะโพก workers explicitly listed in job assign with a ซี่โครง group
+        const crossWorkers = (workersByStation['สะโพก'] ?? []).filter(w => {
+          const ji = jobAssignMap.get(normName(w.name))
+          return !!ji && Array.from(ji.groups.keys()).some(g => g.includes('ซี่โครง'))
+        })
+
+        if (crossWorkers.length > 0) {
+          const crossResult = allocateBalanced({
+            productionDate,
+            tableName: 'สะโพก',
+            targets: crossTargets,
+            workers: crossWorkers,
+            skuMap,
+            jobAssignMap,
+            workerHours,
+            workerFreeAtMins,
+            workerBusySegments,
+            phaseEndMins: phaseCfg.endH * 60,
+            period: phaseCfg.period,
+            phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+            wpbMap,
+            specialTimeMap,
+            debugSkips,
+          })
+          for (const a of crossResult)
+            a.note = a.note ? `${String(a.note)}|${CROSS_TAG}` : CROSS_TAG
+          assignments.push(...crossResult)
+        }
+      }
+    }
+  }
+
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
   // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
   if (ENABLE_WIP) {

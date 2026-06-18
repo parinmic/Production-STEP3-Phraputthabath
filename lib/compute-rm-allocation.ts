@@ -133,7 +133,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   // 3. Production assignments (all stations including สไลด์) — include channel
   const { data: assnRows } = await supabase
     .from('production_assignments')
-    .select('table_name, sku, sku_name, target_quantity, period, channel')
+    .select('table_name, sku, sku_name, target_quantity, period, channel, note')
     .eq('production_date', date)
     .in('period', ['เช้า', 'บ่าย', 'ค่ำ'])
     .in('table_name', [...ALL_NON_SLIDE, 'สไลด์'])
@@ -144,9 +144,11 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   for (const a of assnRows ?? []) {
     const pm = skuQtyByPeriod.get(a.period)
     if (!pm) continue
-    // Key includes channel so same SKU from different channels stays separate
-    const k   = `${a.table_name}|||${a.sku}|||${a.channel ?? ''}`
-    const cur = pm.get(k) ?? { station: a.table_name, qty: 0, channel: a.channel ?? null }
+    // Cross-table assignments (สะโพก workers helping สามชั้น) are re-attributed to สามชั้น
+    // so their RM withdrawal appears under สามชั้น, not สะโพก.
+    const effectiveStation = String(a.note ?? '').includes('cross:สามชั้น') ? 'สามชั้น' : a.table_name
+    const k   = `${effectiveStation}|||${a.sku}|||${a.channel ?? ''}`
+    const cur = pm.get(k) ?? { station: effectiveStation, qty: 0, channel: a.channel ?? null }
     cur.qty += Number(a.target_quantity)
     pm.set(k, cur)
   }
