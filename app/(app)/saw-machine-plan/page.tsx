@@ -17,6 +17,8 @@ const STATION_COLORS: Record<string, string> = {
 
 const STATION_ORDER = ['เผาขา', 'เลาะขา', 'สามชั้นพิเศษ']
 
+const LANE_H = 28  // px per lane in gantt
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getPhaseStart(period: string) {
   if (period === 'เช้า') return 8 * 60 + 30
@@ -48,6 +50,18 @@ function minsToHHMM(mins: number): string {
 
 function todayISO(): string {
   return new Date().toLocaleDateString('sv-SE')
+}
+
+/** Pack blocks into lanes — no overlap within a lane */
+function assignLanes(blocks: SkuBlock[]): { block: SkuBlock; lane: number }[] {
+  const sorted = [...blocks].sort((a, b) => a.saw_start - b.saw_start)
+  const laneEnds: number[] = []
+  return sorted.map(block => {
+    const lane = laneEnds.findIndex(end => end <= block.saw_start)
+    const assigned = lane === -1 ? laneEnds.length : lane
+    laneEnds[assigned] = block.saw_end
+    return { block, lane: assigned }
+  })
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -167,108 +181,128 @@ function computeBlocks(
       saw_dur,
     })
   }
-
-  return result.sort((a, b) => a.saw_start - b.saw_start)
+  return result
 }
 
-// ── Station Gantt ─────────────────────────────────────────────────────────────
-function StationGantt({
-  station, blocks, chartStart, chartEnd,
-}: {
-  station: string
-  blocks: SkuBlock[]
-  chartStart: number
-  chartEnd: number
-}) {
+// ── Station Card ──────────────────────────────────────────────────────────────
+function StationCard({ station, blocks }: { station: string; blocks: SkuBlock[] }) {
   const color = STATION_COLORS[station] ?? '#6b7280'
-  const totalRange = chartEnd - chartStart
+
+  const stationStart = Math.min(...blocks.map(b => b.saw_start))
+  const stationEnd   = Math.max(...blocks.map(b => b.saw_end))
+  const totalQty     = blocks.reduce((s, b) => s + b.totalQty, 0)
+
+  // Per-station time axis (rounded to nearest hour)
+  const chartStart = Math.floor(stationStart / 60) * 60
+  const chartEnd   = Math.ceil(stationEnd   / 60) * 60
+  const totalRange = chartEnd - chartStart || 1
   const pct = (m: number) => ((m - chartStart) / totalRange) * 100
 
   const ticks: number[] = []
   for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
 
-  const sorted = [...blocks].sort((a, b) => a.saw_start - b.saw_start)
+  const laned = assignLanes(blocks)
+  const numLanes = Math.max(...laned.map(l => l.lane)) + 1
+
+  // SKU list sorted by saw_start
+  const sortedBlocks = [...blocks].sort((a, b) => a.saw_start - b.saw_start)
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-        <h2 className="text-sm font-bold text-gray-800">{station}</h2>
-        <span className="text-xs text-gray-400">{blocks.length} SKU</span>
+    <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Station header */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100"
+        style={{ borderTopWidth: 4, borderTopColor: color, borderTopStyle: 'solid' }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+          <h2 className="text-base font-bold text-gray-900">{station}</h2>
+        </div>
+        <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+          <span className="font-medium text-gray-700">{minsToHHMM(stationStart)} → {minsToHHMM(stationEnd)}</span>
+          <span>{blocks.length} SKU</span>
+          <span>{totalQty.toLocaleString()} กก.</span>
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      {/* Gantt */}
+      <div className="px-4 pt-3 pb-1">
         {/* Time axis */}
-        <div className="flex border-b border-gray-100 bg-gray-50/50 h-8">
-          <div className="w-36 sm:w-44 shrink-0 border-r border-gray-100" />
+        <div className="flex h-6 relative mb-1">
           <div className="flex-1 relative">
             {ticks.map(t => (
-              <div key={t} className="absolute top-0 h-full flex items-end pb-1.5"
+              <div key={t} className="absolute top-0 flex flex-col items-center"
                 style={{ left: `${pct(t)}%` }}>
-                <span className="text-[10px] font-mono text-gray-400 -translate-x-1/2 select-none">
-                  {Math.floor(t / 60) % 24}
+                <span className="text-[10px] font-mono text-gray-400 -translate-x-1/2 select-none leading-tight">
+                  {Math.floor(t / 60) % 24}:00
                 </span>
+                <div className="w-px h-2 bg-gray-200 mt-0.5" />
               </div>
             ))}
           </div>
-          <div className="w-24 sm:w-32 shrink-0 border-l border-gray-100" />
         </div>
 
-        {/* SKU rows */}
-        <div className="divide-y divide-gray-50">
-          {sorted.map(block => {
-            const durH = Math.floor(block.saw_dur / 60)
-            const durM = block.saw_dur % 60
-            const durLabel = durH > 0 ? `${durH}ชม. ${durM}น.` : `${durM}น.`
-            const barWidth = Math.max(pct(block.saw_end) - pct(block.saw_start), 0.5)
+        {/* Lane bars */}
+        <div className="relative w-full" style={{ height: numLanes * LANE_H + 4 }}>
+          {/* Hour grid lines */}
+          {ticks.map(t => (
+            <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
+              style={{ left: `${pct(t)}%` }} />
+          ))}
+
+          {laned.map(({ block, lane }) => {
+            const left  = pct(block.saw_start)
+            const width = Math.max(pct(block.saw_end) - left, 0.4)
+            const top   = lane * LANE_H + 2
 
             return (
-              <div key={block.sku} className="flex items-center min-h-[52px]">
-                {/* SKU label */}
-                <div className="w-36 sm:w-44 shrink-0 px-3 py-2 border-r border-gray-100">
-                  <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">
-                    {block.sku_name ?? block.sku}
-                  </p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
-                    {block.timing === 'ก่อน' ? '▶ เริ่มพร้อมผลิต' : '◀ หลังผลิตเสร็จ'}
-                  </p>
-                </div>
-
-                {/* Bar */}
-                <div className="flex-1 relative h-14">
-                  {/* Production window guide (ghost) */}
-                  <div
-                    className="absolute top-3 bottom-3 rounded opacity-10 pointer-events-none"
-                    style={{
-                      left: `${pct(block.prod_minStart)}%`,
-                      width: `${Math.max(pct(block.prod_maxEnd) - pct(block.prod_minStart), 0.3)}%`,
-                      backgroundColor: color,
-                    }}
-                  />
-                  {/* Saw machine bar */}
-                  <div
-                    className="absolute top-2 bottom-2 rounded-lg flex items-center px-2 overflow-hidden"
-                    style={{
-                      left: `${pct(block.saw_start)}%`,
-                      width: `${barWidth}%`,
-                      backgroundColor: color,
-                    }}
-                  >
-                    <span className="text-[10px] font-mono font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                      {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Quantity + duration */}
-                <div className="w-24 sm:w-32 shrink-0 px-3 py-2 border-l border-gray-100 text-right">
-                  <p className="text-sm font-bold text-gray-800">{block.totalQty.toLocaleString()}</p>
-                  <p className="text-[10px] text-gray-400">กก. · {durLabel}</p>
-                </div>
+              <div key={block.sku}
+                className="absolute rounded flex items-center px-1.5 overflow-hidden"
+                style={{
+                  left:   `${left}%`,
+                  width:  `${width}%`,
+                  top:    top,
+                  height: LANE_H - 6,
+                  backgroundColor: color,
+                  opacity: 0.88,
+                }}
+                title={`${block.sku_name ?? block.sku}\n${minsToHHMM(block.saw_start)} → ${minsToHHMM(block.saw_end)}\n${block.totalQty.toLocaleString()} กก.`}
+              >
+                <span className="text-[10px] font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis leading-none">
+                  {block.sku_name ?? block.sku}
+                </span>
               </div>
             )
           })}
         </div>
+      </div>
+
+      {/* SKU list */}
+      <div className="border-t border-gray-100 divide-y divide-gray-50">
+        {sortedBlocks.map(block => {
+          const durH = Math.floor(block.saw_dur / 60)
+          const durM = block.saw_dur % 60
+          const durLabel = durH > 0 ? `${durH}ชม.${durM > 0 ? ` ${durM}น.` : ''}` : `${durM}น.`
+          return (
+            <div key={block.sku} className="flex items-center gap-3 px-4 py-2">
+              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-xs font-medium text-gray-800 flex-1 min-w-0 truncate">
+                {block.sku_name ?? block.sku}
+              </span>
+              <span className="text-[11px] font-mono text-gray-500 shrink-0">
+                {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
+              </span>
+              <span className="text-[11px] text-gray-400 shrink-0 w-16 text-right">
+                {block.totalQty.toLocaleString()} กก.
+              </span>
+              <span className="text-[11px] text-gray-400 shrink-0 w-14 text-right">
+                {durLabel}
+              </span>
+              <span className="text-[10px] shrink-0 w-20 text-right"
+                style={{ color }}>
+                {block.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -320,22 +354,15 @@ export default function SawMachinePlanPage() {
 
   const stations = STATION_ORDER.filter(s => byStation[s]?.length)
 
-  const { chartStart, chartEnd } = useMemo(() => {
-    if (!blocks.length) return { chartStart: 8 * 60, chartEnd: 17 * 60 }
-    const cs = Math.floor(Math.min(...blocks.map(b => b.saw_start)) / 60) * 60
-    const ce = Math.ceil(Math.max(...blocks.map(b => b.saw_end)) / 60) * 60
-    return { chartStart: cs, chartEnd: ce }
-  }, [blocks])
-
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <Scissors size={22} className="text-gray-600 shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-gray-900">แผนการใช้เครื่องเลื่อย</h1>
-            <p className="text-sm text-gray-500 mt-0.5">เวลาเริ่ม–จบ และปริมาณที่ต้องตัดสำหรับแต่ละ SKU</p>
+            <p className="text-sm text-gray-500 mt-0.5">เวลาที่ต้องเริ่มและสิ้นสุดการตัดแต่ละ SKU</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -358,21 +385,6 @@ export default function SawMachinePlanPage() {
         </div>
       </div>
 
-      {/* Legend */}
-      {!loading && blocks.length > 0 && (
-        <div className="flex items-center gap-4 mb-4 text-[11px] text-gray-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded opacity-15 bg-gray-400 inline-block" />
-            พื้นที่ผลิตสินค้า (อ้างอิง)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-gray-400 inline-block" />
-            เวลาใช้เครื่องเลื่อย
-          </span>
-        </div>
-      )}
-
-      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
           <RefreshCw size={18} className="animate-spin" />
@@ -380,7 +392,6 @@ export default function SawMachinePlanPage() {
         </div>
       )}
 
-      {/* Empty */}
       {!loading && blocks.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center gap-3 text-gray-400">
           <Scissors size={40} strokeWidth={1.5} />
@@ -388,14 +399,11 @@ export default function SawMachinePlanPage() {
         </div>
       )}
 
-      {/* Gantt per station */}
       {!loading && stations.map(station => (
-        <StationGantt
+        <StationCard
           key={station}
           station={station}
           blocks={byStation[station]}
-          chartStart={chartStart}
-          chartEnd={chartEnd}
         />
       ))}
     </div>
