@@ -142,7 +142,7 @@ export default function CarcassGanttPanel({ stationName }: { stationName: string
     }
   }
 
-  const groups = allGroups.map(g => groupMap[g]).filter(g => g.total_kg > 0)
+  const groups = allGroups.map(g => groupMap[g]).filter(g => g.total_kg > 0).sort((a, b) => b.total_kg - a.total_kg)
   const grandTotal = groups.reduce((s, g) => s + g.total_kg, 0)
   const totalPigs  = lots.reduce((s, l) => s + l.qty, 0)
 
