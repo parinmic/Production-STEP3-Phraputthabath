@@ -5,6 +5,7 @@ import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Cloc
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
 import CarcassProductionView from './carcass-view'
+import CarcassGanttPanel from './carcass-gantt-panel'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -1465,7 +1466,10 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
+            <>
+              <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
+              <CarcassGanttPanel />
+            </>
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
