@@ -1468,7 +1468,7 @@ export default function BasicTablePage() {
           {viewMode === 'sku' && filtered.length > 0 && (
             <>
               <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
-              <CarcassGanttPanel />
+              <CarcassGanttPanel stationName={cfg.label} />
             </>
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (

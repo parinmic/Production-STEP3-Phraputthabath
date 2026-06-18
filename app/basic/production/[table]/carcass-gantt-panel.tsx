@@ -20,7 +20,6 @@ interface SayapanRow {
   station:       string
 }
 
-const ALL_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
 const SEGS = [
   { id: 'p1a', label: 'Phase 1',     sub: '08:30–12:00', mins: 210, isBreak: false,
@@ -54,7 +53,7 @@ function fmtKg(n: number) {
   return n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
 }
 
-export default function CarcassGanttPanel() {
+export default function CarcassGanttPanel({ stationName }: { stationName: string }) {
   const [rate,    setRate]    = useState(90)
   const [lots,    setLots]    = useState<SelectedLot[]>([])
   const [master,  setMaster]  = useState<MasYieldRow[]>([])
@@ -94,12 +93,10 @@ export default function CarcassGanttPanel() {
   // silently hide if no lots selected
   if (!loading && !error && lots.length === 0) return null
 
-  // Derive all product groups from all 3 stations (in sayapan insertion order)
+  // Derive product groups for this station only (in sayapan insertion order)
   const allGroups: string[] = []
-  for (const st of ALL_STATIONS) {
-    for (const r of sayapan.filter(r => r.station === st)) {
-      if (!allGroups.includes(r.product_group)) allGroups.push(r.product_group)
-    }
+  for (const r of sayapan.filter(r => r.station === stationName)) {
+    if (!allGroups.includes(r.product_group)) allGroups.push(r.product_group)
   }
 
   // Compute segment results (pool consumed once, shared across stations)
@@ -131,19 +128,16 @@ export default function CarcassGanttPanel() {
       if (lot.remaining === 0) poolIdx++
     }
 
-    for (const st of ALL_STATIONS) {
-      const stGroups = sayapan.filter(r => r.station === st).map(r => r.product_group)
-      for (const usage of usages) {
-        const wt  = findClosest(usage.avg_weight, uniqueWeights)
-        const mrs = master.filter(r => r.carcass_weight === wt)
-        for (const g of stGroups) {
-          const mr = mrs.find(r => r.product_group === g)
-          if (!mr) continue
-          const kg = (mr.yield_pct / 100) * usage.avg_weight * usage.qty_used
-          if (!groupMap[g]) groupMap[g] = { product_group: g, total_kg: 0, segKg: {}, segPigs: {} }
-          groupMap[g].segKg[seg.id] = (groupMap[g].segKg[seg.id] ?? 0) + kg
-          groupMap[g].total_kg += kg
-        }
+    for (const usage of usages) {
+      const wt  = findClosest(usage.avg_weight, uniqueWeights)
+      const mrs = master.filter(r => r.carcass_weight === wt)
+      for (const g of allGroups) {
+        const mr = mrs.find(r => r.product_group === g)
+        if (!mr) continue
+        const kg = (mr.yield_pct / 100) * usage.avg_weight * usage.qty_used
+        if (!groupMap[g]) groupMap[g] = { product_group: g, total_kg: 0, segKg: {}, segPigs: {} }
+        groupMap[g].segKg[seg.id] = (groupMap[g].segKg[seg.id] ?? 0) + kg
+        groupMap[g].total_kg += kg
       }
     }
   }
@@ -157,7 +151,7 @@ export default function CarcassGanttPanel() {
       {/* Panel header */}
       <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-700 to-slate-600">
         <div>
-          <span className="text-white font-bold text-sm">แผนผลิตจากหมูซีก (3 สถานีรวม)</span>
+          <span className="text-white font-bold text-sm">แผนผลิตจากหมูซีก — {stationName}</span>
           <span className="text-slate-300 text-xs ml-3">
             {totalPigs.toLocaleString('th-TH')} ตัว · อัตรา {rate} วิ/ตัว · รวม {grandTotal.toLocaleString('th-TH', { maximumFractionDigits: 0 })} กก.
           </span>
