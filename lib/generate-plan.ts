@@ -445,6 +445,7 @@ function allocateBalanced(params: {
     totalQty: number
     isDeficit: boolean
     productGroup: string
+    station: string
     rate: number
     wpb: number
     channels: ChEntry[]
@@ -468,7 +469,7 @@ function allocateBalanced(params: {
         normSku: cleanSku, rawSku: t.sku,
         skuName: prod.sku_name || t.skuName || null,
         totalQty: t.targetQty, isDeficit: t.isDeficit || false,
-        productGroup: prod.product_group, rate: prod.rate, wpb,
+        productGroup: prod.product_group, station: prod.station, rate: prod.rate, wpb,
         channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
       })
     }
@@ -481,6 +482,10 @@ function allocateBalanced(params: {
       const bLast = lastSkuSet.has(b.normSku) || lastSkuSet.has(b.rawSku)
       if (aLast !== bLast) return aLast ? 1 : -1
     }
+    // Own-station SKUs first; cross-station SKUs (e.g. ซี่โครง in สะโพก) run after
+    const aOwn = (STATION_TABLE[a.station] ?? a.station) === tableName ? 0 : 1
+    const bOwn = (STATION_TABLE[b.station] ?? b.station) === tableName ? 0 : 1
+    if (aOwn !== bOwn) return aOwn - bOwn
     // Sort by the leading channel's qty (not totalQty) so cross-channel-inflated blocks
     // (e.g. WM/90 + LOTUS/1205 merged as 1295) don't unfairly displace higher-priority
     // same-channel SKUs (e.g. WM/670). channels[0] is always the primary channel.
