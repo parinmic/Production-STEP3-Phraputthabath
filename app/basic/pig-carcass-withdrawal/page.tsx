@@ -52,6 +52,7 @@ export default function PigCarcassWithdrawalPage() {
   const [lotOrder,      setLotOrder]      = useState<Record<string, string>>({})
   const [temps,         setTemps]         = useState<Record<string, string>>({})
   const [trimmingQty,   setTrimmingQty]   = useState('')
+  const [carcassRate,   setCarcassRate]   = useState('90')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,9 +79,11 @@ export default function PigCarcassWithdrawalPage() {
       const savedOrder    = localStorage.getItem('pig_carcass_lot_order')
       const savedTemps    = localStorage.getItem('pig_carcass_temps')
       const savedTrimming = localStorage.getItem('pig_carcass_trimming')
+      const savedRate     = localStorage.getItem('pig_carcass_rate')
       if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
       if (savedTemps)    setTemps(JSON.parse(savedTemps))
       if (savedTrimming) setTrimmingQty(savedTrimming)
+      if (savedRate)     setCarcassRate(savedRate)
     } catch { /* ignore */ }
     load()
   }, [load])
@@ -100,18 +103,21 @@ export default function PigCarcassWithdrawalPage() {
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
   }, [lotOrder, rows])
 
-  // Persist temps and trimmingQty
+  // Persist temps, trimmingQty, carcassRate
   useEffect(() => { localStorage.setItem('pig_carcass_temps', JSON.stringify(temps)) }, [temps])
   useEffect(() => { localStorage.setItem('pig_carcass_trimming', trimmingQty) }, [trimmingQty])
+  useEffect(() => { localStorage.setItem('pig_carcass_rate', carcassRate) }, [carcassRate])
 
   function resetAll() {
     setLotOrder({})
     setTemps({})
     setTrimmingQty('')
+    setCarcassRate('90')
     localStorage.removeItem('pig_carcass_selected')
     localStorage.removeItem('pig_carcass_lot_order')
     localStorage.removeItem('pig_carcass_temps')
     localStorage.removeItem('pig_carcass_trimming')
+    localStorage.removeItem('pig_carcass_rate')
   }
 
   const totalQty   = rows.reduce((s, r) => s + r.qty_3,    0)
@@ -126,6 +132,12 @@ export default function PigCarcassWithdrawalPage() {
 
   const trimmingNum = parseInt(trimmingQty) || 0
   const diff        = trimmingNum > 0 ? trimmingNum - selQty : null
+
+  const rateNum     = parseFloat(carcassRate) || 90
+  const totalSecs   = selQty > 0 ? selQty * rateNum : 0
+  const totalMins   = Math.floor(totalSecs / 60)
+  const totalHrs    = Math.floor(totalMins / 60)
+  const remMins     = totalMins % 60
 
   const dropdownOptions = Array.from({ length: rows.length }, (_, i) => i + 1)
 
@@ -256,6 +268,34 @@ export default function PigCarcassWithdrawalPage() {
           )}
           {trimmingNum > 0 && selQty === 0 && (
             <span className="text-sm text-gray-400">— ยังไม่ได้เลือก Lot</span>
+          )}
+        </div>
+      )}
+
+      {/* อัตราการลงหมูซีก */}
+      {!loading && rows.length > 0 && (
+        <div className="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-3">
+          <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">อัตราการลงหมูซีก</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={carcassRate}
+            onChange={e => setCarcassRate(e.target.value.replace(/[^0-9.]/g, ''))}
+            className="w-24 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+          <span className="text-sm text-gray-500">วินาที/ตัว</span>
+          <span className="text-xs text-gray-400">(มาตรฐาน 90 วินาที/ตัว)</span>
+          {selQty > 0 && totalSecs > 0 && (
+            <>
+              <div className="w-px h-6 bg-gray-200" />
+              <span className="text-sm text-gray-500">
+                เวลารวมที่คาดว่าใช้:&nbsp;
+                <b className="text-indigo-700">
+                  {totalHrs > 0 ? `${totalHrs} ชม. ${remMins} นาที` : `${totalMins} นาที`}
+                </b>
+                <span className="text-gray-400 ml-1">({selQty.toLocaleString('th-TH')} ตัว × {rateNum} วิ)</span>
+              </span>
+            </>
           )}
         </div>
       )}
