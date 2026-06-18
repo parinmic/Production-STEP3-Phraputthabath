@@ -867,3 +867,48 @@ export function parseMasPriorityWithdrawal(file: File): Promise<ParsedRow[]> {
     reader.readAsArrayBuffer(file)
   })
 }
+
+export function parseSawMachineSku(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseCsv(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+        const results: ParsedRow[] = raw
+          .map(r => {
+            const keys = Object.keys(r)
+            const find = (...kws: string[]) =>
+              keys.find(k => kws.every(kw => k.toLowerCase().includes(kw))) ?? ''
+
+            const stationCol = find('จุดงาน') || find('station') || ''
+            const groupCol   = find('กลุ่ม')   || find('group')   || ''
+            const sapCol     = find('sap')     || find('รหัส')    || ''
+            const nameCol    = find('ชื่อ')    || find('name')    || ''
+            const rateCol    = find('กำลังการผลิต') || find('rate') || find('กำลัง') || ''
+            const timingCol  = find('ช่วงเวลา') || find('timing') || ''
+
+            return {
+              station:       String(r[stationCol] ?? '').trim() || null,
+              product_group: String(r[groupCol]   ?? '').trim() || null,
+              sku:           String(r[sapCol]      ?? '').trim(),
+              sku_name:      String(r[nameCol]     ?? '').trim() || null,
+              rate:          Number(r[rateCol]     ?? 0) || 0,
+              timing:        String(r[timingCol]   ?? '').trim() || null,
+            }
+          })
+          .filter(r => r.sku)
+        if (!results.length) throw new Error('ไม่พบรายการที่มีรหัส SAP')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
