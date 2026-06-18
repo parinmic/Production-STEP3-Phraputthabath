@@ -2767,94 +2767,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // the same channel+SKU as stock items.
   runChannelPass(primaryDeficitList)
 
-  // Cross-table pass (Phase 1 only): eligible สะโพกพิเศษ workers cover remaining
-  // ซี่โครง-group demand from สามชั้นพิเศษ using their leftover Phase 1 capacity.
-  // Assignments get table_name='สะโพก' (appear in สะโพก gantt) and are re-attributed
-  // to สามชั้น for RM withdrawal via the 'cross:สามชั้น' note tag.
-  if (!isPhase2 && !isPhase3) {
-    const CROSS_TAG = 'cross:สามชั้น'
-
-    // Identify ซี่โครง SKUs from สามชั้น's productivity master
-    const zikrongSkus = new Set<string>()
-    for (const [, prod] of skuMap) {
-      const st = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
-      if (st === 'สามชั้น' && prod.product_group.includes('ซี่โครง'))
-        zikrongSkus.add(prod.sku.replace(/^0+/, ''))
-    }
-
-    if (zikrongSkus.size > 0) {
-      // Sum what สามชั้น workers were already assigned for ซี่โครง SKUs this run
-      const zikrongDone = new Map<string, number>()
-      for (const a of assignments) {
-        if (String(a.table_name ?? '') !== 'สามชั้น') continue
-        const ns = String(a.sku ?? '').replace(/^0+/, '')
-        if (zikrongSkus.has(ns))
-          zikrongDone.set(ns, (zikrongDone.get(ns) ?? 0) + Number(a.target_quantity))
-      }
-
-      // Aggregate assignList by normSku to find remaining per SKU (merge channels)
-      const zikrongTotal = new Map<string, { totalQty: number; channel: string; skuName: string | null }>()
-      for (const item of assignList) {
-        const ns = item.sku.replace(/^0+/, '')
-        if (!zikrongSkus.has(ns)) continue
-        const cur = zikrongTotal.get(ns)
-        if (cur) { cur.totalQty += item.targetQty } else {
-          zikrongTotal.set(ns, { totalQty: item.targetQty, channel: item.channel, skuName: item.skuName })
-        }
-      }
-
-      // Build cross-table targets from what remains after สามชั้น assignment
-      const crossTargets: SkuTarget[] = []
-      for (const [ns, info] of zikrongTotal) {
-        const rem = Math.max(0, info.totalQty - (zikrongDone.get(ns) ?? 0))
-        if (rem > 0) crossTargets.push({ sku: ns, skuName: info.skuName, targetQty: rem, channel: info.channel })
-      }
-
-      if (crossTargets.length > 0) {
-        // Eligible: สะโพก workers explicitly listed in job assign with a ซี่โครง group
-        const crossWorkers = (workersByStation['สะโพก'] ?? []).filter(w => {
-          const ji = jobAssignMap.get(normName(w.name))
-          return !!ji && Array.from(ji.groups.keys()).some(g => g.includes('ซี่โครง'))
-        })
-
-        if (crossWorkers.length > 0) {
-          // Advance each cross worker's free time to when ALL สะโพก own-station work finishes,
-          // so ซี่โครง never starts before the last สะโพก SKU is done.
-          const allSaphokWorkers = workersByStation['สะโพก'] ?? []
-          const ownStationEnd = allSaphokWorkers.reduce(
-            (max, w) => Math.max(max, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
-            phaseStartMins,
-          )
-          for (const w of crossWorkers) {
-            const nameKey = normName(w.name)
-            const cur = workerFreeAtMins.get(nameKey) ?? phaseStartMins
-            if (cur < ownStationEnd) workerFreeAtMins.set(nameKey, ownStationEnd)
-          }
-
-          const crossResult = allocateBalanced({
-            productionDate,
-            tableName: 'สะโพก',
-            targets: crossTargets,
-            workers: crossWorkers,
-            skuMap,
-            jobAssignMap,
-            workerHours,
-            workerFreeAtMins,
-            workerBusySegments,
-            phaseEndMins: phaseCfg.endH * 60,
-            period: phaseCfg.period,
-            phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
-            wpbMap,
-            specialTimeMap,
-            debugSkips,
-          })
-          for (const a of crossResult)
-            a.note = a.note ? `${String(a.note)}|${CROSS_TAG}` : CROSS_TAG
-          assignments.push(...crossResult)
-        }
-      }
-    }
-  }
 
   // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
   // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
@@ -3135,6 +3047,109 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
     runChannelPass(secStockList)
     runChannelPass(secDeficitList)
+  }
+
+  // Cross-station supplementary pass — runs AFTER all own-station work for every station is done.
+  // Steps:
+  //  1. Check how much time each station has left after its own work finishes.
+  //  2. From job assignment, find workers eligible for groups that belong to OTHER stations
+  //     (cross-reference with mas_productivity to map group → station).
+  //  3. Determine which station those groups belong to (e.g. กลุ่มซี่โครง → สามชั้น).
+  //  4. Pull the remaining unfinished quantity from that station and assign it to the cross
+  //     workers, starting only after all own-station work is done, capped by remaining time.
+  {
+    // group → normalized station from productivity master
+    const groupStationMap = new Map<string, string>()
+    for (const p of productivity) {
+      if (groupStationMap.has(p.product_group)) continue
+      const st = STATION_TABLE[normalizeStation(p.station)] ?? normalizeStation(p.station)
+      if (st) groupStationMap.set(p.product_group, st)
+    }
+
+    // Scheduled qty per (normalized station, normSku) across all assignments built so far
+    const scheduledQtyMap = new Map<string, number>()
+    for (const a of assignments) {
+      const rawSt = normalizeStation(String(a.table_name ?? ''))
+      const st = STATION_TABLE[rawSt] ?? rawSt
+      const ns = String(a.sku ?? '').replace(/^0+/, '')
+      const key = `${st}|||${ns}`
+      scheduledQtyMap.set(key, (scheduledQtyMap.get(key) ?? 0) + Number(a.target_quantity))
+    }
+
+    // Total target qty per normSku merged across all channels (stock + deficit)
+    const totalTargetMap = new Map<string, { qty: number; skuName: string | null; channel: string }>()
+    for (const item of assignList) {
+      const ns = item.sku.replace(/^0+/, '')
+      const cur = totalTargetMap.get(ns)
+      if (cur) { cur.qty += item.targetQty } else {
+        totalTargetMap.set(ns, { qty: item.targetQty, skuName: item.skuName, channel: item.channel })
+      }
+    }
+
+    for (const [stationName, stationWorkers] of Object.entries(workersByStation)) {
+      if (!stationWorkers.length) continue
+
+      // 1. When does all own-station work finish and how much time remains?
+      const ownEnd = stationWorkers.reduce(
+        (max, w) => Math.max(max, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
+        phaseStartMins,
+      )
+      if (ownEnd >= phaseEndMins) continue
+
+      // 2. Find workers with groups that map to OTHER stations, group by target station
+      const targetStationWorkers = new Map<string, WorkforceRow[]>()
+      for (const w of stationWorkers) {
+        const ji = jobAssignMap.get(normName(w.name))
+        if (!ji) continue
+        for (const [group] of ji.groups) {
+          const groupStation = groupStationMap.get(group)
+          if (!groupStation || groupStation === stationName) continue
+          if (!targetStationWorkers.has(groupStation)) targetStationWorkers.set(groupStation, [])
+          const list = targetStationWorkers.get(groupStation)!
+          if (!list.includes(w)) list.push(w)
+        }
+      }
+      if (!targetStationWorkers.size) continue
+
+      for (const [targetStation, crossWorkers] of targetStationWorkers) {
+        // 3 & 4. Remaining unfinished work at targetStation for this run
+        const crossTargets: SkuTarget[] = []
+        for (const [ns, info] of totalTargetMap) {
+          const prod = skuMap.get(ns)
+          if (!prod) continue
+          const skuSt = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+          if (skuSt !== targetStation) continue
+          const key = `${targetStation}|||${ns}`
+          const scheduled = scheduledQtyMap.get(key) ?? 0
+          const remaining = Math.max(0, info.qty - scheduled)
+          if (remaining < 1) continue
+          crossTargets.push({ sku: ns, skuName: info.skuName, targetQty: remaining, channel: info.channel })
+        }
+        if (!crossTargets.length) continue
+
+        // Start cross-station work only after ALL own-station work at this station finishes
+        for (const w of crossWorkers) {
+          const nameKey = normName(w.name)
+          const cur = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+          if (cur < ownEnd) workerFreeAtMins.set(nameKey, ownEnd)
+        }
+
+        const crossResult = allocateBalanced({
+          productionDate,
+          tableName: stationName,
+          targets: crossTargets,
+          workers: crossWorkers,
+          skuMap, jobAssignMap, workerHours, workerFreeAtMins, workerBusySegments,
+          phaseEndMins,
+          period: phaseCfg.period,
+          phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseStartMins],
+          wpbMap, specialTimeMap, debugSkips,
+        })
+        for (const a of crossResult)
+          a.note = a.note ? `${String(a.note)}|cross:${targetStation}` : `cross:${targetStation}`
+        assignments.push(...crossResult)
+      }
+    }
   }
 
   if (!assignments.length) {
