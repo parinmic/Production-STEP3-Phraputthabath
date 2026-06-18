@@ -19,12 +19,38 @@ const STATION_ORDER = ['เผาขา', 'เลาะขา', 'สามชั
 
 const LANE_H = 28  // px per lane in gantt
 
+// Phase end times — mirrors PHASES in the production (พิเศษ) page
+const PHASE_END: Record<string, number> = {
+  'เช้า': 870,   // 14:30 — Phase 1 end
+  'บ่าย': 990,   // 16:30 — Phase 2 end
+  'ค่ำ':  1440,  // 24:00 — Phase 3 runs to end of day
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getPhaseStart(period: string) {
   if (period === 'เช้า') return 8 * 60 + 30
   if (period === 'บ่าย') return 14 * 60
   if (period === 'ค่ำ') return 16 * 60
   return 8 * 60
+}
+
+/** Work minutes available between from..to, skipping break windows */
+function workMinutesBetween(from: number, to: number): number {
+  if (from >= to) return 0
+  let work = 0
+  let pos = from
+  for (const [bs, be] of BREAKS) {
+    if (pos >= to) break
+    if (pos >= be) continue
+    if (pos < bs) {
+      const stop = Math.min(bs, to)
+      work += stop - pos
+      pos = stop
+    }
+    if (pos >= bs && pos < be) pos = Math.min(be, to)
+  }
+  if (pos < to) work += to - pos
+  return work
 }
 
 function wallClockFinish(from: number, work: number): number {
@@ -134,7 +160,6 @@ function computeBlocks(
         lastPeriod = task.period
       }
       const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-      const durMins = rate && rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
       const isConcurrent = String(task.note ?? '').includes('concurrent')
       let startMin = cur
       if (task.deadline_time) {
@@ -145,16 +170,25 @@ function computeBlocks(
           startMin = isConcurrent ? dl : Math.max(startMin, dl)
         }
       }
-      const endMin = wallClockFinish(startMin, durMins)
+
+      // Cap effective quantity to what fits within the shift end
+      const shiftEnd = PHASE_END[task.period] ?? 1200
+      const targetQty = Number(task.target_quantity)
+      const effectiveQty = rate && rate > 0
+        ? Math.min(targetQty, (workMinutesBetween(startMin, shiftEnd) / 60) * rate)
+        : targetQty
+      const effectiveDur = rate && rate > 0 ? Math.round((effectiveQty / rate) * 60) : 0
+
+      const endMin = wallClockFinish(startMin, effectiveDur)
       cur = Math.max(cur, endMin)
 
       const existing = skuStats.get(task.sku)
       if (!existing) {
-        skuStats.set(task.sku, { minStart: startMin, maxEnd: endMin, totalQty: Number(task.target_quantity) })
+        skuStats.set(task.sku, { minStart: startMin, maxEnd: endMin, totalQty: effectiveQty })
       } else {
         existing.minStart = Math.min(existing.minStart, startMin)
         existing.maxEnd = Math.max(existing.maxEnd, endMin)
-        existing.totalQty += Number(task.target_quantity)
+        existing.totalQty += effectiveQty
       }
     }
   }
