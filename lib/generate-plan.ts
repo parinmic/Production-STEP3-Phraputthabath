@@ -585,7 +585,21 @@ function allocateBalanced(params: {
   }
 
   // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
+  // Cross-station blocks (e.g. ซี่โครง in สะโพก) must not start until all own-station SKUs
+  // are done. crossStationStart is locked in the first time a cross-station block is reached.
+  let crossStationStart = phaseStartMins
+  let ownStationFinalized = false
+
   for (const block of skuBlocks) {
+    const isOwnBlock = (STATION_TABLE[block.station] ?? block.station) === tableName
+    if (!ownStationFinalized && !isOwnBlock) {
+      ownStationFinalized = true
+      crossStationStart = workers.reduce(
+        (max, w) => Math.max(max, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
+        phaseStartMins,
+      )
+    }
+
     const normSku  = block.normSku
     const numBags  = Math.floor(block.totalQty / block.wpb)
     if (numBags < 1) { pushSkip(block, 'numBags<1'); continue }
@@ -667,6 +681,8 @@ function allocateBalanced(params: {
     let blockStart = phaseStartMins
     for (const w of selected)
       blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
+    // Cross-station SKUs cannot start before all own-station work finishes
+    if (!isOwnBlock) blockStart = Math.max(blockStart, crossStationStart)
     if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
     if (blockStart >= limitEnd) { pushSkip(block, 'blockStart>=limitEnd', { blockStart, limitEnd, specialStart, specialStop }); continue }
 
