@@ -829,8 +829,19 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
             <div key={sku}
               className={`grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
               <div className="flex items-center gap-2 min-w-0 pr-2">
-                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight shrink-0">
-                  {stat.name ?? sku}
+                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight min-w-0">
+                  {(() => {
+                    const name = stat.name ?? sku
+                    const sp = name.indexOf(' ')
+                    return (
+                      <>
+                        <span className="hidden sm:inline">{name}</span>
+                        <span className="sm:hidden">
+                          {sp !== -1 ? <>{name.slice(0, sp)}<br />{name.slice(sp + 1)}</> : name}
+                        </span>
+                      </>
+                    )
+                  })()}
                   {stat.isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
                 </p>
                 {!stat.isRaw && bags !== null && bags > 0 && (
