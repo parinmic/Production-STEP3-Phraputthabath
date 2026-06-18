@@ -92,6 +92,10 @@ function mergeTasks(tasks: Assignment[]): Assignment[] {
     const pA = periodOrder[a.period] ?? 99
     const pB = periodOrder[b.period] ?? 99
     if (pA !== pB) return pA - pB
+    // Within the same period: own-station tasks first, supplementary (เสริม) tasks after
+    const suppA = a.channel === 'เสริม' ? 1 : 0
+    const suppB = b.channel === 'เสริม' ? 1 : 0
+    if (suppA !== suppB) return suppA - suppB
     const timeA = a.deadline_time || ''
     const timeB = b.deadline_time || ''
     if (timeA !== timeB) return timeA.localeCompare(timeB)
@@ -419,6 +423,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     const sortedRaw = [...rawTasks].sort((a, b) => {
       const pA = periodOrder[a.period] ?? 99, pB = periodOrder[b.period] ?? 99
       if (pA !== pB) return pA - pB
+      const suppA = a.channel === 'เสริม' ? 1 : 0
+      const suppB = b.channel === 'เสริม' ? 1 : 0
+      if (suppA !== suppB) return suppA - suppB
       const tA = a.deadline_time || '', tB = b.deadline_time || ''
       if (tA !== tB) return tA.localeCompare(tB)
       return (a.seq ?? 999999) - (b.seq ?? 999999)
