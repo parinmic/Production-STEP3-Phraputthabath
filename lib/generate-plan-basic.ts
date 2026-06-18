@@ -939,15 +939,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
   }
 
-  // Build main product SKU set (unit = 'RAW' when assigned)
-  const mainSkuSet = new Set<string>()
-  for (const row of masterProductTypeRaw ?? []) {
-    const r = normalizeRow(row.row_data as Record<string, unknown>)
-    const sap  = String(r['SAP'] ?? '').trim().replace(/^0+/, '')
-    const type = String(r['ประเภท'] ?? r['product_type'] ?? '').trim().toLowerCase()
-    if (sap && (type === 'main' || type === 'หลัก')) mainSkuSet.add(sap)
-  }
-
   // Parse productivity master
   const productivity: ProductivityRow[] = masterProdRaw?.length
     ? parseProductivity((masterProdRaw as { row_data: Record<string, unknown> }[]).map(r => r.row_data)) : []
@@ -961,6 +952,20 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   for (const p of productivity) {
     if (!skuMap.has(p.sku))                    skuMap.set(p.sku, p)
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
+  }
+
+  // Build main SKU set: auto-detect sku_name ending '-Raw' + explicit Mas Product Type Basic overrides
+  const mainSkuSet = new Set<string>()
+  for (const p of productivity) {
+    if (p.sku_name && p.sku_name.trim().toLowerCase().endsWith('-raw')) {
+      mainSkuSet.add(p.sku.replace(/^0+/, ''))
+    }
+  }
+  for (const row of masterProductTypeRaw ?? []) {
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
+    const sap  = String(r['SAP'] ?? '').trim().replace(/^0+/, '')
+    const type = String(r['ประเภท'] ?? r['product_type'] ?? '').trim().toLowerCase()
+    if (sap && (type === 'main' || type === 'หลัก')) mainSkuSet.add(sap)
   }
 
   // Parse variance masters
