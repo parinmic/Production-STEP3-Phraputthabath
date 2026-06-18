@@ -53,6 +53,7 @@ export default function PigCarcassWithdrawalPage() {
   const [temps,         setTemps]         = useState<Record<string, string>>({})
   const [trimmingQty,   setTrimmingQty]   = useState('')
   const [carcassRate,   setCarcassRate]   = useState('90')
+  const [usedQty,       setUsedQty]       = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -80,10 +81,12 @@ export default function PigCarcassWithdrawalPage() {
       const savedTemps    = localStorage.getItem('pig_carcass_temps')
       const savedTrimming = localStorage.getItem('pig_carcass_trimming')
       const savedRate     = localStorage.getItem('pig_carcass_rate')
+      const savedUsed     = localStorage.getItem('pig_carcass_used')
       if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
       if (savedTemps)    setTemps(JSON.parse(savedTemps))
       if (savedTrimming) setTrimmingQty(savedTrimming)
       if (savedRate)     setCarcassRate(savedRate)
+      if (savedUsed)     setUsedQty(JSON.parse(savedUsed))
     } catch { /* ignore */ }
     load()
   }, [load])
@@ -103,21 +106,24 @@ export default function PigCarcassWithdrawalPage() {
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
   }, [lotOrder, rows])
 
-  // Persist temps, trimmingQty, carcassRate
+  // Persist temps, trimmingQty, carcassRate, usedQty
   useEffect(() => { localStorage.setItem('pig_carcass_temps', JSON.stringify(temps)) }, [temps])
   useEffect(() => { localStorage.setItem('pig_carcass_trimming', trimmingQty) }, [trimmingQty])
   useEffect(() => { localStorage.setItem('pig_carcass_rate', carcassRate) }, [carcassRate])
+  useEffect(() => { localStorage.setItem('pig_carcass_used', JSON.stringify(usedQty)) }, [usedQty])
 
   function resetAll() {
     setLotOrder({})
     setTemps({})
     setTrimmingQty('')
     setCarcassRate('90')
+    setUsedQty({})
     localStorage.removeItem('pig_carcass_selected')
     localStorage.removeItem('pig_carcass_lot_order')
     localStorage.removeItem('pig_carcass_temps')
     localStorage.removeItem('pig_carcass_trimming')
     localStorage.removeItem('pig_carcass_rate')
+    localStorage.removeItem('pig_carcass_used')
   }
 
   const totalQty   = rows.reduce((s, r) => s + r.qty_3,    0)
@@ -322,14 +328,23 @@ export default function PigCarcassWithdrawalPage() {
                     <div>อุณหภูมิ</div><div className="font-normal text-cyan-400">(องศาเซลเซียส)</div>
                   </th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-500 w-28">ลำดับตัดแต่ง</th>
+                  <th className="px-4 py-3 text-center font-semibold text-rose-700">
+                    <div>ใช้ไป</div><div className="font-normal text-rose-400">(ตัว)</div>
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-teal-700">
+                    <div>คงเหลือ</div><div className="font-normal text-teal-400">(ตัว)</div>
+                  </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
-                  const avg     = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const picked  = !!lotOrder[r.spec_code]
-                  const tStatus = tempStatus(temps[r.spec_code] ?? '')
+                  const avg      = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
+                  const picked   = !!lotOrder[r.spec_code]
+                  const tStatus  = tempStatus(temps[r.spec_code] ?? '')
+                  const usedRaw  = usedQty[r.spec_code] ?? ''
+                  const usedNum  = Math.min(parseInt(usedRaw) || 0, r.qty_3)
+                  const remaining = r.qty_3 - usedNum
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${picked ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
@@ -361,6 +376,33 @@ export default function PigCarcassWithdrawalPage() {
                           ))}
                         </select>
                       </td>
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={usedRaw}
+                          onChange={e => {
+                            const val = e.target.value.replace(/[^0-9]/g, '')
+                            const num = parseInt(val) || 0
+                            setUsedQty(prev => ({ ...prev, [r.spec_code]: num > r.qty_3 ? String(r.qty_3) : val }))
+                          }}
+                          placeholder="0"
+                          className={`w-20 text-right text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 transition-colors ${
+                            usedNum > 0
+                              ? usedNum === r.qty_3 ? 'border-teal-400 bg-teal-50 text-teal-700 focus:ring-teal-500'
+                              : 'border-rose-400 bg-rose-50 text-rose-700 focus:ring-rose-500'
+                              : 'border-gray-300 text-gray-600 focus:ring-blue-500'
+                          }`}
+                        />
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`font-semibold text-sm ${
+                          remaining === 0 ? 'text-teal-600' :
+                          usedNum > 0     ? 'text-rose-600' : 'text-gray-400'
+                        }`}>
+                          {remaining === 0 && usedNum > 0 ? '✓ หมด' : remaining.toLocaleString('th-TH')}
+                        </span>
+                      </td>
                     </tr>
                   )
                 })}
@@ -377,6 +419,8 @@ export default function PigCarcassWithdrawalPage() {
                   <td className="px-3 py-3 text-center text-xs text-gray-400">
                     {selRows.length > 0 ? `${selRows.length} เลือก` : ''}
                   </td>
+                  <td className="px-4 py-3" />
+                  <td className="px-4 py-3" />
                 </tr>
               </tfoot>
             </table>
