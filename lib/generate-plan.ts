@@ -2818,6 +2818,19 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         })
 
         if (crossWorkers.length > 0) {
+          // Advance each cross worker's free time to when ALL สะโพก own-station work finishes,
+          // so ซี่โครง never starts before the last สะโพก SKU is done.
+          const allSaphokWorkers = workersByStation['สะโพก'] ?? []
+          const ownStationEnd = allSaphokWorkers.reduce(
+            (max, w) => Math.max(max, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
+            phaseStartMins,
+          )
+          for (const w of crossWorkers) {
+            const nameKey = normName(w.name)
+            const cur = workerFreeAtMins.get(nameKey) ?? phaseStartMins
+            if (cur < ownStationEnd) workerFreeAtMins.set(nameKey, ownStationEnd)
+          }
+
           const crossResult = allocateBalanced({
             productionDate,
             tableName: 'สะโพก',
