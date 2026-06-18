@@ -3223,6 +3223,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const defB = b.is_deficit ? 1 : 0
       if (defA !== defB) return defA - defB
 
+      // Cross-station tasks must always run after own-station tasks regardless of channel priority
+      const crossA = String(a.note ?? '').includes('cross:') ? 1 : 0
+      const crossB = String(b.note ?? '').includes('cross:') ? 1 : 0
+      if (crossA !== crossB) return crossA - crossB
+
       const normSkuA = (a.sku as string).replace(/^0+/, '')
       const normSkuB = (b.sku as string).replace(/^0+/, '')
       const groupDiff = (skuGroupOrder.get(normSkuA) ?? 999) - (skuGroupOrder.get(normSkuB) ?? 999)
@@ -3296,6 +3301,26 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           // For non-phase3: drop tasks that start at or after phase cutoff
           if (!isPhase3 && startMins >= phaseEndMins) continue
+
+          // Cross-station tasks must not start before their allocated start time (which was
+          // computed after own-station work finishes in the cross-station supplementary pass).
+          const taskNote = String(task['note'] ?? '')
+          if (taskNote.includes('cross:')) {
+            const allocatedStart = timeStrToMins(String(task['deadline_time'] ?? '00:00'))
+            if (allocatedStart > startMins) {
+              startMins = allocatedStart
+              let readvanced = true
+              while (readvanced) {
+                readvanced = false
+                for (const seg of busySegs) {
+                  if (startMins >= seg.start - 0.01 && startMins < seg.end) { startMins = seg.end; readvanced = true }
+                }
+                for (const [bs, be] of BREAKS) {
+                  if (startMins >= bs && startMins < be) { startMins = be; readvanced = true }
+                }
+              }
+            }
+          }
 
           task.deadline_time = minsToTimeStr(startMins)
           let endMins = wallClockFinish(startMins, duration)
