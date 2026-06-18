@@ -1618,51 +1618,49 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       }
     }
 
-    // Sum kg already assigned per product_group (from order-based resequenced)
-    const assignedByGroup: Record<string, number> = {}
-    for (const a of resequenced) {
-      const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
-      const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
-      if (!prod?.product_group) continue
-      assignedByGroup[prod.product_group] = (assignedByGroup[prod.product_group] ?? 0) + Number(a['target_quantity'] ?? 0)
-    }
-
-    // Append Raw remainder assignments per station
+    // Append Raw remainder assignments — station level (avoids product_group naming mismatch)
     let rawSeq = resequenced.length
     for (const station of BASIC_TABLE_NAMES) {
       const stationGroups = masSay.filter(r => r.station === station).map(r => r.product_group)
-      for (const grp of stationGroups) {
-        const expectedKg = phaseGroupKg[grp] ?? 0
-        const assignedKg = assignedByGroup[grp] ?? 0
-        const remainKg   = Math.round((expectedKg - assignedKg) * 10) / 10
-        if (remainKg <= 0) continue
+      if (!stationGroups.length) continue
 
-        const rawProd = productivity.find(p =>
-          toBasicStation(p.station) === station &&
-          p.product_group === grp &&
-          p.sku_name.trim().toLowerCase().endsWith('-raw')
-        )
-        if (!rawProd) continue
+      // Total expected yield at this station (sum all sayapan groups)
+      const totalExpectedKg = stationGroups.reduce((s, grp) => s + (phaseGroupKg[grp] ?? 0), 0)
+      if (totalExpectedKg <= 0) continue
 
-        resequenced.push({
-          production_date: productionDate,
-          table_name:      station,
-          worker_code:     null,
-          worker_name:     'สต๊อก Raw',
-          sku:             rawProd.sku,
-          sku_name:        rawProd.sku_name,
-          target_quantity: remainKg,
-          unit:            'RAW',
-          period:          phaseCfg.period,
-          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
-          status:          'รอผลิต',
-          seq:             rawSeq++,
-          channel:         'RAW',
-          note:            'raw_remainder',
-          is_deficit:      false,
-          effective_from:  effectiveFromISO,
-        })
-      }
+      // Total already assigned at this station (all order-based assignments)
+      const totalAssignedKg = resequenced
+        .filter(a => String(a['table_name'] ?? '') === station)
+        .reduce((s, a) => s + Number(a['target_quantity'] ?? 0), 0)
+
+      const remainKg = Math.round((totalExpectedKg - totalAssignedKg) * 10) / 10
+      if (remainKg <= 0) continue
+
+      // Find Raw SKU at this station by sku_name suffix (no product_group constraint)
+      const rawProd = productivity.find(p =>
+        toBasicStation(p.station) === station &&
+        p.sku_name.trim().toLowerCase().endsWith('-raw')
+      )
+      if (!rawProd) continue
+
+      resequenced.push({
+        production_date: productionDate,
+        table_name:      station,
+        worker_code:     'RAW',
+        worker_name:     'สต๊อก Raw',
+        sku:             rawProd.sku,
+        sku_name:        rawProd.sku_name,
+        target_quantity: remainKg,
+        unit:            'RAW',
+        period:          phaseCfg.period,
+        deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
+        status:          'รอผลิต',
+        seq:             rawSeq++,
+        channel:         'RAW',
+        note:            'raw_remainder',
+        is_deficit:      false,
+        effective_from:  effectiveFromISO,
+      })
     }
   }
 
