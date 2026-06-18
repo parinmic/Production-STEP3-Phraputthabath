@@ -4,8 +4,7 @@ import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Layers } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
-import CarcassProductionView from './carcass-view'
-import CarcassGanttPanel from './carcass-gantt-panel'
+import CarcassYieldPlanView, { type YieldPlanItem } from './carcass-yield-plan-view'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -1289,7 +1288,7 @@ export default function BasicTablePage() {
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
-  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary' | 'carcass'>('sku')
+  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary' | 'yield'>('yield')
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1460,11 +1459,11 @@ export default function BasicTablePage() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
+              { mode: 'yield',   icon: Layers,        label: 'แผนตาม Yield' },
               { mode: 'sku',     icon: BarChart2,     label: 'ภาพรวม' },
               { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
               { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
               { mode: 'summary', icon: ClipboardList, label: 'สรุปแผนผลิต' },
-              { mode: 'carcass', icon: Layers,        label: 'แผนหมูซีก' },
             ] as const).map(({ mode, icon: Icon, label }) => (
               <button key={mode}
                 onClick={() => setViewMode(mode)}
@@ -1481,17 +1480,21 @@ export default function BasicTablePage() {
             </button>
           </div>
 
-          {viewMode !== 'carcass' && filtered.length === 0 && (
+          {viewMode !== 'yield' && filtered.length === 0 && (
             <div className="card text-center py-16 text-gray-400">
               <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
               {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
             </div>
           )}
+          {viewMode === 'yield' && (
+            <CarcassYieldPlanView
+              stationName={cfg.label}
+              selectedPhase={selectedPhase}
+              items={filtered as YieldPlanItem[]}
+            />
+          )}
           {viewMode === 'sku' && filtered.length > 0 && (
             <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
-          )}
-          {viewMode === 'sku' && (
-            <CarcassGanttPanel stationName={cfg.label} selectedPhase={selectedPhase} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
@@ -1504,9 +1507,6 @@ export default function BasicTablePage() {
           )}
           {viewMode === 'summary' && filtered.length > 0 && (
             <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} />
-          )}
-          {viewMode === 'carcass' && (
-            <CarcassProductionView stationName={cfg.label} />
           )}
         </div>
       )}
