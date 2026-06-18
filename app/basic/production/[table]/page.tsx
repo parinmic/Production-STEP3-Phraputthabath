@@ -1432,14 +1432,8 @@ export default function BasicTablePage() {
       </div>
 
       {loading && <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>}
-      {!loading && filtered.length === 0 && viewMode !== 'carcass' && (
-        <div className="card text-center py-16 text-gray-400">
-          <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
-          {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
-        </div>
-      )}
 
-      {!loading && (filtered.length > 0 || viewMode === 'carcass') && (
+      {!loading && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
@@ -1464,19 +1458,25 @@ export default function BasicTablePage() {
             </button>
           </div>
 
-          {viewMode === 'sku' && (
+          {viewMode !== 'carcass' && filtered.length === 0 && (
+            <div className="card text-center py-16 text-gray-400">
+              <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
+              {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
+            </div>
+          )}
+          {viewMode === 'sku' && filtered.length > 0 && (
             <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
           )}
-          {viewMode === 'gantt' && (
+          {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
-          {viewMode === 'worker' && (
+          {viewMode === 'worker' && filtered.length > 0 && (
             <WorkerTable items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
-          {viewMode === 'time' && (
+          {viewMode === 'time' && filtered.length > 0 && (
             <CurrentTimeView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
-          {viewMode === 'summary' && (
+          {viewMode === 'summary' && filtered.length > 0 && (
             <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} />
           )}
           {viewMode === 'carcass' && (
