@@ -349,9 +349,13 @@ interface SkuScheduleViewProps {
   nameMap: Record<string, string>
   ackedSkus: Set<string>
   onToggleSkuAck: (sku: string) => void
+  stationLabel: string
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck, stationLabel }: SkuScheduleViewProps) {
+  // Task is supplementary if channel='เสริม' OR sku_name doesn't include the station name
+  const isSupp = (t: Assignment) =>
+    t.channel === 'เสริม' || !(t.sku_name ?? '').includes(stationLabel)
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -386,7 +390,16 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
   for (const rawTasks of Object.values(byWorker)) {
     // Pass 1: use mergeTasks for accurate totals/workers/minStart/maxEnd
-    const tasks = mergeTasks(rawTasks)
+    // Re-sort after merge: own-station tasks before supplementary within each period
+    const tasks = mergeTasks(rawTasks).sort((a, b) => {
+      const pA = periodOrder[a.period] ?? 99, pB = periodOrder[b.period] ?? 99
+      if (pA !== pB) return pA - pB
+      const sA = isSupp(a) ? 1 : 0, sB = isSupp(b) ? 1 : 0
+      if (sA !== sB) return sA - sB
+      const tA = a.deadline_time || '', tB = b.deadline_time || ''
+      if (tA !== tB) return tA.localeCompare(tB)
+      return (a.seq ?? 999999) - (b.seq ?? 999999)
+    })
     let cur = 0
     let lastPeriod = ''
     for (const task of tasks) {
@@ -423,9 +436,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     const sortedRaw = [...rawTasks].sort((a, b) => {
       const pA = periodOrder[a.period] ?? 99, pB = periodOrder[b.period] ?? 99
       if (pA !== pB) return pA - pB
-      const suppA = a.channel === 'เสริม' ? 1 : 0
-      const suppB = b.channel === 'เสริม' ? 1 : 0
-      if (suppA !== suppB) return suppA - suppB
+      const sA = isSupp(a) ? 1 : 0, sB = isSupp(b) ? 1 : 0
+      if (sA !== sB) return sA - sB
       const tA = a.deadline_time || '', tB = b.deadline_time || ''
       if (tA !== tB) return tA.localeCompare(tB)
       return (a.seq ?? 999999) - (b.seq ?? 999999)
@@ -1714,6 +1726,7 @@ export default function TablePage() {
                 nameMap={nameMap}
                 ackedSkus={ackedSkus}
                 onToggleSkuAck={toggleSkuAck}
+                stationLabel={cfg.label}
               />
             )}
             {viewMode === 'gantt' && (
