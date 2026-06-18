@@ -3042,11 +3042,18 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       }
     }
 
+    // Capture primary-pass end times before overwriting with concurrent secondary start times.
+    const preSecondaryFreeAtMins = new Map(workerFreeAtMins)
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
     runChannelPass(secStockList)
     runChannelPass(secDeficitList)
+    // Merge: each worker's true finish = max(primary end, secondary end).
+    for (const [nameKey, preMins] of preSecondaryFreeAtMins) {
+      const postMins = workerFreeAtMins.get(nameKey) ?? preMins
+      if (preMins > postMins) workerFreeAtMins.set(nameKey, preMins)
+    }
   }
 
   // Cross-station supplementary pass — runs AFTER all own-station work for every station is done.
@@ -3096,27 +3103,32 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       )
       if (ownEnd >= phaseEndMins) continue
 
-      // 2. Find workers with groups that map to OTHER stations, group by target station
-      const targetStationWorkers = new Map<string, WorkforceRow[]>()
+      // 2. Find workers with groups that map to OTHER stations, group by target station.
+      //    Also track which product groups each set of workers is eligible for at that station.
+      const targetStationData = new Map<string, { workers: WorkforceRow[], eligibleGroups: Set<string> }>()
       for (const w of stationWorkers) {
         const ji = jobAssignMap.get(normName(w.name))
         if (!ji) continue
         for (const [group] of ji.groups) {
           const groupStation = groupStationMap.get(group)
           if (!groupStation || groupStation === stationName) continue
-          if (!targetStationWorkers.has(groupStation)) targetStationWorkers.set(groupStation, [])
-          const list = targetStationWorkers.get(groupStation)!
-          if (!list.includes(w)) list.push(w)
+          if (!targetStationData.has(groupStation))
+            targetStationData.set(groupStation, { workers: [], eligibleGroups: new Set() })
+          const entry = targetStationData.get(groupStation)!
+          if (!entry.workers.includes(w)) entry.workers.push(w)
+          entry.eligibleGroups.add(group)
         }
       }
-      if (!targetStationWorkers.size) continue
+      if (!targetStationData.size) continue
 
-      for (const [targetStation, crossWorkers] of targetStationWorkers) {
-        // 3 & 4. Remaining unfinished work at targetStation for this run
+      for (const [targetStation, { workers: crossWorkers, eligibleGroups }] of targetStationData) {
+        // 3 & 4. Remaining unfinished work at targetStation — only SKUs whose product_group
+        //        matches the eligible groups of these cross workers.
         const crossTargets: SkuTarget[] = []
         for (const [ns, info] of totalTargetMap) {
           const prod = skuMap.get(ns)
           if (!prod) continue
+          if (!eligibleGroups.has(prod.product_group)) continue
           const skuSt = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
           if (skuSt !== targetStation) continue
           const key = `${targetStation}|||${ns}`
