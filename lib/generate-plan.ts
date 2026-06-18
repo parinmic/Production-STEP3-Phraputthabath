@@ -3306,7 +3306,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           // computed after own-station work finishes in the cross-station supplementary pass).
           const taskNote = String(task['note'] ?? '')
           if (taskNote.includes('cross:')) {
-            const allocatedStart = timeStrToMins(String(task['deadline_time'] ?? '00:00'))
+            const _dtp = (String(task['deadline_time'] ?? '00:00')).split(':').map(Number)
+            const allocatedStart = ((_dtp[0] ?? 0) * 60) + (_dtp[1] ?? 0)
             if (allocatedStart > startMins) {
               startMins = allocatedStart
               let readvanced = true
