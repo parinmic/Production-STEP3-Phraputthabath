@@ -350,12 +350,18 @@ interface SkuScheduleViewProps {
   ackedSkus: Set<string>
   onToggleSkuAck: (sku: string) => void
   stationLabel: string
+  stationMap: Record<string, string>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck, stationLabel }: SkuScheduleViewProps) {
-  // Task is supplementary if channel='เสริม' OR sku_name doesn't include the station name
-  const isSupp = (t: Assignment) =>
-    t.channel === 'เสริม' || !(t.sku_name ?? '').includes(stationLabel)
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck, stationLabel, stationMap }: SkuScheduleViewProps) {
+  // Task is supplementary if channel='เสริม' OR its SKU belongs to a different station in mas_productivity
+  const isSupp = (t: Assignment) => {
+    if (t.channel === 'เสริม') return true
+    const skuStation = stationMap[t.sku] ?? stationMap[t.sku.replace(/^0+/, '')]
+    if (skuStation) return !skuStation.includes(stationLabel)
+    // Fallback: check sku_name contains station label
+    return !(t.sku_name ?? '').includes(stationLabel)
+  }
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -1406,6 +1412,7 @@ export default function TablePage() {
   const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
+  const [stationMap, setStationMap] = useState<Record<string, string>>({})
   const [nameMap, setNameMap]       = useState<Record<string, string>>({})
   const [bagMap, setBagMap]         = useState<Record<string, number>>({})
   const [loading, setLoading]         = useState(false)
@@ -1470,7 +1477,7 @@ export default function TablePage() {
   useEffect(() => {
     fetch('/api/master/productivity')
       .then(r => r.json())
-      .then(data => setRateMap(data.rateMap ?? {}))
+      .then(data => { setRateMap(data.rateMap ?? {}); setStationMap(data.stationMap ?? {}) })
     fetch('/api/master/picking-unit')
       .then(r => r.json())
       .then(data => setBagMap(data.bagMap ?? {}))
@@ -1727,6 +1734,7 @@ export default function TablePage() {
                 ackedSkus={ackedSkus}
                 onToggleSkuAck={toggleSkuAck}
                 stationLabel={cfg.label}
+                stationMap={stationMap}
               />
             )}
             {viewMode === 'gantt' && (
