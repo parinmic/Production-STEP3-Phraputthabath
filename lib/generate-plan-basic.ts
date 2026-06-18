@@ -1345,6 +1345,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     })
   assignList = [...specialList, ...assignList.filter(i => !hasSpecialTimes(i.sku))]
 
+  // groupYieldCap: yield (กก.) per product_group for selectedPhase — shared by cap + raw remainder
+  let groupYieldCap: Record<string, number> = {}
+
   // Cap assignList to carcass yield per product group (assignList is already priority-ordered)
   if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
     const capLots    = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
@@ -1353,7 +1356,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
 
     let capPoolIdx = 0
-    const groupYieldCap: Record<string, number> = {}
 
     for (const seg of CARCASS_ACTIVE_SEGS) {
       const pigs = Math.floor((seg.mins * 60) / capRate)
@@ -1626,68 +1628,34 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   })
 
   // Add Raw remainder assignments from carcass yield (if lot data supplied by client)
-  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
-    const sortedLots = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
-    const cRate = params.carcassRate
-    const masYield  = masYieldRaw  as { carcass_weight: number; product_group: string; yield_pct: number }[]
-    const masSay    = (masSayapanRaw ?? []) as { product_group: string; station: string }[]
-    const uniqueWts = [...new Set(masYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
-
-    let lotPoolIdx = 0
-    const phaseGroupKg: Record<string, number> = {}
-
-    for (const seg of CARCASS_ACTIVE_SEGS) {
-      const pigs = Math.floor((seg.mins * 60) / cRate)
-      let need = pigs
-      const usages: { qty: number; avg: number }[] = []
-
-      while (need > 0 && lotPoolIdx < sortedLots.length) {
-        const lot = sortedLots[lotPoolIdx]
-        const take = Math.min(need, lot.remaining)
-        if (take > 0) {
-          usages.push({ qty: take, avg: lot.avg_weight })
-          lot.remaining -= take
-          need -= take
-        }
-        if (lot.remaining === 0) lotPoolIdx++
-      }
-
-      if (seg.phase !== selectedPhase) continue
-
-      for (const u of usages) {
-        const wt = uniqueWts.reduce((best, w) => Math.abs(w - u.avg) < Math.abs(best - u.avg) ? w : best, uniqueWts[0] ?? 0)
-        for (const my of masYield) {
-          if (my.carcass_weight !== wt) continue
-          const kg = (my.yield_pct / 100) * u.avg * u.qty
-          phaseGroupKg[my.product_group] = (phaseGroupKg[my.product_group] ?? 0) + kg
-        }
-      }
-    }
-
-    // Append Raw remainder assignments — station level (avoids product_group naming mismatch)
+  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0 && Object.keys(groupYieldCap).length > 0) {
+    // Append Raw remainder assignments — per Raw SKU's own product_group
+    // This ensures: production displayed under that group ≤ yield for that group
     let rawSeq = resequenced.length
     for (const station of BASIC_TABLE_NAMES) {
-      const stationGroups = masSay.filter(r => r.station === station).map(r => r.product_group)
-      if (!stationGroups.length) continue
-
-      // Total expected yield at this station (sum all sayapan groups)
-      const totalExpectedKg = stationGroups.reduce((s, grp) => s + (phaseGroupKg[grp] ?? 0), 0)
-      if (totalExpectedKg <= 0) continue
-
-      // Total already assigned at this station (all order-based assignments)
-      const totalAssignedKg = resequenced
-        .filter(a => String(a['table_name'] ?? '') === station)
-        .reduce((s, a) => s + Number(a['target_quantity'] ?? 0), 0)
-
-      const remainKg = Math.round((totalExpectedKg - totalAssignedKg) * 10) / 10
-      if (remainKg <= 0) continue
-
-      // Find Raw SKU at this station by sku_name suffix (no product_group constraint)
+      // Find Raw SKU at this station by sku_name suffix
       const rawProd = productivity.find(p =>
         toBasicStation(p.station) === station &&
         p.sku_name.trim().toLowerCase().endsWith('-raw')
       )
-      if (!rawProd) continue
+      if (!rawProd || !rawProd.product_group) continue
+
+      const rawGrp  = rawProd.product_group
+      // Yield cap for THIS group (from the same cap computation above)
+      const yieldKg = groupYieldCap[rawGrp] ?? 0
+      if (yieldKg <= 0) continue
+
+      // Sum assignments that belong to this product group (same group matching as cap block)
+      const assignedForGrp = resequenced
+        .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('raw_remainder'))
+        .reduce((s, a) => {
+          const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+          const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+          return prod?.product_group === rawGrp ? s + Number(a['target_quantity'] ?? 0) : s
+        }, 0)
+
+      const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
+      if (remainKg <= 0) continue
 
       resequenced.push({
         production_date: productionDate,
