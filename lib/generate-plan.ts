@@ -3390,8 +3390,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           const rate = prod?.rate ?? 0
           const durationMins = rate > 0 ? (qty / rate) * 60 : 0
 
-          secTask['deadline_time'] = minsToTimeStr(curTime)
           const note = String(secTask['note'] ?? '')
+          // Cross-station secondaries must not start before their allocated start (which
+          // was set after own-station work finishes). Pulling them back to primaryStart
+          // would violate the cross-station timing constraint.
+          if (note.includes('cross:')) {
+            const allocatedStart = toMins(secTask['deadline_time'] as string)
+            if (allocatedStart > curTime) curTime = allocatedStart
+          }
+
+          secTask['deadline_time'] = minsToTimeStr(curTime)
           if (!note.includes('|concurrent')) secTask['note'] = note ? note + '|concurrent' : 'concurrent'
 
           curTime += durationMins
