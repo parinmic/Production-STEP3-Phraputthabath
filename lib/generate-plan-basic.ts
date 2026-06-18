@@ -848,7 +848,19 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   workforce = workforce.filter(w =>
     (BASIC_TABLE_NAMES as readonly string[]).includes(normalizeStation(w.work_station ?? ''))
   )
-  if (workforce.length === 0) workforce = await fetchWeeklyWorkforceBasic(productionDate)
+
+  // Per-station fallback: stations missing from daily → fill from weekly workforce
+  const stationsWithDaily = new Set(workforce.map(w => normalizeStation(w.work_station ?? '')))
+  const missingStations = (BASIC_TABLE_NAMES as readonly string[]).filter(s => !stationsWithDaily.has(s))
+  if (missingStations.length > 0) {
+    const weeklyWorkers = await fetchWeeklyWorkforceBasic(productionDate)
+    for (const w of weeklyWorkers) {
+      if (!missingStations.includes(normalizeStation(w.work_station ?? ''))) continue
+      const k = normName(w.name)
+      if (!seenWf.has(k)) { seenWf.add(k); workforce.push(w) }
+    }
+  }
+
   if (!workforce.length) return {
     success: false,
     message: 'ไม่พบข้อมูลกำลังคน Basic — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly (Basic)',
