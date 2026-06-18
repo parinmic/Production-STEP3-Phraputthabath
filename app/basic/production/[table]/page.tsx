@@ -1335,9 +1335,17 @@ export default function BasicTablePage() {
     if (selectedPhase === 'all') return
     setGenerating(true); setGenResult(null); setShowGenModal(false)
     try {
+      let carcassLots: unknown = undefined
+      let carcassRate: number | undefined = undefined
+      try {
+        const lotsRaw = localStorage.getItem('pig_carcass_selected')
+        const rateRaw = localStorage.getItem('pig_carcass_rate')
+        if (lotsRaw) carcassLots = JSON.parse(lotsRaw)
+        if (rateRaw) carcassRate = parseFloat(rateRaw) || undefined
+      } catch { /* ignore */ }
       const res = await fetch('/api/production/generate-basic', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: selectedPhase, deductMode }),
+        body: JSON.stringify({ date, phase: selectedPhase, deductMode, carcassLots, carcassRate }),
       })
       const result = await res.json()
       setGenResult(result)

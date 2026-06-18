@@ -32,10 +32,19 @@ interface SkuTarget {
   isDeficit?: boolean
 }
 
+interface CarcassLot {
+  spec_code:  string
+  qty:        number
+  avg_weight: number
+  order:      number
+}
+
 export interface GenerateBasicPlanParams {
   date?: string
   phase?: number
   deductMode?: 'plan' | 'actual' | 'yield'
+  carcassLots?: CarcassLot[]
+  carcassRate?: number
 }
 
 export interface GenerateBasicPlanResult {
@@ -65,6 +74,14 @@ const PHASE_ROUND_MINS: Record<number, number[]> = {
 const BREAKS: [number, number][] = [
   [720,  780],  // 12:00–13:00
   [1020, 1080], // 17:00–18:00
+]
+
+// Active (non-break) carcass processing segments, matching CarcassGanttPanel
+const CARCASS_ACTIVE_SEGS = [
+  { phase: 1, mins: 210 },  // 08:30–12:00
+  { phase: 1, mins: 90  },  // 13:00–14:30  (break excluded)
+  { phase: 2, mins: 90  },  // 14:30–16:00
+  { phase: 3, mins: 60  },  // 16:00–17:00
 ]
 
 // Basic master calculation_type strings
@@ -781,6 +798,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: masterProductTypeRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
+    { data: masYieldRaw },
+    { data: masSayapanRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
@@ -834,6 +853,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
+    supabase.from('mas_yield').select('carcass_weight, product_group, yield_pct'),
+    supabase.from('mas_sayapan').select('product_group, station'),
   ])
 
   // Merge daily workforce: manual > 1530 > 0930 → fallback weekly
@@ -1557,6 +1578,93 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const normSku = (a['sku'] as string ?? '').replace(/^0+/, '')
     if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
+
+  // Add Raw remainder assignments from carcass yield (if lot data supplied by client)
+  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
+    const sortedLots = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
+    const cRate = params.carcassRate
+    const masYield  = masYieldRaw  as { carcass_weight: number; product_group: string; yield_pct: number }[]
+    const masSay    = (masSayapanRaw ?? []) as { product_group: string; station: string }[]
+    const uniqueWts = [...new Set(masYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
+
+    let lotPoolIdx = 0
+    const phaseGroupKg: Record<string, number> = {}
+
+    for (const seg of CARCASS_ACTIVE_SEGS) {
+      const pigs = Math.floor((seg.mins * 60) / cRate)
+      let need = pigs
+      const usages: { qty: number; avg: number }[] = []
+
+      while (need > 0 && lotPoolIdx < sortedLots.length) {
+        const lot = sortedLots[lotPoolIdx]
+        const take = Math.min(need, lot.remaining)
+        if (take > 0) {
+          usages.push({ qty: take, avg: lot.avg_weight })
+          lot.remaining -= take
+          need -= take
+        }
+        if (lot.remaining === 0) lotPoolIdx++
+      }
+
+      if (seg.phase !== selectedPhase) continue
+
+      for (const u of usages) {
+        const wt = uniqueWts.reduce((best, w) => Math.abs(w - u.avg) < Math.abs(best - u.avg) ? w : best, uniqueWts[0] ?? 0)
+        for (const my of masYield) {
+          if (my.carcass_weight !== wt) continue
+          const kg = (my.yield_pct / 100) * u.avg * u.qty
+          phaseGroupKg[my.product_group] = (phaseGroupKg[my.product_group] ?? 0) + kg
+        }
+      }
+    }
+
+    // Sum kg already assigned per product_group (from order-based resequenced)
+    const assignedByGroup: Record<string, number> = {}
+    for (const a of resequenced) {
+      const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+      const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+      if (!prod?.product_group) continue
+      assignedByGroup[prod.product_group] = (assignedByGroup[prod.product_group] ?? 0) + Number(a['target_quantity'] ?? 0)
+    }
+
+    // Append Raw remainder assignments per station
+    let rawSeq = resequenced.length
+    for (const station of BASIC_TABLE_NAMES) {
+      const stationGroups = masSay.filter(r => r.station === station).map(r => r.product_group)
+      for (const grp of stationGroups) {
+        const expectedKg = phaseGroupKg[grp] ?? 0
+        const assignedKg = assignedByGroup[grp] ?? 0
+        const remainKg   = Math.round((expectedKg - assignedKg) * 10) / 10
+        if (remainKg <= 0) continue
+
+        const rawProd = productivity.find(p =>
+          toBasicStation(p.station) === station &&
+          p.product_group === grp &&
+          p.sku_name.trim().toLowerCase().endsWith('-raw')
+        )
+        if (!rawProd) continue
+
+        resequenced.push({
+          production_date: productionDate,
+          table_name:      station,
+          worker_code:     null,
+          worker_name:     'สต๊อก Raw',
+          sku:             rawProd.sku,
+          sku_name:        rawProd.sku_name,
+          target_quantity: remainKg,
+          unit:            'RAW',
+          period:          phaseCfg.period,
+          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
+          status:          'รอผลิต',
+          seq:             rawSeq++,
+          channel:         'RAW',
+          note:            'raw_remainder',
+          is_deficit:      false,
+          effective_from:  effectiveFromISO,
+        })
+      }
+    }
+  }
 
   // Delete previous basic assignments for this period
   if (useRegen) {
