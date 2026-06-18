@@ -361,7 +361,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean }[], minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean }[], minSeq: number; isRaw: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
@@ -388,7 +388,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       const endMin = wallClockFinish(startMin, dur)
       cur = Math.max(cur, endMin)
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw: task.unit === 'RAW' }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
@@ -396,6 +396,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       s.minStart = Math.min(s.minStart, startMin)
       s.maxEnd   = Math.max(s.maxEnd, endMin)
       s.minSeq   = Math.min(s.minSeq, task.seq ?? 999999)
+      if (task.unit === 'RAW') s.isRaw = true
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
     }
 
@@ -511,7 +512,12 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                   <div className="min-w-0">
                     <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                     <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {(() => {
+                      {stat.isRaw ? (
+                        <>
+                          {stat.totalQty.toLocaleString()} กก.
+                          <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                        </>
+                      ) : (() => {
                         const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
                         const bags = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : 0
                         const displayQty = wpb && wpb > 0 ? bags * wpb : stat.totalQty
@@ -732,7 +738,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>, minStart: number, minSeq: number }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>, minStart: number, minSeq: number, isRaw: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   for (const rawTasks of Object.values(byWorker)) {
@@ -748,11 +754,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
         }
       }
       cur = wallClockFinish(startMin, dur)
-      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999 }
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999, isRaw: task.unit === 'RAW' }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
       skuStats[task.sku].minStart = Math.min(skuStats[task.sku].minStart, startMin)
       skuStats[task.sku].minSeq = Math.min(skuStats[task.sku].minSeq, task.seq ?? 999999)
+      if (task.unit === 'RAW') skuStats[task.sku].isRaw = true
     }
   }
 
@@ -822,8 +829,11 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
             <div key={sku}
               className={`grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
               <div className="flex items-center gap-2 min-w-0 pr-2">
-                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight shrink-0">{stat.name ?? sku}</p>
-                {bags !== null && bags > 0 && (
+                <p className="text-xs sm:text-sm font-medium text-gray-800 leading-tight shrink-0">
+                  {stat.name ?? sku}
+                  {stat.isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
+                </p>
+                {!stat.isRaw && bags !== null && bags > 0 && (
                   <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
                     <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
                     {yieldBags !== null && yieldBags > 0 && (
@@ -838,7 +848,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                 )}
               </div>
               <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
-                {bags !== null ? bags.toLocaleString() : '—'}
+                {stat.isRaw ? <span className="text-amber-600 font-bold">RAW</span> : bags !== null ? bags.toLocaleString() : '—'}
               </p>
               <button
                 onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
@@ -1038,18 +1048,22 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
                 const col      = skuColor[t.sku]
                 const isDone   = t.status === 'เสร็จแล้ว'
                 const isDeficit = !!t.note?.includes('|deficit')
+                const isRaw    = t.unit === 'RAW'
                 return (
                   <div key={t.id} className="flex items-start gap-2 rounded-lg px-3 py-2"
-                    style={{ background: col.bg + '20', border: isDeficit ? '1.5px solid #ef4444' : '1.5px solid transparent' }}>
-                    <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: isDeficit ? '#ef4444' : col.bg, opacity: isDone ? 0.5 : 1 }} />
+                    style={{ background: isRaw ? '#fef3c720' : col.bg + '20', border: isDeficit ? '1.5px solid #ef4444' : isRaw ? '1.5px solid #f59e0b' : '1.5px solid transparent' }}>
+                    <span className="w-2 h-2 rounded-sm shrink-0 mt-1" style={{ backgroundColor: isDeficit ? '#ef4444' : isRaw ? '#f59e0b' : col.bg, opacity: isDone ? 0.5 : 1 }} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium leading-tight" style={{ color: isDeficit ? '#dc2626' : col.fg }}>
+                      <p className="text-xs font-medium leading-tight" style={{ color: isDeficit ? '#dc2626' : isRaw ? '#92400e' : col.fg }}>
                         {t.sku_name ?? t.sku}
+                        {isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
                       </p>
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono text-gray-400">{timeRangeLabel(t.startMin, t.endMin)}</span>
-                        <span className="text-xs font-bold ml-2" style={{ color: isDeficit ? '#dc2626' : col.fg }}>
-                          {bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), bagMap)}{roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap).toLocaleString()} กก.
+                        <span className="text-xs font-bold ml-2" style={{ color: isDeficit ? '#dc2626' : isRaw ? '#92400e' : col.fg }}>
+                          {isRaw
+                            ? `${Number(t.target_quantity).toLocaleString()} กก.`
+                            : `${bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), bagMap)}${roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap).toLocaleString()} กก.`}
                         </span>
                       </div>
                     </div>

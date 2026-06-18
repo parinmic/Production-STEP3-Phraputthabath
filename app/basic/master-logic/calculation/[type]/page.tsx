@@ -10,6 +10,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
   'mas-variance-wet-market-basic': { label: 'Mas %Variance Wet Market Basic',desc: 'ปรับ % target Wet Market — เบสิค', dot: 'border-cyan-500' },
   'mas-variance-lotus-basic':      { label: 'Mas %Variance LOTUS Basic',     desc: 'ปรับ % target LOTUS — เบสิค', dot: 'border-lime-500' },
   'mas-special-basic':             { label: 'Mas Special Basic',             desc: 'ช่วงเวลาเริ่ม/หยุดผลิต SKU พิเศษ — เบสิค', dot: 'border-pink-500' },
+  'mas-product-type-basic':        { label: 'Mas Product Type Basic',        desc: 'กำหนด SKU ว่าเป็น Main Product (ผลิตเป็น RAW) หรือ By Product (ผลิตเป็น SKU) — คอลัมน์: SAP | ประเภท (Main/By)', dot: 'border-rose-500' },
   // STEP2 shared masters
   'mas-saipan':                    { label: 'Mas สายพาน',                   desc: 'mapping กลุ่มสินค้า → สายพาน/สถานีที่ผลิต', dot: 'border-yellow-500' },
   'mas-raw-basket':                { label: 'Mas ตะกร้า Raw',               desc: 'ปริมาณวัตถุดิบต่อตะกร้า (UNIX, SAP, ชื่อ, กก./ตะกร้า)', dot: 'border-amber-500' },

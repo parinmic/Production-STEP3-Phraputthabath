@@ -75,6 +75,7 @@ const CALC = {
   varWM:        'Mas %Variance Wet Market Basic',
   varLotus:     'Mas %Variance LOTUS Basic',
   special:      'Mas Special Basic',
+  productType:  'Mas Product Type Basic',
 } as const
 
 // ========== Pure Utilities ==========
@@ -777,6 +778,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: masterVarWMRaw },
     { data: masterVarMakroRaw },
     { data: masterSpecialRaw },
+    { data: masterProductTypeRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
   ] = await Promise.all([
@@ -822,6 +824,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       .eq('calculation_type', CALC.varMakro).order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', CALC.special).order('uploaded_at', { ascending: false }).limit(5000),
+    supabase.from('master_logic_calculation').select('row_data')
+      .eq('calculation_type', CALC.productType).order('uploaded_at', { ascending: false }).limit(5000),
     useRegen
       ? supabase.from('production_assignments').select('*')
           .eq('production_date', productionDate).eq('period', phaseCfg.period)
@@ -933,6 +937,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       specialTimeMap.set(sap, entry)
       specialTimeMap.set(sap.replace(/^0+/, ''), entry)
     }
+  }
+
+  // Build main product SKU set (unit = 'RAW' when assigned)
+  const mainSkuSet = new Set<string>()
+  for (const row of masterProductTypeRaw ?? []) {
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
+    const sap  = String(r['SAP'] ?? '').trim().replace(/^0+/, '')
+    const type = String(r['ประเภท'] ?? r['product_type'] ?? '').trim().toLowerCase()
+    if (sap && (type === 'main' || type === 'หลัก')) mainSkuSet.add(sap)
   }
 
   // Parse productivity master
@@ -1536,6 +1549,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       a.note = (a.note ?? '') + '|deficit'
     }
     a['is_deficit'] = !!a.is_deficit
+    const normSku = (a['sku'] as string ?? '').replace(/^0+/, '')
+    if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
 
   // Delete previous basic assignments for this period
