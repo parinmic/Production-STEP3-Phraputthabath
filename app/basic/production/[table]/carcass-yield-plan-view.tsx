@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 const CARCASS_ACTIVE_SEGS = [
   { phase: 1, mins: 210 },
@@ -9,49 +10,44 @@ const CARCASS_ACTIVE_SEGS = [
   { phase: 3, mins: 60  },
 ]
 
-interface MasYieldRow  { carcass_weight: number; product_group: string; yield_pct: number }
-interface SayapanRow   { product_group: string; station: string }
-interface ProdRow      { sku: string; sku_name: string; product_group: string; station: string }
-interface CarcassLot   { qty: number; avg_weight: number; order: number }
+const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค'] as const
+const PHASE_PERIOD: Record<number, string> = { 1: 'เช้า', 2: 'บ่าย', 3: 'ค่ำ' }
 
-export interface YieldPlanItem {
-  sku:             string
-  sku_name:        string | null
-  target_quantity: number
-  unit:            string | null
-  note:            string | null
-  channel:         string | null
+interface MasYieldRow { carcass_weight: number; product_group: string; yield_pct: number }
+interface SayapanRow  { product_group: string; station: string }
+interface ProdRow     { sku: string; sku_name: string; product_group: string; station: string }
+interface CarcassLot  { qty: number; avg_weight: number; order: number }
+interface AssignRow   {
+  sku: string; sku_name: string | null; target_quantity: number
+  unit: string | null; note: string | null; channel: string | null; table_name: string
 }
 
 function closestWt(avg: number, wts: number[]) {
   if (!wts.length) return 0
   return wts.reduce((b, w) => Math.abs(w - avg) < Math.abs(b - avg) ? w : b, wts[0])
 }
-
-function fmt(n: number, dec = 0) {
-  return n.toLocaleString('th-TH', { maximumFractionDigits: dec })
-}
+function fmt(n: number) { return n.toLocaleString('th-TH', { maximumFractionDigits: 0 }) }
 
 export default function CarcassYieldPlanView({
-  stationName,
   selectedPhase,
-  items,
+  date,
 }: {
-  stationName:   string
   selectedPhase: number | 'all'
-  items:         YieldPlanItem[]
+  date: string
 }) {
   const [lots,     setLots]     = useState<CarcassLot[]>([])
   const [rate,     setRate]     = useState(90)
   const [masYield, setMasYield] = useState<MasYieldRow[]>([])
   const [sayapan,  setSayapan]  = useState<SayapanRow[]>([])
   const [prodMap,  setProdMap]  = useState<Map<string, string>>(new Map())
+  const [items,    setItems]    = useState<AssignRow[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true); setError('')
     try {
+      const period = selectedPhase !== 'all' ? PHASE_PERIOD[selectedPhase] : null
       const [yRes, sRes, pRes] = await Promise.all([
         fetch('/api/basic/mas-yield'),
         fetch('/api/basic/mas-sayapan'),
@@ -62,6 +58,7 @@ export default function CarcassYieldPlanView({
       if (sj.error) throw new Error(sj.error)
       setMasYield(yj.rows as MasYieldRow[])
       setSayapan(sj.rows as SayapanRow[])
+
       const m = new Map<string, string>()
       for (const p of (pj.rows ?? []) as ProdRow[]) {
         const norm = p.sku.replace(/^0+/, '')
@@ -69,12 +66,27 @@ export default function CarcassYieldPlanView({
         if (!m.has(norm))   m.set(norm, p.product_group)
       }
       setProdMap(m)
+
+      // Fetch production assignments for ALL basic stations
+      if (period) {
+        const { data, error: dbErr } = await supabase
+          .from('production_assignments')
+          .select('sku, sku_name, target_quantity, unit, note, channel, table_name')
+          .eq('production_date', date)
+          .eq('period', period)
+          .in('table_name', [...BASIC_STATIONS])
+          .order('seq', { ascending: true })
+        if (dbErr) throw new Error(dbErr.message)
+        setItems((data ?? []) as AssignRow[])
+      } else {
+        setItems([])
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'โหลดข้อมูลไม่สำเร็จ')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedPhase, date])
 
   useEffect(() => {
     try {
@@ -117,9 +129,13 @@ export default function CarcassYieldPlanView({
     }
   }
 
-  // ── Build group list (station groups, sorted by yield desc) ────────
-  const stationGroups = sayapan.filter(r => r.station === stationName).map(r => r.product_group)
-  const sortedGroups  = [...stationGroups]
+  // ── Build group list (ALL basic stations, sorted by yield desc) ────
+  const allGroups = sayapan
+    .filter(r => (BASIC_STATIONS as readonly string[]).includes(r.station))
+    .map(r => r.product_group)
+    .filter((g, i, a) => a.indexOf(g) === i)  // unique
+
+  const sortedGroups = allGroups
     .map(grp => ({ grp, yieldKg: phaseGroupKg[grp] ?? 0 }))
     .sort((a, b) => b.yieldKg - a.yieldKg)
 
@@ -127,8 +143,7 @@ export default function CarcassYieldPlanView({
   const rawItems = items.filter(a => a.note?.includes('raw_remainder'))
   const skuItems = items.filter(a => !a.note?.includes('raw_remainder'))
 
-  // Aggregate SKU items by group+sku
-  type SkuRow = { sku: string; name: string; qty: number; unit: string; channel: string }
+  type SkuRow = { sku: string; name: string; qty: number; unit: string; channel: string; station: string }
   const skuByGroup: Record<string, SkuRow[]> = {}
   for (const a of skuItems) {
     const norm = (a.sku ?? '').replace(/^0+/, '')
@@ -137,42 +152,38 @@ export default function CarcassYieldPlanView({
     const ex = skuByGroup[grp].find(x => x.sku.replace(/^0+/, '') === norm)
     if (ex) { ex.qty += a.target_quantity }
     else skuByGroup[grp].push({
-      sku:     a.sku ?? '',
-      name:    a.sku_name ?? a.sku ?? '',
-      qty:     a.target_quantity,
-      unit:    a.unit ?? 'กก.',
-      channel: a.channel ?? '',
+      sku: a.sku ?? '', name: a.sku_name ?? a.sku ?? '',
+      qty: a.target_quantity, unit: a.unit ?? 'กก.',
+      channel: a.channel ?? '', station: a.table_name,
     })
   }
 
-  // Raw items by group
-  type RawRow = { name: string; qty: number }
+  type RawRow = { name: string; qty: number; station: string }
   const rawByGroup: Record<string, RawRow> = {}
   for (const a of rawItems) {
     const norm = (a.sku ?? '').replace(/^0+/, '')
     const grp  = prodMap.get(norm) ?? prodMap.get(a.sku ?? '') ?? '__other__'
-    if (!rawByGroup[grp]) rawByGroup[grp] = { name: a.sku_name ?? 'Raw', qty: 0 }
+    if (!rawByGroup[grp]) rawByGroup[grp] = { name: a.sku_name ?? 'Raw', qty: 0, station: a.table_name }
     rawByGroup[grp].qty += a.target_quantity
   }
 
-  // Groups including catch-all for unmatched items
-  const displayGroups = [...sortedGroups]
   const hasOther = (skuByGroup['__other__']?.length ?? 0) + (rawByGroup['__other__'] ? 1 : 0) > 0
-  if (hasOther) displayGroups.push({ grp: '__other__', yieldKg: 0 })
+  const displayGroups = hasOther ? [...sortedGroups, { grp: '__other__', yieldKg: 0 }] : sortedGroups
 
-  const grandYield   = sortedGroups.reduce((s, g) => s + g.yieldKg, 0)
+  const grandYield    = sortedGroups.reduce((s, g) => s + g.yieldKg, 0)
   const grandAssigned = skuItems.reduce((s, a) => s + a.target_quantity, 0)
-  const grandRaw     = rawItems.reduce((s, a) => s + a.target_quantity, 0)
+  const grandRaw      = rawItems.reduce((s, a) => s + a.target_quantity, 0)
+  const totalLots     = lots.reduce((s, l) => s + l.qty, 0)
 
   return (
     <div className="rounded-2xl border border-gray-200 overflow-hidden">
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-700 to-slate-600">
         <div>
-          <span className="text-white font-bold text-sm">แผนตาม Yield — Phase {selectedPhase} · {stationName}</span>
-          {lots.length > 0 && (
+          <span className="text-white font-bold text-sm">แผนตาม Yield — Phase {selectedPhase}</span>
+          {totalLots > 0 && (
             <span className="text-slate-300 text-xs ml-3">
-              {lots.reduce((s, l) => s + l.qty, 0).toLocaleString('th-TH')} ตัว · อัตรา {rate} วิ/ตัว
+              {totalLots.toLocaleString('th-TH')} ตัว · อัตรา {rate} วิ/ตัว
               {grandYield > 0 && ` · Yield รวม ${fmt(grandYield)} กก.`}
             </span>
           )}
@@ -194,21 +205,21 @@ export default function CarcassYieldPlanView({
 
       {!loading && !error && (
         <div className="bg-white divide-y divide-gray-100">
-          {displayGroups.length === 0 && lots.length === 0 && (
+          {displayGroups.length === 0 && totalLots === 0 && (
             <p className="text-center py-8 text-gray-400 text-sm">
               ยังไม่ได้เลือกล็อตหมูซีก — ไปที่หน้าเบิกหมูซีกเพื่อเลือกล็อต
             </p>
           )}
-          {displayGroups.length === 0 && lots.length > 0 && (
+          {displayGroups.length === 0 && totalLots > 0 && (
             <p className="text-center py-8 text-gray-400 text-sm">
               ไม่พบข้อมูล — กรุณาอัพโหลด Mas สายพาน และ Mas Yield
             </p>
           )}
 
           {displayGroups.map(({ grp, yieldKg }, gi) => {
-            const skus   = skuByGroup[grp] ?? []
-            const rawRow = rawByGroup[grp]
-            const label  = grp === '__other__' ? 'ไม่ระบุกลุ่ม' : grp
+            const skus       = skuByGroup[grp] ?? []
+            const rawRow     = rawByGroup[grp]
+            const label      = grp === '__other__' ? 'ไม่ระบุกลุ่ม' : grp
             const assignedKg = skus.reduce((s, x) => s + x.qty, 0) + (rawRow?.qty ?? 0)
             const usedPct    = yieldKg > 0 ? Math.min(100, (assignedKg / yieldKg) * 100) : 0
 
@@ -224,7 +235,6 @@ export default function CarcassYieldPlanView({
                   </div>
                   {yieldKg > 0 && (
                     <div className="flex items-center gap-2 shrink-0">
-                      {/* Progress bar */}
                       <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
                         <div className="h-full rounded-full bg-emerald-500 transition-all"
                           style={{ width: `${usedPct}%` }} />
@@ -243,10 +253,11 @@ export default function CarcassYieldPlanView({
                     className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 hover:bg-blue-50/30">
                     <div className="flex-1 min-w-0">
                       <span className="text-xs text-gray-700 truncate">{s.name}</span>
-                      {s.channel && (
+                      {s.channel && s.channel !== 'RAW' && (
                         <span className="ml-1.5 text-[10px] text-gray-400">{s.channel}</span>
                       )}
                     </div>
+                    <span className="text-[10px] text-gray-400 shrink-0 mr-1">{s.station}</span>
                     <span className={`text-xs font-semibold shrink-0 ${s.unit === 'RAW' ? 'text-amber-600' : 'text-blue-700'}`}>
                       {fmt(s.qty)} {s.unit === 'RAW' ? 'กก.(RAW)' : 'กก.'}
                     </span>
@@ -257,24 +268,25 @@ export default function CarcassYieldPlanView({
                 {rawRow && (
                   <div className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 bg-amber-50/40">
                     <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                      <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
                       <span className="text-xs text-amber-700">{rawRow.name}</span>
                     </div>
+                    <span className="text-[10px] text-gray-400 shrink-0 mr-1">{rawRow.station}</span>
                     <span className="text-xs font-semibold text-amber-700 shrink-0">{fmt(rawRow.qty)} กก.</span>
                   </div>
                 )}
 
-                {/* No plan yet for this group */}
+                {/* No plan yet */}
                 {skus.length === 0 && !rawRow && items.length === 0 && yieldKg > 0 && (
                   <div className="px-4 py-2 pl-8 border-t border-gray-50">
-                    <span className="text-[11px] text-gray-400">ยังไม่มีแผนผลิต — กด "สร้าง Phase {selectedPhase}"</span>
+                    <span className="text-[11px] text-gray-400">ยังไม่มีแผนผลิต — กด &quot;สร้าง Phase {selectedPhase}&quot;</span>
                   </div>
                 )}
               </div>
             )
           })}
 
-          {/* ── Grand total footer ── */}
+          {/* ── Footer ── */}
           {(grandAssigned > 0 || grandYield > 0) && (
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-t-2 border-gray-200">
               <span className="flex-1 text-xs font-bold text-gray-700">รวมทั้งหมด</span>

@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Layers } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
-import CarcassYieldPlanView, { type YieldPlanItem } from './carcass-yield-plan-view'
+import CarcassYieldPlanView from './carcass-yield-plan-view'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -1488,9 +1488,8 @@ export default function BasicTablePage() {
           )}
           {viewMode === 'yield' && (
             <CarcassYieldPlanView
-              stationName={cfg.label}
               selectedPhase={selectedPhase}
-              items={filtered as YieldPlanItem[]}
+              date={date}
             />
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
