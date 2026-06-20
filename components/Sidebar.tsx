@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Thermometer } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -105,6 +105,10 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+          <Link href="/temperature-check" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/temperature-check')}`} title="ตรวจอุณหภูมิ(QC)">
+            <Thermometer size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจอุณหภูมิ(QC)</span>
+          </Link>
           <Link href="/home" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/home')}`} title="ภาพรวม">
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
