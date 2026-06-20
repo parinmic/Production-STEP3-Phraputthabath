@@ -12,17 +12,20 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Return maps: { [sku]: rate } and { [sku]: station (จุดงาน) }
+  // Return maps: { [sku]: rate }, { [sku]: station }, { [sku]: product }
   const rateMap: Record<string, number> = {}
   const stationMap: Record<string, string> = {}
+  const productMap: Record<string, string> = {}
   for (const row of data ?? []) {
     const r = row.row_data as Record<string, unknown>
     const sku     = String(r['SAP'] ?? '').trim()
     const rate    = Number(r['กำลังการผลิต (กก./ชม./คน)'] ?? 0)
     const station = String(r['จุดงาน'] ?? '').trim()
+    const product = String(r['Product'] ?? '').trim()
     if (sku && rate > 0 && !rateMap[sku]) rateMap[sku] = rate
     if (sku && station && !stationMap[sku]) stationMap[sku] = station
+    if (sku && product && !productMap[sku]) productMap[sku] = product
   }
 
-  return NextResponse.json({ rateMap, stationMap })
+  return NextResponse.json({ rateMap, stationMap, productMap })
 }

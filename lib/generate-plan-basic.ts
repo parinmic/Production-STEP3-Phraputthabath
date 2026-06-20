@@ -22,6 +22,7 @@ interface ProductivityRow {
   sku: string
   sku_name: string
   rate: number
+  product: string
 }
 
 interface SkuTarget {
@@ -158,6 +159,7 @@ function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
       sku:           String(n['SAP'] ?? '').trim(),
       sku_name:      String(n['ชื่อสินค้า'] ?? '').trim(),
       rate:          Number(n['กำลังการผลิต (กก./ชม./คน)'] ?? 0),
+      product:       String(n['Product'] ?? '').trim(),
     })})
     .filter(r => r.station && r.sku && r.rate > 0)
 }

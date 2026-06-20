@@ -11,7 +11,7 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const rows: { sku: string; sku_name: string; product_group: string; station: string }[] = []
+  const rows: { sku: string; sku_name: string; product_group: string; station: string; product: string }[] = []
   const seen = new Set<string>()
 
   for (const row of data ?? []) {
@@ -20,9 +20,10 @@ export async function GET() {
     const sku_name      = String(r['ชื่อสินค้า'] ?? '').trim()
     const product_group = String(r['กลุ่มสินค้า'] ?? '').trim()
     const station       = String(r['จุดงาน'] ?? '').trim()
+    const product       = String(r['Product'] ?? '').trim()
     if (!sku || seen.has(sku)) continue
     seen.add(sku)
-    rows.push({ sku, sku_name, product_group, station })
+    rows.push({ sku, sku_name, product_group, station, product })
   }
 
   return NextResponse.json({ rows })
