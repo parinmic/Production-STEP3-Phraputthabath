@@ -330,9 +330,10 @@ interface SkuScheduleViewProps {
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
+  groupMap?: Record<string, string>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -430,20 +431,30 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     }
   }
 
+  const getGrp = (sku: string) => groupMap?.[sku] ?? groupMap?.[sku.replace(/^0+/, '')] ?? ''
+
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
     .sort((a, b) => {
-      const startA = skuStats[a].minStart
-      const startB = skuStats[b].minStart
+      const grpA = getGrp(a), grpB = getGrp(b)
+      if (grpA !== grpB) return grpA.localeCompare(grpB, 'th')
+      const startA = skuStats[a].minStart, startB = skuStats[b].minStart
       if (startA !== startB) return startA - startB
-      const endA = skuStats[a].maxEnd
-      const endB = skuStats[b].maxEnd
+      const endA = skuStats[a].maxEnd, endB = skuStats[b].maxEnd
       if (endA !== endB) return endA - endB
-      const seqA = skuStats[a].minSeq
-      const seqB = skuStats[b].minSeq
+      const seqA = skuStats[a].minSeq, seqB = skuStats[b].minSeq
       if (seqA !== seqB) return seqA - seqB
       return skuStats[b].totalQty - skuStats[a].totalQty
     })
+
+  // Build group → skus list for rendering with headers
+  const skuGroups: { grp: string; skus: string[] }[] = []
+  for (const sku of sortedSkus) {
+    const grp = getGrp(sku)
+    const last = skuGroups[skuGroups.length - 1]
+    if (!last || last.grp !== grp) skuGroups.push({ grp, skus: [sku] })
+    else last.skus.push(sku)
+  }
 
   if (!sortedSkus.length) return null
 
@@ -477,98 +488,107 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       </div>
 
       <div className="divide-y divide-gray-50 relative">
-        {sortedSkus.map(sku => {
-          const stat      = skuStats[sku]
-          const col       = skuColor[sku]
+        {skuGroups.map(({ grp, skus }) => (
+          <div key={grp || '__other__'}>
+            {grp && (
+              <div className="flex items-center border-y border-gray-200 bg-gray-100/80 sticky top-8 sm:top-10 z-10">
+                <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1 border-r border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{grp}</span>
+                </div>
+                <div className="flex-1" />
+                <div className="w-24 sm:w-32 shrink-0" />
+              </div>
+            )}
+            {skus.map(sku => {
+              const stat      = skuStats[sku]
+              const col       = skuColor[sku]
+              const diffSecs  = stat.maxEnd * 60 - nowSecs
+              const isDone    = diffSecs <= 0
+              let cdText = ''
+              if (!isDone) {
+                const h = Math.floor(diffSecs / 3600)
+                const m = Math.floor((diffSecs % 3600) / 60)
+                const s = diffSecs % 60
+                cdText = h > 0 ? `${h}ชม. ${m}น. ${s}` : m > 0 ? `${m}น. ${s}` : `${s}`
+              }
+              const isActive  = !isDone && nowMins >= stat.minStart
+              const isPending = !isDone && nowMins < stat.minStart
+              const countdownCls = isDone
+                ? 'text-[10px] sm:text-xs text-green-500 font-semibold'
+                : isActive
+                  ? 'text-xs sm:text-sm font-bold text-red-500'
+                  : isPending
+                    ? 'text-xs sm:text-sm font-bold text-gray-300'
+                    : 'text-xs sm:text-sm font-bold text-gray-800'
 
-          const diffSecs = stat.maxEnd * 60 - nowSecs
-          const isDone = diffSecs <= 0
+              return (
+                <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px] relative z-10 bg-white">
+                  <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100 bg-white">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
+                        <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
+                          {stat.isRaw ? (
+                            <>
+                              {stat.totalQty.toLocaleString()} กก.
+                              <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                            </>
+                          ) : (() => {
+                            const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+                            const bags = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : 0
+                            const displayQty = wpb && wpb > 0 ? bags * wpb : stat.totalQty
+                            const bagsLabel = bags > 0 ? `${bags} ถุง · ` : ''
+                            return `${bagsLabel}${displayQty.toLocaleString()} กก.`
+                          })()}
+                          <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-          let cdText = ''
-          if (!isDone) {
-            const h = Math.floor(diffSecs / 3600)
-            const m = Math.floor((diffSecs % 3600) / 60)
-            const s = diffSecs % 60
-            cdText = h > 0 ? `${h}ชม. ${m}น. ${s}` : m > 0 ? `${m}น. ${s}` : `${s}`
-          }
+                  <div className="flex-1 relative h-10 sm:h-14">
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit)).map((seg, idx) => {
+                      const barLeft  = Math.max(pct(seg.start), 0)
+                      const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                      const segDone  = nowMins >= seg.end
+                      const segPend  = nowMins < seg.start
+                      return (
+                        <div key={`s-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                          style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
+                            opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                          onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      )
+                    })}
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
+                      const barLeft  = Math.max(pct(seg.start), 0)
+                      const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                      const segDone  = nowMins >= seg.end
+                      const segPend  = nowMins < seg.start
+                      const alpha    = segDone ? 0.45 : segPend ? 0.35 : 1
+                      return (
+                        <div key={`d-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                          style={{ left: `${barLeft}%`, width: `${barWidth}%`, opacity: alpha, background: col.bg, border: '2px solid #ef4444' }}
+                          onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      )
+                    })}
+                  </div>
 
-          const isActive  = !isDone && nowMins >= stat.minStart
-          const isPending = !isDone && nowMins < stat.minStart
-
-          const countdownCls = isDone
-            ? 'text-[10px] sm:text-xs text-green-500 font-semibold'
-            : isActive
-              ? 'text-xs sm:text-sm font-bold text-red-500'
-              : isPending
-                ? 'text-xs sm:text-sm font-bold text-gray-300'
-                : 'text-xs sm:text-sm font-bold text-gray-800'
-
-          return (
-            <div key={sku} className="flex items-center min-h-[44px] sm:min-h-[56px] relative z-10 bg-white">
-              <div className="w-28 sm:w-44 shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 border-r border-gray-100 bg-white">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-sm shrink-0" style={{ backgroundColor: col.bg }} />
-                  <div className="min-w-0">
-                    <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
-                    <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                      {stat.isRaw ? (
-                        <>
-                          {stat.totalQty.toLocaleString()} กก.
-                          <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
-                        </>
-                      ) : (() => {
-                        const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-                        const bags = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : 0
-                        const displayQty = wpb && wpb > 0 ? bags * wpb : stat.totalQty
-                        const bagsLabel = bags > 0 ? `${bags} ถุง · ` : ''
-                        return `${bagsLabel}${displayQty.toLocaleString()} กก.`
-                      })()}
-                      <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
+                  <div className="w-24 sm:w-32 shrink-0 px-2 sm:px-3 border-l border-gray-100 text-right">
+                    {isDone ? (
+                      <span className={countdownCls}>✓ เสร็จแล้ว</span>
+                    ) : (
+                      <span className={countdownCls}>{cdText}</span>
+                    )}
+                    <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
+                      เสร็จ {minsToLabel(stat.maxEnd)}
                     </p>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex-1 relative h-10 sm:h-14">
-                {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit)).map((seg, idx) => {
-                  const barLeft  = Math.max(pct(seg.start), 0)
-                  const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
-                  const segDone  = nowMins >= seg.end
-                  const segPend  = nowMins < seg.start
-                  return (
-                    <div key={`s-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
-                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
-                        opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
-                      onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
-                  )
-                })}
-                {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
-                  const barLeft  = Math.max(pct(seg.start), 0)
-                  const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
-                  const segDone  = nowMins >= seg.end
-                  const segPend  = nowMins < seg.start
-                  const alpha    = segDone ? 0.45 : segPend ? 0.35 : 1
-                  return (
-                    <div key={`d-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
-                      style={{ left: `${barLeft}%`, width: `${barWidth}%`, opacity: alpha, background: col.bg, border: '2px solid #ef4444' }}
-                      onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
-                  )
-                })}
-              </div>
-
-              <div className="w-24 sm:w-32 shrink-0 px-2 sm:px-3 border-l border-gray-100 text-right">
-                {isDone ? (
-                  <span className={countdownCls}>✓ เสร็จแล้ว</span>
-                ) : (
-                  <span className={countdownCls}>{cdText}</span>
-                )}
-                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
-                  เสร็จ {minsToLabel(stat.maxEnd)}
-                </p>
-              </div>
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        ))}
 
         {BREAKS.flatMap(([bs, be]) => {
           if (bs >= chartEnd || be <= chartStart) return []
@@ -1284,6 +1304,7 @@ export default function BasicTablePage() {
   const [rateMap, setRateMap]     = useState<Record<string, number>>({})
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
+  const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -1321,6 +1342,18 @@ export default function BasicTablePage() {
           if (w.firstName && w.firstName !== w.nickname) map[w.firstName] = display
         }
         setNameMap(map)
+      })
+    fetch('/api/basic/mas-productivity')
+      .then(r => r.json())
+      .then(data => {
+        const m: Record<string, string> = {}
+        for (const r of (data.rows ?? []) as { sku: string; product_group: string }[]) {
+          if (!r.product_group) continue
+          const norm = r.sku.replace(/^0+/, '')
+          if (!m[r.sku]) m[r.sku] = r.product_group
+          if (!m[norm])  m[norm]  = r.product_group
+        }
+        setGroupMap(m)
       })
   }, [])
 
@@ -1490,10 +1523,11 @@ export default function BasicTablePage() {
             <CarcassYieldPlanView
               selectedPhase={selectedPhase}
               date={date}
+              stationName={cfg.label}
             />
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />

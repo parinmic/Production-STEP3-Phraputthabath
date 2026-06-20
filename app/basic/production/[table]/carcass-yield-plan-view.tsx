@@ -31,9 +31,11 @@ function fmt(n: number) { return n.toLocaleString('th-TH', { maximumFractionDigi
 export default function CarcassYieldPlanView({
   selectedPhase,
   date,
+  stationName,
 }: {
   selectedPhase: number | 'all'
   date: string
+  stationName?: string
 }) {
   const [lots,     setLots]     = useState<CarcassLot[]>([])
   const [rate,     setRate]     = useState(90)
@@ -67,14 +69,15 @@ export default function CarcassYieldPlanView({
       }
       setProdMap(m)
 
-      // Fetch production assignments for ALL basic stations
+      // Fetch production assignments for this station only (or all basic stations if no filter)
+      const stationFilter = stationName ? [stationName] : [...BASIC_STATIONS]
       if (period) {
         const { data, error: dbErr } = await supabase
           .from('production_assignments')
           .select('sku, sku_name, target_quantity, unit, note, channel, table_name')
           .eq('production_date', date)
           .eq('period', period)
-          .in('table_name', [...BASIC_STATIONS])
+          .in('table_name', stationFilter)
           .order('seq', { ascending: true })
         if (dbErr) throw new Error(dbErr.message)
         setItems((data ?? []) as AssignRow[])
@@ -86,7 +89,7 @@ export default function CarcassYieldPlanView({
     } finally {
       setLoading(false)
     }
-  }, [selectedPhase, date])
+  }, [selectedPhase, date, stationName])
 
   useEffect(() => {
     try {
@@ -131,7 +134,7 @@ export default function CarcassYieldPlanView({
 
   // ── Build per-station group list (sorted by yield desc within each station) ──
   const seenGrps = new Set<string>()
-  const stationData = (BASIC_STATIONS as readonly string[]).map(stn => {
+  const stationData = (BASIC_STATIONS as readonly string[]).filter(stn => !stationName || stn === stationName).map(stn => {
     const grps = [...new Set(sayapan.filter(r => r.station === stn).map(r => r.product_group))]
       .filter(g => !seenGrps.has(g))
     grps.forEach(g => seenGrps.add(g))
