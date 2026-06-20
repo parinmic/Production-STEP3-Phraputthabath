@@ -977,10 +977,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
   }
 
-  // Build main SKU set: auto-detect sku_name ending '-Raw' + explicit Mas Product Type Basic overrides
+  // Build main SKU set: Product='RAW' from productivity master (fallback: sku_name ending '-Raw')
   const mainSkuSet = new Set<string>()
   for (const p of productivity) {
-    if (p.sku_name && p.sku_name.trim().toLowerCase().endsWith('-raw')) {
+    if (p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')) {
       mainSkuSet.add(p.sku.replace(/^0+/, ''))
     }
   }
@@ -1629,50 +1629,80 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
 
-  // Add Raw remainder assignments from carcass yield (if lot data supplied by client)
-  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0 && Object.keys(groupYieldCap).length > 0) {
-    // Append Raw remainder assignments — per Raw SKU's own product_group
-    // This ensures: production displayed under that group ≤ yield for that group
+  // Append remainder assignments (Raw or By Product TT) per group based on Product type
+  if (Object.keys(groupYieldCap).length > 0) {
     let rawSeq = resequenced.length
-    for (const station of BASIC_TABLE_NAMES) {
-      // Filter ALL Raw SKUs at this station — one station may have multiple Raw products
-      const rawProds = productivity.filter(p =>
-        toBasicStation(p.station) === station &&
-        p.sku_name.trim().toLowerCase().endsWith('-raw')
-      )
-      for (const rawProd of rawProds) {
-        if (!rawProd.product_group) continue
 
-        const rawGrp  = rawProd.product_group
-        const yieldKg = groupYieldCap[rawGrp] ?? 0
+    for (const station of BASIC_TABLE_NAMES) {
+      // All productivity rows at this station
+      const stationProds = productivity.filter(p => toBasicStation(p.station) === station)
+      // Unique product groups at this station
+      const stationGroups = [...new Set(stationProds.map(p => p.product_group).filter(Boolean))]
+
+      for (const grp of stationGroups) {
+        const yieldKg = groupYieldCap[grp] ?? 0
         if (yieldKg <= 0) continue
 
+        // Sum non-remainder assignments already planned for this group at this station
         const assignedForGrp = resequenced
-          .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('raw_remainder'))
+          .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('remainder'))
           .reduce((s, a) => {
             const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
             const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
-            return prod?.product_group === rawGrp ? s + Number(a['target_quantity'] ?? 0) : s
+            return prod?.product_group === grp ? s + Number(a['target_quantity'] ?? 0) : s
           }, 0)
 
         const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
         if (remainKg <= 0) continue
+
+        const grpProds = stationProds.filter(p => p.product_group === grp)
+
+        // Main Product: group has a RAW-type SKU → raw remainder
+        const rawProd = grpProds.find(p => p.product.toUpperCase() === 'RAW')
+        if (rawProd) {
+          resequenced.push({
+            production_date: productionDate,
+            table_name:      station,
+            worker_code:     'RAW',
+            worker_name:     'สต๊อก Raw',
+            sku:             rawProd.sku,
+            sku_name:        rawProd.sku_name,
+            target_quantity: remainKg,
+            unit:            'RAW',
+            period:          phaseCfg.period,
+            deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
+            status:          'รอผลิต',
+            seq:             rawSeq++,
+            channel:         'RAW',
+            note:            'raw_remainder',
+            is_deficit:      false,
+            effective_from:  effectiveFromISO,
+          })
+          continue
+        }
+
+        // By Product: no RAW SKU → find TT SKU → produce as regular SKU
+        const ttProd = grpProds.find(p =>
+          p.product.toLowerCase().includes('by') &&
+          p.sku_name.toLowerCase().includes('tt')
+        )
+        if (!ttProd) continue
 
         resequenced.push({
           production_date: productionDate,
           table_name:      station,
           worker_code:     'RAW',
           worker_name:     'สต๊อก Raw',
-          sku:             rawProd.sku,
-          sku_name:        rawProd.sku_name,
+          sku:             ttProd.sku,
+          sku_name:        ttProd.sku_name,
           target_quantity: remainKg,
-          unit:            'RAW',
+          unit:            'กก.',
           period:          phaseCfg.period,
           deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
           status:          'รอผลิต',
           seq:             rawSeq++,
-          channel:         'RAW',
-          note:            'raw_remainder',
+          channel:         'By Product',
+          note:            'by_product_remainder',
           is_deficit:      false,
           effective_from:  effectiveFromISO,
         })
