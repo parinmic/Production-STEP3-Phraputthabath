@@ -447,14 +447,15 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
       return skuStats[b].totalQty - skuStats[a].totalQty
     })
 
-  // Build group → skus list for rendering with headers
-  const skuGroups: { grp: string; skus: string[] }[] = []
+  // Build group → skus list, then sort groups by total quantity descending
+  const skuGroups: { grp: string; skus: string[]; totalQty: number }[] = []
   for (const sku of sortedSkus) {
     const grp = getGrp(sku)
     const last = skuGroups[skuGroups.length - 1]
-    if (!last || last.grp !== grp) skuGroups.push({ grp, skus: [sku] })
-    else last.skus.push(sku)
+    if (!last || last.grp !== grp) skuGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
+    else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
   }
+  skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
   if (!sortedSkus.length) return null
 
@@ -659,11 +660,12 @@ interface ProductionSummaryViewProps {
   bagMap: Record<string, number>
   date: string
   tableName: string
+  groupMap?: Record<string, string>
 }
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -782,11 +784,25 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     }
   }
 
+  const getSummaryGrp = (sku: string) => groupMap?.[sku] ?? groupMap?.[sku.replace(/^0+/, '')] ?? ''
+
   const sortedSkus = allSkus.filter(sku => skuStats[sku]).sort((a, b) => {
+    const grpA = getSummaryGrp(a), grpB = getSummaryGrp(b)
+    if (grpA !== grpB) return grpA.localeCompare(grpB, 'th')
     if (skuStats[a].minStart !== skuStats[b].minStart) return skuStats[a].minStart - skuStats[b].minStart
     if (skuStats[a].minSeq !== skuStats[b].minSeq) return skuStats[a].minSeq - skuStats[b].minSeq
     return skuStats[b].totalQty - skuStats[a].totalQty
   })
+
+  // Build groups sorted by total qty desc
+  const summaryGroups: { grp: string; skus: string[]; totalQty: number }[] = []
+  for (const sku of sortedSkus) {
+    const grp = getSummaryGrp(sku)
+    const last = summaryGroups[summaryGroups.length - 1]
+    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
+    else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
+  }
+  summaryGroups.sort((a, b) => b.totalQty - a.totalQty)
 
   if (!sortedSkus.length) return null
 
@@ -836,66 +852,77 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       </div>
 
       <div className="divide-y divide-gray-50">
-        {sortedSkus.map((sku, i) => {
-          const stat    = skuStats[sku]
-          const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-          const bags    = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : null
-          const total   = skuTotal(sku)
-          const hasData = total > 0
-          const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
+        {summaryGroups.map(({ grp, skus }) => (
+          <div key={grp || '__other__'}>
+            {grp && (
+              <div className="grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-1 bg-gray-100/80 border-y border-gray-200 sticky top-0 z-10">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide col-span-5">{grp}</span>
+              </div>
+            )}
+            {skus.map((sku, i) => {
+              const stat    = skuStats[sku]
+              const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+              const bags    = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : null
+              const total   = skuTotal(sku)
+              const hasData = total > 0
+              const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
 
-          return (
-            <div key={sku}
-              className={`grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
-              <div className="flex items-start gap-2 min-w-0 pr-1">
-                <p className="text-[11px] sm:text-sm font-medium text-gray-800 leading-snug break-words overflow-hidden min-w-0" style={{display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:2,overflow:'hidden'}}>
-                  {stat.name ?? sku}
-                  {stat.isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
-                </p>
-                {!stat.isRaw && bags !== null && bags > 0 && (
-                  <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
-                    <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
-                    {yieldBags !== null && yieldBags > 0 && (
-                      <div className="absolute top-0.5 bottom-0.5 left-0 rounded transition-all duration-500"
-                        style={{ width: `${Math.min(100, (yieldBags / bags) * 100)}%`, backgroundColor: '#4ade80' }} />
-                    )}
-                    {hasData && (
-                      <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
-                        style={{ width: `${Math.min(100, (total / bags) * 100)}%`, backgroundColor: '#3b82f6' }} />
+              return (
+                <div key={sku}
+                  className={`grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+                  <div className="flex items-start gap-2 min-w-0 pr-1">
+                    <p className="text-[11px] sm:text-sm font-medium text-gray-800 leading-snug break-words overflow-hidden min-w-0" style={{display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:2,overflow:'hidden'}}>
+                      {stat.name ?? sku}
+                      {stat.isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
+                    </p>
+                    {!stat.isRaw && bags !== null && bags > 0 && (
+                      <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
+                        <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
+                        {yieldBags !== null && yieldBags > 0 && (
+                          <div className="absolute top-0.5 bottom-0.5 left-0 rounded transition-all duration-500"
+                            style={{ width: `${Math.min(100, (yieldBags / bags) * 100)}%`, backgroundColor: '#4ade80' }} />
+                        )}
+                        {hasData && (
+                          <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
+                            style={{ width: `${Math.min(100, (total / bags) * 100)}%`, backgroundColor: '#3b82f6' }} />
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
-                {stat.isRaw ? <span className="text-amber-600 font-bold">RAW</span> : bags !== null ? bags.toLocaleString() : '—'}
-              </p>
-              <button
-                onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
-                className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
-                {hasData ? total.toLocaleString() : '—'}
-              </button>
-              <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
-                {yieldBags !== null ? yieldBags.toLocaleString() : '—'}
-              </p>
-              <div className="flex justify-end">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={inputVals[sku] ?? ''}
-                  onChange={e => {
-                    const val = e.target.value.replace(/[^0-9]/g, '')
-                    setInputVals(prev => ({ ...prev, [sku]: val }))
-                  }}
-                  onKeyDown={e => { if (e.key === 'Enter') confirm(sku, (e.target as HTMLInputElement).value) }}
-                  onBlur={e => confirm(sku, e.currentTarget.value)}
-                  placeholder="—"
-                  className="w-16 sm:w-20 text-xs sm:text-sm font-semibold text-right border border-gray-300 rounded-lg px-1.5 sm:px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
-                />
-              </div>
-            </div>
-          )
-        })}
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
+                    {stat.isRaw
+                      ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
+                      : bags !== null ? bags.toLocaleString() : '—'}
+                  </p>
+                  <button
+                    onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
+                    className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
+                    {hasData ? total.toLocaleString() : '—'}
+                  </button>
+                  <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
+                    {yieldBags !== null ? yieldBags.toLocaleString() : '—'}
+                  </p>
+                  <div className="flex justify-end">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={inputVals[sku] ?? ''}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^0-9]/g, '')
+                        setInputVals(prev => ({ ...prev, [sku]: val }))
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') confirm(sku, (e.target as HTMLInputElement).value) }}
+                      onBlur={e => confirm(sku, e.currentTarget.value)}
+                      placeholder="—"
+                      className="w-16 sm:w-20 text-xs sm:text-sm font-semibold text-right border border-gray-300 rounded-lg px-1.5 sm:px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-3 border-t border-gray-200 bg-gray-50">
@@ -1539,7 +1566,7 @@ export default function BasicTablePage() {
             <CurrentTimeView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'summary' && filtered.length > 0 && (
-            <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} />
+            <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} />
           )}
         </div>
       )}
