@@ -1629,15 +1629,26 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
 
-  // Append remainder assignments (Raw or By Product TT) per group based on Product type
+  // Append remainder assignments (Raw or By Product) per group based on Product type
   if (Object.keys(groupYieldCap).length > 0) {
     let rawSeq = resequenced.length
 
+    // Build sayapan group map: station → groups (covers groups missing from productivity)
+    const sayapanGrpsByStation: Record<string, string[]> = {}
+    for (const r of (masSayapanRaw ?? []) as { product_group: string; station: string }[]) {
+      if (!r.station || !r.product_group) continue
+      if (!sayapanGrpsByStation[r.station]) sayapanGrpsByStation[r.station] = []
+      if (!sayapanGrpsByStation[r.station].includes(r.product_group))
+        sayapanGrpsByStation[r.station].push(r.product_group)
+    }
+
     for (const station of BASIC_TABLE_NAMES) {
-      // All productivity rows at this station
       const stationProds = productivity.filter(p => toBasicStation(p.station) === station)
-      // Unique product groups at this station
-      const stationGroups = [...new Set(stationProds.map(p => p.product_group).filter(Boolean))]
+
+      // Use sayapan to get ALL groups for this station; fallback to productivity groups
+      const sayapanGrps = sayapanGrpsByStation[station] ?? []
+      const prodGrps = [...new Set(stationProds.map(p => p.product_group).filter(Boolean))]
+      const stationGroups = sayapanGrps.length > 0 ? sayapanGrps : prodGrps
 
       for (const grp of stationGroups) {
         const yieldKg = groupYieldCap[grp] ?? 0
@@ -1655,10 +1666,12 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
         if (remainKg <= 0) continue
 
-        const grpProds = stationProds.filter(p => p.product_group === grp)
+        // Search ALL productivity (cross-station) for this group's SKUs
+        const allGrpProds = productivity.filter(p => p.product_group === grp)
 
-        // Main Product: group has a RAW-type SKU → raw remainder
-        const rawProd = grpProds.find(p => p.product.toUpperCase() === 'RAW')
+        // Main Product: group has a RAW-type SKU → raw remainder (prefer current station)
+        const rawProd = stationProds.find(p => p.product_group === grp && p.product.toUpperCase() === 'RAW')
+          ?? allGrpProds.find(p => p.product.toUpperCase() === 'RAW')
         if (rawProd) {
           resequenced.push({
             production_date: productionDate,
@@ -1681,20 +1694,19 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           continue
         }
 
-        // By Product: no RAW SKU → find TT SKU → produce as regular SKU
-        const ttProd = grpProds.find(p =>
-          p.product.toLowerCase().includes('by') &&
-          p.sku_name.toLowerCase().includes('tt')
-        )
-        if (!ttProd) continue
+        // By Product: find TT SKU (cross-station), fallback to any By Product SKU
+        const byProds = allGrpProds.filter(p => p.product.toLowerCase().includes('by'))
+        const ttProd = byProds.find(p => p.sku_name.toLowerCase().includes('tt'))
+        const targetProd = ttProd ?? byProds[0]
+        if (!targetProd) continue
 
         resequenced.push({
           production_date: productionDate,
           table_name:      station,
           worker_code:     'RAW',
           worker_name:     'สต๊อก Raw',
-          sku:             ttProd.sku,
-          sku_name:        ttProd.sku_name,
+          sku:             targetProd.sku,
+          sku_name:        targetProd.sku_name,
           target_quantity: remainKg,
           unit:            'กก.',
           period:          phaseCfg.period,
