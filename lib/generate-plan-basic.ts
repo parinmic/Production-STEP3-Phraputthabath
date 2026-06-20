@@ -1633,48 +1633,48 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     // This ensures: production displayed under that group ≤ yield for that group
     let rawSeq = resequenced.length
     for (const station of BASIC_TABLE_NAMES) {
-      // Find Raw SKU at this station by sku_name suffix
-      const rawProd = productivity.find(p =>
+      // Filter ALL Raw SKUs at this station — one station may have multiple Raw products
+      const rawProds = productivity.filter(p =>
         toBasicStation(p.station) === station &&
         p.sku_name.trim().toLowerCase().endsWith('-raw')
       )
-      if (!rawProd || !rawProd.product_group) continue
+      for (const rawProd of rawProds) {
+        if (!rawProd.product_group) continue
 
-      const rawGrp  = rawProd.product_group
-      // Yield cap for THIS group (from the same cap computation above)
-      const yieldKg = groupYieldCap[rawGrp] ?? 0
-      if (yieldKg <= 0) continue
+        const rawGrp  = rawProd.product_group
+        const yieldKg = groupYieldCap[rawGrp] ?? 0
+        if (yieldKg <= 0) continue
 
-      // Sum assignments that belong to this product group (same group matching as cap block)
-      const assignedForGrp = resequenced
-        .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('raw_remainder'))
-        .reduce((s, a) => {
-          const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
-          const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
-          return prod?.product_group === rawGrp ? s + Number(a['target_quantity'] ?? 0) : s
-        }, 0)
+        const assignedForGrp = resequenced
+          .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('raw_remainder'))
+          .reduce((s, a) => {
+            const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+            const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+            return prod?.product_group === rawGrp ? s + Number(a['target_quantity'] ?? 0) : s
+          }, 0)
 
-      const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
-      if (remainKg <= 0) continue
+        const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
+        if (remainKg <= 0) continue
 
-      resequenced.push({
-        production_date: productionDate,
-        table_name:      station,
-        worker_code:     'RAW',
-        worker_name:     'สต๊อก Raw',
-        sku:             rawProd.sku,
-        sku_name:        rawProd.sku_name,
-        target_quantity: remainKg,
-        unit:            'RAW',
-        period:          phaseCfg.period,
-        deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
-        status:          'รอผลิต',
-        seq:             rawSeq++,
-        channel:         'RAW',
-        note:            'raw_remainder',
-        is_deficit:      false,
-        effective_from:  effectiveFromISO,
-      })
+        resequenced.push({
+          production_date: productionDate,
+          table_name:      station,
+          worker_code:     'RAW',
+          worker_name:     'สต๊อก Raw',
+          sku:             rawProd.sku,
+          sku_name:        rawProd.sku_name,
+          target_quantity: remainKg,
+          unit:            'RAW',
+          period:          phaseCfg.period,
+          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
+          status:          'รอผลิต',
+          seq:             rawSeq++,
+          channel:         'RAW',
+          note:            'raw_remainder',
+          is_deficit:      false,
+          effective_from:  effectiveFromISO,
+        })
+      }
     }
   }
 

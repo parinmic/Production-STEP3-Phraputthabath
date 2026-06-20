@@ -129,15 +129,18 @@ export default function CarcassYieldPlanView({
     }
   }
 
-  // ── Build group list (ALL basic stations, sorted by yield desc) ────
-  const allGroups = sayapan
-    .filter(r => (BASIC_STATIONS as readonly string[]).includes(r.station))
-    .map(r => r.product_group)
-    .filter((g, i, a) => a.indexOf(g) === i)  // unique
-
-  const sortedGroups = allGroups
-    .map(grp => ({ grp, yieldKg: phaseGroupKg[grp] ?? 0 }))
-    .sort((a, b) => b.yieldKg - a.yieldKg)
+  // ── Build per-station group list (sorted by yield desc within each station) ──
+  const seenGrps = new Set<string>()
+  const stationData = (BASIC_STATIONS as readonly string[]).map(stn => {
+    const grps = [...new Set(sayapan.filter(r => r.station === stn).map(r => r.product_group))]
+      .filter(g => !seenGrps.has(g))
+    grps.forEach(g => seenGrps.add(g))
+    const sorted = grps
+      .map(grp => ({ grp, yieldKg: phaseGroupKg[grp] ?? 0 }))
+      .sort((a, b) => b.yieldKg - a.yieldKg)
+    const totalYield = sorted.reduce((s, g) => s + g.yieldKg, 0)
+    return { station: stn, groups: sorted, totalYield }
+  }).filter(s => s.groups.length > 0)
 
   // ── Map items to groups ────────────────────────────────────────────
   const rawItems = items.filter(a => a.note?.includes('raw_remainder'))
@@ -167,10 +170,8 @@ export default function CarcassYieldPlanView({
     rawByGroup[grp].qty += a.target_quantity
   }
 
-  const hasOther = (skuByGroup['__other__']?.length ?? 0) + (rawByGroup['__other__'] ? 1 : 0) > 0
-  const displayGroups = hasOther ? [...sortedGroups, { grp: '__other__', yieldKg: 0 }] : sortedGroups
-
-  const grandYield    = sortedGroups.reduce((s, g) => s + g.yieldKg, 0)
+  const hasOther   = (skuByGroup['__other__']?.length ?? 0) + (rawByGroup['__other__'] ? 1 : 0) > 0
+  const grandYield = stationData.reduce((s, st) => s + st.totalYield, 0)
   const grandAssigned = skuItems.reduce((s, a) => s + a.target_quantity, 0)
   const grandRaw      = rawItems.reduce((s, a) => s + a.target_quantity, 0)
   const totalLots     = lots.reduce((s, l) => s + l.qty, 0)
@@ -205,86 +206,138 @@ export default function CarcassYieldPlanView({
 
       {!loading && !error && (
         <div className="bg-white divide-y divide-gray-100">
-          {displayGroups.length === 0 && totalLots === 0 && (
+          {stationData.length === 0 && totalLots === 0 && (
             <p className="text-center py-8 text-gray-400 text-sm">
               ยังไม่ได้เลือกล็อตหมูซีก — ไปที่หน้าเบิกหมูซีกเพื่อเลือกล็อต
             </p>
           )}
-          {displayGroups.length === 0 && totalLots > 0 && (
+          {stationData.length === 0 && totalLots > 0 && (
             <p className="text-center py-8 text-gray-400 text-sm">
               ไม่พบข้อมูล — กรุณาอัพโหลด Mas สายพาน และ Mas Yield
             </p>
           )}
 
-          {displayGroups.map(({ grp, yieldKg }, gi) => {
-            const skus       = skuByGroup[grp] ?? []
-            const rawRow     = rawByGroup[grp]
-            const label      = grp === '__other__' ? 'ไม่ระบุกลุ่ม' : grp
-            const assignedKg = skus.reduce((s, x) => s + x.qty, 0) + (rawRow?.qty ?? 0)
-            const usedPct    = yieldKg > 0 ? Math.min(100, (assignedKg / yieldKg) * 100) : 0
+          {stationData.map(({ station, groups, totalYield }) => (
+            <div key={station}>
+              {/* ── Station header ── */}
+              <div className="flex items-center justify-between px-4 py-1.5 bg-slate-200/70 border-t border-slate-300">
+                <span className="text-xs font-bold text-slate-600 tracking-wide">{station}</span>
+                {totalYield > 0 && (
+                  <span className="text-[10px] text-slate-500">Yield รวม {fmt(totalYield)} กก.</span>
+                )}
+              </div>
 
-            return (
-              <div key={grp}>
-                {/* ── Group header ── */}
-                <div className={`flex items-center gap-3 px-4 py-2.5 ${gi % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-bold text-slate-800">{label}</span>
-                    {yieldKg > 0 && (
-                      <span className="ml-2 text-xs text-slate-500">Yield {fmt(yieldKg)} กก.</span>
+              {groups.map(({ grp, yieldKg }, gi) => {
+                const skus       = skuByGroup[grp] ?? []
+                const rawRow     = rawByGroup[grp]
+                const assignedKg = skus.reduce((s, x) => s + x.qty, 0) + (rawRow?.qty ?? 0)
+                const usedPct    = yieldKg > 0 ? Math.min(100, (assignedKg / yieldKg) * 100) : 0
+
+                return (
+                  <div key={grp}>
+                    {/* ── Group header ── */}
+                    <div className={`flex items-center gap-3 px-4 py-2.5 ${gi % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-bold text-slate-800">{grp}</span>
+                        {yieldKg > 0 && (
+                          <span className="ml-2 text-xs text-slate-500">Yield {fmt(yieldKg)} กก.</span>
+                        )}
+                      </div>
+                      {yieldKg > 0 && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all"
+                              style={{ width: `${usedPct}%` }} />
+                          </div>
+                          <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(usedPct)}%</span>
+                        </div>
+                      )}
+                      <span className="text-xs font-bold text-emerald-700 w-20 text-right shrink-0">
+                        {assignedKg > 0 ? `${fmt(assignedKg)} กก.` : '—'}
+                      </span>
+                    </div>
+
+                    {/* ── SKU sub-items ── */}
+                    {skus.map((s, si) => (
+                      <div key={`${s.sku}-${si}`}
+                        className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 hover:bg-blue-50/30">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-gray-700 truncate">{s.name}</span>
+                          {s.channel && s.channel !== 'RAW' && (
+                            <span className="ml-1.5 text-[10px] text-gray-400">{s.channel}</span>
+                          )}
+                        </div>
+                        <span className={`text-xs font-semibold shrink-0 ${s.unit === 'RAW' ? 'text-amber-600' : 'text-blue-700'}`}>
+                          {fmt(s.qty)} {s.unit === 'RAW' ? 'กก.(RAW)' : 'กก.'}
+                        </span>
+                      </div>
+                    ))}
+
+                    {/* ── Raw remainder ── */}
+                    {rawRow && (
+                      <div className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 bg-amber-50/40">
+                        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                          <span className="text-xs text-amber-700">{rawRow.name}</span>
+                        </div>
+                        <span className="text-xs font-semibold text-amber-700 shrink-0">{fmt(rawRow.qty)} กก.</span>
+                      </div>
+                    )}
+
+                    {/* No plan yet */}
+                    {skus.length === 0 && !rawRow && items.length === 0 && yieldKg > 0 && (
+                      <div className="px-4 py-2 pl-8 border-t border-gray-50">
+                        <span className="text-[11px] text-gray-400">ยังไม่มีแผนผลิต — กด &quot;สร้าง Phase {selectedPhase}&quot;</span>
+                      </div>
                     )}
                   </div>
-                  {yieldKg > 0 && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                        <div className="h-full rounded-full bg-emerald-500 transition-all"
-                          style={{ width: `${usedPct}%` }} />
-                      </div>
-                      <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(usedPct)}%</span>
-                    </div>
-                  )}
+                )
+              })}
+            </div>
+          ))}
+
+          {/* ── Other (unmapped group) ── */}
+          {hasOther && (() => {
+            const skus   = skuByGroup['__other__'] ?? []
+            const rawRow = rawByGroup['__other__']
+            const assignedKg = skus.reduce((s, x) => s + x.qty, 0) + (rawRow?.qty ?? 0)
+            return (
+              <div>
+                <div className="flex items-center justify-between px-4 py-1.5 bg-slate-200/70 border-t border-slate-300">
+                  <span className="text-xs font-bold text-slate-500 tracking-wide">ไม่ระบุกลุ่ม</span>
+                </div>
+                <div className={`flex items-center gap-3 px-4 py-2.5 bg-slate-50`}>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-bold text-slate-800">ไม่ระบุกลุ่มสินค้า</span>
+                  </div>
                   <span className="text-xs font-bold text-emerald-700 w-20 text-right shrink-0">
                     {assignedKg > 0 ? `${fmt(assignedKg)} กก.` : '—'}
                   </span>
                 </div>
-
-                {/* ── SKU sub-items ── */}
                 {skus.map((s, si) => (
-                  <div key={`${s.sku}-${si}`}
-                    className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 hover:bg-blue-50/30">
+                  <div key={`other-${s.sku}-${si}`}
+                    className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50">
                     <div className="flex-1 min-w-0">
                       <span className="text-xs text-gray-700 truncate">{s.name}</span>
                       {s.channel && s.channel !== 'RAW' && (
                         <span className="ml-1.5 text-[10px] text-gray-400">{s.channel}</span>
                       )}
                     </div>
-                    <span className="text-[10px] text-gray-400 shrink-0 mr-1">{s.station}</span>
-                    <span className={`text-xs font-semibold shrink-0 ${s.unit === 'RAW' ? 'text-amber-600' : 'text-blue-700'}`}>
-                      {fmt(s.qty)} {s.unit === 'RAW' ? 'กก.(RAW)' : 'กก.'}
-                    </span>
+                    <span className="text-xs font-semibold text-blue-700 shrink-0">{fmt(s.qty)} กก.</span>
                   </div>
                 ))}
-
-                {/* ── Raw remainder ── */}
                 {rawRow && (
                   <div className="flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-gray-50 bg-amber-50/40">
                     <div className="flex-1 min-w-0 flex items-center gap-1.5">
                       <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
                       <span className="text-xs text-amber-700">{rawRow.name}</span>
                     </div>
-                    <span className="text-[10px] text-gray-400 shrink-0 mr-1">{rawRow.station}</span>
                     <span className="text-xs font-semibold text-amber-700 shrink-0">{fmt(rawRow.qty)} กก.</span>
-                  </div>
-                )}
-
-                {/* No plan yet */}
-                {skus.length === 0 && !rawRow && items.length === 0 && yieldKg > 0 && (
-                  <div className="px-4 py-2 pl-8 border-t border-gray-50">
-                    <span className="text-[11px] text-gray-400">ยังไม่มีแผนผลิต — กด &quot;สร้าง Phase {selectedPhase}&quot;</span>
                   </div>
                 )}
               </div>
             )
-          })}
+          })()}
 
           {/* ── Footer ── */}
           {(grandAssigned > 0 || grandYield > 0) && (
