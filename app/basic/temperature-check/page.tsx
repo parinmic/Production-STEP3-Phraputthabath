@@ -53,17 +53,21 @@ export default function BasicTemperatureCheckPage() {
   const [generated,  setGenerated]  = useState(false)
   const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
 
-  // Restore temps from localStorage on mount only
+  // Restore state from localStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('qc_temps_3pt')
-      if (saved) setTemps(JSON.parse(saved))
+      const savedTemps = localStorage.getItem('qc_temps_3pt')
+      const savedRows  = localStorage.getItem('qc_rows')
+      const savedFile  = localStorage.getItem('qc_source_file')
+      if (savedTemps) setTemps(JSON.parse(savedTemps))
+      if (savedRows)  { setRows(JSON.parse(savedRows)); setGenerated(true) }
+      if (savedFile)  setSourceFile(savedFile)
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => {
-    localStorage.setItem('qc_temps_3pt', JSON.stringify(temps))
-  }, [temps])
+  useEffect(() => { localStorage.setItem('qc_temps_3pt', JSON.stringify(temps)) }, [temps])
+  useEffect(() => { localStorage.setItem('qc_rows', JSON.stringify(rows)) }, [rows])
+  useEffect(() => { localStorage.setItem('qc_source_file', sourceFile) }, [sourceFile])
 
   async function generate() {
     setLoading(true)
