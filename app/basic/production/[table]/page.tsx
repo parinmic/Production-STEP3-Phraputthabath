@@ -1396,9 +1396,12 @@ export default function BasicTablePage() {
     fetch('/api/master/productivity')
       .then(r => r.json())
       .then(data => setRateMap(data.rateMap ?? {}))
-    fetch('/api/master/picking-unit')
-      .then(r => r.json())
-      .then(data => setBagMap(data.bagMap ?? {}))
+    Promise.all([
+      fetch('/api/master/picking-unit').then(r => r.json()),
+      fetch('/api/basic/picking-unit').then(r => r.json()),
+    ]).then(([std, basic]) => {
+      setBagMap({ ...(std.bagMap ?? {}), ...(basic.bagMap ?? {}) })
+    })
     fetch('/api/master/job-assign')
       .then(r => r.json())
       .then(data => {
