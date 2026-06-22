@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
         const key = keys.find(k => patterns.some(p => p.test(k)))
         return key ? String(r[key] ?? '').trim() : ''
       }
-      const station   = get(/สายพาน/i, /station/i) || String(r[keys[0]] ?? '').trim()
-      const startTime = get(/เวลา/i, /start/i)      || String(r[keys[1]] ?? '').trim()
-      const fgSap     = get(/fg.*sap|sap.*fg/i)      || String(r[keys[2]] ?? '').trim()
-      const fgName    = get(/fg.*ชื่อ|ชื่อ.*fg/i)   || String(r[keys[3]] ?? '').trim()
-      const rawSap    = get(/raw.*sap|sap.*raw/i)    || String(r[keys[4]] ?? '').trim()
-      const rawName   = get(/raw.*ชื่อ|ชื่อ.*raw/i) || String(r[keys[5]] ?? '').trim()
+      const station   = get(/จุดงาน/i, /station/i)  || String(r[keys[0]] ?? '').trim()
+      const startTime = get(/เวลา/i, /start/i)       || String(r[keys[1]] ?? '').trim()
+      const fgSap     = get(/fg.*sap|sap.*fg/i)       || String(r[keys[2]] ?? '').trim()
+      const fgName    = get(/fg.*ชื่อ|ชื่อ.*fg/i)    || String(r[keys[3]] ?? '').trim()
+      const rawSap    = get(/raw.*sap|sap.*raw/i)     || String(r[keys[4]] ?? '').trim()
+      const rawName   = get(/raw.*ชื่อ|ชื่อ.*raw/i)  || String(r[keys[5]] ?? '').trim()
 
       if (!station || !fgSap || !rawSap) return []
 
@@ -39,9 +39,16 @@ export async function POST(req: NextRequest) {
       }
       const normStation = STATION_MAP[station] ?? station
 
-      // Normalize time to HH:MM:SS — handle Excel Date objects like "Sat Dec 30 1899 21:00:00 GMT+..."
-      const normalizeTime = (t: string) => {
-        if (!t) return '00:00:00'
+      // Normalize time to HH:MM:SS
+      // Handles: Excel decimal (0.6875 → 16:30:00), HH:MM string, Excel Date string
+      const normalizeTime = (t: string | number) => {
+        const n = Number(t)
+        if (!isNaN(n) && n > 0 && n < 1) {
+          const totalMin = Math.round(n * 24 * 60)
+          const hh = Math.floor(totalMin / 60)
+          const mm = totalMin % 60
+          return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+        }
         const match = String(t).match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?/)
         if (match) return `${match[1].padStart(2, '0')}:${match[2]}:00`
         return '00:00:00'
@@ -50,7 +57,7 @@ export async function POST(req: NextRequest) {
       return [{ station: normStation, start_time: normalizeTime(startTime), fg_sap: fgSap, fg_name: fgName || null, raw_sap: rawSap, raw_name: rawName || null }]
     })
 
-    if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง (ต้องมี สายพาน, SAP FG, SAP Raw)' }, { status: 400 })
+    if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง (ต้องมี จุดงาน, SAP FG, SAP Raw)' }, { status: 400 })
 
     await supabase.from('mas_raw_production_advance').delete().gte('id', 1)
     const { error } = await supabase.from('mas_raw_production_advance').insert(records)
