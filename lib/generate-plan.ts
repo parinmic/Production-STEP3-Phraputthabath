@@ -3507,7 +3507,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
         const qtyPerWorker = Math.round((totalAvgQty / rawWorkers.length) * 100) / 100
         const baseSeq = assignments.length
-        const startTime = group.start_time.length === 5 ? group.start_time + ':00' : group.start_time
+        const [stH, stM] = group.start_time.split(':').map(Number)
+        const startTime = minsToTimeStr((isNaN(stH) ? 0 : stH) * 60 + (isNaN(stM) ? 0 : stM))
 
         for (let i = 0; i < rawWorkers.length; i++) {
           const w = rawWorkers[i]

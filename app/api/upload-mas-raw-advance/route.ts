@@ -40,8 +40,20 @@ export async function POST(req: NextRequest) {
       const normStation = STATION_MAP[station] ?? station
 
       // Normalize time to HH:MM:SS
-      // Handles: Excel decimal (0.6875 → 16:30:00), HH:MM string, Excel Date string
+      // Handles: Excel decimal (0.6875 → 16:30:00), ISO string from cellDates:true, HH:MM string
       const normalizeTime = (t: string | number) => {
+        // ISO date-time string from XLSX.js cellDates:true
+        // XLSX.js epoch is Dec 30 1899 UTC, so serial 0.6875 → "1899-12-30T16:30:00.000Z"
+        // The UTC hours:minutes directly encode the intended time
+        if (typeof t === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(t)) {
+          const isoMatch = t.match(/T(\d{2}):(\d{2})/)
+          if (isoMatch) {
+            const hh = parseInt(isoMatch[1])
+            const mm = parseInt(isoMatch[2])
+            if (hh < 24) return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+          }
+        }
+        // Excel decimal fraction 0–1 (e.g. 0.6875 → 16:30)
         const n = Number(t)
         if (!isNaN(n) && n > 0 && n < 1) {
           const totalMin = Math.round(n * 24 * 60)
@@ -49,8 +61,12 @@ export async function POST(req: NextRequest) {
           const mm = totalMin % 60
           return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
         }
+        // Plain "HH:MM" or "H:MM" string; % 24 guards against elapsed-hours strings like "47:56"
         const match = String(t).match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?/)
-        if (match) return `${match[1].padStart(2, '0')}:${match[2]}:00`
+        if (match) {
+          const hh = parseInt(match[1]) % 24
+          return `${String(hh).padStart(2, '0')}:${match[2]}:00`
+        }
         return '00:00:00'
       }
 
