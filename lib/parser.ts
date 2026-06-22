@@ -890,7 +890,7 @@ export function parseSawMachineSku(file: File): Promise<ParsedRow[]> {
             const sapCol     = find('sap')     || find('รหัส')    || ''
             const nameCol    = find('ชื่อ')    || find('name')    || ''
             const rateCol    = find('กำลังการผลิต') || find('rate') || find('กำลัง') || ''
-            const timingCol  = find('ช่วงเวลา') || find('timing') || ''
+            const timingCol  = find('ช่วงเวลา') || find('ประเภท') || find('timing') || ''
 
             return {
               station:       String(r[stationCol] ?? '').trim() || null,

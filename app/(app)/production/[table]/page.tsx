@@ -584,7 +584,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       }`}>
                         {ackedSkus.has(sku) && <span className="text-white text-[7px] leading-none font-black">✓</span>}
                       </span>
-                      {ackedSkus.has(sku) ? 'เห็นแผน ✓' : 'เห็นแผน'}
+                      {ackedSkus.has(sku) ? 'รับทราบ ✓' : 'รับทราบ'}
                     </button>
                   </div>
                 </div>

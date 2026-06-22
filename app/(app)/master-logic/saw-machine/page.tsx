@@ -16,7 +16,7 @@ export default function SawMachineMasterPage() {
     <div className="border-t-4 border-teal-500 pt-4">
       <FileUpload
         title="Mas SKU ใช้เครื่องเลื่อย"
-        description="คอลัมน์ที่ต้องการ: จุดงาน, กลุ่มสินค้า, SAP, ชื่อสินค้า, กำลังการผลิต (กก./ชม.), ช่วงเวลาที่ใช้ (ก่อน/หลัง) — อัพโหลดใหม่จะแทนข้อมูลทั้งหมด"
+        description="คอลัมน์ที่ต้องการ: จุดงาน, กลุ่มสินค้า, SAP, ชื่อสินค้า, กำลังการผลิต (กก./ชม.), ประเภท — อัพโหลดใหม่จะแทนข้อมูลทั้งหมด"
         historyEndpoint="/api/upload-mas-saw-machine"
         onUpload={upload}
         parseFileFn={parseSawMachineSku}
