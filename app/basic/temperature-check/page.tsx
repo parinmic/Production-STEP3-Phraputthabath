@@ -8,38 +8,40 @@ interface LotRow {
   weight_3:  number
 }
 
-function tempStatus(value: string): 'green' | 'red-low' | 'red-high' | 'none' {
-  const n = parseFloat(value)
-  if (isNaN(n)) return 'none'
-  if (n >= 4 && n <= 7) return 'green'
-  if (n < 4) return 'red-low'
-  return 'red-high'
+interface TempRecord {
+  start: string
+  mid:   string
+  end:   string
 }
 
-function TempCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const status = tempStatus(value)
-  const inputCls =
-    status === 'green'    ? 'border-green-400 text-green-700 bg-green-50 focus:ring-green-500 focus:border-green-500' :
-    status !== 'none'     ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-500 focus:border-red-500' :
-                            'border-gray-300 text-gray-700 focus:ring-blue-500 focus:border-blue-500'
-  const label =
-    status === 'green'    ? <span className="text-xs text-green-600 font-medium">ผ่าน</span> :
-    status === 'red-low'  ? <span className="text-xs text-red-500 font-medium">ต่ำเกิน</span> :
-    status === 'red-high' ? <span className="text-xs text-red-500 font-medium">สูงเกิน</span> :
-                            null
+const EMPTY_TEMP: TempRecord = { start: '', mid: '', end: '' }
 
+function parseNum(v: string): number | null {
+  const n = parseFloat(v)
+  return isNaN(n) ? null : n
+}
+
+function calcAvg(t: TempRecord): number | null {
+  const vals = [parseNum(t.start), parseNum(t.mid), parseNum(t.end)].filter((v): v is number => v !== null)
+  if (vals.length === 0) return null
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
+
+function tempStatus(avg: number | null): 'green' | 'red' | 'none' {
+  if (avg === null) return 'none'
+  return avg >= 4 && avg <= 7 ? 'green' : 'red'
+}
+
+function TempInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex items-center justify-center gap-2">
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="—"
-        className={`w-24 text-right text-sm border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 transition-colors ${inputCls}`}
-      />
-      <div className="w-12 text-left">{label}</div>
-    </div>
+    <input
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="—"
+      className="w-20 text-right text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+    />
   )
 }
 
@@ -48,7 +50,7 @@ export default function BasicTemperatureCheckPage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [sourceFile, setSourceFile] = useState('')
-  const [temps,      setTemps]      = useState<Record<string, string>>({})
+  const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,19 +73,26 @@ export default function BasicTemperatureCheckPage() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('pig_carcass_temps')
+      const saved = localStorage.getItem('qc_temps_3pt')
       if (saved) setTemps(JSON.parse(saved))
     } catch { /* ignore */ }
     load()
   }, [load])
 
   useEffect(() => {
-    localStorage.setItem('pig_carcass_temps', JSON.stringify(temps))
+    localStorage.setItem('qc_temps_3pt', JSON.stringify(temps))
   }, [temps])
 
-  const filledRows = rows.filter(r => temps[r.spec_code] && temps[r.spec_code] !== '')
-  const goodCount  = filledRows.filter(r => tempStatus(temps[r.spec_code]) === 'green').length
-  const badCount   = filledRows.filter(r => tempStatus(temps[r.spec_code]) !== 'none' && tempStatus(temps[r.spec_code]) !== 'green').length
+  function setField(spec: string, field: keyof TempRecord, value: string) {
+    setTemps(prev => ({ ...prev, [spec]: { ...(prev[spec] ?? EMPTY_TEMP), [field]: value } }))
+  }
+
+  const filledRows = rows.filter(r => {
+    const t = temps[r.spec_code]
+    return t && (t.start || t.mid || t.end)
+  })
+  const goodCount = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'green').length
+  const badCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
 
   return (
     <div className="space-y-6">
@@ -107,7 +116,6 @@ export default function BasicTemperatureCheckPage() {
         </button>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="text-center py-14 text-gray-400">
           <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
@@ -115,12 +123,10 @@ export default function BasicTemperatureCheckPage() {
         </div>
       )}
 
-      {/* Error */}
       {!loading && error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-red-700 text-sm">{error}</div>
       )}
 
-      {/* Empty */}
       {!loading && !error && rows.length === 0 && (
         <div className="text-center py-14 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
@@ -149,7 +155,7 @@ export default function BasicTemperatureCheckPage() {
             <div className="flex items-center gap-1.5">
               <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
               <div>
-                <p className="text-xs text-gray-500">อุณหภูมิเหมาะสม (4–7 °C)</p>
+                <p className="text-xs text-gray-500">เฉลี่ยเหมาะสม (4–7 °C)</p>
                 <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
                   {goodCount} <span className="text-sm font-normal">ล็อต</span>
                 </p>
@@ -159,7 +165,7 @@ export default function BasicTemperatureCheckPage() {
               <div className="flex items-center gap-1.5">
                 <XCircle size={18} className="text-red-400" />
                 <div>
-                  <p className="text-xs text-gray-500">ไม่เหมาะสม</p>
+                  <p className="text-xs text-gray-500">เฉลี่ยไม่เหมาะสม</p>
                   <p className="text-xl font-bold leading-tight text-red-500">
                     {badCount} <span className="text-sm font-normal">ล็อต</span>
                   </p>
@@ -186,17 +192,28 @@ export default function BasicTemperatureCheckPage() {
                     <div>น้ำหนักเฉลี่ย</div><div className="font-normal text-emerald-400">(กก./ตัว)</div>
                   </th>
                   <th className="px-4 py-3 text-center font-semibold text-cyan-700">
-                    <div>อุณหภูมิ</div><div className="font-normal text-cyan-400">(องศาเซลเซียส)</div>
+                    <div>อุณหภูมิต้น Lot</div><div className="font-normal text-cyan-400">(°C)</div>
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
+                    <div>อุณหภูมิกลาง Lot</div><div className="font-normal text-cyan-400">(°C)</div>
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
+                    <div>อุณหภูมิท้าย Lot</div><div className="font-normal text-cyan-400">(°C)</div>
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-indigo-700">
+                    <div>เฉลี่ย</div><div className="font-normal text-indigo-400">(°C)</div>
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => {
                   const avg    = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const status = tempStatus(temps[r.spec_code] ?? '')
+                  const t      = temps[r.spec_code] ?? EMPTY_TEMP
+                  const tAvg   = calcAvg(t)
+                  const status = tempStatus(tAvg)
                   const rowBg  =
                     status === 'green' ? 'bg-green-50' :
-                    status !== 'none'  ? 'bg-red-50'   : 'hover:bg-gray-50'
+                    status === 'red'   ? 'bg-red-50'   : 'hover:bg-gray-50'
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${rowBg}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
@@ -205,11 +222,28 @@ export default function BasicTemperatureCheckPage() {
                       <td className="px-4 py-2.5 text-right text-emerald-700">
                         {avg > 0 ? avg.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                       </td>
-                      <td className="px-3 py-2">
-                        <TempCell
-                          value={temps[r.spec_code] ?? ''}
-                          onChange={v => setTemps(prev => ({ ...prev, [r.spec_code]: v }))}
-                        />
+                      <td className="px-3 py-2 text-center">
+                        <TempInput value={t.start} onChange={v => setField(r.spec_code, 'start', v)} />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <TempInput value={t.mid} onChange={v => setField(r.spec_code, 'mid', v)} />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <TempInput value={t.end} onChange={v => setField(r.spec_code, 'end', v)} />
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {tAvg !== null ? (
+                          <span className={`font-bold text-sm ${
+                            status === 'green' ? 'text-green-600' :
+                            status === 'red'   ? 'text-red-500'   : 'text-gray-500'
+                          }`}>
+                            {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                            {status === 'green' && <span className="ml-1 text-xs font-normal">✓</span>}
+                            {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
                       </td>
                     </tr>
                   )
