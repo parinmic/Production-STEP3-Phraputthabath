@@ -20,9 +20,14 @@ export default function BasicCalculationTypePage({ params }: { params: { type: s
   const cfg = TYPE_CONFIG[params.type]
   if (!cfg) return <p className="text-red-500 p-8">ไม่พบประเภทที่ระบุ: {params.type}</p>
 
-  const isSaipan = params.type === 'mas-saipan'
-  const apiEndpoint    = isSaipan ? '/api/upload-mas-sayapan' : `/api/upload-master-logic-calculation?type=${params.type}`
-  const downloadTable  = isSaipan ? 'mas_sayapan' : 'master_logic_calculation'
+  const isSaipan    = params.type === 'mas-saipan'
+  const isRawBasket = params.type === 'mas-raw-basket'
+  const apiEndpoint   = isSaipan ? '/api/upload-mas-sayapan'
+    : isRawBasket      ? '/api/upload-mas-raw-basket'
+    : `/api/upload-master-logic-calculation?type=${params.type}`
+  const downloadTable = isSaipan ? 'mas_sayapan'
+    : isRawBasket      ? 'mas_raw_basket'
+    : 'master_logic_calculation'
 
   async function upload(rows: ParsedRow[], filename: string) {
     const res = await fetch(apiEndpoint, {

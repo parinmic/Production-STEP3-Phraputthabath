@@ -25,6 +25,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
   { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
+  { label: 'Mas ตะกร้า Raw',               slug: 'mas-raw-basket',                dot: 'bg-amber-500' },
 ]
 
 function BasicSidebar() {
