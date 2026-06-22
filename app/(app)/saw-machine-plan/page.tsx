@@ -17,11 +17,20 @@ const STATION_COLORS: Record<string, string> = {
 
 const STATION_ORDER = ['เผาขา', 'เลาะขา', 'สามชั้นพิเศษ']
 
+// Phase end times in minutes (wall-clock)
 const PHASE_END: Record<string, number> = {
   'เช้า': 870,   // 14:30
   'บ่าย': 990,   // 16:30
-  'ค่ำ':  1800,  // 06:00 next day (+1440)
+  'ค่ำ':  1920,  // 08:00 next day (1440+480)
 }
+
+const PHASE_BADGE: Record<string, string> = {
+  'เช้า': 'bg-blue-50 text-blue-700 border-blue-200',
+  'บ่าย': 'bg-amber-50 text-amber-700 border-amber-200',
+  'ค่ำ':  'bg-indigo-50 text-indigo-700 border-indigo-200',
+}
+
+const AXIS_START = 8 * 60  // 08:00 — fixed left edge for all phases
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getPhaseStart(period: string) {
@@ -70,6 +79,11 @@ function minsToHHMM(mins: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 
+function durLabel(mins: number): string {
+  const h = Math.floor(mins / 60), m = mins % 60
+  return h > 0 ? `${h}ชม.${m > 0 ? ` ${m}น.` : ''}` : `${m}น.`
+}
+
 function todayISO(): string {
   return new Date().toLocaleDateString('sv-SE')
 }
@@ -114,25 +128,33 @@ interface StationBlock {
   skus: IndividualSkuBlock[]
 }
 
+interface PhaseBlock {
+  phase: string
+  axisStart: number  // always AXIS_START (8:00)
+  axisEnd: number    // max(saw_end) across stations, rounded to next hour
+  stations: StationBlock[]
+}
+
 // ── Computation ───────────────────────────────────────────────────────────────
 function computeBlocks(
   sawSkus: SawMachineSku[],
   assignments: RawAssignment[],
   rateMap: Record<string, number>,
-): StationBlock[] {
+): PhaseBlock[] {
   if (!sawSkus.length || !assignments.length) return []
 
   const sawSkuMap = new Map(sawSkus.map(s => [s.sku.replace(/^0+/, ''), s]))
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
 
-  // Build per-worker timelines to get production minStart / maxEnd per SKU
+  // Per-worker timeline simulation — track stats per (period, sku)
   const byWorker: Record<string, RawAssignment[]> = {}
   for (const a of assignments) {
     byWorker[a.worker_name] ??= []
     byWorker[a.worker_name].push(a)
   }
 
-  const skuStats = new Map<string, { minStart: number; maxEnd: number; totalQty: number }>()
+  // skuStatsByPeriod: period → sku → { minStart, maxEnd, totalQty }
+  const skuStatsByPeriod = new Map<string, Map<string, { minStart: number; maxEnd: number; totalQty: number }>>()
 
   for (const tasks of Object.values(byWorker)) {
     const sorted = [...tasks].sort((a, b) => {
@@ -169,9 +191,12 @@ function computeBlocks(
       const endMin = wallClockFinish(startMin, effectiveDur)
       cur = Math.max(cur, endMin)
 
-      const existing = skuStats.get(task.sku)
+      // Store per-period stats
+      if (!skuStatsByPeriod.has(task.period)) skuStatsByPeriod.set(task.period, new Map())
+      const periodStats = skuStatsByPeriod.get(task.period)!
+      const existing = periodStats.get(task.sku)
       if (!existing) {
-        skuStats.set(task.sku, { minStart: startMin, maxEnd: endMin, totalQty: effectiveQty })
+        periodStats.set(task.sku, { minStart: startMin, maxEnd: endMin, totalQty: effectiveQty })
       } else {
         existing.minStart = Math.min(existing.minStart, startMin)
         existing.maxEnd = Math.max(existing.maxEnd, endMin)
@@ -180,118 +205,105 @@ function computeBlocks(
     }
   }
 
-  // Collect per-SKU saw entries with their raw anchor time
-  interface SkuEntry {
-    sku: string
-    sku_name: string | null
-    station: string
-    timing: string
-    totalQty: number
-    rawSawStart: number  // prod minStart (ก่อน) or prod maxEnd (หลัง)
-    saw_dur: number
-  }
+  // Build PhaseBlock for each period that has data
+  const result: PhaseBlock[] = []
 
-  const entries: SkuEntry[] = []
-  for (const [sku, sawInfo] of sawSkuMap) {
-    const stats = skuStats.get(sku)
-    if (!stats || stats.totalQty <= 0) continue
-    const timing = sawInfo.timing ?? 'หลัง'
-    const saw_dur = sawInfo.rate > 0 ? Math.round((stats.totalQty / sawInfo.rate) * 60) : 0
-    entries.push({
-      sku,
-      sku_name: sawInfo.sku_name,
-      station: sawInfo.station,
-      timing,
-      totalQty: stats.totalQty,
-      rawSawStart: timing === 'ก่อน' ? stats.minStart : stats.maxEnd,
-      saw_dur,
+  for (const period of ['เช้า', 'บ่าย', 'ค่ำ']) {
+    const periodStats = skuStatsByPeriod.get(period)
+    if (!periodStats?.size) continue
+
+    // Collect SKU entries for this period
+    interface SkuEntry {
+      sku: string; sku_name: string | null; station: string; timing: string
+      totalQty: number; rawSawStart: number; saw_dur: number
+    }
+    const entries: SkuEntry[] = []
+    for (const [sku, sawInfo] of sawSkuMap) {
+      const stats = periodStats.get(sku)
+      if (!stats || stats.totalQty <= 0) continue
+      const timing = sawInfo.timing ?? 'หลัง'
+      const saw_dur = sawInfo.rate > 0 ? Math.round((stats.totalQty / sawInfo.rate) * 60) : 0
+      entries.push({
+        sku, sku_name: sawInfo.sku_name, station: sawInfo.station, timing,
+        totalQty: stats.totalQty,
+        rawSawStart: timing === 'ก่อน' ? stats.minStart : stats.maxEnd,
+        saw_dur,
+      })
+    }
+    if (!entries.length) continue
+
+    // Group entries by station, assign sequential times within each station
+    const byStation = new Map<string, SkuEntry[]>()
+    for (const e of entries) {
+      if (!byStation.has(e.station)) byStation.set(e.station, [])
+      byStation.get(e.station)!.push(e)
+    }
+
+    const stations: StationBlock[] = []
+    for (const [station, stationEntries] of byStation) {
+      stationEntries.sort((a, b) => a.rawSawStart - b.rawSawStart)
+      const groupStart = stationEntries[0].rawSawStart
+      let cur = groupStart
+      const skus: IndividualSkuBlock[] = stationEntries.map(e => {
+        const saw_start = cur
+        const saw_end = wallClockFinish(cur, e.saw_dur)
+        cur = saw_end
+        return { sku: e.sku, sku_name: e.sku_name, totalQty: e.totalQty, saw_start, saw_end, saw_dur: e.saw_dur, timing: e.timing }
+      })
+      stations.push({
+        station, saw_start: groupStart, saw_end: cur,
+        saw_dur: stationEntries.reduce((s, e) => s + e.saw_dur, 0),
+        totalQty: stationEntries.reduce((s, e) => s + e.totalQty, 0),
+        skus,
+      })
+    }
+
+    // Sort stations by STATION_ORDER
+    stations.sort((a, b) => {
+      const ia = STATION_ORDER.indexOf(a.station), ib = STATION_ORDER.indexOf(b.station)
+      if (ia === -1 && ib === -1) return a.station.localeCompare(b.station)
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
     })
-  }
 
-  // Group entries by station
-  const byStation = new Map<string, SkuEntry[]>()
-  for (const e of entries) {
-    if (!byStation.has(e.station)) byStation.set(e.station, [])
-    byStation.get(e.station)!.push(e)
-  }
+    const maxEnd = stations.reduce((m, s) => Math.max(m, s.saw_end), PHASE_END[period] ?? 990)
+    const axisEnd = Math.ceil(maxEnd / 60) * 60
 
-  // Build StationBlock: group start = earliest rawSawStart, SKUs run sequentially
-  const result: StationBlock[] = []
-  for (const [station, stationEntries] of byStation) {
-    stationEntries.sort((a, b) => a.rawSawStart - b.rawSawStart)
-
-    const groupStart = stationEntries[0].rawSawStart
-    let cur = groupStart
-    const skus: IndividualSkuBlock[] = stationEntries.map(e => {
-      const saw_start = cur
-      const saw_end = wallClockFinish(cur, e.saw_dur)
-      cur = saw_end
-      return {
-        sku: e.sku,
-        sku_name: e.sku_name,
-        totalQty: e.totalQty,
-        saw_start,
-        saw_end,
-        saw_dur: e.saw_dur,
-        timing: e.timing,
-      }
-    })
-
-    result.push({
-      station,
-      saw_start: groupStart,
-      saw_end: cur,
-      saw_dur: stationEntries.reduce((s, e) => s + e.saw_dur, 0),
-      totalQty: stationEntries.reduce((s, e) => s + e.totalQty, 0),
-      skus,
-    })
+    result.push({ phase: period, axisStart: AXIS_START, axisEnd, stations })
   }
 
   return result
 }
 
-// ── Station Card ──────────────────────────────────────────────────────────────
-function StationCard({ block }: { block: StationBlock }) {
-  const color = STATION_COLORS[block.station] ?? '#6b7280'
+// ── Phase Section ─────────────────────────────────────────────────────────────
+const LABEL_W = 112  // px — station label column width
 
-  const chartStart = Math.floor(block.saw_start / 60) * 60
-  const chartEnd   = Math.ceil(block.saw_end / 60) * 60
-  const totalRange = chartEnd - chartStart || 1
-  const pct = (m: number) => ((m - chartStart) / totalRange) * 100
+function PhaseSection({ block }: { block: PhaseBlock }) {
+  const range = block.axisEnd - block.axisStart || 1
+  const pct = (m: number) => ((m - block.axisStart) / range) * 100
 
   const ticks: number[] = []
-  for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
-
-  const durH = Math.floor(block.saw_dur / 60)
-  const durM = block.saw_dur % 60
-  const durLabel = durH > 0 ? `${durH}ชม.${durM > 0 ? ` ${durM}น.` : ''}` : `${durM}น.`
+  for (let m = block.axisStart; m <= block.axisEnd; m += 60) ticks.push(m)
 
   return (
-    <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Station header */}
-      <div
-        className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100"
-        style={{ borderTopWidth: 4, borderTopColor: color, borderTopStyle: 'solid' }}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <h2 className="text-base font-bold text-gray-900">{block.station}</h2>
-        </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
-          <span className="font-medium text-gray-700">
-            {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
-          </span>
-          <span>{block.skus.length} SKU</span>
-          <span>{block.totalQty.toLocaleString()} กก.</span>
-          <span>{durLabel}</span>
-        </div>
+    <div className="mb-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Phase header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50">
+        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${PHASE_BADGE[block.phase] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+          {block.phase}
+        </span>
+        <span className="text-sm text-gray-500">
+          {block.stations.length} สถานี · {minsToHHMM(block.axisStart)} – {minsToHHMM(block.axisEnd)}
+        </span>
       </div>
 
-      {/* Gantt — single combined bar */}
+      {/* Shared multi-row Gantt */}
       <div className="px-4 pt-3 pb-2">
         {/* Time axis */}
-        <div className="flex h-6 relative mb-1">
-          <div className="flex-1 relative">
+        <div className="flex">
+          <div style={{ width: LABEL_W }} className="shrink-0" />
+          <div className="flex-1 relative h-6">
             {ticks.map(t => (
               <div key={t} className="absolute top-0 flex flex-col items-center"
                 style={{ left: `${pct(t)}%` }}>
@@ -304,55 +316,87 @@ function StationCard({ block }: { block: StationBlock }) {
           </div>
         </div>
 
-        {/* Single bar */}
-        <div className="relative w-full" style={{ height: 34 }}>
-          {ticks.map(t => (
-            <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
-              style={{ left: `${pct(t)}%` }} />
-          ))}
-          <div
-            className="absolute top-1 rounded flex items-center px-2 overflow-hidden"
-            style={{
-              left:   `${pct(block.saw_start)}%`,
-              width:  `${Math.max(pct(block.saw_end) - pct(block.saw_start), 0.5)}%`,
-              height: 26,
-              backgroundColor: color,
-              opacity: 0.9,
-            }}
-            title={`${block.station}\n${minsToHHMM(block.saw_start)} → ${minsToHHMM(block.saw_end)}\n${block.totalQty.toLocaleString()} กก.`}
-          >
-            <span className="text-[11px] font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis leading-none">
-              {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
-            </span>
-          </div>
+        {/* Station rows */}
+        <div className="flex flex-col gap-1 mt-1">
+          {block.stations.map(station => {
+            const color = STATION_COLORS[station.station] ?? '#6b7280'
+            return (
+              <div key={station.station} className="flex items-center" style={{ height: 32 }}>
+                {/* Station label */}
+                <div style={{ width: LABEL_W }} className="shrink-0 pr-3 flex items-center">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    <span className="text-xs font-medium text-gray-700 truncate">{station.station}</span>
+                  </div>
+                </div>
+                {/* Bar track */}
+                <div className="flex-1 relative h-full">
+                  {/* Grid lines */}
+                  {ticks.map(t => (
+                    <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
+                      style={{ left: `${pct(t)}%` }} />
+                  ))}
+                  {/* Saw bar */}
+                  <div
+                    className="absolute top-2 rounded flex items-center px-2 overflow-hidden"
+                    style={{
+                      left:   `${pct(station.saw_start)}%`,
+                      width:  `${Math.max(pct(station.saw_end) - pct(station.saw_start), 0.4)}%`,
+                      height: 22,
+                      backgroundColor: color,
+                      opacity: 0.9,
+                    }}
+                    title={`${station.station}\n${minsToHHMM(station.saw_start)} → ${minsToHHMM(station.saw_end)}\n${station.totalQty.toLocaleString()} กก.`}
+                  >
+                    <span className="text-[10px] font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis leading-none">
+                      {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* SKU list with sequential saw times */}
-      <div className="border-t border-gray-100 divide-y divide-gray-50">
-        {block.skus.map((sku, i) => {
-          const skuDurH = Math.floor(sku.saw_dur / 60)
-          const skuDurM = sku.saw_dur % 60
-          const skuDurLabel = skuDurH > 0 ? `${skuDurH}ชม.${skuDurM > 0 ? ` ${skuDurM}น.` : ''}` : `${skuDurM}น.`
+      {/* SKU detail list per station */}
+      <div className="border-t border-gray-100">
+        {block.stations.map(station => {
+          const color = STATION_COLORS[station.station] ?? '#6b7280'
           return (
-            <div key={sku.sku} className="flex items-center gap-3 px-4 py-2">
-              <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
-              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-              <span className="text-xs font-medium text-gray-800 flex-1 min-w-0 truncate">
-                {sku.sku_name ?? sku.sku}
-              </span>
-              <span className="text-[11px] font-mono text-gray-600 shrink-0">
-                {minsToHHMM(sku.saw_start)} → {minsToHHMM(sku.saw_end)}
-              </span>
-              <span className="text-[11px] text-gray-400 shrink-0 w-20 text-right">
-                {sku.totalQty.toLocaleString()} กก.
-              </span>
-              <span className="text-[11px] text-gray-400 shrink-0 w-14 text-right">
-                {skuDurLabel}
-              </span>
-              <span className="text-[10px] shrink-0 w-16 text-right" style={{ color }}>
-                {sku.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
-              </span>
+            <div key={station.station}>
+              {/* Station sub-header */}
+              <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                <span className="text-xs font-semibold text-gray-700">{station.station}</span>
+                <span className="text-[11px] text-gray-400 ml-1">
+                  {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)} · {station.totalQty.toLocaleString()} กก. · {durLabel(station.saw_dur)}
+                </span>
+              </div>
+              {/* SKU rows */}
+              <div className="divide-y divide-gray-50">
+                {station.skus.map((sku, i) => (
+                  <div key={sku.sku} className="flex items-center gap-3 px-4 py-2">
+                    <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    <span className="text-xs font-medium text-gray-800 flex-1 min-w-0 truncate">
+                      {sku.sku_name ?? sku.sku}
+                    </span>
+                    <span className="text-[11px] font-mono text-gray-600 shrink-0">
+                      {minsToHHMM(sku.saw_start)} → {minsToHHMM(sku.saw_end)}
+                    </span>
+                    <span className="text-[11px] text-gray-400 shrink-0 w-20 text-right">
+                      {sku.totalQty.toLocaleString()} กก.
+                    </span>
+                    <span className="text-[11px] text-gray-400 shrink-0 w-14 text-right">
+                      {durLabel(sku.saw_dur)}
+                    </span>
+                    <span className="text-[10px] shrink-0 w-16 text-right" style={{ color }}>
+                      {sku.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         })}
@@ -391,17 +435,10 @@ export default function SawMachinePlanPage() {
 
   useEffect(() => { load(date) }, [date, load])
 
-  const blocks = useMemo(
+  const phases = useMemo(
     () => computeBlocks(sawSkus, assignments, rateMap),
     [sawSkus, assignments, rateMap],
   )
-
-  // Sort by STATION_ORDER, append any extra stations at the end
-  const orderedBlocks = useMemo(() => {
-    const inOrder = STATION_ORDER.map(s => blocks.find(b => b.station === s)).filter(Boolean) as StationBlock[]
-    const extra   = blocks.filter(b => !STATION_ORDER.includes(b.station))
-    return [...inOrder, ...extra]
-  }, [blocks])
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -411,7 +448,7 @@ export default function SawMachinePlanPage() {
           <Scissors size={22} className="text-gray-600 shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-gray-900">แผนการใช้เครื่องเลื่อย</h1>
-            <p className="text-sm text-gray-500 mt-0.5">เวลาที่ต้องเริ่มและสิ้นสุดการตัดแต่ละ SKU</p>
+            <p className="text-sm text-gray-500 mt-0.5">แกนเวลาร่วม · แบ่งตาม Phase</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -441,15 +478,15 @@ export default function SawMachinePlanPage() {
         </div>
       )}
 
-      {!loading && orderedBlocks.length === 0 && (
+      {!loading && phases.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center gap-3 text-gray-400">
           <Scissors size={40} strokeWidth={1.5} />
           <p className="text-sm">ไม่มีข้อมูลการผลิตสำหรับวันที่นี้</p>
         </div>
       )}
 
-      {!loading && orderedBlocks.map(block => (
-        <StationCard key={block.station} block={block} />
+      {!loading && phases.map(phase => (
+        <PhaseSection key={phase.phase} block={phase} />
       ))}
     </div>
   )
