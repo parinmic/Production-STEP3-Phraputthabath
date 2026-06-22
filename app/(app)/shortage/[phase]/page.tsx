@@ -174,8 +174,8 @@ export default function ShortagePage() {
           const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
           return { ...r, baskets, mins }
         })
-        .filter(r => r.mins != null)
-      if (!items.length) { setInsResult({ success: false, message: 'ไม่มีรายการที่มีข้อมูล นาที/ตะกร้า ครบ' }); return }
+        .filter(r => r.baskets != null)
+      if (!items.length) { setInsResult({ success: false, message: 'ไม่มีข้อมูลปริมาณ/ตะกร้า — กรุณาอัปโหลดไฟล์ Master ตะกร้า Raw ก่อน' }); return }
       const res = await fetch('/api/basic/insert-raw-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

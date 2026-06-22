@@ -44,42 +44,61 @@ export async function POST(req: NextRequest) {
 
     const period = PERIOD_MAP[phase] ?? 'เช้า'
 
-    // Group by work_station
+    // Group by work_station (require baskets; mins is optional)
     const byStation = new Map<string, QueueItem[]>()
     for (const item of items) {
       const stn = item.work_station
-      if (!stn || !STATION_MAP[stn] || !item.mins) continue
+      if (!stn || !STATION_MAP[stn] || !item.baskets) continue
       const list = byStation.get(stn) ?? []
       list.push(item)
       byStation.set(stn, list)
     }
 
     if (!byStation.size) {
-      return NextResponse.json({ success: false, message: 'ไม่มีสถานีที่รองรับ หรือไม่มีข้อมูล นาที/ตะกร้า' })
+      return NextResponse.json({ success: false, message: 'ไม่มีสถานีที่รองรับ หรือไม่มีข้อมูลตะกร้า' })
+    }
+
+    // Fetch current max effective_from per basicTable so inserted rows join the live batch
+    const basicTables = Array.from(new Set([...byStation.keys()].map(s => STATION_MAP[s])))
+    const { data: efRows } = await supabase
+      .from('production_assignments')
+      .select('table_name, effective_from')
+      .eq('production_date', date)
+      .eq('period', period)
+      .in('table_name', basicTables)
+      .order('effective_from', { ascending: false })
+
+    const efMap: Record<string, string> = {}
+    for (const row of efRows ?? []) {
+      if (row.effective_from && !efMap[row.table_name]) efMap[row.table_name] = row.effective_from
     }
 
     const assignments = []
 
     for (const [stn, stItems] of byStation) {
-      const basicTable = STATION_MAP[stn]
+      const basicTable    = STATION_MAP[stn]
+      const effectiveFrom = efMap[basicTable] ?? new Date().toISOString()
 
-      // Sort by deadline ascending (earliest deadline first)
+      // Sort by deadline ascending (earliest deadline first — เสร็จๆ ไปทีละ SKU)
       const sorted = [...stItems].sort((a, b) =>
         (a.productionTime ?? '99:99').localeCompare(b.productionTime ?? '99:99')
       )
 
-      // Cutoff = earliest deadline - 20 min
-      const minDeadline = sorted[0].productionTime ?? '23:59'
-      const cutoff = addMins(minDeadline, -20)
-
-      // Total production time needed
-      const totalMins = sorted.reduce((s, it) => s + (it.mins ?? 0), 0)
-
-      // Start scheduling from (cutoff - totalMins) going forward
-      let cursor = addMins(cutoff, -totalMins)
+      // cursor = current finish pointer (only advances when mins is known)
+      const firstItem     = sorted[0]
+      const firstDeadline = firstItem.productionTime ?? '23:59'
+      let cursor = addMins(firstDeadline, -20 - (firstItem.mins ?? 0))
 
       for (const item of sorted) {
-        const finishTime = addMins(cursor, item.mins ?? 0)
+        let finishTime: string
+        if (item.mins) {
+          // Known production time: chain sequentially from cursor
+          finishTime = addMins(cursor, item.mins)
+          cursor = finishTime
+        } else {
+          // No production time data: schedule each item to finish at its own deadline - 20 min
+          finishTime = addMins(item.productionTime ?? '23:59', -20)
+        }
         assignments.push({
           production_date: date,
           table_name:      basicTable,
@@ -94,8 +113,8 @@ export async function POST(req: NextRequest) {
           status:          'รอดำเนินการ',
           deadline_time:   finishTime + ':00',
           note:            `raw-queue|phase${phase}`,
+          effective_from:  effectiveFrom,
         })
-        cursor = finishTime
       }
     }
 
