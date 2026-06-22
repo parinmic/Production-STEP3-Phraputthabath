@@ -43,14 +43,17 @@ export async function POST(req: NextRequest) {
       // Handles: Excel decimal (0.6875 → 16:30:00), ISO string from cellDates:true, HH:MM string
       const normalizeTime = (t: string | number) => {
         // ISO date-time string from XLSX.js cellDates:true
-        // XLSX.js epoch is Dec 30 1899 UTC, so serial 0.6875 → "1899-12-30T16:30:00.000Z"
-        // The UTC hours:minutes directly encode the intended time
+        // XLSX.js uses new Date(1899,11,30) as epoch (local time), so in Bangkok (LMT 1899 ≈ UTC+6:42:04)
+        // serial 0.6875 (=16:30 local) becomes "1899-12-30T09:47:56.000Z" — must add offset back
         if (typeof t === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(t)) {
-          const isoMatch = t.match(/T(\d{2}):(\d{2})/)
-          if (isoMatch) {
-            const hh = parseInt(isoMatch[1])
-            const mm = parseInt(isoMatch[2])
-            if (hh < 24) return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+          const d = new Date(t)
+          if (!isNaN(d.getTime())) {
+            const localMs = d.getTime() + (6 * 3600 + 42 * 60 + 4) * 1000
+            const dayMs = 86400000
+            const mins = Math.round(((localMs % dayMs) + dayMs) % dayMs / 60000)
+            const hh = Math.floor(mins / 60)
+            const mm = mins % 60
+            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
           }
         }
         // Excel decimal fraction 0–1 (e.g. 0.6875 → 16:30)
