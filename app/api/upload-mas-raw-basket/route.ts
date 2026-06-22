@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     await supabase.from('mas_raw_basket').delete().eq('source_file', filename ?? 'unknown')
 
     const { error } = await supabase.from('mas_raw_basket').insert(records)
-    if (error) throw error
+    if (error) throw new Error(error.message)
 
     await supabase.from('upload_log').insert({
       table_name:   'mas_raw_basket',
