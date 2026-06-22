@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -92,6 +92,14 @@ function BasicSidebar() {
 
           <p className={sectionCls}>คำสั่งเบิกและผลิต</p>
           <div className={dividerCls} />
+
+          {/* QC */}
+          <Link href="/basic/temperature-check"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/temperature-check')}`}
+            title="ตรวจอุณหภูมิ(QC)">
+            <Thermometer size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจอุณหภูมิ(QC)</span>
+          </Link>
 
           {/* เบิกหมูซีก */}
           <Link href="/basic/pig-carcass-withdrawal"
