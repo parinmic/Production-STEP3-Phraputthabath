@@ -170,14 +170,14 @@ function computeBlocks(
         lastPeriod = task.period
       }
       const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-      const isConcurrent = String(task.note ?? '').includes('concurrent')
+      // Trust deadline_time from generate-plan directly — it already encodes concurrent timing.
+      // Only fall back to cur when deadline_time is absent.
       let startMin = cur
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
         if (!isNaN(dh) && !isNaN(dm)) {
           const raw = dh * 60 + dm
-          const dl = (task.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
-          startMin = isConcurrent ? dl : Math.max(startMin, dl)
+          startMin = (task.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
         }
       }
       const shiftEnd = PHASE_END[task.period] ?? 1200
