@@ -146,14 +146,6 @@ function BasicSidebar() {
             </div>
           )}
 
-          {/* Yield หมูซีก */}
-          <Link href="/basic/carcass-yield"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-yield')}`}
-            title="Yield หมูซีก">
-            <FlaskConical size={18} className="shrink-0" />
-            <span className={labelCls}>Yield หมูซีก</span>
-          </Link>
-
           {/* คำสั่งผลิตราย Station */}
           <button
             onClick={() => setOpen(!open)}
@@ -192,6 +184,16 @@ function BasicSidebar() {
             title="ตรวจสอบสถานะกำลังคนประจำวัน">
             <CalendarDays size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
+          </Link>
+
+          <p className={sectionCls}>Additional</p>
+          <div className={dividerCls} />
+
+          <Link href="/basic/carcass-yield"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-yield')}`}
+            title="Yield หมูซีก">
+            <FlaskConical size={18} className="shrink-0" />
+            <span className={labelCls}>Yield หมูซีก</span>
           </Link>
 
           <div className="hidden md:block space-y-1">
