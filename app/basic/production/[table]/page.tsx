@@ -330,9 +330,10 @@ interface SkuScheduleViewProps {
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
+  carcassThroughput?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughput }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -455,6 +456,23 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
+
+  // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially
+  if (carcassThroughput && carcassThroughput > 0) {
+    for (const grp of skuGroups) {
+      let cursor = phaseStartMins
+      const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
+      for (const sku of bySeq) {
+        const durMins = Math.round(skuStats[sku].totalQty / carcassThroughput)
+        const endMins = wallClockFinish(cursor, durMins)
+        skuStats[sku].minStart = cursor
+        skuStats[sku].maxEnd   = endMins
+        skuStats[sku].segments = skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false }))
+        cursor = endMins
+      }
+      grp.skus = bySeq
+    }
+  }
 
   if (!sortedSkus.length) return null
 
@@ -1331,6 +1349,8 @@ export default function BasicTablePage() {
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
   const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
+  const [pigLots,    setPigLots]    = useState<{ qty: number; avg_weight: number }[]>([])
+  const [pigRateVal, setPigRateVal] = useState(90)
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -1349,6 +1369,25 @@ export default function BasicTablePage() {
       })
       .finally(() => { if (!silent) setLoading(false) })
   }
+
+  useEffect(() => {
+    try {
+      const l = localStorage.getItem('pig_carcass_selected')
+      const r = localStorage.getItem('pig_carcass_rate')
+      if (l) setPigLots(JSON.parse(l))
+      if (r) setPigRateVal(parseFloat(r) || 90)
+    } catch { /* ignore */ }
+    const onStorage = () => {
+      try {
+        const l = localStorage.getItem('pig_carcass_selected')
+        const r = localStorage.getItem('pig_carcass_rate')
+        if (l) setPigLots(JSON.parse(l))
+        if (r) setPigRateVal(parseFloat(r) || 90)
+      } catch { /* ignore */ }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   useEffect(() => {
     fetch('/api/master/productivity')
@@ -1426,6 +1465,15 @@ export default function BasicTablePage() {
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   const skuColor     = buildSkuColorMap(items)
+
+  // throughput = 60 × weighted_avg_weight / rate (กก./นาที)
+  const carcassThroughput = (() => {
+    if (!pigLots.length || pigRateVal <= 0) return 0
+    const totalQty = pigLots.reduce((s, l) => s + l.qty, 0)
+    const totalWgt = pigLots.reduce((s, l) => s + l.qty * l.avg_weight, 0)
+    if (totalQty === 0) return 0
+    return (60 * (totalWgt / totalQty)) / pigRateVal
+  })()
 
   const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
     { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',     desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
@@ -1545,7 +1593,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughput={carcassThroughput} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
