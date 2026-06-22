@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -38,6 +39,10 @@ export async function POST(req: NextRequest) {
       table_name:   'mas_saw_machine_sku',
       source_file:  filename ?? 'unknown',
       record_count: records.length,
+    })
+    syncToDev(async (dev) => {
+      await dev.from('mas_saw_machine_sku').delete().gte('id', 1)
+      await batchInsert(dev, 'mas_saw_machine_sku', records)
     })
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -195,6 +196,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    syncToDev(async (dev) => {
+      await dev.from('production_plan_supplementary').delete().eq('source_file', filename ?? 'unknown')
+      await batchInsert(dev, 'production_plan_supplementary', records)
+    })
     return NextResponse.json({
       success: true,
       message: `บันทึกสำเร็จ ${records.length} รายการ`,

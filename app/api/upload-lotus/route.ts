@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { checkAndAutoGeneratePhase2 } from '@/lib/auto-generate'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 function shiftDate(iso: string | null, days: number): string | null {
   if (!iso) return null
@@ -137,6 +138,16 @@ export async function POST(req: NextRequest) {
       table_name: tableName,
       source_file: filename ?? 'unknown',
       record_count: records.length,
+    })
+
+    syncToDev(async (dev) => {
+      if (!append) {
+        const dDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
+        if (dDates.length) {
+          await dev.from('lotus_orders').delete().in('delivery_date', dDates).eq('upload_round', round ?? '0800')
+        }
+      }
+      await batchInsert(dev, 'lotus_orders', records)
     })
 
     // Auto-generate Phase 2 when all 3 x 14:00 uploads are present today

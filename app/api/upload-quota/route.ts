@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 const TARGET_WAREHOUSE = 'โรงชำแหละสุกรพระพุทธบาท'
 
@@ -57,6 +58,10 @@ export async function POST(req: NextRequest) {
       table_name: 'channel_quotas',
       source_file: filename ?? 'unknown',
       record_count: records.length,
+    })
+    syncToDev(async (dev) => {
+      await dev.from('channel_quotas').delete().in('quota_date', dates)
+      await batchInsert(dev, 'channel_quotas', records)
     })
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ (${dates.length} วัน)` })
   } catch (e: unknown) {

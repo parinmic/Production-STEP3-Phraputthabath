@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { autoGeneratePhase3 } from '@/lib/auto-generate'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -58,6 +59,11 @@ export async function POST(req: NextRequest) {
       table_name:   'production_plan_100',
       source_file:  filename ?? 'unknown',
       record_count: records.length,
+    })
+
+    syncToDev(async (dev) => {
+      if (planDate) await dev.from('production_plan_100').delete().eq('plan_date', planDate)
+      await batchInsert(dev, 'production_plan_100', records)
     })
 
     // Auto-generate Phase 3 after แผน 100% upload

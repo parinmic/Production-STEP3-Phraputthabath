@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 const VALID_TYPES = [
   // Special
@@ -88,6 +89,10 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
+    syncToDev(async (dev) => {
+      await dev.from('master_logic_calculation').delete().eq('calculation_type', TYPE_LABEL[type])
+      await batchInsert(dev, 'master_logic_calculation', records)
+    })
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message

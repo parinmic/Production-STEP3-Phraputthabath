@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -40,6 +41,10 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
+    syncToDev(async (dev) => {
+      await dev.from('yield_bags').delete().eq('work_date', workDate)
+      await batchInsert(dev, 'yield_bags', records)
+    })
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รหัส SAP` })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message
