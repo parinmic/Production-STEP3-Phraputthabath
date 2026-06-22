@@ -330,10 +330,10 @@ interface SkuScheduleViewProps {
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
-  carcassThroughput?: number
+  carcassThroughputByGroup?: Record<string, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughput }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -458,12 +458,14 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
   // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially
-  if (carcassThroughput && carcassThroughput > 0) {
+  if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
     for (const grp of skuGroups) {
+      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
+      if (throughput <= 0) continue
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
       for (const sku of bySeq) {
-        const durMins = Math.round(skuStats[sku].totalQty / carcassThroughput)
+        const durMins = Math.round(skuStats[sku].totalQty / throughput)
         const endMins = wallClockFinish(cursor, durMins)
         skuStats[sku].minStart = cursor
         skuStats[sku].maxEnd   = endMins
@@ -1349,8 +1351,8 @@ export default function BasicTablePage() {
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
   const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
-  const [pigLots,    setPigLots]    = useState<{ qty: number; avg_weight: number }[]>([])
-  const [pigRateVal, setPigRateVal] = useState(90)
+  const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
+  const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -1373,16 +1375,12 @@ export default function BasicTablePage() {
   useEffect(() => {
     try {
       const l = localStorage.getItem('pig_carcass_selected')
-      const r = localStorage.getItem('pig_carcass_rate')
       if (l) setPigLots(JSON.parse(l))
-      if (r) setPigRateVal(parseFloat(r) || 90)
     } catch { /* ignore */ }
     const onStorage = () => {
       try {
         const l = localStorage.getItem('pig_carcass_selected')
-        const r = localStorage.getItem('pig_carcass_rate')
         if (l) setPigLots(JSON.parse(l))
-        if (r) setPigRateVal(parseFloat(r) || 90)
       } catch { /* ignore */ }
     }
     window.addEventListener('storage', onStorage)
@@ -1420,6 +1418,13 @@ export default function BasicTablePage() {
         }
         setGroupMap(m)
       })
+    fetch('/api/basic/mas-yield')
+      .then(r => r.json())
+      .then(data => setMasYieldRows((data.rows ?? []).map((r: { carcass_weight: string | number; product_group: string; yield_pct: string | number }) => ({
+        carcass_weight: Number(r.carcass_weight),
+        product_group:  r.product_group,
+        yield_pct:      Number(r.yield_pct),
+      }))))
   }, [])
 
   useEffect(() => {
@@ -1466,13 +1471,26 @@ export default function BasicTablePage() {
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   const skuColor     = buildSkuColorMap(items)
 
-  // throughput = 60 × weighted_avg_weight / rate (กก./นาที)
-  const carcassThroughput = (() => {
-    if (!pigLots.length || pigRateVal <= 0) return 0
-    const totalQty = pigLots.reduce((s, l) => s + l.qty, 0)
-    const totalWgt = pigLots.reduce((s, l) => s + l.qty * l.avg_weight, 0)
-    if (totalQty === 0) return 0
-    return (60 * (totalWgt / totalQty)) / pigRateVal
+  // Phase net working minutes (excluding breaks)
+  // Phase 1: 8:30-12:00 (210) + 13:00-14:30 (90) = 300 | Phase 2: 90 | Phase 3: 60 | all: 450
+  const PHASE_NET_MINS: Record<string, number> = { '1': 300, '2': 90, '3': 60, 'all': 450 }
+
+  // Per-group throughput = total_group_kg / phase_net_mins (กก./นาที)
+  const carcassThroughputByGroup = (() => {
+    if (!pigLots.length || !masYieldRows.length) return {}
+    const netMins = PHASE_NET_MINS[String(selectedPhase)] ?? 300
+    if (netMins <= 0) return {}
+    const uniqueWeights = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+    const groupKg: Record<string, number> = {}
+    for (const lot of pigLots) {
+      const w = uniqueWeights.reduce((best, ww) => Math.abs(ww - lot.avg_weight) < Math.abs(best - lot.avg_weight) ? ww : best, uniqueWeights[0])
+      for (const row of masYieldRows.filter(r => r.carcass_weight === w)) {
+        groupKg[row.product_group] = (groupKg[row.product_group] ?? 0) + (row.yield_pct / 100) * lot.qty * lot.avg_weight
+      }
+    }
+    const result: Record<string, number> = {}
+    for (const [grp, kg] of Object.entries(groupKg)) result[grp] = kg / netMins
+    return result
   })()
 
   const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
@@ -1593,7 +1611,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughput={carcassThroughput} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
