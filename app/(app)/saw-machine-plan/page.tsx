@@ -30,8 +30,6 @@ const PHASE_BADGE: Record<string, string> = {
   'ค่ำ':  'bg-indigo-50 text-indigo-700 border-indigo-200',
 }
 
-const AXIS_START = 8 * 60  // 08:00 — fixed left edge for all phases
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getPhaseStart(period: string) {
   if (period === 'เช้า') return 8 * 60 + 30
@@ -258,19 +256,15 @@ function computeBlocks(
       })
     }
 
-    // Sort stations by STATION_ORDER
-    stations.sort((a, b) => {
-      const ia = STATION_ORDER.indexOf(a.station), ib = STATION_ORDER.indexOf(b.station)
-      if (ia === -1 && ib === -1) return a.station.localeCompare(b.station)
-      if (ia === -1) return 1
-      if (ib === -1) return -1
-      return ia - ib
-    })
+    // Sort stations by saw_start ascending (earliest first)
+    stations.sort((a, b) => a.saw_start - b.saw_start)
 
-    const maxEnd = stations.reduce((m, s) => Math.max(m, s.saw_end), PHASE_END[period] ?? 990)
-    const axisEnd = Math.ceil(maxEnd / 60) * 60
+    const minStart = stations.reduce((m, s) => Math.min(m, s.saw_start), Infinity)
+    const maxEnd   = stations.reduce((m, s) => Math.max(m, s.saw_end),   0)
+    const axisStart = Math.floor(minStart / 60) * 60
+    const axisEnd   = Math.ceil(maxEnd   / 60) * 60
 
-    result.push({ phase: period, axisStart: AXIS_START, axisEnd, stations })
+    result.push({ phase: period, axisStart, axisEnd, stations })
   }
 
   return result
