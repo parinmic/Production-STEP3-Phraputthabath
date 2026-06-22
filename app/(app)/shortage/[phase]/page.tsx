@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
+import { Calendar, RefreshCw, AlertTriangle, Download, ListPlus } from 'lucide-react'
 
 interface ShortageRow {
   sku: string
@@ -47,10 +47,14 @@ export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]     = useState(today)
-  const [rows, setRows]     = useState<ShortageRow[]>([])
-  const [loading, setLoad]  = useState(false)
-  const [exporting, setExp] = useState(false)
-  const captureRef          = useRef<HTMLDivElement>(null)
+  const [rows, setRows]         = useState<ShortageRow[]>([])
+  const [loading, setLoad]      = useState(false)
+  const [exporting, setExp]     = useState(false)
+  const [inserting, setIns]     = useState(false)
+  const [insResult, setInsResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [basicBagMap,  setBasicBagMap]  = useState<Record<string, number>>({})
+  const [basicMinsMap, setBasicMinsMap] = useState<Record<string, number>>({})
+  const captureRef              = useRef<HTMLDivElement>(null)
 
   const cfg = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
 
@@ -144,6 +148,44 @@ export default function ShortagePage() {
   }, [date, phase])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    fetch('/api/basic/picking-unit')
+      .then(r => r.json())
+      .then(d => { setBasicBagMap(d.bagMap ?? {}); setBasicMinsMap(d.minsMap ?? {}) })
+      .catch(() => {})
+  }, [])
+
+  const getBasketInfo = (sku: string, deficitKg: number) => {
+    const norm = sku.replace(/^0+/, '')
+    const wpb  = basicBagMap[sku] ?? basicBagMap[norm] ?? 0
+    const mpb  = basicMinsMap[sku] ?? basicMinsMap[norm] ?? 0
+    const baskets = wpb > 0 ? Math.ceil(deficitKg / wpb) : null
+    const mins    = baskets != null && mpb > 0 ? baskets * mpb : null
+    return { baskets, mins }
+  }
+
+  const insertQueue = async () => {
+    setIns(true); setInsResult(null)
+    try {
+      const items = rows
+        .filter(r => r.productionTime && r.work_station)
+        .map(r => {
+          const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
+          return { ...r, baskets, mins }
+        })
+        .filter(r => r.mins != null)
+      if (!items.length) { setInsResult({ success: false, message: 'ไม่มีรายการที่มีข้อมูล นาที/ตะกร้า ครบ' }); return }
+      const res = await fetch('/api/basic/insert-raw-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase, items }),
+      })
+      const data = await res.json()
+      setInsResult(data)
+    } catch { setInsResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
+    setIns(false)
+  }
 
   const exportImage = async () => {
     setExp(true)
@@ -308,9 +350,21 @@ export default function ShortagePage() {
               <Download size={15} className={exporting ? 'animate-pulse' : ''} />
             </button>
           )}
+          {rows.length > 0 && (
+            <button onClick={insertQueue} disabled={inserting}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 shrink-0">
+              <ListPlus size={15} className={inserting ? 'animate-pulse' : ''} />
+              แทรกคิว
+            </button>
+          )}
         </div>
         {rows.length > 0 && (
           <p className="text-xs text-gray-400 mt-2">{rows.length} รายการขาด · {dateDisplay}</p>
+        )}
+        {insResult && (
+          <p className={`text-xs mt-1.5 font-medium ${insResult.success ? 'text-blue-600' : 'text-red-500'}`}>
+            {insResult.message}
+          </p>
         )}
       </div>
 
@@ -345,32 +399,51 @@ export default function ShortagePage() {
                   <th className="px-3 py-3 text-left font-semibold text-gray-700 whitespace-nowrap">SAP</th>
                   <th className="px-3 py-3 text-left font-semibold text-gray-700">ชื่อวัตถุดิบ</th>
                   <th className="px-3 py-3 text-right font-semibold text-red-600 whitespace-nowrap">ปริมาณที่ขาด</th>
+                  <th className="px-3 py-3 text-right font-semibold text-amber-600 whitespace-nowrap">ตะกร้า</th>
+                  <th className="px-3 py-3 text-right font-semibold text-gray-700 whitespace-nowrap">เวลาผลิต</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 whitespace-nowrap">เวลาที่ต้องใช้</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((r, i) => (
-                  <tr key={`${r.sku}-${i}`} className="hover:bg-red-50/40">
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {r.work_station ? (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.work_station] ?? 'bg-gray-100 text-gray-700'}`}>
-                          {STATION_DISPLAY[r.work_station] ?? r.work_station}
-                        </span>
-                      ) : <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{r.sku}</td>
-                    <td className="px-3 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                      {r.deficit != null ? (
-                        <span className="font-bold text-red-600">
-                          {r.deficit.toLocaleString()} <span className="font-normal text-red-400 text-xs">กก.</span>
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-center whitespace-nowrap text-gray-800">
-                      {r.productionTime ? r.productionTime + ' น.' : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
+                  {(() => {
+                    const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
+                    return (
+                      <tr key={`${r.sku}-${i}`} className="hover:bg-red-50/40">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.work_station ? (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.work_station] ?? 'bg-gray-100 text-gray-700'}`}>
+                              {STATION_DISPLAY[r.work_station] ?? r.work_station}
+                            </span>
+                          ) : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{r.sku}</td>
+                        <td className="px-3 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {r.deficit != null ? (
+                            <span className="font-bold text-red-600">
+                              {r.deficit.toLocaleString()} <span className="font-normal text-red-400 text-xs">กก.</span>
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {baskets != null ? (
+                            <span className="font-semibold text-amber-700">
+                              {baskets.toLocaleString()} <span className="font-normal text-amber-500 text-xs">ตะกร้า</span>
+                            </span>
+                          ) : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          {mins != null ? (
+                            <span className="text-gray-700">{mins} <span className="text-gray-400 text-xs">นาที</span></span>
+                          ) : <span className="text-gray-300 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-center whitespace-nowrap text-gray-800">
+                          {r.productionTime ? r.productionTime + ' น.' : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })()}
                 ))}
               </tbody>
             </table>

@@ -19,13 +19,14 @@ export async function POST(req: NextRequest) {
 
     const records = rows
       .map((r: Record<string, unknown>) => ({
-        step:           String(r['step']      ?? '').trim() || null,
-        unix_code:      String(r['unix_code'] ?? '').trim() || null,
-        sap:            String(r['sap'] ?? '').trim(),
-        product_name:   String(r['product_name'] ?? '').trim() || null,
-        weight_per_bag: Number(r['weight_per_bag']) || 0,
-        unit:           String(r['unit'] ?? '').trim() || 'ถุง',
-        source_file:    filename ?? 'unknown',
+        step:            String(r['step']      ?? '').trim() || null,
+        unix_code:       String(r['unix_code'] ?? '').trim() || null,
+        sap:             String(r['sap'] ?? '').trim(),
+        product_name:    String(r['product_name'] ?? '').trim() || null,
+        weight_per_bag:  Number(r['weight_per_bag']) || 0,
+        unit:            String(r['unit'] ?? '').trim() || 'ถุง',
+        mins_per_basket: r['mins_per_basket'] != null && r['mins_per_basket'] !== '' ? Number(r['mins_per_basket']) || null : null,
+        source_file:     filename ?? 'unknown',
       }))
       .filter((r: { sap: string }) => r.sap)
 

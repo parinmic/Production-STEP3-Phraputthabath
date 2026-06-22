@@ -521,13 +521,17 @@ export function parsePickingUnit(file: File): Promise<ParsedRow[]> {
             const wgtCol  = keys.includes('weight_per_bag') ? 'weight_per_bag'
                           : find('น้ำหนัก') || find('weight') || find('กก') || ''
             const unitCol = keys.includes('unit') ? 'unit' : find('หน่วย') || find('unit') || ''
+            const minsCol = keys.includes('mins_per_basket') ? 'mins_per_basket'
+                          : find('นาที') || find('mins') || ''
+            const minsRaw = minsCol ? r[minsCol] : null
             return {
-              step:           String(r[stepCol] ?? '').trim() || null,
-              unix_code:      String(r[unixCol] ?? '').trim() || null,
-              sap:            String(r[sapCol]  ?? '').trim(),
-              product_name:   String(r[nameCol] ?? '').trim() || null,
-              weight_per_bag: Number(r[wgtCol]) || 0,
-              unit:           String(r[unitCol] ?? '').trim() || 'ถุง',
+              step:            String(r[stepCol] ?? '').trim() || null,
+              unix_code:       String(r[unixCol] ?? '').trim() || null,
+              sap:             String(r[sapCol]  ?? '').trim(),
+              product_name:    String(r[nameCol] ?? '').trim() || null,
+              weight_per_bag:  Number(r[wgtCol]) || 0,
+              unit:            String(r[unitCol] ?? '').trim() || 'ถุง',
+              mins_per_basket: minsRaw != null && minsRaw !== '' ? Number(minsRaw) || null : null,
             }
           })
           .filter((r: { sap: string }) => r.sap)
