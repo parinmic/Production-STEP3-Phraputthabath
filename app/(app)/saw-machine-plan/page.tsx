@@ -17,13 +17,10 @@ const STATION_COLORS: Record<string, string> = {
 
 const STATION_ORDER = ['เผาขา', 'เลาะขา', 'สามชั้นพิเศษ']
 
-const LANE_H = 28  // px per lane in gantt
-
-// Phase end times — mirrors PHASES in the production (พิเศษ) page
 const PHASE_END: Record<string, number> = {
-  'เช้า': 870,   // 14:30 — Phase 1 end
-  'บ่าย': 990,   // 16:30 — Phase 2 end
-  'ค่ำ':  1800,  // 06:00 next day (+1440) — Phase 3 overnight
+  'เช้า': 870,   // 14:30
+  'บ่าย': 990,   // 16:30
+  'ค่ำ':  1800,  // 06:00 next day (+1440)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -34,7 +31,6 @@ function getPhaseStart(period: string) {
   return 8 * 60
 }
 
-/** Work minutes available between from..to, skipping break windows */
 function workMinutesBetween(from: number, to: number): number {
   if (from >= to) return 0
   let work = 0
@@ -78,18 +74,6 @@ function todayISO(): string {
   return new Date().toLocaleDateString('sv-SE')
 }
 
-/** Pack blocks into lanes — no overlap within a lane */
-function assignLanes(blocks: SkuBlock[]): { block: SkuBlock; lane: number }[] {
-  const sorted = [...blocks].sort((a, b) => a.saw_start - b.saw_start)
-  const laneEnds: number[] = []
-  return sorted.map(block => {
-    const lane = laneEnds.findIndex(end => end <= block.saw_start)
-    const assigned = lane === -1 ? laneEnds.length : lane
-    laneEnds[assigned] = block.saw_end
-    return { block, lane: assigned }
-  })
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SawMachineSku {
   sku: string
@@ -111,18 +95,23 @@ interface RawAssignment {
   seq: number | null
 }
 
-interface SkuBlock {
+interface IndividualSkuBlock {
   sku: string
   sku_name: string | null
-  station: string
-  timing: string
-  saw_rate: number
-  prod_minStart: number
-  prod_maxEnd: number
   totalQty: number
   saw_start: number
   saw_end: number
   saw_dur: number
+  timing: string
+}
+
+interface StationBlock {
+  station: string
+  saw_start: number
+  saw_end: number
+  saw_dur: number
+  totalQty: number
+  skus: IndividualSkuBlock[]
 }
 
 // ── Computation ───────────────────────────────────────────────────────────────
@@ -130,12 +119,13 @@ function computeBlocks(
   sawSkus: SawMachineSku[],
   assignments: RawAssignment[],
   rateMap: Record<string, number>,
-): SkuBlock[] {
+): StationBlock[] {
   if (!sawSkus.length || !assignments.length) return []
 
   const sawSkuMap = new Map(sawSkus.map(s => [s.sku.replace(/^0+/, ''), s]))
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
 
+  // Build per-worker timelines to get production minStart / maxEnd per SKU
   const byWorker: Record<string, RawAssignment[]> = {}
   for (const a of assignments) {
     byWorker[a.worker_name] ??= []
@@ -170,15 +160,12 @@ function computeBlocks(
           startMin = isConcurrent ? dl : Math.max(startMin, dl)
         }
       }
-
-      // Cap effective quantity to what fits within the shift end
       const shiftEnd = PHASE_END[task.period] ?? 1200
       const targetQty = Number(task.target_quantity)
       const effectiveQty = rate && rate > 0
         ? Math.min(targetQty, (workMinutesBetween(startMin, shiftEnd) / 60) * rate)
         : targetQty
       const effectiveDur = rate && rate > 0 ? Math.round((effectiveQty / rate) * 60) : 0
-
       const endMin = wallClockFinish(startMin, effectiveDur)
       cur = Math.max(cur, endMin)
 
@@ -193,72 +180,115 @@ function computeBlocks(
     }
   }
 
-  const result: SkuBlock[] = []
+  // Collect per-SKU saw entries with their raw anchor time
+  interface SkuEntry {
+    sku: string
+    sku_name: string | null
+    station: string
+    timing: string
+    totalQty: number
+    rawSawStart: number  // prod minStart (ก่อน) or prod maxEnd (หลัง)
+    saw_dur: number
+  }
+
+  const entries: SkuEntry[] = []
   for (const [sku, sawInfo] of sawSkuMap) {
     const stats = skuStats.get(sku)
-    if (!stats) continue
+    if (!stats || stats.totalQty <= 0) continue
     const timing = sawInfo.timing ?? 'หลัง'
-    const saw_start = timing === 'ก่อน' ? stats.minStart : stats.maxEnd
-    const saw_dur = Math.round((stats.totalQty / sawInfo.rate) * 60)
-    const saw_end = wallClockFinish(saw_start, saw_dur)
-    result.push({
+    const saw_dur = sawInfo.rate > 0 ? Math.round((stats.totalQty / sawInfo.rate) * 60) : 0
+    entries.push({
       sku,
       sku_name: sawInfo.sku_name,
       station: sawInfo.station,
       timing,
-      saw_rate: sawInfo.rate,
-      prod_minStart: stats.minStart,
-      prod_maxEnd: stats.maxEnd,
       totalQty: stats.totalQty,
-      saw_start,
-      saw_end,
+      rawSawStart: timing === 'ก่อน' ? stats.minStart : stats.maxEnd,
       saw_dur,
     })
   }
+
+  // Group entries by station
+  const byStation = new Map<string, SkuEntry[]>()
+  for (const e of entries) {
+    if (!byStation.has(e.station)) byStation.set(e.station, [])
+    byStation.get(e.station)!.push(e)
+  }
+
+  // Build StationBlock: group start = earliest rawSawStart, SKUs run sequentially
+  const result: StationBlock[] = []
+  for (const [station, stationEntries] of byStation) {
+    stationEntries.sort((a, b) => a.rawSawStart - b.rawSawStart)
+
+    const groupStart = stationEntries[0].rawSawStart
+    let cur = groupStart
+    const skus: IndividualSkuBlock[] = stationEntries.map(e => {
+      const saw_start = cur
+      const saw_end = wallClockFinish(cur, e.saw_dur)
+      cur = saw_end
+      return {
+        sku: e.sku,
+        sku_name: e.sku_name,
+        totalQty: e.totalQty,
+        saw_start,
+        saw_end,
+        saw_dur: e.saw_dur,
+        timing: e.timing,
+      }
+    })
+
+    result.push({
+      station,
+      saw_start: groupStart,
+      saw_end: cur,
+      saw_dur: stationEntries.reduce((s, e) => s + e.saw_dur, 0),
+      totalQty: stationEntries.reduce((s, e) => s + e.totalQty, 0),
+      skus,
+    })
+  }
+
   return result
 }
 
 // ── Station Card ──────────────────────────────────────────────────────────────
-function StationCard({ station, blocks }: { station: string; blocks: SkuBlock[] }) {
-  const color = STATION_COLORS[station] ?? '#6b7280'
+function StationCard({ block }: { block: StationBlock }) {
+  const color = STATION_COLORS[block.station] ?? '#6b7280'
 
-  const stationStart = Math.min(...blocks.map(b => b.saw_start))
-  const stationEnd   = Math.max(...blocks.map(b => b.saw_end))
-  const totalQty     = blocks.reduce((s, b) => s + b.totalQty, 0)
-
-  // Per-station time axis (rounded to nearest hour)
-  const chartStart = Math.floor(stationStart / 60) * 60
-  const chartEnd   = Math.ceil(stationEnd   / 60) * 60
+  const chartStart = Math.floor(block.saw_start / 60) * 60
+  const chartEnd   = Math.ceil(block.saw_end / 60) * 60
   const totalRange = chartEnd - chartStart || 1
   const pct = (m: number) => ((m - chartStart) / totalRange) * 100
 
   const ticks: number[] = []
   for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
 
-  const laned = assignLanes(blocks)
-  const numLanes = Math.max(...laned.map(l => l.lane)) + 1
-
-  // SKU list sorted by saw_start
-  const sortedBlocks = [...blocks].sort((a, b) => a.saw_start - b.saw_start)
+  const durH = Math.floor(block.saw_dur / 60)
+  const durM = block.saw_dur % 60
+  const durLabel = durH > 0 ? `${durH}ชม.${durM > 0 ? ` ${durM}น.` : ''}` : `${durM}น.`
 
   return (
     <div className="mb-6 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Station header */}
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100"
-        style={{ borderTopWidth: 4, borderTopColor: color, borderTopStyle: 'solid' }}>
+      <div
+        className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-100"
+        style={{ borderTopWidth: 4, borderTopColor: color, borderTopStyle: 'solid' }}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-          <h2 className="text-base font-bold text-gray-900">{station}</h2>
+          <h2 className="text-base font-bold text-gray-900">{block.station}</h2>
         </div>
         <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
-          <span className="font-medium text-gray-700">{minsToHHMM(stationStart)} → {minsToHHMM(stationEnd)}</span>
-          <span>{blocks.length} SKU</span>
-          <span>{totalQty.toLocaleString()} กก.</span>
+          <span className="font-medium text-gray-700">
+            {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
+          </span>
+          <span>{block.skus.length} SKU</span>
+          <span>{block.totalQty.toLocaleString()} กก.</span>
+          <span>{durLabel}</span>
         </div>
       </div>
 
-      {/* Gantt */}
-      <div className="px-4 pt-3 pb-1">
+      {/* Gantt — single combined bar */}
+      <div className="px-4 pt-3 pb-2">
         {/* Time axis */}
         <div className="flex h-6 relative mb-1">
           <div className="flex-1 relative">
@@ -274,65 +304,54 @@ function StationCard({ station, blocks }: { station: string; blocks: SkuBlock[] 
           </div>
         </div>
 
-        {/* Lane bars */}
-        <div className="relative w-full" style={{ height: numLanes * LANE_H + 4 }}>
-          {/* Hour grid lines */}
+        {/* Single bar */}
+        <div className="relative w-full" style={{ height: 34 }}>
           {ticks.map(t => (
             <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
               style={{ left: `${pct(t)}%` }} />
           ))}
-
-          {laned.map(({ block, lane }) => {
-            const left  = pct(block.saw_start)
-            const width = Math.max(pct(block.saw_end) - left, 0.4)
-            const top   = lane * LANE_H + 2
-
-            return (
-              <div key={block.sku}
-                className="absolute rounded flex items-center px-1.5 overflow-hidden"
-                style={{
-                  left:   `${left}%`,
-                  width:  `${width}%`,
-                  top:    top,
-                  height: LANE_H - 6,
-                  backgroundColor: color,
-                  opacity: 0.88,
-                }}
-                title={`${block.sku_name ?? block.sku}\n${minsToHHMM(block.saw_start)} → ${minsToHHMM(block.saw_end)}\n${block.totalQty.toLocaleString()} กก.`}
-              >
-                <span className="text-[10px] font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis leading-none">
-                  {block.sku_name ?? block.sku}
-                </span>
-              </div>
-            )
-          })}
+          <div
+            className="absolute top-1 rounded flex items-center px-2 overflow-hidden"
+            style={{
+              left:   `${pct(block.saw_start)}%`,
+              width:  `${Math.max(pct(block.saw_end) - pct(block.saw_start), 0.5)}%`,
+              height: 26,
+              backgroundColor: color,
+              opacity: 0.9,
+            }}
+            title={`${block.station}\n${minsToHHMM(block.saw_start)} → ${minsToHHMM(block.saw_end)}\n${block.totalQty.toLocaleString()} กก.`}
+          >
+            <span className="text-[11px] font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis leading-none">
+              {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* SKU list */}
+      {/* SKU list with sequential saw times */}
       <div className="border-t border-gray-100 divide-y divide-gray-50">
-        {sortedBlocks.map(block => {
-          const durH = Math.floor(block.saw_dur / 60)
-          const durM = block.saw_dur % 60
-          const durLabel = durH > 0 ? `${durH}ชม.${durM > 0 ? ` ${durM}น.` : ''}` : `${durM}น.`
+        {block.skus.map((sku, i) => {
+          const skuDurH = Math.floor(sku.saw_dur / 60)
+          const skuDurM = sku.saw_dur % 60
+          const skuDurLabel = skuDurH > 0 ? `${skuDurH}ชม.${skuDurM > 0 ? ` ${skuDurM}น.` : ''}` : `${skuDurM}น.`
           return (
-            <div key={block.sku} className="flex items-center gap-3 px-4 py-2">
+            <div key={sku.sku} className="flex items-center gap-3 px-4 py-2">
+              <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
               <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
               <span className="text-xs font-medium text-gray-800 flex-1 min-w-0 truncate">
-                {block.sku_name ?? block.sku}
+                {sku.sku_name ?? sku.sku}
               </span>
-              <span className="text-[11px] font-mono text-gray-500 shrink-0">
-                {minsToHHMM(block.saw_start)} → {minsToHHMM(block.saw_end)}
+              <span className="text-[11px] font-mono text-gray-600 shrink-0">
+                {minsToHHMM(sku.saw_start)} → {minsToHHMM(sku.saw_end)}
               </span>
-              <span className="text-[11px] text-gray-400 shrink-0 w-16 text-right">
-                {block.totalQty.toLocaleString()} กก.
+              <span className="text-[11px] text-gray-400 shrink-0 w-20 text-right">
+                {sku.totalQty.toLocaleString()} กก.
               </span>
               <span className="text-[11px] text-gray-400 shrink-0 w-14 text-right">
-                {durLabel}
+                {skuDurLabel}
               </span>
-              <span className="text-[10px] shrink-0 w-20 text-right"
-                style={{ color }}>
-                {block.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
+              <span className="text-[10px] shrink-0 w-16 text-right" style={{ color }}>
+                {sku.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
               </span>
             </div>
           )
@@ -377,16 +396,12 @@ export default function SawMachinePlanPage() {
     [sawSkus, assignments, rateMap],
   )
 
-  const byStation = useMemo(() => {
-    const map: Record<string, SkuBlock[]> = {}
-    for (const b of blocks) {
-      map[b.station] ??= []
-      map[b.station].push(b)
-    }
-    return map
+  // Sort by STATION_ORDER, append any extra stations at the end
+  const orderedBlocks = useMemo(() => {
+    const inOrder = STATION_ORDER.map(s => blocks.find(b => b.station === s)).filter(Boolean) as StationBlock[]
+    const extra   = blocks.filter(b => !STATION_ORDER.includes(b.station))
+    return [...inOrder, ...extra]
   }, [blocks])
-
-  const stations = STATION_ORDER.filter(s => byStation[s]?.length)
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -426,19 +441,15 @@ export default function SawMachinePlanPage() {
         </div>
       )}
 
-      {!loading && blocks.length === 0 && (
+      {!loading && orderedBlocks.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-10 flex flex-col items-center gap-3 text-gray-400">
           <Scissors size={40} strokeWidth={1.5} />
           <p className="text-sm">ไม่มีข้อมูลการผลิตสำหรับวันที่นี้</p>
         </div>
       )}
 
-      {!loading && stations.map(station => (
-        <StationCard
-          key={station}
-          station={station}
-          blocks={byStation[station]}
-        />
+      {!loading && orderedBlocks.map(block => (
+        <StationCard key={block.station} block={block} />
       ))}
     </div>
   )
