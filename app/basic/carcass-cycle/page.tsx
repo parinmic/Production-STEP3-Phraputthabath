@@ -80,7 +80,7 @@ export default function CarcassCyclePage() {
       .filter(r => r.carcass_weight === matched)
       .map(r => {
         const kg      = (r.yield_pct / 100) * lot.qty * lot.avg_weight
-        const timeSec = rateNum * (r.yield_pct / 100) * lot.qty * lot.avg_weight
+        const timeSec = kg / rateNum
         return { product_group: r.product_group, yield_pct: r.yield_pct, kg, timeSec }
       })
       .sort((a, b) => b.yield_pct - a.yield_pct)
@@ -130,8 +130,8 @@ export default function CarcassCyclePage() {
           onChange={e => setRate(e.target.value.replace(/[^0-9.]/g, ''))}
           className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
         />
-        <span className="text-sm text-gray-500">วิ/ตัว</span>
-        <span className="text-xs text-gray-400">(มาตรฐาน 90 วิ/ตัว)</span>
+        <span className="text-sm text-gray-500">กก./วินาที</span>
+        <span className="text-xs text-gray-400">(มาตรฐาน 90 กก./วินาที)</span>
       </div>
 
       {error && (
