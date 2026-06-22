@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Thermometer, CheckCircle2, XCircle, Package } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -50,9 +50,21 @@ export default function TemperatureCheckPage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [sourceFile, setSourceFile] = useState('')
+  const [generated,  setGenerated]  = useState(false)
   const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('qc_temps_3pt')
+      if (saved) setTemps(JSON.parse(saved))
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('qc_temps_3pt', JSON.stringify(temps))
+  }, [temps])
+
+  async function generate() {
     setLoading(true)
     setError('')
     try {
@@ -64,35 +76,21 @@ export default function TemperatureCheckPage() {
         .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
+      setGenerated(true)
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
       setLoading(false)
     }
-  }, [])
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('qc_temps_3pt')
-      if (saved) setTemps(JSON.parse(saved))
-    } catch { /* ignore */ }
-    load()
-  }, [load])
-
-  useEffect(() => {
-    localStorage.setItem('qc_temps_3pt', JSON.stringify(temps))
-  }, [temps])
+  }
 
   function setField(spec: string, field: keyof TempRecord, value: string) {
     setTemps(prev => ({ ...prev, [spec]: { ...(prev[spec] ?? EMPTY_TEMP), [field]: value } }))
   }
 
-  const filledRows = rows.filter(r => {
-    const t = temps[r.spec_code]
-    return t && (t.start || t.mid || t.end)
-  })
-  const goodCount = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'green').length
-  const badCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
+  const filledRows = rows.filter(r => { const t = temps[r.spec_code]; return t && (t.start || t.mid || t.end) })
+  const goodCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'green').length
+  const badCount   = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
 
   return (
     <div className="space-y-6">
@@ -106,30 +104,52 @@ export default function TemperatureCheckPage() {
           <p className="text-gray-500 mt-1 text-sm">Lot หมูซีก จาก Stock คลัง 20 — รหัสสินค้า 90007</p>
           {sourceFile && <p className="text-xs text-gray-400 mt-0.5">ไฟล์ล่าสุด: {sourceFile}</p>}
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 shrink-0"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          รีโหลด
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {generated && (
+            <button
+              onClick={generate}
+              disabled={loading}
+              className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              รีโหลด
+            </button>
+          )}
+          <button
+            onClick={generate}
+            disabled={loading}
+            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            <PlayCircle size={16} />
+            Generate
+          </button>
+        </div>
       </div>
 
-      {loading && (
-        <div className="text-center py-14 text-gray-400">
-          <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
-          <p>กำลังโหลดข้อมูล...</p>
-        </div>
-      )}
-
-      {!loading && error && (
+      {/* Error */}
+      {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-red-700 text-sm">{error}</div>
       )}
 
-      {!loading && !error && rows.length === 0 && (
+      {/* Loading */}
+      {loading && (
         <div className="text-center py-14 text-gray-400">
-          <Package size={36} className="mx-auto mb-3 opacity-30" />
+          <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
+          <p>กำลังดึงข้อมูล Lot...</p>
+        </div>
+      )}
+
+      {/* Initial state */}
+      {!loading && !generated && (
+        <div className="text-center py-20 text-gray-400">
+          <Thermometer size={40} className="mx-auto mb-3 opacity-20" />
+          <p className="text-sm">กด <span className="font-semibold text-cyan-600">Generate</span> เพื่อดึงข้อมูล Lot หมูซีก</p>
+        </div>
+      )}
+
+      {/* No lots */}
+      {!loading && generated && rows.length === 0 && !error && (
+        <div className="text-center py-14 text-gray-400">
           <p>ไม่พบข้อมูล — กรุณาอัพโหลดไฟล์ Stock คลัง 20 ก่อน</p>
         </div>
       )}
@@ -139,9 +159,7 @@ export default function TemperatureCheckPage() {
         <div className="rounded-xl border bg-gray-50 border-gray-200 px-5 py-4 flex flex-wrap gap-6 items-center">
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-0.5">Lot ทั้งหมด</p>
-            <p className="text-2xl font-bold text-gray-700">
-              {rows.length} <span className="text-sm font-normal">ล็อต</span>
-            </p>
+            <p className="text-2xl font-bold text-gray-700">{rows.length} <span className="text-sm font-normal">ล็อต</span></p>
           </div>
           <div className="w-px h-10 bg-gray-200" />
           <div className="text-center">
@@ -211,9 +229,7 @@ export default function TemperatureCheckPage() {
                   const t      = temps[r.spec_code] ?? EMPTY_TEMP
                   const tAvg   = calcAvg(t)
                   const status = tempStatus(tAvg)
-                  const rowBg  =
-                    status === 'green' ? 'bg-green-50' :
-                    status === 'red'   ? 'bg-red-50'   : 'hover:bg-gray-50'
+                  const rowBg  = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'hover:bg-gray-50'
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${rowBg}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
@@ -233,17 +249,12 @@ export default function TemperatureCheckPage() {
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         {tAvg !== null ? (
-                          <span className={`font-bold text-sm ${
-                            status === 'green' ? 'text-green-600' :
-                            status === 'red'   ? 'text-red-500'   : 'text-gray-500'
-                          }`}>
+                          <span className={`font-bold text-sm ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
                             {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                             {status === 'green' && <span className="ml-1 text-xs font-normal">✓</span>}
                             {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
                           </span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
+                        ) : <span className="text-gray-300">—</span>}
                       </td>
                     </tr>
                   )
