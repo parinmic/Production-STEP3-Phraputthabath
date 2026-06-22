@@ -549,12 +549,17 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                       <div className="min-w-0">
                         <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                         <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
-                          {stat.isRaw ? (
-                            <>
-                              {stat.totalQty.toLocaleString()} กก.
-                              <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
-                            </>
-                          ) : (() => {
+                          {stat.isRaw ? (() => {
+                            const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+                            const baskets = wpb && wpb > 0 ? Math.ceil(stat.totalQty / wpb) : null
+                            return (
+                              <>
+                                {baskets != null && <>{baskets.toLocaleString()} ตะกร้า · </>}
+                                {stat.totalQty.toLocaleString()} กก.
+                                <span className="ml-1 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                              </>
+                            )
+                          })() : (() => {
                             const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
                             const bags = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : 0
                             const displayQty = wpb && wpb > 0 ? bags * wpb : stat.totalQty
@@ -1391,9 +1396,12 @@ export default function BasicTablePage() {
     fetch('/api/master/productivity')
       .then(r => r.json())
       .then(data => setRateMap(data.rateMap ?? {}))
-    fetch('/api/master/picking-unit')
-      .then(r => r.json())
-      .then(data => setBagMap(data.bagMap ?? {}))
+    Promise.all([
+      fetch('/api/master/picking-unit').then(r => r.json()),
+      fetch('/api/basic/picking-unit').then(r => r.json()),
+    ]).then(([std, basic]) => {
+      setBagMap({ ...(std.bagMap ?? {}), ...(basic.bagMap ?? {}) })
+    })
     fetch('/api/master/job-assign')
       .then(r => r.json())
       .then(data => {
