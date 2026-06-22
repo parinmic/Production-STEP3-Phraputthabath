@@ -1,10 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Layers } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
-import CarcassYieldPlanView from './carcass-yield-plan-view'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -1336,7 +1335,7 @@ export default function BasicTablePage() {
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
-  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary' | 'yield'>('yield')
+  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1519,7 +1518,6 @@ export default function BasicTablePage() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
-              { mode: 'yield',   icon: Layers,        label: 'แผนตาม Yield' },
               { mode: 'sku',     icon: BarChart2,     label: 'ภาพรวม' },
               { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
               { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
@@ -1540,18 +1538,11 @@ export default function BasicTablePage() {
             </button>
           </div>
 
-          {viewMode !== 'yield' && filtered.length === 0 && (
+          {filtered.length === 0 && (
             <div className="card text-center py-16 text-gray-400">
               <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
               {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
             </div>
-          )}
-          {viewMode === 'yield' && (
-            <CarcassYieldPlanView
-              selectedPhase={selectedPhase}
-              date={date}
-              stationName={cfg.label}
-            />
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
             <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} />

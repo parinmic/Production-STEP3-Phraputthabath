@@ -34,6 +34,7 @@ function BasicSidebar() {
   const [openWorkforce, setOpenWorkforce]     = useState(p.startsWith('/basic/workforce'))
   const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
+  const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
   const [collapsed, setCollapsed]             = useState(true)
   const [mobileOpen, setMobileOpen]           = useState(false)
 
@@ -195,6 +196,47 @@ function BasicSidebar() {
             <FlaskConical size={18} className="shrink-0" />
             <span className={labelCls}>Yield หมูซีก</span>
           </Link>
+
+          {/* แผนตาม Yield แยกสายพาน */}
+          <button
+            onClick={() => setOpenYieldPlan(!openYieldPlan)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/basic/yield-plan') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="แผนตาม Yield"
+          >
+            <Layers size={18} className="shrink-0" />
+            <span className={`flex-1 text-left ${labelCls}`}>แผนตาม Yield</span>
+            {!collapsed && (openYieldPlan ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {openYieldPlan && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              {[
+                { label: 'สะโพกเบสิค',  slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
+                { label: 'ไหล่เบสิค',   slug: 'lai-basic',      dot: 'bg-green-500'  },
+                { label: 'สามชั้นเบสิค', slug: 'sam-chan-basic', dot: 'bg-blue-500'   },
+              ].map(t => (
+                <Link key={t.slug} href={`/basic/yield-plan/${t.slug}`}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/basic/yield-plan/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                </Link>
+              ))}
+            </div>
+          )}
+          {openYieldPlan && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              {[
+                { slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
+                { slug: 'lai-basic',      dot: 'bg-green-500'  },
+                { slug: 'sam-chan-basic',  dot: 'bg-blue-500'   },
+              ].map(t => (
+                <Link key={t.slug} href={`/basic/yield-plan/${t.slug}`}
+                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/basic/yield-plan/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                  title={t.slug}>
+                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
+                </Link>
+              ))}
+            </div>
+          )}
 
           <div className="hidden md:block space-y-1">
 
