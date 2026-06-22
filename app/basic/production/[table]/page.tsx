@@ -1,10 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Layers } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
-import CarcassYieldPlanView from './carcass-yield-plan-view'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -331,9 +330,10 @@ interface SkuScheduleViewProps {
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
+  carcassThroughputByGroup?: Record<string, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -456,6 +456,25 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
+
+  // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially
+  if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
+    for (const grp of skuGroups) {
+      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
+      if (throughput <= 0) continue
+      let cursor = phaseStartMins
+      const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
+      for (const sku of bySeq) {
+        const durMins = Math.round(skuStats[sku].totalQty / throughput)
+        const endMins = wallClockFinish(cursor, durMins)
+        skuStats[sku].minStart = cursor
+        skuStats[sku].maxEnd   = endMins
+        skuStats[sku].segments = skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false }))
+        cursor = endMins
+      }
+      grp.skus = bySeq
+    }
+  }
 
   if (!sortedSkus.length) return null
 
@@ -1332,11 +1351,13 @@ export default function BasicTablePage() {
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
   const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
+  const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
+  const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [showGenModal, setShowGenModal] = useState(false)
-  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary' | 'yield'>('yield')
+  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1350,6 +1371,21 @@ export default function BasicTablePage() {
       })
       .finally(() => { if (!silent) setLoading(false) })
   }
+
+  useEffect(() => {
+    try {
+      const l = localStorage.getItem('pig_carcass_selected')
+      if (l) setPigLots(JSON.parse(l))
+    } catch { /* ignore */ }
+    const onStorage = () => {
+      try {
+        const l = localStorage.getItem('pig_carcass_selected')
+        if (l) setPigLots(JSON.parse(l))
+      } catch { /* ignore */ }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   useEffect(() => {
     fetch('/api/master/productivity')
@@ -1382,6 +1418,13 @@ export default function BasicTablePage() {
         }
         setGroupMap(m)
       })
+    fetch('/api/basic/mas-yield')
+      .then(r => r.json())
+      .then(data => setMasYieldRows((data.rows ?? []).map((r: { carcass_weight: string | number; product_group: string; yield_pct: string | number }) => ({
+        carcass_weight: Number(r.carcass_weight),
+        product_group:  r.product_group,
+        yield_pct:      Number(r.yield_pct),
+      }))))
   }, [])
 
   useEffect(() => {
@@ -1427,6 +1470,28 @@ export default function BasicTablePage() {
   const viewEndH     = selectedPhase === 'all' ? PHASES[PHASES.length - 1].endH : phaseConfig!.endH
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   const skuColor     = buildSkuColorMap(items)
+
+  // Phase net working minutes (excluding breaks)
+  // Phase 1: 8:30-12:00 (210) + 13:00-14:30 (90) = 300 | Phase 2: 90 | Phase 3: 60 | all: 450
+  const PHASE_NET_MINS: Record<string, number> = { '1': 300, '2': 90, '3': 60, 'all': 450 }
+
+  // Per-group throughput = total_group_kg / phase_net_mins (กก./นาที)
+  const carcassThroughputByGroup = (() => {
+    if (!pigLots.length || !masYieldRows.length) return {}
+    const netMins = PHASE_NET_MINS[String(selectedPhase)] ?? 300
+    if (netMins <= 0) return {}
+    const uniqueWeights = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+    const groupKg: Record<string, number> = {}
+    for (const lot of pigLots) {
+      const w = uniqueWeights.reduce((best, ww) => Math.abs(ww - lot.avg_weight) < Math.abs(best - lot.avg_weight) ? ww : best, uniqueWeights[0])
+      for (const row of masYieldRows.filter(r => r.carcass_weight === w)) {
+        groupKg[row.product_group] = (groupKg[row.product_group] ?? 0) + (row.yield_pct / 100) * lot.qty * lot.avg_weight
+      }
+    }
+    const result: Record<string, number> = {}
+    for (const [grp, kg] of Object.entries(groupKg)) result[grp] = kg / netMins
+    return result
+  })()
 
   const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
     { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',     desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
@@ -1519,7 +1584,6 @@ export default function BasicTablePage() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
-              { mode: 'yield',   icon: Layers,        label: 'แผนตาม Yield' },
               { mode: 'sku',     icon: BarChart2,     label: 'ภาพรวม' },
               { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
               { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
@@ -1540,21 +1604,14 @@ export default function BasicTablePage() {
             </button>
           </div>
 
-          {viewMode !== 'yield' && filtered.length === 0 && (
+          {filtered.length === 0 && (
             <div className="card text-center py-16 text-gray-400">
               <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
               {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
             </div>
           )}
-          {viewMode === 'yield' && (
-            <CarcassYieldPlanView
-              selectedPhase={selectedPhase}
-              date={date}
-              stationName={cfg.label}
-            />
-          )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />

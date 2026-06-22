@@ -45,7 +45,7 @@ function TempInput({ value, onChange }: { value: string; onChange: (v: string) =
   )
 }
 
-export default function TemperatureCheckPage() {
+export default function BasicTemperatureCheckPage() {
   const [rows,       setRows]       = useState<LotRow[]>([])
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
@@ -144,7 +144,7 @@ export default function TemperatureCheckPage() {
         </div>
       )}
 
-      {/* Initial state */}
+      {/* Initial state — not yet generated */}
       {!loading && !generated && (
         <div className="text-center py-20 text-gray-400">
           <Thermometer size={40} className="mx-auto mb-3 opacity-20" />

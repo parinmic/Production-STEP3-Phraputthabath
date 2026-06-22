@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -25,6 +25,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
   { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
+  { label: 'Mas ตะกร้า Raw',               slug: 'mas-raw-basket',                dot: 'bg-amber-500' },
 ]
 
 function BasicSidebar() {
@@ -34,6 +35,7 @@ function BasicSidebar() {
   const [openWorkforce, setOpenWorkforce]     = useState(p.startsWith('/basic/workforce'))
   const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
+  const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
   const [collapsed, setCollapsed]             = useState(true)
   const [mobileOpen, setMobileOpen]           = useState(false)
 
@@ -93,6 +95,14 @@ function BasicSidebar() {
           <p className={sectionCls}>คำสั่งเบิกและผลิต</p>
           <div className={dividerCls} />
 
+          {/* QC */}
+          <Link href="/basic/temperature-check"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/temperature-check')}`}
+            title="ตรวจอุณหภูมิ(QC)">
+            <Thermometer size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจอุณหภูมิ(QC)</span>
+          </Link>
+
           {/* เบิกหมูซีก */}
           <Link href="/basic/pig-carcass-withdrawal"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/pig-carcass-withdrawal')}`}
@@ -138,14 +148,6 @@ function BasicSidebar() {
             </div>
           )}
 
-          {/* Yield หมูซีก */}
-          <Link href="/basic/carcass-yield"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-yield')}`}
-            title="Yield หมูซีก">
-            <FlaskConical size={18} className="shrink-0" />
-            <span className={labelCls}>Yield หมูซีก</span>
-          </Link>
-
           {/* คำสั่งผลิตราย Station */}
           <button
             onClick={() => setOpen(!open)}
@@ -184,6 +186,65 @@ function BasicSidebar() {
             title="ตรวจสอบสถานะกำลังคนประจำวัน">
             <CalendarDays size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
+          </Link>
+
+          <p className={sectionCls}>Additional</p>
+          <div className={dividerCls} />
+
+          <Link href="/basic/carcass-yield"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-yield')}`}
+            title="Yield หมูซีก">
+            <FlaskConical size={18} className="shrink-0" />
+            <span className={labelCls}>Yield หมูซีก</span>
+          </Link>
+
+          {/* แผนตาม Yield แยกสายพาน */}
+          <button
+            onClick={() => setOpenYieldPlan(!openYieldPlan)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/basic/yield-plan') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="แผนตาม Yield"
+          >
+            <Layers size={18} className="shrink-0" />
+            <span className={`flex-1 text-left ${labelCls}`}>แผนตาม Yield</span>
+            {!collapsed && (openYieldPlan ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {openYieldPlan && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              {[
+                { label: 'สะโพกเบสิค',  slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
+                { label: 'ไหล่เบสิค',   slug: 'lai-basic',      dot: 'bg-green-500'  },
+                { label: 'สามชั้นเบสิค', slug: 'sam-chan-basic', dot: 'bg-blue-500'   },
+              ].map(t => (
+                <Link key={t.slug} href={`/basic/yield-plan/${t.slug}`}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/basic/yield-plan/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                </Link>
+              ))}
+            </div>
+          )}
+          {openYieldPlan && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              {[
+                { slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
+                { slug: 'lai-basic',      dot: 'bg-green-500'  },
+                { slug: 'sam-chan-basic',  dot: 'bg-blue-500'   },
+              ].map(t => (
+                <Link key={t.slug} href={`/basic/yield-plan/${t.slug}`}
+                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/basic/yield-plan/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                  title={t.slug}>
+                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* รอบการลงหมูซีก */}
+          <Link href="/basic/carcass-cycle"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/carcass-cycle')}`}
+            title="รอบการลงหมูซีก">
+            <Timer size={18} className="shrink-0" />
+            <span className={labelCls}>รอบการลงหมูซีก</span>
           </Link>
 
           <div className="hidden md:block space-y-1">
