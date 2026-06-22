@@ -327,14 +327,13 @@ interface SkuScheduleViewProps {
   phaseEnd: number
   rateMap: Record<string, number>
   bagMap: Record<string, number>
-  rawBasketMap: Record<string, { name: string; kg_per_basket: number }>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, rawBasketMap, skuColor, nameMap, groupMap, carcassThroughputByGroup }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -551,8 +550,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, rawBask
                         <p className="text-[11px] sm:text-xs font-semibold text-gray-800 leading-tight line-clamp-2">{stat.name ?? sku}</p>
                         <p className="text-xs sm:text-sm font-bold mt-0.5" style={{ color: col.bg }}>
                           {stat.isRaw ? (() => {
-                            const basket = rawBasketMap[sku] ?? rawBasketMap[sku.replace(/^0+/, '')]
-                            const baskets = basket ? Math.ceil(stat.totalQty / basket.kg_per_basket) : null
+                            const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+                            const baskets = wpb && wpb > 0 ? Math.ceil(stat.totalQty / wpb) : null
                             return (
                               <>
                                 {baskets != null && <>{baskets.toLocaleString()} ตะกร้า · </>}
@@ -1359,7 +1358,6 @@ export default function BasicTablePage() {
   const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
   const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
   const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
-  const [rawBasketMap, setRawBasketMap] = useState<Record<string, { name: string; kg_per_basket: number }>>({})
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -1432,17 +1430,6 @@ export default function BasicTablePage() {
         product_group:  r.product_group,
         yield_pct:      Number(r.yield_pct),
       }))))
-    fetch('/api/basic/mas-raw-basket')
-      .then(r => r.json())
-      .then(data => {
-        const m: Record<string, { name: string; kg_per_basket: number }> = {}
-        for (const r of (data.rows ?? []) as { sap_code: string; name: string; kg_per_basket: number }[]) {
-          const entry = { name: r.name, kg_per_basket: Number(r.kg_per_basket) }
-          m[r.sap_code] = entry
-          m[r.sap_code.replace(/^0+/, '')] = entry
-        }
-        setRawBasketMap(m)
-      })
   }, [])
 
   useEffect(() => {
@@ -1629,7 +1616,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} rawBasketMap={rawBasketMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
