@@ -1094,7 +1094,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
-    supabase.from('mas_beik_kha').select('sap, source_station, dest_station'),
+    supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
   ])
 
   const wpbMapLocal = new Map<string, number>()

@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
-    supabase.from('mas_beik_kha').select('sap, source_station, dest_station'),
+    supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
