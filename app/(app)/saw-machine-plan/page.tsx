@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Scissors, Calendar, RefreshCw } from 'lucide-react'
+import { Scissors, Calendar, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -15,15 +15,6 @@ const STATION_COLORS: Record<string, string> = {
   'สามชั้นพิเศษ': '#8b5cf6',
 }
 
-const STATION_ORDER = ['เผาขา', 'เลาะขา', 'สามชั้นพิเศษ']
-
-// Phase end times in minutes (wall-clock)
-const PHASE_END: Record<string, number> = {
-  'เช้า': 870,   // 14:30
-  'บ่าย': 990,   // 16:30
-  'ค่ำ':  1920,  // 08:00 next day (1440+480)
-}
-
 const PHASE_BADGE: Record<string, string> = {
   'เช้า': 'bg-blue-50 text-blue-700 border-blue-200',
   'บ่าย': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -36,24 +27,6 @@ function getPhaseStart(period: string) {
   if (period === 'บ่าย') return 14 * 60
   if (period === 'ค่ำ') return 16 * 60
   return 8 * 60
-}
-
-function workMinutesBetween(from: number, to: number): number {
-  if (from >= to) return 0
-  let work = 0
-  let pos = from
-  for (const [bs, be] of BREAKS) {
-    if (pos >= to) break
-    if (pos >= be) continue
-    if (pos < bs) {
-      const stop = Math.min(bs, to)
-      work += stop - pos
-      pos = stop
-    }
-    if (pos >= bs && pos < be) pos = Math.min(be, to)
-  }
-  if (pos < to) work += to - pos
-  return work
 }
 
 function wallClockFinish(from: number, work: number): number {
@@ -86,6 +59,11 @@ function todayISO(): string {
   return new Date().toLocaleDateString('sv-SE')
 }
 
+// Strip พิเศษ suffix so 'สามชั้นพิเศษ' matches withdrawal 'สามชั้น'
+function normalizeStation(s: string): string {
+  return s.replace(/พิเศษ$/, '').trim()
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SawMachineSku {
   sku: string
@@ -96,15 +74,10 @@ interface SawMachineSku {
   timing: string | null
 }
 
-interface RawAssignment {
-  worker_name: string
+interface ForProduct {
   sku: string
   sku_name: string | null
-  target_quantity: number
-  period: string
-  deadline_time: string | null
-  note: string | null
-  seq: number | null
+  qty: number
 }
 
 interface WithdrawalRawItem {
@@ -113,163 +86,77 @@ interface WithdrawalRawItem {
   quantity: number
   unit: string
   withdrawal_round: string | null
-}
-
-// Strip พิเศษ suffix so 'สามชั้นพิเศษ' matches withdrawal 'สามชั้น'
-function normalizeStation(s: string): string {
-  return s.replace(/พิเศษ$/, '').trim()
-}
-
-interface IndividualSkuBlock {
-  sku: string
-  sku_name: string | null
-  totalQty: number
-  saw_start: number
-  saw_end: number
-  saw_dur: number
-  timing: string
+  for_products?: ForProduct[]
 }
 
 interface StationBlock {
-  station: string
-  saw_start: number
-  saw_end: number
-  saw_dur: number
-  totalQty: number
-  skus: IndividualSkuBlock[]
+  station: string     // display name (from mas_saw_machine_sku)
+  saw_start: number   // earliest withdrawal_round → minutes
+  saw_end: number     // wallClockFinish(saw_start, saw_dur)
+  saw_dur: number     // totalRawQty / rate * 60
+  totalQty: number    // sum of raw material quantities
+  rawItems: WithdrawalRawItem[]
 }
 
 interface PhaseBlock {
   phase: string
-  axisStart: number  // always AXIS_START (8:00)
-  axisEnd: number    // max(saw_end) across stations, rounded to next hour
+  axisStart: number
+  axisEnd: number
   stations: StationBlock[]
 }
 
 // ── Computation ───────────────────────────────────────────────────────────────
-function computeBlocks(
+// Timing and quantities are both derived from raw material withdrawal data.
+// rate (kg/hr) comes from mas_saw_machine_sku for the station.
+function computeRawMatBlocks(
   sawSkus: SawMachineSku[],
-  assignments: RawAssignment[],
-  rateMap: Record<string, number>,
+  rawMatByPeriodStation: Map<string, Map<string, WithdrawalRawItem[]>>,
 ): PhaseBlock[] {
-  if (!sawSkus.length || !assignments.length) return []
+  if (!sawSkus.length) return []
 
-  const sawSkuMap = new Map(sawSkus.map(s => [s.sku.replace(/^0+/, ''), s]))
-  const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
-
-  // Per-worker timeline simulation — track stats per (period, sku)
-  const byWorker: Record<string, RawAssignment[]> = {}
-  for (const a of assignments) {
-    byWorker[a.worker_name] ??= []
-    byWorker[a.worker_name].push(a)
-  }
-
-  // skuStatsByPeriod: period → sku → { minStart, maxEnd, totalQty }
-  const skuStatsByPeriod = new Map<string, Map<string, { minStart: number; maxEnd: number; totalQty: number }>>()
-
-  for (const tasks of Object.values(byWorker)) {
-    const sorted = [...tasks].sort((a, b) => {
-      const pA = periodOrder[a.period] ?? 99, pB = periodOrder[b.period] ?? 99
-      if (pA !== pB) return pA - pB
-      const tA = a.deadline_time ?? '', tB = b.deadline_time ?? ''
-      if (tA !== tB) return tA.localeCompare(tB)
-      return (a.seq ?? 999999) - (b.seq ?? 999999)
-    })
-
-    let cur = 0, lastPeriod = ''
-    for (const task of sorted) {
-      if (task.period !== lastPeriod) {
-        cur = Math.max(cur, getPhaseStart(task.period))
-        lastPeriod = task.period
-      }
-      const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-      // Trust deadline_time from generate-plan directly — it already encodes concurrent timing.
-      // Only fall back to cur when deadline_time is absent.
-      let startMin = cur
-      if (task.deadline_time) {
-        const [dh, dm] = task.deadline_time.split(':').map(Number)
-        if (!isNaN(dh) && !isNaN(dm)) {
-          const raw = dh * 60 + dm
-          startMin = (task.period === 'ค่ำ' && raw < 16 * 60) ? raw + 1440 : raw
-        }
-      }
-      const shiftEnd = PHASE_END[task.period] ?? 1200
-      const targetQty = Number(task.target_quantity)
-      const effectiveQty = rate && rate > 0
-        ? Math.min(targetQty, (workMinutesBetween(startMin, shiftEnd) / 60) * rate)
-        : targetQty
-      const effectiveDur = rate && rate > 0 ? Math.round((effectiveQty / rate) * 60) : 0
-      const endMin = wallClockFinish(startMin, effectiveDur)
-      cur = Math.max(cur, endMin)
-
-      // Store per-period stats
-      if (!skuStatsByPeriod.has(task.period)) skuStatsByPeriod.set(task.period, new Map())
-      const periodStats = skuStatsByPeriod.get(task.period)!
-      const existing = periodStats.get(task.sku)
-      if (!existing) {
-        periodStats.set(task.sku, { minStart: startMin, maxEnd: endMin, totalQty: effectiveQty })
-      } else {
-        existing.minStart = Math.min(existing.minStart, startMin)
-        existing.maxEnd = Math.max(existing.maxEnd, endMin)
-        existing.totalQty += effectiveQty
-      }
+  // Build: normalizedStation → { rate, displayName }
+  const stationInfo = new Map<string, { rate: number; displayName: string }>()
+  for (const s of sawSkus) {
+    const norm = normalizeStation(s.station)
+    const cur = stationInfo.get(norm)
+    if (!cur) {
+      stationInfo.set(norm, { rate: s.rate, displayName: s.station })
+    } else if (s.rate > 0 && cur.rate <= 0) {
+      cur.rate = s.rate
     }
   }
 
-  // Build PhaseBlock for each period that has data
   const result: PhaseBlock[] = []
 
   for (const period of ['เช้า', 'บ่าย', 'ค่ำ']) {
-    const periodStats = skuStatsByPeriod.get(period)
-    if (!periodStats?.size) continue
-
-    // Collect SKU entries for this period
-    interface SkuEntry {
-      sku: string; sku_name: string | null; station: string; timing: string
-      totalQty: number; rawSawStart: number; saw_dur: number
-    }
-    const entries: SkuEntry[] = []
-    for (const [sku, sawInfo] of sawSkuMap) {
-      const stats = periodStats.get(sku)
-      if (!stats || stats.totalQty <= 0) continue
-      const timing = sawInfo.timing ?? 'หลัง'
-      const saw_dur = sawInfo.rate > 0 ? Math.round((stats.totalQty / sawInfo.rate) * 60) : 0
-      entries.push({
-        sku, sku_name: sawInfo.sku_name, station: sawInfo.station, timing,
-        totalQty: stats.totalQty,
-        rawSawStart: timing === 'ก่อน' ? stats.minStart : stats.maxEnd,
-        saw_dur,
-      })
-    }
-    if (!entries.length) continue
-
-    // Group entries by station, assign sequential times within each station
-    const byStation = new Map<string, SkuEntry[]>()
-    for (const e of entries) {
-      if (!byStation.has(e.station)) byStation.set(e.station, [])
-      byStation.get(e.station)!.push(e)
-    }
+    const stationMap = rawMatByPeriodStation.get(period)
+    if (!stationMap?.size) continue
 
     const stations: StationBlock[] = []
-    for (const [station, stationEntries] of byStation) {
-      stationEntries.sort((a, b) => a.rawSawStart - b.rawSawStart)
-      const groupStart = stationEntries[0].rawSawStart
-      let cur = groupStart
-      const skus: IndividualSkuBlock[] = stationEntries.map(e => {
-        const saw_start = cur
-        const saw_end = wallClockFinish(cur, e.saw_dur)
-        cur = saw_end
-        return { sku: e.sku, sku_name: e.sku_name, totalQty: e.totalQty, saw_start, saw_end, saw_dur: e.saw_dur, timing: e.timing }
-      })
-      stations.push({
-        station, saw_start: groupStart, saw_end: cur,
-        saw_dur: stationEntries.reduce((s, e) => s + e.saw_dur, 0),
-        totalQty: stationEntries.reduce((s, e) => s + e.totalQty, 0),
-        skus,
-      })
+
+    for (const [normSt, items] of stationMap) {
+      if (!items.length) continue
+      const totalQty = items.reduce((s, i) => s + i.quantity, 0)
+      if (totalQty <= 0) continue
+
+      const info = stationInfo.get(normSt)
+      const rate = info?.rate ?? 0
+      const displayName = info?.displayName ?? normSt
+      // Duration computed from raw material quantity ÷ saw machine rate
+      const saw_dur = rate > 0 ? Math.round((totalQty / rate) * 60) : 0
+
+      // Saw starts at the earliest withdrawal_round for this station/period
+      const roundMins = items
+        .map(i => i.withdrawal_round)
+        .filter(Boolean)
+        .map(r => { const [h, m] = r!.split(':').map(Number); return h * 60 + m })
+      const saw_start = roundMins.length > 0 ? Math.min(...roundMins) : getPhaseStart(period)
+      const saw_end = wallClockFinish(saw_start, saw_dur)
+
+      stations.push({ station: displayName, saw_start, saw_end, saw_dur, totalQty, rawItems: items })
     }
 
-    // Sort stations by saw_start ascending (earliest first)
+    if (!stations.length) continue
     stations.sort((a, b) => a.saw_start - b.saw_start)
 
     const minStart = stations.reduce((m, s) => Math.min(m, s.saw_start), Infinity)
@@ -286,12 +173,14 @@ function computeBlocks(
 // ── Phase Section ─────────────────────────────────────────────────────────────
 const LABEL_W = 112  // px — station label column width
 
-function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<string, WithdrawalRawItem[]> }) {
+function PhaseSection({ block }: { block: PhaseBlock }) {
   const range = block.axisEnd - block.axisStart || 1
   const pct = (m: number) => ((m - block.axisStart) / range) * 100
 
   const ticks: number[] = []
   for (let m = block.axisStart; m <= block.axisEnd; m += 60) ticks.push(m)
+
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   const [nowMins, setNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
@@ -344,26 +233,21 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
             const color = STATION_COLORS[station.station] ?? '#6b7280'
             return (
               <div key={station.station} className="flex items-center" style={{ height: 32 }}>
-                {/* Station label */}
                 <div style={{ width: LABEL_W }} className="shrink-0 pr-3 flex items-center">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                     <span className="text-xs font-medium text-gray-700 truncate">{station.station}</span>
                   </div>
                 </div>
-                {/* Bar track */}
                 <div className="flex-1 relative h-full">
-                  {/* Grid lines */}
                   {ticks.map(t => (
                     <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
                       style={{ left: `${pct(t)}%` }} />
                   ))}
-                  {/* Current time line */}
                   {showNow && (
                     <div className="absolute top-0 bottom-0 w-px bg-red-400 z-20 pointer-events-none"
                       style={{ left: `${pct(nowMins)}%` }} />
                   )}
-                  {/* Saw bar */}
                   <div
                     className="absolute top-2 rounded flex items-center px-2 overflow-hidden"
                     style={{
@@ -390,29 +274,23 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
       <div className="border-t border-gray-100">
         {block.stations.map(station => {
           const color = STATION_COLORS[station.station] ?? '#6b7280'
-          const normSt = normalizeStation(station.station)
-          const rawItems = rawMatMap.get(station.station) ?? rawMatMap.get(normSt) ?? []
-          const rawTotal = rawItems.reduce((s, i) => s + i.quantity, 0)
-          // Group by withdrawal_round
+          // Group items by withdrawal_round
           const byRound = new Map<string, WithdrawalRawItem[]>()
-          for (const item of rawItems) {
+          for (const item of station.rawItems) {
             const r = item.withdrawal_round ?? '—'
             if (!byRound.has(r)) byRound.set(r, [])
             byRound.get(r)!.push(item)
           }
           return (
             <div key={station.station}>
-              {/* Station sub-header */}
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100">
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                 <span className="text-xs font-semibold text-gray-700">{station.station}</span>
                 <span className="text-[11px] text-gray-400 ml-1">
-                  {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)} · ใช้เครื่อง {durLabel(station.saw_dur)}
-                  {rawTotal > 0 && <> · Raw Mat {rawTotal.toLocaleString()} กก.</>}
+                  {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)} · ใช้เครื่อง {durLabel(station.saw_dur)} · Raw Mat {station.totalQty.toLocaleString()} กก.
                 </span>
               </div>
-              {/* Raw material rows grouped by round */}
-              {rawItems.length === 0 ? (
+              {station.rawItems.length === 0 ? (
                 <div className="px-4 py-3 text-[11px] text-gray-400">ไม่มีข้อมูลการเบิก Raw Mat</div>
               ) : (
                 <div className="divide-y divide-gray-50">
@@ -426,21 +304,51 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
                           </span>
                         </div>
                       )}
-                      {items.map((item, i) => (
-                        <div key={`${item.sku}-${i}`} className="flex items-center gap-3 px-4 py-2">
-                          <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-medium text-gray-800 truncate block">
-                              {item.sku_name ?? item.sku}
-                            </span>
-                            <span className="text-[10px] font-mono text-gray-400">{item.sku}</span>
+                      {items.map((item, i) => {
+                        const key = `${station.station}|${round}|${item.sku}|${i}`
+                        const isOpen = expandedKey === key
+                        const hasSkus = (item.for_products?.length ?? 0) > 0
+                        return (
+                          <div key={key}>
+                            <div
+                              className={`flex items-center gap-3 px-4 py-2 ${hasSkus ? 'cursor-pointer hover:bg-gray-50 active:bg-gray-100' : ''}`}
+                              onClick={() => hasSkus && setExpandedKey(isOpen ? null : key)}
+                            >
+                              <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
+                              {hasSkus ? (
+                                isOpen
+                                  ? <ChevronDown size={12} className="shrink-0" style={{ color }} />
+                                  : <ChevronRight size={12} className="shrink-0 text-gray-400" />
+                              ) : (
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-medium text-gray-800 truncate block">
+                                  {item.sku_name ?? item.sku}
+                                </span>
+                                <span className="text-[10px] font-mono text-gray-400">{item.sku}</span>
+                              </div>
+                              <span className="text-[11px] font-semibold text-gray-700 shrink-0 w-24 text-right">
+                                {item.quantity.toLocaleString()} {item.unit}
+                              </span>
+                            </div>
+                            {isOpen && hasSkus && (
+                              <div className="px-4 pb-2 pt-0.5">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 pl-8">ใช้ผลิต</p>
+                                <div className="flex flex-wrap gap-1.5 pl-8">
+                                  {item.for_products!.map((p, pi) => (
+                                    <div key={pi} className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2.5 py-1">
+                                      <span className="text-[10px] font-mono text-gray-400">{p.sku}</span>
+                                      <span className="text-xs font-medium text-gray-700">{p.sku_name ?? p.sku}</span>
+                                      <span className="text-xs font-bold" style={{ color }}>{p.qty.toLocaleString()} กก.</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className="text-[11px] font-semibold text-gray-700 shrink-0 w-24 text-right">
-                            {item.quantity.toLocaleString()} {item.unit}
-                          </span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   ))}
                 </div>
@@ -458,9 +366,6 @@ export default function SawMachinePlanPage() {
   const [date, setDate] = useState(todayISO())
   const [loading, setLoading] = useState(false)
   const [sawSkus, setSawSkus] = useState<SawMachineSku[]>([])
-  const [assignments, setAssignments] = useState<RawAssignment[]>([])
-  const [rateMap, setRateMap] = useState<Record<string, number>>({})
-  // period → station(normalized) → withdrawal raw material items
   const [rawMatByPeriodStation, setRawMatByPeriodStation] = useState<Map<string, Map<string, WithdrawalRawItem[]>>>(new Map())
 
   const load = useCallback(async (d: string) => {
@@ -471,40 +376,27 @@ export default function SawMachinePlanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: d, phase }),
       })
-      const [sawRes, prodRes, rateRes, w1, w2, w3] = await Promise.all([
+      const [sawRes, w1, w2, w3] = await Promise.all([
         supabase.from('mas_saw_machine_sku').select('*'),
-        fetch(`/api/production?date=${d}`).then(r => r.json()),
-        fetch('/api/master/productivity').then(r => r.json()),
         fetch('/api/withdrawal/calculate', opts(1)).then(r => r.json()),
         fetch('/api/withdrawal/calculate', opts(2)).then(r => r.json()),
         fetch('/api/withdrawal/calculate', opts(3)).then(r => r.json()),
       ])
-      setSawSkus(sawRes.data ?? [])
-      const raw: RawAssignment[] = (prodRes.assignments ?? []).map((a: RawAssignment) => ({
-        ...a,
-        sku: a.sku.replace(/^0+/, ''),
-      }))
-      setAssignments(raw)
-      setRateMap(rateRes.rateMap ?? {})
+      const skus: SawMachineSku[] = sawRes.data ?? []
+      setSawSkus(skus)
 
-      // Set of saw-machine finished-product SKU codes (normalized, no leading zeros)
-      const sawSkuCodes = new Set(
-        (sawRes.data ?? []).map((s: SawMachineSku) => s.sku.replace(/^0+/, ''))
-      )
+      const sawSkuCodes = new Set(skus.map(s => s.sku.replace(/^0+/, '')))
 
-      // Build rawMat map: period → normalizedStation → items
-      // Only include raw materials whose for_products contains a saw-machine SKU
       type WItem = {
         sku: string; sku_name: string | null; quantity: number; unit: string
         work_station: string | null; withdrawal_round?: string
-        for_products?: { sku: string }[]
+        for_products?: { sku: string; sku_name: string | null; qty: number }[]
       }
       const rawMap = new Map<string, Map<string, WithdrawalRawItem[]>>()
       for (const [period, res] of [['เช้า', w1], ['บ่าย', w2], ['ค่ำ', w3]] as [string, { items?: WItem[] }][]) {
         const stMap = new Map<string, WithdrawalRawItem[]>()
         for (const item of res.items ?? []) {
           if (!item.work_station) continue
-          // Only keep raw materials that feed at least one saw-machine SKU
           const fps = item.for_products
           if (!fps?.length) continue
           const isForSawSku = fps.some(p =>
@@ -514,11 +406,10 @@ export default function SawMachinePlanPage() {
           const st = normalizeStation(item.work_station)
           if (!stMap.has(st)) stMap.set(st, [])
           stMap.get(st)!.push({
-            sku: item.sku,
-            sku_name: item.sku_name,
-            quantity: item.quantity,
-            unit: item.unit,
+            sku: item.sku, sku_name: item.sku_name,
+            quantity: item.quantity, unit: item.unit,
             withdrawal_round: item.withdrawal_round ?? null,
+            for_products: fps,
           })
         }
         rawMap.set(period, stMap)
@@ -532,19 +423,18 @@ export default function SawMachinePlanPage() {
   useEffect(() => { load(date) }, [date, load])
 
   const phases = useMemo(
-    () => computeBlocks(sawSkus, assignments, rateMap),
-    [sawSkus, assignments, rateMap],
+    () => computeRawMatBlocks(sawSkus, rawMatByPeriodStation),
+    [sawSkus, rawMatByPeriodStation],
   )
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <Scissors size={22} className="text-gray-600 shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-gray-900">แผนการใช้เครื่องเลื่อย</h1>
-            <p className="text-sm text-gray-500 mt-0.5">แกนเวลาร่วม · แบ่งตาม Phase</p>
+            <p className="text-sm text-gray-500 mt-0.5">เวลาคำนวณจากปริมาณ Raw Mat · แบ่งตาม Phase</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -582,11 +472,7 @@ export default function SawMachinePlanPage() {
       )}
 
       {!loading && phases.map(phase => (
-        <PhaseSection
-          key={phase.phase}
-          block={phase}
-          rawMatMap={rawMatByPeriodStation.get(phase.phase) ?? new Map()}
-        />
+        <PhaseSection key={phase.phase} block={phase} />
       ))}
     </div>
   )

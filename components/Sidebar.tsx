@@ -400,6 +400,10 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/saw-machine' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-teal-400" />Mas SKU ใช้เครื่องเลื่อย
               </Link>
+              <Link href="/master-logic/beik-kha"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/beik-kha' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-rose-400" />Mas เบิกขา
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -450,6 +454,11 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/saw-machine' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas SKU ใช้เครื่องเลื่อย">
                 <span className="w-2 h-2 rounded-full bg-teal-400" />
+              </Link>
+              <Link href="/master-logic/beik-kha"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/beik-kha' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas เบิกขา">
+                <span className="w-2 h-2 rounded-full bg-rose-400" />
               </Link>
             </div>
           )}
