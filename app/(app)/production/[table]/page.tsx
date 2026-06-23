@@ -1436,7 +1436,11 @@ export default function TablePage() {
   }, [midRecal])
 
   const [ackedSkus, setAckedSkus] = useState<Set<string>>(new Set())
-  const [wipItems, setWipItems]   = useState<{ sku: string; sku_name: string | null; qty: number; round: string }[]>([])
+  const [wipItems, setWipItems]   = useState<{
+    sku: string; sku_name: string | null; qty: number
+    round: string; deadline: string
+    raws: { sap: string; name: string; qty: number }[]
+  }[]>([])
 
   useEffect(() => {
     try {
@@ -1471,19 +1475,58 @@ export default function TablePage() {
       .ilike('note', '%แผนผลิต WIP%')
     if (phase !== 'all') q = q.eq('phase', phase)
     const { data } = await q
-    const map = new Map<string, { sku_name: string | null; qty: number; round: string }>()
+
+    const map = new Map<string, { sku_name: string | null; qty: number; round: string; origSku: string }>()
     for (const r of data ?? []) {
-      const note  = String(r.note ?? '')
-      const round = note.match(/\[Round:\s*(\d{2}:\d{2})\]/)?.[1] ?? '—'
-      const key   = String(r.sku ?? '').replace(/^0+/, '')
-      const cur   = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, round }
-      cur.qty    += Number(r.quantity ?? 0)
+      const note    = String(r.note ?? '')
+      const round   = note.match(/\[Round:\s*(\d{2}:\d{2})\]/)?.[1] ?? '—'
+      const origSku = String(r.sku ?? '')
+      const key     = origSku.replace(/^0+/, '')
+      const cur     = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, round, origSku }
+      cur.qty      += Number(r.quantity ?? 0)
       if (round < cur.round) cur.round = round
       map.set(key, cur)
     }
+
+    if (!map.size) { setWipItems([]); return }
+
+    const addMins = (hhmm: string, add: number): string => {
+      if (hhmm === '—') return '—'
+      const [h, m] = hhmm.split(':').map(Number)
+      const total  = h * 60 + m + add
+      return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+    }
+
+    const querySkus = Array.from(new Set(
+      Array.from(map.values()).flatMap(v => [v.origSku, v.origSku.replace(/^0+/, '')])
+    ))
+    const { data: bomRows } = await supabase
+      .from('bom_items')
+      .select('product_sap, raw_sap, raw_name, yield_pct')
+      .in('product_sap', querySkus)
+
+    const bomMap = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
+    for (const b of bomRows ?? []) {
+      const entry = { raw_sap: String(b.raw_sap ?? ''), raw_name: b.raw_name ?? null, yield_pct: Number(b.yield_pct ?? 0) }
+      for (const k of [String(b.product_sap ?? ''), String(b.product_sap ?? '').replace(/^0+/, '')]) {
+        const list = bomMap.get(k) ?? []
+        if (!list.some(e => e.raw_sap === entry.raw_sap)) list.push(entry)
+        bomMap.set(k, list)
+      }
+    }
+
     setWipItems(
       Array.from(map.entries())
-        .map(([sku, v]) => ({ sku, ...v }))
+        .map(([sku, { sku_name, qty, round, origSku }]) => {
+          const deadline = addMins(round, 30)
+          const boms     = bomMap.get(sku) ?? bomMap.get(origSku) ?? []
+          const raws     = boms.map(b => ({
+            sap:  b.raw_sap,
+            name: b.raw_name ?? b.raw_sap,
+            qty:  b.yield_pct > 0 ? Math.round(qty / b.yield_pct * 10) / 10 : qty,
+          }))
+          return { sku, sku_name, qty, round, deadline, raws }
+        })
         .sort((a, b) => a.round.localeCompare(b.round))
     )
   }
@@ -1850,15 +1893,30 @@ export default function TablePage() {
             <span className="w-2 h-2 rounded-full bg-fuchsia-500 shrink-0" />
             WIP ที่ต้องผลิตสำหรับเลาะขา
           </h3>
-          {wipItems.map(({ sku, sku_name, qty, round }) => (
-            <div key={sku} className="flex items-center justify-between py-2.5 border-t border-gray-100 first:border-0">
-              <div>
-                <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
-                <p className="text-xs text-gray-400 mt-0.5">ส่งให้เลาะขา · Round {round} น.</p>
+          {wipItems.map(({ sku, sku_name, qty, round, deadline, raws }) => (
+            <div key={sku} className="py-3 border-t border-gray-100 first:border-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    เริ่ม {round} → ส่งเลาะขา {deadline} น.
+                  </p>
+                </div>
+                <p className="text-xl font-bold text-fuchsia-700 shrink-0">
+                  {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
+                </p>
               </div>
-              <p className="text-xl font-bold text-fuchsia-700">
-                {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
-              </p>
+              {raws.length > 0 && (
+                <div className="mt-2 pl-3 border-l-2 border-fuchsia-200 space-y-1">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">วัตถุดิบที่ต้องเบิก</p>
+                  {raws.map(r => (
+                    <div key={r.sap} className="flex justify-between text-xs">
+                      <span className="text-gray-600">{r.name}</span>
+                      <span className="font-medium text-gray-800">{r.qty.toLocaleString()} กก.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
