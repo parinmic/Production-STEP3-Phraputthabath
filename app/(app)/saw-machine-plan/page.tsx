@@ -293,6 +293,17 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
   const ticks: number[] = []
   for (let m = block.axisStart; m <= block.axisEnd; m += 60) ticks.push(m)
 
+  const [nowMins, setNowMins] = useState(() => {
+    const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
+  })
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date(); setNowMins(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
+    }, 5000)
+    return () => clearInterval(id)
+  }, [])
+  const showNow = nowMins >= block.axisStart && nowMins <= block.axisEnd
+
   return (
     <div className="mb-8 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Phase header */}
@@ -320,6 +331,10 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
                 <div className="w-px h-2 bg-gray-200 mt-0.5" />
               </div>
             ))}
+            {showNow && (
+              <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none"
+                style={{ left: `${pct(nowMins)}%` }} />
+            )}
           </div>
         </div>
 
@@ -343,6 +358,11 @@ function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<
                     <div key={t} className="absolute top-0 bottom-0 w-px bg-gray-100 pointer-events-none"
                       style={{ left: `${pct(t)}%` }} />
                   ))}
+                  {/* Current time line */}
+                  {showNow && (
+                    <div className="absolute top-0 bottom-0 w-px bg-red-400 z-20 pointer-events-none"
+                      style={{ left: `${pct(nowMins)}%` }} />
+                  )}
                   {/* Saw bar */}
                   <div
                     className="absolute top-2 rounded flex items-center px-2 overflow-hidden"
