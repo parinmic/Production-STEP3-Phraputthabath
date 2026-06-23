@@ -608,11 +608,20 @@ export async function POST(req: NextRequest) {
     }
     for (const item of wipPaoKhaItems) {
       const boms = wipBomMap.get(String(item.sku ?? '')) ?? wipBomMap.get(String(item.sku ?? '').replace(/^0+/, '')) ?? []
-      ;(item as Record<string, unknown>)['raws'] = boms.map(b => ({
-        sap:  b.raw_sap,
-        name: b.raw_name ?? b.raw_sap,
-        qty:  b.yield_pct > 0 ? Math.round(item.quantity / b.yield_pct * 10) / 10 : item.quantity,
-      }))
+      if (boms.length === 0) continue
+
+      // Save WIP info, then transform: raw material becomes the main withdrawal row
+      const wipSku     = String(item.sku ?? '')
+      const wipSkuName = item.sku_name
+      const wipQty     = item.quantity
+      const primaryBom = boms[0]
+      const rawQty     = primaryBom.yield_pct > 0 ? Math.round(wipQty / primaryBom.yield_pct * 10) / 10 : wipQty
+
+      item.sku      = primaryBom.raw_sap
+      item.sku_name = primaryBom.raw_name
+      item.quantity = rawQty
+      item.note     = 'เบิกวัตถุดิบผลิต WIP'
+      ;(item as Record<string, unknown>)['for_products'] = [{ sku: wipSku, sku_name: wipSkuName, qty: wipQty, rawQty }]
     }
   }
 
