@@ -405,46 +405,44 @@ export default function ShortagePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r, i) => (
-                  {(() => {
-                    const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
-                    return (
-                      <tr key={`${r.sku}-${i}`} className="hover:bg-red-50/40">
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {r.work_station ? (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.work_station] ?? 'bg-gray-100 text-gray-700'}`}>
-                              {STATION_DISPLAY[r.work_station] ?? r.work_station}
-                            </span>
-                          ) : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{r.sku}</td>
-                        <td className="px-3 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          {r.deficit != null ? (
-                            <span className="font-bold text-red-600">
-                              {r.deficit.toLocaleString()} <span className="font-normal text-red-400 text-xs">กก.</span>
-                            </span>
-                          ) : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          {baskets != null ? (
-                            <span className="font-semibold text-amber-700">
-                              {baskets.toLocaleString()} <span className="font-normal text-amber-500 text-xs">ตะกร้า</span>
-                            </span>
-                          ) : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                          {mins != null ? (
-                            <span className="text-gray-700">{mins} <span className="text-gray-400 text-xs">นาที</span></span>
-                          ) : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-center whitespace-nowrap text-gray-800">
-                          {r.productionTime ? r.productionTime + ' น.' : <span className="text-gray-300">—</span>}
-                        </td>
-                      </tr>
-                    )
-                  })()}
-                ))}
+                {rows.map((r, i) => {
+                  const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
+                  return (
+                    <tr key={`${r.sku}-${i}`} className="hover:bg-red-50/40">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {r.work_station ? (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[r.work_station] ?? 'bg-gray-100 text-gray-700'}`}>
+                            {STATION_DISPLAY[r.work_station] ?? r.work_station}
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-xs text-gray-500 whitespace-nowrap">{r.sku}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-800">{r.sku_name ?? <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {r.deficit != null ? (
+                          <span className="font-bold text-red-600">
+                            {r.deficit.toLocaleString()} <span className="font-normal text-red-400 text-xs">กก.</span>
+                          </span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {baskets != null ? (
+                          <span className="font-semibold text-amber-700">
+                            {baskets.toLocaleString()} <span className="font-normal text-amber-500 text-xs">ตะกร้า</span>
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        {mins != null ? (
+                          <span className="text-gray-700">{mins} <span className="text-gray-400 text-xs">นาที</span></span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap text-gray-800">
+                        {r.productionTime ? r.productionTime + ' น.' : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
