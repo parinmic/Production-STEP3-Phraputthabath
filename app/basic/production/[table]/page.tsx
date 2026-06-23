@@ -914,9 +914,11 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                     )}
                   </div>
                   <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
-                    {stat.isRaw
-                      ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
-                      : bags !== null ? bags.toLocaleString() : '—'}
+                    {bags !== null
+                      ? bags.toLocaleString()
+                      : stat.isRaw
+                        ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
+                        : '—'}
                   </p>
                   <button
                     onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
