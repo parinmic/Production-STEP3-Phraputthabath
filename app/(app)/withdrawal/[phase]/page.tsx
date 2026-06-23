@@ -185,6 +185,16 @@ export default function WithdrawalPage() {
   const displayItems: RowItem[] = selectedStation
     ? items.filter(item => item.work_station === selectedStation)
     : items
+
+  // Extra round times from items (e.g. เผาขา plan at -30 min offset from standard rounds)
+  const extraRoundTimes = Array.from(
+    new Set(
+      displayItems
+        .map(i => i.withdrawal_round)
+        .filter((r): r is string => !!r && !rounds.includes(r))
+    )
+  ).sort()
+  const allRounds = [...rounds, ...extraRoundTimes].sort()
   const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
@@ -247,6 +257,9 @@ export default function WithdrawalPage() {
                             <span>{item.sku_name ?? '-'}</span>
                             {item.bom_priority != null && (
                               <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">P{item.bom_priority}</span>
+                            )}
+                            {item.note?.includes('WIP') && (
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">WIP</span>
                             )}
                           </div>
                           <p className="md:hidden text-xs font-mono text-gray-400 mt-0.5">{item.sku}</p>
@@ -444,15 +457,21 @@ export default function WithdrawalPage() {
 
           {!loading && displayItems.length > 0 && (
             <div className="space-y-4">
-              {/* Rounds */}
-              {rounds.map((roundTime, roundIdx) => {
+              {/* Rounds — standard rounds + extra non-standard times (e.g. เผาขา plan slots) */}
+              {allRounds.map((roundTime) => {
+                const isStdRound = rounds.includes(roundTime)
+                const stdRoundIdx = rounds.indexOf(roundTime)
                 const isCollapsed = collapsedRounds.has(roundTime)
-                // preview: filter by withdrawal_round; saved items (no round): put all in first round
+                // Standard rounds: items with matching time + items with no time (→ first std round)
+                // Extra rounds: items with exact matching time only
                 const roundDisplayItems = displayItems.filter(item => {
                   const r = (item as CalcItem).withdrawal_round
-                  return r ? r === roundTime : roundIdx === 0
+                  if (r) return r === roundTime
+                  return isStdRound && stdRoundIdx === 0
                 })
                 const roundTotal = roundDisplayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
+
+                if (roundDisplayItems.length === 0) return null
 
                 const grouped = roundDisplayItems.reduce<Record<string, RowItem[]>>((acc, item) => {
                   const key = item.work_station ?? 'ไม่ระบุ Station'
@@ -461,17 +480,21 @@ export default function WithdrawalPage() {
                   return acc
                 }, {})
 
+                const headerCls = isStdRound ? roundHeaderCls : 'bg-slate-500'
+
                 return (
                   <div key={roundTime} className="round-section border border-gray-200 rounded-xl overflow-hidden">
                     {/* Round header */}
                     <button
                       onClick={() => toggleRound(roundTime)}
-                      className={`no-print w-full flex items-center justify-between px-5 py-3.5 ${roundHeaderCls} text-white`}>
+                      className={`no-print w-full flex items-center justify-between px-5 py-3.5 ${headerCls} text-white`}>
                       <div className="flex items-center gap-3">
                         <Clock size={18} />
                         <span className="font-bold text-lg">รอบ {roundTime} น.</span>
                         <span className="text-sm opacity-80">
-                          ({roundIdx + 1}/{rounds.length}) · {roundTotal.toLocaleString()} กก.
+                          {isStdRound
+                            ? `(${stdRoundIdx + 1}/${rounds.length}) · ${roundTotal.toLocaleString()} กก.`
+                            : `เพิ่มเติม · ${roundTotal.toLocaleString()} กก.`}
                         </span>
                       </div>
                       {isCollapsed
@@ -480,7 +503,7 @@ export default function WithdrawalPage() {
                     </button>
 
                     {/* Print-only round header */}
-                    <div className={`hidden print:flex items-center gap-3 px-5 py-3 ${roundHeaderCls} text-white`}>
+                    <div className={`hidden print:flex items-center gap-3 px-5 py-3 ${headerCls} text-white`}>
                       <Clock size={16} />
                       <span className="font-bold">รอบ {roundTime} น.</span>
                       <span className="text-sm opacity-80">· {roundTotal.toLocaleString()} กก.</span>
@@ -491,7 +514,7 @@ export default function WithdrawalPage() {
                         {Object.entries(grouped).map(([station, stationItems]) =>
                           renderStationTable(stationItems, roundTime, station)
                         )}
-                        <div className={`rounded-lg px-5 py-3 flex items-center justify-between text-white ${roundHeaderCls} opacity-90`}>
+                        <div className={`rounded-lg px-5 py-3 flex items-center justify-between text-white ${headerCls} opacity-90`}>
                           <span className="font-medium text-sm">รวมรอบ {roundTime} น.</span>
                           <span className="font-bold">{roundTotal.toLocaleString()} กก.</span>
                         </div>

@@ -213,15 +213,20 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Fetch masters in parallel
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
+    supabase.from('mas_beik_kha').select('sap'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
+  // beikKhaSaps: WIP items that เผาขา produces for เลาะขา (normalized, no leading zeros)
+  const beikKhaSaps = new Set(
+    (beikKhaRes.data ?? []).map(r => String(r.sap ?? '').replace(/^0+/, '').trim()).filter(Boolean)
+  )
 
   // Build moo_chod fat map: sap_code → fat_percent
   const normSku = (s: string) => String(s ?? '').trim().replace(/^0+/, '') || String(s ?? '').trim()
@@ -417,9 +422,46 @@ export async function POST(req: NextRequest) {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
-      // Skip raw materials not found in any stock table — these are in-house WIP items (e.g. WIP(F))
-      if (!lots) return []
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
+
+      if (!lots) {
+        // WIP items produced in-house: if listed in mas_beik_kha (เผาขา produces for เลาะขา),
+        // include in เลาะขา output AND generate a production-plan entry for เผาขา.
+        const normSapRaw = raw_sap.replace(/^0+/, '')
+        const isBeikKha  = station === 'เลาะขา' && (beikKhaSaps.has(normSapRaw) || beikKhaSaps.has(raw_sap))
+        if (!isBeikKha) return []
+
+        const forProds    = rawToProducts.get(rawKey) ?? []
+        const phaokaRound = Math.max(roundMins - 30, 450) // เผาขา starts 30 min before เลาะขา (floor 07:30)
+        const noteLeakha  = bom_priority !== null ? `P${bom_priority} — WIP จากเผาขา` : 'WIP จากเผาขา'
+        return [
+          {
+            sku:              raw_sap,
+            sku_name:         raw_name,
+            quantity:         needed,
+            unit:             'กก.',
+            work_station:     station,   // เลาะขา
+            note:             noteLeakha,
+            lots:             [] as LotInfo[],
+            for_products:     forProds,
+            withdrawal_round: minsToTime(roundMins),
+            bom_priority,
+          },
+          {
+            sku:              raw_sap,
+            sku_name:         raw_name,
+            quantity:         needed,
+            unit:             'กก.',
+            work_station:     'เผาขา' as string,
+            note:             'แผนผลิต WIP สำหรับเลาะขา',
+            lots:             [] as LotInfo[],
+            for_products:     forProds,
+            withdrawal_round: minsToTime(phaokaRound),
+            bom_priority:     null,
+          },
+        ]
+      }
+
       const lotsResult = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
       const allocated = Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
       if (allocated <= 0.005 && lotsResult.every(l => l.insufficient)) return []
@@ -448,6 +490,7 @@ export async function POST(req: NextRequest) {
     lots:             [] as LotInfo[],
     for_products:     [] as { sku: string; sku_name: string | null; qty: number; rawQty: number }[],
     withdrawal_round: minsToTime(roundMins),
+    bom_priority:     null as number | null,
   }))
 
   // ── หมูบด priority path ────────────────────────────────────────
@@ -530,6 +573,7 @@ export async function POST(req: NextRequest) {
           lots,
           for_products:     mooForProducts,
           withdrawal_round: minsToTime(rm),
+          bom_priority:     null,
         })
       }
     }
