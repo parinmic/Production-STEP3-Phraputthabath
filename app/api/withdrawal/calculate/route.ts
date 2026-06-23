@@ -432,7 +432,7 @@ export async function POST(req: NextRequest) {
         if (!isBeikKha) return []
 
         const forProds    = rawToProducts.get(rawKey) ?? []
-        const phaokaRound = Math.max(roundMins - 30, 450) // เผาขา starts 30 min before เลาะขา (floor 07:30)
+        const phaokaRound = Math.max(roundMins - 30, 510) // เผาขา starts 30 min before เลาะขา (floor 08:30)
         const noteLeakha  = bom_priority !== null ? `P${bom_priority} — WIP จากเผาขา` : 'WIP จากเผาขา'
         return [
           {
