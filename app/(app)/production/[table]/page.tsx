@@ -1436,6 +1436,7 @@ export default function TablePage() {
   }, [midRecal])
 
   const [ackedSkus, setAckedSkus] = useState<Set<string>>(new Set())
+  const [wipItems, setWipItems]   = useState<{ sku: string; sku_name: string | null; qty: number; round: string }[]>([])
 
   useEffect(() => {
     try {
@@ -1460,6 +1461,32 @@ export default function TablePage() {
       return next
     })
   }, [])
+
+  const loadWipItems = async (d: string, phase: number | 'all') => {
+    let q = supabase
+      .from('withdrawal_requests')
+      .select('sku, sku_name, quantity, note')
+      .eq('request_date', d)
+      .eq('work_station', 'เผาขา')
+      .ilike('note', '%แผนผลิต WIP%')
+    if (phase !== 'all') q = q.eq('phase', phase)
+    const { data } = await q
+    const map = new Map<string, { sku_name: string | null; qty: number; round: string }>()
+    for (const r of data ?? []) {
+      const note  = String(r.note ?? '')
+      const round = note.match(/\[Round:\s*(\d{2}:\d{2})\]/)?.[1] ?? '—'
+      const key   = String(r.sku ?? '').replace(/^0+/, '')
+      const cur   = map.get(key) ?? { sku_name: r.sku_name ?? null, qty: 0, round }
+      cur.qty    += Number(r.quantity ?? 0)
+      if (round < cur.round) cur.round = round
+      map.set(key, cur)
+    }
+    setWipItems(
+      Array.from(map.entries())
+        .map(([sku, v]) => ({ sku, ...v }))
+        .sort((a, b) => a.round.localeCompare(b.round))
+    )
+  }
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1501,6 +1528,11 @@ export default function TablePage() {
     return () => clearInterval(id)
   }, [date, cfg?.label])
 
+  useEffect(() => {
+    if (tableSlug !== 'pao-kha') { setWipItems([]); return }
+    loadWipItems(date, selectedPhase)
+  }, [date, selectedPhase, tableSlug])
+
 
   const generate = async (deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
     if (selectedPhase === 'all') return
@@ -1517,7 +1549,10 @@ export default function TablePage() {
       })
       const result = await res.json()
       setGenResult(result)
-      if (result.success) loadData(date)
+      if (result.success) {
+        loadData(date)
+        if (tableSlug === 'pao-kha') loadWipItems(date, selectedPhase as number)
+      }
     } catch { setGenResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
     setGenerating(false)
   }
@@ -1802,6 +1837,26 @@ export default function TablePage() {
                 <p className="text-xs text-gray-400 mt-0.5">เริ่ม 21:00 น. · {manualItems.filter(a => a.sku === sku).length} คน</p>
               </div>
               <p className="text-xl font-bold text-gray-900">
+                {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* WIP สำหรับเลาะขา (เผาขา only) */}
+      {tableSlug === 'pao-kha' && wipItems.length > 0 && (
+        <div className="card">
+          <h3 className="font-semibold text-fuchsia-700 mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-fuchsia-500 shrink-0" />
+            WIP ที่ต้องผลิตสำหรับเลาะขา
+          </h3>
+          {wipItems.map(({ sku, sku_name, qty, round }) => (
+            <div key={sku} className="flex items-center justify-between py-2.5 border-t border-gray-100 first:border-0">
+              <div>
+                <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
+                <p className="text-xs text-gray-400 mt-0.5">ส่งให้เลาะขา · Round {round} น.</p>
+              </div>
+              <p className="text-xl font-bold text-fuchsia-700">
                 {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
               </p>
             </div>
