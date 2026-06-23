@@ -21,13 +21,13 @@
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\chayuth.rue\" -Directory | Where-Object { $_.Name -match \"node|nvm|fnm\" } | Select-Object Name)",
       "PowerShell($paths = $env:PATH -split \";\"; $paths | Where-Object { $_ -match \"node|npm\" })",
       "PowerShell($drives = @\\(\"C:\\\\\"\\); foreach \\($d in $drives\\) { Get-ChildItem \"$d\" -Recurse -Filter \"node.exe\" -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName })",
-      "Skill(run)",
-      "Skill(run:*)",
-      "mcp__supabase-dev__list_tables",
-      "mcp__supabase-dev__list_projects",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "mcp__supabase-dev__execute_sql",
       "mcp__supabase-production__list_tables",
-      "mcp__supabase-production__apply_migration",
-      "mcp__supabase-production__execute_sql"
+      "mcp__supabase-dev__get_project_url",
+      "mcp__supabase-dev__get_publishable_keys"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }
