@@ -1052,6 +1052,16 @@ interface WorkerCardViewProps {
 }
 
 function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
+  const [nowMins, setNowMins] = useState(() => {
+    const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
+  })
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date(); setNowMins(d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60)
+    }, 5000)
+    return () => clearInterval(id)
+  }, [])
+
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
   const workers = Object.keys(byWorker).sort()
@@ -1091,6 +1101,8 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
         })
         const totalDur    = curMins - phaseStartMins
         const finishLabel = minsToLabel(curMins)
+        const nowInRange  = nowMins >= phaseStartMins && nowMins <= curMins && totalDur > 0
+        const nowPct      = nowInRange ? ((nowMins - phaseStartMins) / totalDur) * 100 : 0
 
         return (
           <div key={name} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -1104,14 +1116,20 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
               <p className="text-xs font-mono text-gray-400">{tasks[0].worker_code}</p>
               <p className="text-xs text-gray-400">{minsToLabel(phaseStartMins)} → {finishLabel}</p>
             </div>
-            <div className="flex rounded-full overflow-hidden mb-3" style={{ height: 6 }}>
-              {taskInfo.map(t => (
-                <div key={t.id} style={{
-                  width: totalDur > 0 ? `${(t.dur / totalDur) * 100}%` : '0%',
-                  backgroundColor: skuColor[t.sku].bg,
-                  opacity: t.status === 'เสร็จแล้ว' ? 0.5 : 1,
-                }} />
-              ))}
+            <div className="relative mb-3">
+              <div className="flex rounded-full overflow-hidden" style={{ height: 6 }}>
+                {taskInfo.map(t => (
+                  <div key={t.id} style={{
+                    width: totalDur > 0 ? `${(t.dur / totalDur) * 100}%` : '0%',
+                    backgroundColor: skuColor[t.sku].bg,
+                    opacity: t.status === 'เสร็จแล้ว' ? 0.5 : 1,
+                  }} />
+                ))}
+              </div>
+              {nowInRange && (
+                <div className="absolute -top-1 -bottom-1 w-0.5 bg-red-400 rounded-full pointer-events-none z-10"
+                  style={{ left: `${nowPct}%`, transform: 'translateX(-50%)' }} />
+              )}
             </div>
             <div className="space-y-1.5">
               {taskInfo.map(t => {
