@@ -107,6 +107,19 @@ interface RawAssignment {
   seq: number | null
 }
 
+interface WithdrawalRawItem {
+  sku: string
+  sku_name: string | null
+  quantity: number
+  unit: string
+  withdrawal_round: string | null
+}
+
+// Strip พิเศษ suffix so 'สามชั้นพิเศษ' matches withdrawal 'สามชั้น'
+function normalizeStation(s: string): string {
+  return s.replace(/พิเศษ$/, '').trim()
+}
+
 interface IndividualSkuBlock {
   sku: string
   sku_name: string | null
@@ -273,7 +286,7 @@ function computeBlocks(
 // ── Phase Section ─────────────────────────────────────────────────────────────
 const LABEL_W = 112  // px — station label column width
 
-function PhaseSection({ block }: { block: PhaseBlock }) {
+function PhaseSection({ block, rawMatMap }: { block: PhaseBlock; rawMatMap: Map<string, WithdrawalRawItem[]> }) {
   const range = block.axisEnd - block.axisStart || 1
   const pct = (m: number) => ((m - block.axisStart) / range) * 100
 
@@ -353,10 +366,20 @@ function PhaseSection({ block }: { block: PhaseBlock }) {
         </div>
       </div>
 
-      {/* SKU detail list per station */}
+      {/* Raw material detail list per station */}
       <div className="border-t border-gray-100">
         {block.stations.map(station => {
           const color = STATION_COLORS[station.station] ?? '#6b7280'
+          const normSt = normalizeStation(station.station)
+          const rawItems = rawMatMap.get(station.station) ?? rawMatMap.get(normSt) ?? []
+          const rawTotal = rawItems.reduce((s, i) => s + i.quantity, 0)
+          // Group by withdrawal_round
+          const byRound = new Map<string, WithdrawalRawItem[]>()
+          for (const item of rawItems) {
+            const r = item.withdrawal_round ?? '—'
+            if (!byRound.has(r)) byRound.set(r, [])
+            byRound.get(r)!.push(item)
+          }
           return (
             <div key={station.station}>
               {/* Station sub-header */}
@@ -364,33 +387,44 @@ function PhaseSection({ block }: { block: PhaseBlock }) {
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
                 <span className="text-xs font-semibold text-gray-700">{station.station}</span>
                 <span className="text-[11px] text-gray-400 ml-1">
-                  {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)} · {station.totalQty.toLocaleString()} กก. · {durLabel(station.saw_dur)}
+                  {minsToHHMM(station.saw_start)} → {minsToHHMM(station.saw_end)} · ใช้เครื่อง {durLabel(station.saw_dur)}
+                  {rawTotal > 0 && <> · Raw Mat {rawTotal.toLocaleString()} กก.</>}
                 </span>
               </div>
-              {/* SKU rows */}
-              <div className="divide-y divide-gray-50">
-                {station.skus.map((sku, i) => (
-                  <div key={sku.sku} className="flex items-center gap-3 px-4 py-2">
-                    <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
-                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                    <span className="text-xs font-medium text-gray-800 flex-1 min-w-0 truncate">
-                      {sku.sku_name ?? sku.sku}
-                    </span>
-                    <span className="text-[11px] font-mono text-gray-600 shrink-0">
-                      {minsToHHMM(sku.saw_start)} → {minsToHHMM(sku.saw_end)}
-                    </span>
-                    <span className="text-[11px] text-gray-400 shrink-0 w-20 text-right">
-                      {sku.totalQty.toLocaleString()} กก.
-                    </span>
-                    <span className="text-[11px] text-gray-400 shrink-0 w-14 text-right">
-                      {durLabel(sku.saw_dur)}
-                    </span>
-                    <span className="text-[10px] shrink-0 w-16 text-right" style={{ color }}>
-                      {sku.timing === 'ก่อน' ? '▶ ก่อน' : '◀ หลัง'}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {/* Raw material rows grouped by round */}
+              {rawItems.length === 0 ? (
+                <div className="px-4 py-3 text-[11px] text-gray-400">ไม่มีข้อมูลการเบิก Raw Mat</div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {Array.from(byRound.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([round, items]) => (
+                    <div key={round}>
+                      {byRound.size > 1 && (
+                        <div className="px-4 py-1.5 bg-gray-50/60 flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-gray-500">รอบ {round} น.</span>
+                          <span className="text-[10px] text-gray-400">
+                            · {items.reduce((s, i) => s + i.quantity, 0).toLocaleString()} กก.
+                          </span>
+                        </div>
+                      )}
+                      {items.map((item, i) => (
+                        <div key={`${item.sku}-${i}`} className="flex items-center gap-3 px-4 py-2">
+                          <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-medium text-gray-800 truncate block">
+                              {item.sku_name ?? item.sku}
+                            </span>
+                            <span className="text-[10px] font-mono text-gray-400">{item.sku}</span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-gray-700 shrink-0 w-24 text-right">
+                            {item.quantity.toLocaleString()} {item.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
@@ -406,14 +440,24 @@ export default function SawMachinePlanPage() {
   const [sawSkus, setSawSkus] = useState<SawMachineSku[]>([])
   const [assignments, setAssignments] = useState<RawAssignment[]>([])
   const [rateMap, setRateMap] = useState<Record<string, number>>({})
+  // period → station(normalized) → withdrawal raw material items
+  const [rawMatByPeriodStation, setRawMatByPeriodStation] = useState<Map<string, Map<string, WithdrawalRawItem[]>>>(new Map())
 
   const load = useCallback(async (d: string) => {
     setLoading(true)
     try {
-      const [sawRes, prodRes, rateRes] = await Promise.all([
+      const opts = (phase: number) => ({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: d, phase }),
+      })
+      const [sawRes, prodRes, rateRes, w1, w2, w3] = await Promise.all([
         supabase.from('mas_saw_machine_sku').select('*'),
         fetch(`/api/production?date=${d}`).then(r => r.json()),
         fetch('/api/master/productivity').then(r => r.json()),
+        fetch('/api/withdrawal/calculate', opts(1)).then(r => r.json()),
+        fetch('/api/withdrawal/calculate', opts(2)).then(r => r.json()),
+        fetch('/api/withdrawal/calculate', opts(3)).then(r => r.json()),
       ])
       setSawSkus(sawRes.data ?? [])
       const raw: RawAssignment[] = (prodRes.assignments ?? []).map((a: RawAssignment) => ({
@@ -422,6 +466,27 @@ export default function SawMachinePlanPage() {
       }))
       setAssignments(raw)
       setRateMap(rateRes.rateMap ?? {})
+
+      // Build rawMat map: period → normalizedStation → items
+      type WItem = { sku: string; sku_name: string | null; quantity: number; unit: string; work_station: string | null; withdrawal_round?: string }
+      const rawMap = new Map<string, Map<string, WithdrawalRawItem[]>>()
+      for (const [period, res] of [['เช้า', w1], ['บ่าย', w2], ['ค่ำ', w3]] as [string, { items?: WItem[] }][]) {
+        const stMap = new Map<string, WithdrawalRawItem[]>()
+        for (const item of res.items ?? []) {
+          if (!item.work_station) continue
+          const st = normalizeStation(item.work_station)
+          if (!stMap.has(st)) stMap.set(st, [])
+          stMap.get(st)!.push({
+            sku: item.sku,
+            sku_name: item.sku_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            withdrawal_round: item.withdrawal_round ?? null,
+          })
+        }
+        rawMap.set(period, stMap)
+      }
+      setRawMatByPeriodStation(rawMap)
     } finally {
       setLoading(false)
     }
@@ -480,7 +545,11 @@ export default function SawMachinePlanPage() {
       )}
 
       {!loading && phases.map(phase => (
-        <PhaseSection key={phase.phase} block={phase} />
+        <PhaseSection
+          key={phase.phase}
+          block={phase}
+          rawMatMap={rawMatByPeriodStation.get(phase.phase) ?? new Map()}
+        />
       ))}
     </div>
   )
