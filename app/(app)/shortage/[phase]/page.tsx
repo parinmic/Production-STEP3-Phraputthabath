@@ -72,7 +72,7 @@ export default function ShortagePage() {
         .eq('production_date', date)
         .eq('period', period)
         .like('note', '%|deficit%')
-        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์'])
+        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
 
       if (!deficitRows?.length) { setRows([]); return }
 
