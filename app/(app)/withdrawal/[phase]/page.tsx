@@ -32,6 +32,7 @@ interface CalcItem {
   for_products?: ForProduct[]
   withdrawal_round?: string  // "08:00"
   bom_priority?: number | null
+  raws?: { sap: string; name: string; qty: number }[]
 }
 
 type RowItem = CalcItem
@@ -291,6 +292,21 @@ export default function WithdrawalPage() {
                               <span className="text-xs font-mono text-gray-500">{p.sku}</span>
                               <span className="text-xs text-gray-700 font-medium">{p.sku_name ?? p.sku}</span>
                               <span className="text-xs font-bold text-indigo-600">{p.qty.toLocaleString()} กก.</span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {(item.raws?.length ?? 0) > 0 && (
+                    <tr key={`${rowKey}-raws`} className="bg-fuchsia-50/60 border-b">
+                      <td colSpan={6} className="px-3 py-2.5">
+                        <p className="text-[10px] font-semibold text-fuchsia-700 uppercase tracking-wide mb-1.5">วัตถุดิบที่ต้องเบิก</p>
+                        <div className="space-y-1">
+                          {item.raws!.map(r => (
+                            <div key={r.sap} className="flex justify-between text-xs">
+                              <span className="text-gray-600">{r.name}</span>
+                              <span className="font-medium text-gray-800">{r.qty.toLocaleString()} กก.</span>
                             </div>
                           ))}
                         </div>

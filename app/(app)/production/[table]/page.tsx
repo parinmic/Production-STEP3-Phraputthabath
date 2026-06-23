@@ -1893,30 +1893,17 @@ export default function TablePage() {
             <span className="w-2 h-2 rounded-full bg-fuchsia-500 shrink-0" />
             WIP ที่ต้องผลิตสำหรับเลาะขา
           </h3>
-          {wipItems.map(({ sku, sku_name, qty, round, deadline, raws }) => (
-            <div key={sku} className="py-3 border-t border-gray-100 first:border-0">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    เริ่ม {round} → ส่งเลาะขา {deadline} น.
-                  </p>
-                </div>
-                <p className="text-xl font-bold text-fuchsia-700 shrink-0">
-                  {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
+          {wipItems.map(({ sku, sku_name, qty, round, deadline }) => (
+            <div key={sku} className="flex items-start justify-between gap-3 py-3 border-t border-gray-100 first:border-0">
+              <div>
+                <p className="font-medium text-sm text-gray-800">{sku_name ?? sku}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  เริ่ม {round} → ส่งเลาะขา {deadline} น.
                 </p>
               </div>
-              {raws.length > 0 && (
-                <div className="mt-2 pl-3 border-l-2 border-fuchsia-200 space-y-1">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">วัตถุดิบที่ต้องเบิก</p>
-                  {raws.map(r => (
-                    <div key={r.sap} className="flex justify-between text-xs">
-                      <span className="text-gray-600">{r.name}</span>
-                      <span className="font-medium text-gray-800">{r.qty.toLocaleString()} กก.</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <p className="text-xl font-bold text-fuchsia-700 shrink-0">
+                {Math.round(qty).toLocaleString()} <span className="text-sm font-normal text-gray-500">กก.</span>
+              </p>
             </div>
           ))}
         </div>

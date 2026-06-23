@@ -580,12 +580,40 @@ export async function POST(req: NextRequest) {
   }
 
   // Combine and sort: round first, then bom_priority (P1 before null), then station, sku
-  const items = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
+  const allItems = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
     ((a as { bom_priority?: number | null }).bom_priority ?? 99) - ((b as { bom_priority?: number | null }).bom_priority ?? 99) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
     (a.sku ?? '').localeCompare(b.sku ?? '')
   )
+
+  // Fetch BOM raws for เผาขา WIP production items
+  const wipPaoKhaItems = allItems.filter(i => i.work_station === 'เผาขา' && String(i.note ?? '').includes('แผนผลิต WIP'))
+  if (wipPaoKhaItems.length > 0) {
+    const wipSkus    = Array.from(new Set(wipPaoKhaItems.flatMap(i => [String(i.sku ?? ''), String(i.sku ?? '').replace(/^0+/, '')])))
+    const { data: wipBomRows } = await supabase
+      .from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', wipSkus)
+    const wipBomMap  = new Map<string, { raw_sap: string; raw_name: string | null; yield_pct: number }[]>()
+    for (const b of wipBomRows ?? []) {
+      const entry = { raw_sap: String(b.raw_sap ?? ''), raw_name: b.raw_name ?? null, yield_pct: Number(b.yield_pct ?? 0) }
+      for (const k of [String(b.product_sap ?? ''), String(b.product_sap ?? '').replace(/^0+/, '')]) {
+        const list = wipBomMap.get(k) ?? []
+        if (!list.some(e => e.raw_sap === entry.raw_sap)) list.push(entry)
+        wipBomMap.set(k, list)
+      }
+    }
+    for (const item of wipPaoKhaItems) {
+      const boms = wipBomMap.get(String(item.sku ?? '')) ?? wipBomMap.get(String(item.sku ?? '').replace(/^0+/, '')) ?? []
+      ;(item as Record<string, unknown>)['raws'] = boms.map(b => ({
+        sap:  b.raw_sap,
+        name: b.raw_name ?? b.raw_sap,
+        qty:  b.yield_pct > 0 ? Math.round(item.quantity / b.yield_pct * 10) / 10 : item.quantity,
+      }))
+    }
+  }
+
+  // Filter out zero-quantity items
+  const items = allItems.filter(i => i.quantity > 0.005)
 
   return NextResponse.json({ items })
   } catch (err: unknown) {
