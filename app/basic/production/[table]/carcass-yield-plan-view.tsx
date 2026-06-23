@@ -287,10 +287,15 @@ export default function CarcassYieldPlanView({
                       </div>
                     )}
 
-                    {/* No plan yet */}
-                    {skus.length === 0 && !rawRow && items.length === 0 && yieldKg > 0 && (
-                      <div className="px-4 py-2 pl-8 border-t border-gray-50">
-                        <span className="text-[11px] text-gray-400">ยังไม่มีแผนผลิต — กด &quot;สร้าง Phase {selectedPhase}&quot;</span>
+                    {/* No plan yet / byproduct with no assigned items */}
+                    {skus.length === 0 && !rawRow && yieldKg > 0 && (
+                      <div className="flex items-center gap-3 px-4 py-2 pl-8 border-t border-gray-50">
+                        <span className="text-[11px] text-gray-400 flex-1">
+                          {items.length === 0
+                            ? `ยังไม่มีแผนผลิต — กด "สร้าง Phase ${selectedPhase}"`
+                            : 'ยังไม่มีสินค้าในกลุ่มนี้'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 shrink-0">คาด {fmt(yieldKg)} กก. ตาม Yield</span>
                       </div>
                     )}
                   </div>
