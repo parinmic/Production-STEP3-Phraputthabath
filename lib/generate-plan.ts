@@ -1087,13 +1087,14 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, pickingUnitMooRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, pickingUnitMooRes, beikKhaRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
+    supabase.from('mas_beik_kha').select('sap'),
   ])
 
   const wpbMapLocal = new Map<string, number>()
@@ -1104,6 +1105,9 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   }
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
+  const beikKhaSaps = new Set(
+    (beikKhaRes.data ?? []).map((r: { sap: string | null }) => String(r.sap ?? '').replace(/^0+/, '').trim()).filter(Boolean)
+  )
   const activeAssignments = (assignments as { sku: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
   if (!activeAssignments.length) return
 
@@ -1280,20 +1284,42 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
 
-      // If stock was uploaded today but this material has no data → treat as zero stock (insufficient)
-      const resolvedLots: LotInfo[] = lots
-        ? allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
-        : stockUploaded
+      if (!lots) {
+        // WIP items produced in-house by เผาขา for เลาะขา
+        const normSapRaw = raw_sap.replace(/^0+/, '')
+        const isBeikKha  = station === 'เลาะขา' && (beikKhaSaps.has(normSapRaw) || beikKhaSaps.has(raw_sap))
+        if (isBeikKha && needed > 0) {
+          const phaokaRound = Math.max(roundMins - 30, 510)
+          const forProds = rawToProducts.get(rawKey) ?? []
+          return [
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station, note: 'WIP จากเผาขา', lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(roundMins) },
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: 'เผาขา', note: 'แผนผลิต WIP สำหรับเลาะขา', lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(phaokaRound) },
+          ]
+        }
+
+        // If stock was uploaded today but this material has no data → treat as zero stock (insufficient)
+        const resolvedLots: LotInfo[] = stockUploaded
           ? [{ spec_code: '— ไม่เพียงพอ —', factory: '-', prod_date: '-', available: 0, to_withdraw: needed, insufficient: true }]
           : []
+        const hasRealWithdrawal = resolvedLots.some(l => !l.insufficient && l.to_withdraw > 0.005)
+        if (!hasRealWithdrawal) return []
+        return [{
+          sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station,
+          note: 'คำนวณจาก BOM',
+          lots: resolvedLots,
+          for_products: rawToProducts.get(rawKey) ?? [],
+          withdrawal_round: minsToTime(roundMins),
+        }]
+      }
 
-      // Skip rounds where stock was already fully depleted — nothing to physically withdraw
+      // Has stock — normal FIFO allocation
+      const resolvedLots = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
       const hasRealWithdrawal = resolvedLots.some(l => !l.insufficient && l.to_withdraw > 0.005)
       if (!hasRealWithdrawal) return []
 
       return [{
         sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station,
-        note: lots ? 'คำนวณจาก BOM' : stockUploaded ? 'คำนวณจาก BOM' : 'ไม่มี Stock',
+        note: 'คำนวณจาก BOM',
         lots: resolvedLots,
         for_products: rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
