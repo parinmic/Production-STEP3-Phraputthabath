@@ -487,13 +487,30 @@ export default function SawMachinePlanPage() {
       setAssignments(raw)
       setRateMap(rateRes.rateMap ?? {})
 
+      // Set of saw-machine finished-product SKU codes (normalized, no leading zeros)
+      const sawSkuCodes = new Set(
+        (sawRes.data ?? []).map((s: SawMachineSku) => s.sku.replace(/^0+/, ''))
+      )
+
       // Build rawMat map: period → normalizedStation → items
-      type WItem = { sku: string; sku_name: string | null; quantity: number; unit: string; work_station: string | null; withdrawal_round?: string }
+      // Only include raw materials whose for_products contains a saw-machine SKU
+      type WItem = {
+        sku: string; sku_name: string | null; quantity: number; unit: string
+        work_station: string | null; withdrawal_round?: string
+        for_products?: { sku: string }[]
+      }
       const rawMap = new Map<string, Map<string, WithdrawalRawItem[]>>()
       for (const [period, res] of [['เช้า', w1], ['บ่าย', w2], ['ค่ำ', w3]] as [string, { items?: WItem[] }][]) {
         const stMap = new Map<string, WithdrawalRawItem[]>()
         for (const item of res.items ?? []) {
           if (!item.work_station) continue
+          // Only keep raw materials that feed at least one saw-machine SKU
+          const fps = item.for_products
+          if (!fps?.length) continue
+          const isForSawSku = fps.some(p =>
+            sawSkuCodes.has(p.sku) || sawSkuCodes.has(p.sku.replace(/^0+/, ''))
+          )
+          if (!isForSawSku) continue
           const st = normalizeStation(item.work_station)
           if (!stMap.has(st)) stMap.set(st, [])
           stMap.get(st)!.push({
