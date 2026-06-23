@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle } from 'lucide-react'
+import { Fragment, useState, useEffect } from 'react'
+import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -8,23 +8,60 @@ interface LotRow {
   weight_3:  number
 }
 
-interface TempRecord {
-  start: string
-  mid:   string
-  end:   string
+interface PointTemps {
+  hip:       string // สะโพก
+  outerLoin: string // สันนอก
+  neckLoin:  string // สันคอ
 }
 
-const EMPTY_TEMP: TempRecord = { start: '', mid: '', end: '' }
+interface AnimalSet {
+  a1: PointTemps
+  a2: PointTemps
+  a3: PointTemps
+}
+
+interface TempRecord {
+  start: AnimalSet // ชุดต้น Lot
+  end:   AnimalSet // ชุดท้าย Lot
+}
+
+const POINTS: { key: keyof PointTemps; label: string }[] = [
+  { key: 'hip',       label: 'สะโพก' },
+  { key: 'outerLoin', label: 'สันนอก' },
+  { key: 'neckLoin',  label: 'สันคอ' },
+]
+const ANIMALS: { key: keyof AnimalSet; label: string }[] = [
+  { key: 'a1', label: 'ตัวที่ 1' },
+  { key: 'a2', label: 'ตัวที่ 2' },
+  { key: 'a3', label: 'ตัวที่ 3' },
+]
+const SETS: { key: keyof TempRecord; label: string }[] = [
+  { key: 'start', label: 'ชุดต้น Lot' },
+  { key: 'end',   label: 'ชุดท้าย Lot' },
+]
+
+const EMPTY_POINT: PointTemps = { hip: '', outerLoin: '', neckLoin: '' }
+const EMPTY_ANIMAL_SET: AnimalSet = { a1: EMPTY_POINT, a2: EMPTY_POINT, a3: EMPTY_POINT }
+const EMPTY_TEMP: TempRecord = { start: EMPTY_ANIMAL_SET, end: EMPTY_ANIMAL_SET }
 
 function parseNum(v: string): number | null {
   const n = parseFloat(v)
   return isNaN(n) ? null : n
 }
 
+function allValues(t: TempRecord): string[] {
+  return SETS.flatMap(s => ANIMALS.flatMap(a => POINTS.map(p => t[s.key][a.key][p.key])))
+}
+
 function calcAvg(t: TempRecord): number | null {
-  const vals = [parseNum(t.start), parseNum(t.mid), parseNum(t.end)].filter((v): v is number => v !== null)
+  const vals = allValues(t).map(parseNum).filter((v): v is number => v !== null)
   if (vals.length === 0) return null
   return vals.reduce((a, b) => a + b, 0) / vals.length
+}
+
+function hasAnyValue(t: TempRecord | undefined): boolean {
+  if (!t) return false
+  return allValues(t).some(v => v !== '')
 }
 
 function tempStatus(avg: number | null): 'green' | 'red' | 'none' {
@@ -32,7 +69,13 @@ function tempStatus(avg: number | null): 'green' | 'red' | 'none' {
   return avg >= 4 && avg <= 7 ? 'green' : 'red'
 }
 
-function TempInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
+function lotAgeKey(spec: string): number {
+  const day = parseInt(spec.slice(4, 7), 10)
+  return isNaN(day) ? Infinity : day
+}
+
+function PointInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <input
       type="text"
@@ -40,8 +83,42 @@ function TempInput({ value, onChange }: { value: string; onChange: (v: string) =
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder="—"
-      className="w-20 text-right text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+      className="w-16 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
     />
+  )
+}
+
+function AnimalSetGrid({ title, value, onChange }: {
+  title: string
+  value: AnimalSet
+  onChange: (animal: keyof AnimalSet, point: keyof PointTemps, v: string) => void
+}) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-md p-2.5">
+      <p className="text-xs font-semibold text-gray-600 mb-1.5">{title}</p>
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            <th className="text-left text-gray-400 font-normal pb-1.5 w-16"></th>
+            {POINTS.map(p => (
+              <th key={p.key} className="text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {ANIMALS.map(a => (
+            <tr key={a.key}>
+              <td className="text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+              {POINTS.map(p => (
+                <td key={p.key} className="py-1 px-1">
+                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -52,22 +129,41 @@ export default function BasicTemperatureCheckPage() {
   const [sourceFile, setSourceFile] = useState('')
   const [generated,  setGenerated]  = useState(false)
   const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
+  const [draftTemps, setDraftTemps] = useState<Record<string, TempRecord>>({})
+  const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
+  const [chillRoom,  setChillRoom]  = useState<Record<string, string>>({})
 
-  // Restore state from localStorage on mount
+  // Restore the generated row list from localStorage (just a UI convenience), and load
+  // saved temperatures/chill rooms from the backend.
   useEffect(() => {
     try {
-      const savedTemps = localStorage.getItem('qc_temps_3pt')
-      const savedRows  = localStorage.getItem('qc_rows')
-      const savedFile  = localStorage.getItem('qc_source_file')
-      if (savedTemps) setTemps(JSON.parse(savedTemps))
-      if (savedRows)  { setRows(JSON.parse(savedRows)); setGenerated(true) }
-      if (savedFile)  setSourceFile(savedFile)
+      const savedRows = localStorage.getItem('qc_rows')
+      const savedFile = localStorage.getItem('qc_source_file')
+      if (savedRows) { setRows(JSON.parse(savedRows)); setGenerated(true) }
+      if (savedFile) setSourceFile(savedFile)
     } catch { /* ignore */ }
+
+    fetch('/api/qc-lot-checks')
+      .then(res => res.json())
+      .then(json => {
+        if (json.temps)     setTemps(json.temps)
+        if (json.chillRoom) setChillRoom(json.chillRoom)
+      })
+      .catch(() => { /* ignore */ })
   }, [])
 
-  useEffect(() => { localStorage.setItem('qc_temps_3pt', JSON.stringify(temps)) }, [temps])
   useEffect(() => { localStorage.setItem('qc_rows', JSON.stringify(rows)) }, [rows])
   useEffect(() => { localStorage.setItem('qc_source_file', sourceFile) }, [sourceFile])
+
+  async function persistLot(spec: string, chill: string, t: TempRecord) {
+    try {
+      await fetch('/api/qc-lot-checks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec_code: spec, chill_room: chill || null, temps: t }),
+      })
+    } catch { /* ignore */ }
+  }
 
   async function generate() {
     setLoading(true)
@@ -78,7 +174,7 @@ export default function BasicTemperatureCheckPage() {
       if (json.error) { setError(json.error); return }
       const sorted: LotRow[] = (json.rows as LotRow[])
         .filter(r => r.qty_3 > 0)
-        .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
+        .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
       setGenerated(true)
@@ -89,32 +185,65 @@ export default function BasicTemperatureCheckPage() {
     }
   }
 
-  function setField(spec: string, field: keyof TempRecord, value: string) {
-    setTemps(prev => ({ ...prev, [spec]: { ...(prev[spec] ?? EMPTY_TEMP), [field]: value } }))
+  function setPoint(spec: string, set: keyof TempRecord, animal: keyof AnimalSet, point: keyof PointTemps, value: string) {
+    setDraftTemps(prev => {
+      const cur = prev[spec] ?? temps[spec] ?? EMPTY_TEMP
+      return {
+        ...prev,
+        [spec]: {
+          ...cur,
+          [set]: { ...cur[set], [animal]: { ...cur[set][animal], [point]: value } },
+        },
+      }
+    })
   }
 
-  const filledRows = rows.filter(r => { const t = temps[r.spec_code]; return t && (t.start || t.mid || t.end) })
+  function toggleExpanded(spec: string) {
+    const opening = !expanded[spec]
+    if (opening) {
+      setDraftTemps(prev => ({ ...prev, [spec]: temps[spec] ?? EMPTY_TEMP }))
+    }
+    setExpanded(prev => ({ ...prev, [spec]: opening }))
+  }
+
+  function closeExpanded(spec: string) {
+    if (!confirm(`ยืนยันบันทึกอุณหภูมิ Lot ${spec}?`)) return
+    const newTemp = draftTemps[spec] ?? temps[spec] ?? EMPTY_TEMP
+    setTemps(prev => ({ ...prev, [spec]: newTemp }))
+    setExpanded(prev => ({ ...prev, [spec]: false }))
+    persistLot(spec, chillRoom[spec] ?? '', newTemp)
+  }
+
+  function clearTemps(spec: string) {
+    if (!confirm(`ยืนยันล้างค่าอุณหภูมิที่กรอกของ Lot ${spec} ทั้งหมด?`)) return
+    setDraftTemps(prev => ({ ...prev, [spec]: EMPTY_TEMP }))
+  }
+
+  function saveChillRoom(spec: string, value: string) {
+    setChillRoom(prev => ({ ...prev, [spec]: value }))
+    persistLot(spec, value, temps[spec] ?? EMPTY_TEMP)
+  }
+
+  const filledRows = rows.filter(r => hasAnyValue(temps[r.spec_code]))
   const goodCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'green').length
   const badCount   = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Thermometer size={24} className="text-cyan-500" />
             ตรวจอุณหภูมิ (QC)
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">Lot หมูซีก จาก Stock คลัง 20 — รหัสสินค้า 90007</p>
-          {sourceFile && <p className="text-xs text-gray-400 mt-0.5">ไฟล์ล่าสุด: {sourceFile}</p>}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:shrink-0">
           {generated && (
             <button
               onClick={generate}
               disabled={loading}
-              className="flex items-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               รีโหลด
@@ -123,7 +252,7 @@ export default function BasicTemperatureCheckPage() {
           <button
             onClick={generate}
             disabled={loading}
-            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50"
           >
             <PlayCircle size={16} />
             Generate
@@ -133,7 +262,7 @@ export default function BasicTemperatureCheckPage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-red-700 text-sm">{error}</div>
+        <div className="bg-red-50 border border-red-200 rounded-md px-5 py-4 text-red-700 text-sm">{error}</div>
       )}
 
       {/* Loading */}
@@ -159,109 +288,261 @@ export default function BasicTemperatureCheckPage() {
         </div>
       )}
 
-      {/* Summary */}
+      {/* Summary — mobile compact bar */}
       {!loading && rows.length > 0 && (
-        <div className="rounded-xl border bg-gray-50 border-gray-200 px-5 py-4 flex flex-wrap gap-6 items-center">
-          <div className="text-center">
+        <div className="sm:hidden rounded-md border bg-gray-50 border-gray-200 px-3 py-1.5 flex items-center gap-2.5 text-xs overflow-x-auto whitespace-nowrap">
+          <span className="text-gray-500">Lot <b className="text-gray-800">{rows.length}</b></span>
+          <span className="text-gray-300">|</span>
+          <span className="text-gray-500">กรอกแล้ว <b className={filledRows.length > 0 ? 'text-blue-700' : 'text-gray-400'}>{filledRows.length}</b></span>
+          <span className="text-gray-300">|</span>
+          <span className="flex items-center gap-1 text-gray-500">
+            <CheckCircle2 size={13} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
+            อุณหภูมิเหมาะสม (4–7 °C) <b className={goodCount > 0 ? 'text-green-600' : 'text-gray-400'}>{goodCount}</b>
+          </span>
+          {badCount > 0 && (
+            <span className="flex items-center gap-1 text-gray-500">
+              <XCircle size={13} className="text-red-400" />
+              ไม่เหมาะสม <b className="text-red-500">{badCount}</b>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Summary — desktop */}
+      {!loading && rows.length > 0 && (
+        <div className="hidden sm:flex rounded-md border bg-gray-50 border-gray-200 px-5 py-4 flex-wrap gap-6 items-center">
+          <div>
             <p className="text-xs text-gray-500 mb-0.5">Lot ทั้งหมด</p>
             <p className="text-2xl font-bold text-gray-700">{rows.length} <span className="text-sm font-normal">ล็อต</span></p>
           </div>
           <div className="w-px h-10 bg-gray-200" />
-          <div className="text-center">
+          <div>
             <p className="text-xs text-gray-500 mb-0.5">กรอกแล้ว</p>
             <p className={`text-2xl font-bold ${filledRows.length > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
               {filledRows.length} <span className="text-sm font-normal">ล็อต</span>
             </p>
           </div>
           <div className="w-px h-10 bg-gray-200" />
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
+            <div>
+              <p className="text-xs text-gray-500">เหมาะสม (4–7 °C)</p>
+              <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
+                {goodCount} <span className="text-sm font-normal">ล็อต</span>
+              </p>
+            </div>
+          </div>
+          {badCount > 0 && (
             <div className="flex items-center gap-1.5">
-              <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
+              <XCircle size={18} className="text-red-400" />
               <div>
-                <p className="text-xs text-gray-500">เฉลี่ยเหมาะสม (4–7 °C)</p>
-                <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
-                  {goodCount} <span className="text-sm font-normal">ล็อต</span>
+                <p className="text-xs text-gray-500">ไม่เหมาะสม</p>
+                <p className="text-xl font-bold leading-tight text-red-500">
+                  {badCount} <span className="text-sm font-normal">ล็อต</span>
                 </p>
               </div>
             </div>
-            {badCount > 0 && (
-              <div className="flex items-center gap-1.5">
-                <XCircle size={18} className="text-red-400" />
-                <div>
-                  <p className="text-xs text-gray-500">เฉลี่ยไม่เหมาะสม</p>
-                  <p className="text-xl font-bold leading-tight text-red-500">
-                    {badCount} <span className="text-sm font-normal">ล็อต</span>
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
-      {/* Table */}
+      {/* Mobile card list */}
       {!loading && rows.length > 0 && (
-        <div className="border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="md:hidden space-y-1.5">
+          {rows.map(r => {
+            const t      = temps[r.spec_code] ?? EMPTY_TEMP
+            const draftT = draftTemps[r.spec_code] ?? t
+            const tAvg   = calcAvg(t)
+            const status = tempStatus(tAvg)
+            const isOpen = !!expanded[r.spec_code]
+            const cardBorder = status === 'green' ? 'border-green-300' : status === 'red' ? 'border-red-300' : 'border-gray-200'
+            const cardBg     = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'bg-white'
+            return (
+              <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cardBorder} ${cardBg}`}>
+                <div
+                  onClick={() => toggleExpanded(r.spec_code)}
+                  aria-label="กรอกอุณหภูมิ"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(r.spec_code) }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer active:bg-gray-100 transition-colors"
+                >
+                  <span className="font-mono font-semibold text-gray-800 text-xs shrink-0">{r.spec_code}</span>
+                  {chillRoom[r.spec_code] && (
+                    <span className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5 shrink-0">
+                      Chill {chillRoom[r.spec_code]}
+                    </span>
+                  )}
+                  <span className="text-blue-700 font-semibold text-xs shrink-0">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
+                  <span className="ml-auto shrink-0 text-right">
+                    {tAvg !== null ? (
+                      <span className={`font-bold text-xs ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
+                        {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
+                        {status === 'green' && <span className="ml-0.5">✓</span>}
+                        {status === 'red'   && <span className="ml-0.5">✗</span>}
+                      </span>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </span>
+                  <span
+                    className={`shrink-0 flex items-center justify-center w-6 h-6 rounded transition-colors ${
+                      isOpen ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </span>
+                </div>
+                {isOpen && (
+                  <>
+                    <div className="flex items-center gap-2 px-2.5 py-2 border-t border-gray-200 bg-white">
+                      <label className="text-xs font-medium text-gray-600 shrink-0">ห้อง Chill</label>
+                      <select
+                        value={chillRoom[r.spec_code] ?? ''}
+                        onChange={e => saveChillRoom(r.spec_code, e.target.value)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                      >
+                        <option value="">—</option>
+                        {[1, 2, 3, 4].map(n => (
+                          <option key={n} value={String(n)}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex border-t border-gray-200">
+                      <button
+                        onClick={() => clearTemps(r.spec_code)}
+                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 text-red-600 bg-red-50 active:bg-red-100 transition-colors"
+                      >
+                        ล้างค่า
+                      </button>
+                      <button
+                        onClick={() => closeExpanded(r.spec_code)}
+                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 text-white bg-cyan-600 active:bg-cyan-700 transition-colors"
+                      >
+                        บันทึก
+                      </button>
+                    </div>
+                    <div className="p-2.5 space-y-2.5 bg-gray-50 border-t border-gray-200">
+                      {SETS.map(s => (
+                        <AnimalSetGrid
+                          key={s.key}
+                          title={s.label}
+                          value={draftT[s.key]}
+                          onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Table (desktop) */}
+      {!loading && rows.length > 0 && (
+        <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm bg-white">
               <thead className="bg-gray-50 border-b border-gray-200 text-xs">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-400 w-8">#</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Lot</th>
                   <th className="px-4 py-3 text-right font-semibold text-blue-700">
                     <div>จำนวน</div><div className="font-normal text-blue-400">(ตัว)</div>
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold text-emerald-700">
-                    <div>น้ำหนักเฉลี่ย</div><div className="font-normal text-emerald-400">(กก./ตัว)</div>
-                  </th>
-                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
-                    <div>อุณหภูมิต้น Lot</div><div className="font-normal text-cyan-400">(°C)</div>
-                  </th>
-                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
-                    <div>อุณหภูมิกลาง Lot</div><div className="font-normal text-cyan-400">(°C)</div>
-                  </th>
-                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
-                    <div>อุณหภูมิท้าย Lot</div><div className="font-normal text-cyan-400">(°C)</div>
-                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-600">การตรวจอุณหภูมิ</th>
                   <th className="px-4 py-3 text-center font-semibold text-indigo-700">
                     <div>เฉลี่ย</div><div className="font-normal text-indigo-400">(°C)</div>
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r, i) => {
-                  const avg    = r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0
-                  const t      = temps[r.spec_code] ?? EMPTY_TEMP
-                  const tAvg   = calcAvg(t)
-                  const status = tempStatus(tAvg)
-                  const rowBg  = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'hover:bg-gray-50'
+                {rows.map((r) => {
+                  const t       = temps[r.spec_code] ?? EMPTY_TEMP
+                  const draftT  = draftTemps[r.spec_code] ?? t
+                  const tAvg    = calcAvg(t)
+                  const status  = tempStatus(tAvg)
+                  const rowBg   = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'hover:bg-gray-50'
+                  const isOpen  = !!expanded[r.spec_code]
                   return (
-                    <tr key={r.spec_code} className={`transition-colors ${rowBg}`}>
-                      <td className="px-4 py-2.5 text-gray-400 text-xs">{i + 1}</td>
-                      <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
-                      <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
-                      <td className="px-4 py-2.5 text-right text-emerald-700">
-                        {avg > 0 ? avg.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <TempInput value={t.start} onChange={v => setField(r.spec_code, 'start', v)} />
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <TempInput value={t.mid} onChange={v => setField(r.spec_code, 'mid', v)} />
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <TempInput value={t.end} onChange={v => setField(r.spec_code, 'end', v)} />
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {tAvg !== null ? (
-                          <span className={`font-bold text-sm ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
-                            {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                            {status === 'green' && <span className="ml-1 text-xs font-normal">✓</span>}
-                            {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
+                    <Fragment key={r.spec_code}>
+                      <tr className={`transition-colors ${rowBg}`}>
+                        <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">
+                          <span className="flex items-center gap-2">
+                            {r.spec_code}
+                            {chillRoom[r.spec_code] && (
+                              <span className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
+                                Chill {chillRoom[r.spec_code]}
+                              </span>
+                            )}
                           </span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          {isOpen ? (
+                            <div className="inline-flex gap-1.5">
+                              <button
+                                onClick={() => clearTemps(r.spec_code)}
+                                className="text-xs font-medium px-3 py-1.5 rounded border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                              >
+                                ล้างค่า
+                              </button>
+                              <button
+                                onClick={() => closeExpanded(r.spec_code)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded border border-cyan-600 text-white bg-cyan-600 hover:bg-cyan-700 transition-colors"
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => toggleExpanded(r.spec_code)}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+                            >
+                              <ChevronDown size={14} />
+                              {hasAnyValue(t) ? 'แก้ไขอุณหภูมิ' : 'กรอกอุณหภูมิ'}
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          {tAvg !== null ? (
+                            <span className={`font-bold text-sm ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
+                              {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                              {status === 'green' && <span className="ml-1 text-xs font-normal">✓</span>}
+                              {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={4} className="bg-gray-50 px-4 py-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <label className="text-xs font-medium text-gray-600">ห้อง Chill</label>
+                              <select
+                                value={chillRoom[r.spec_code] ?? ''}
+                                onChange={e => saveChillRoom(r.spec_code, e.target.value)}
+                                className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+                              >
+                                <option value="">—</option>
+                                {[1, 2, 3, 4].map(n => (
+                                  <option key={n} value={String(n)}>{n}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {SETS.map(s => (
+                                <AnimalSetGrid
+                                  key={s.key}
+                                  title={s.label}
+                                  value={draftT[s.key]}
+                                  onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
+                                />
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>

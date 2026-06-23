@@ -440,5 +440,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_no_withdrawal_skus_sap ON no_withdrawal_sk
 ALTER TABLE no_withdrawal_skus ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_no_withdrawal_skus" ON no_withdrawal_skus FOR ALL USING (true) WITH CHECK (true);
 
+-- 22. QC ตรวจอุณหภูมิ Lot หมูซีก (ห้อง Chill + อุณหภูมิ 18 จุด ต่อ Lot)
+CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
+  id          uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  spec_code   text        NOT NULL,
+  chill_room  text,
+  temps       jsonb       NOT NULL DEFAULT '{}',
+  updated_at  timestamptz DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec ON qc_lot_temperature_checks(spec_code);
+ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
+
 
 

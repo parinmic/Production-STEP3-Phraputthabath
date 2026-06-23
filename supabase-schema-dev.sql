@@ -441,6 +441,20 @@ ALTER TABLE production_plan_supplementary ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_supp_plan" ON production_plan_supplementary;
 CREATE POLICY "allow_all_supp_plan" ON production_plan_supplementary FOR ALL USING (true) WITH CHECK (true);
 
+-- -------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
+  id          uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  spec_code   text        NOT NULL,
+  chill_room  text,
+  temps       jsonb       NOT NULL DEFAULT '{}',
+  updated_at  timestamptz DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_dev ON qc_lot_temperature_checks(spec_code);
+ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_qc_lot_temp" ON qc_lot_temperature_checks;
+CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
+
 -- ======================================================
 -- Realtime (ถ้าใช้ Supabase Realtime สำหรับ dev ด้วย)
 -- ไปที่ Supabase Dashboard > Database > Replication

@@ -28,6 +28,12 @@ function findClosestWeight(avg: number, weights: number[]): number {
   return weights.reduce((best, w) => Math.abs(w - avg) < Math.abs(best - avg) ? w : best, weights[0])
 }
 
+// Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
+function lotAgeKey(spec: string): number {
+  const day = parseInt(spec.slice(4, 7), 10)
+  return isNaN(day) ? Infinity : day
+}
+
 export default function CarcassYieldPage() {
   const [lots,         setLots]         = useState<LotRow[]>([])
   const [sourceFile,   setSourceFile]   = useState('')
@@ -52,7 +58,7 @@ export default function CarcassYieldPage() {
 
       const sorted: LotRow[] = (lotJson.rows as LotRow[] ?? [])
         .filter(r => r.qty_3 > 0)
-        .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
+        .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
       setLots(sorted)
       setSourceFile(lotJson.source_file ?? '')
       setMaster(masterJson.rows as MasYieldRow[] ?? [])

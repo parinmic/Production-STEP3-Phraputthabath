@@ -8,11 +8,26 @@ interface LotRow {
   weight_3:  number
 }
 
-interface TempRecord {
-  start: string
-  mid:   string
-  end:   string
+interface PointTemps {
+  hip:       string // สะโพก
+  outerLoin: string // สันนอก
+  neckLoin:  string // สันคอ
 }
+
+interface AnimalSet {
+  a1: PointTemps
+  a2: PointTemps
+  a3: PointTemps
+}
+
+interface TempRecord {
+  start: AnimalSet // ชุดต้น Lot
+  end:   AnimalSet // ชุดท้าย Lot
+}
+
+const POINTS: (keyof PointTemps)[] = ['hip', 'outerLoin', 'neckLoin']
+const ANIMALS: (keyof AnimalSet)[] = ['a1', 'a2', 'a3']
+const SETS: (keyof TempRecord)[] = ['start', 'end']
 
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
@@ -25,7 +40,8 @@ function parseNum(v: string): number | null {
 
 function calcAvgTemp(t: TempRecord | undefined): number | null {
   if (!t) return null
-  const vals = [parseNum(t.start), parseNum(t.mid), parseNum(t.end)].filter((v): v is number => v !== null)
+  const vals = SETS.flatMap(s => ANIMALS.flatMap(a => POINTS.map(p => parseNum(t[s][a][p]))))
+    .filter((v): v is number => v !== null)
   if (vals.length === 0) return null
   return vals.reduce((a, b) => a + b, 0) / vals.length
 }
@@ -33,6 +49,12 @@ function calcAvgTemp(t: TempRecord | undefined): number | null {
 function avgTempStatus(avg: number | null): 'green' | 'red' | 'none' {
   if (avg === null) return 'none'
   return avg >= 4 && avg <= 7 ? 'green' : 'red'
+}
+
+// Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
+function lotAgeKey(spec: string): number {
+  const day = parseInt(spec.slice(4, 7), 10)
+  return isNaN(day) ? Infinity : day
 }
 
 export default function PigCarcassWithdrawalPage() {
@@ -44,6 +66,14 @@ export default function PigCarcassWithdrawalPage() {
   const [qcTemps,     setQcTemps]     = useState<Record<string, TempRecord>>({})
   const [trimmingQty, setTrimmingQty] = useState('')
 
+  const loadQcTemps = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/qc-lot-checks')
+      const json = await res.json()
+      if (json.temps) setQcTemps(json.temps)
+    } catch { /* ignore */ }
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -53,7 +83,7 @@ export default function PigCarcassWithdrawalPage() {
       if (json.error) { setError(json.error); return }
       const sorted: LotRow[] = (json.rows as LotRow[])
         .filter(r => r.qty_3 > 0)
-        .sort((a, b) => a.spec_code.slice(-1).localeCompare(b.spec_code.slice(-1)))
+        .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
     } catch {
@@ -61,31 +91,18 @@ export default function PigCarcassWithdrawalPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+    loadQcTemps()
+  }, [loadQcTemps])
 
   useEffect(() => {
     try {
       const savedOrder    = localStorage.getItem('pig_carcass_lot_order')
       const savedTrimming = localStorage.getItem('pig_carcass_trimming')
-      const savedQcTemps  = localStorage.getItem('qc_temps_3pt')
       if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
       if (savedTrimming) setTrimmingQty(savedTrimming)
-      if (savedQcTemps)  setQcTemps(JSON.parse(savedQcTemps))
     } catch { /* ignore */ }
     load()
   }, [load])
-
-  // Re-read QC temps whenever localStorage changes (e.g. user just came from QC page)
-  useEffect(() => {
-    function syncQcTemps() {
-      try {
-        const saved = localStorage.getItem('qc_temps_3pt')
-        if (saved) setQcTemps(JSON.parse(saved))
-      } catch { /* ignore */ }
-    }
-    window.addEventListener('storage', syncQcTemps)
-    return () => window.removeEventListener('storage', syncQcTemps)
-  }, [])
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))

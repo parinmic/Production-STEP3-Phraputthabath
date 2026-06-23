@@ -2,11 +2,11 @@
   "mcpServers": {
     "supabase-dev": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=hmcppjhjybqmlxhdbmbh"
+      "url": "https://mcp.supabase.com/mcp"
     },
     "supabase-production": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=jtjironqszdfsflvdvld"
+      "url": "https://mcp.supabase.com/mcp"
     }
   }
 }
