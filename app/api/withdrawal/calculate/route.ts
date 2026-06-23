@@ -382,6 +382,10 @@ export async function POST(req: NextRequest) {
 
     // Scale each entry proportionally to rm-allocation cap
     for (const entry of Array.from(rawMap.values())) {
+      // WIP materials produced in-house by เผาขา are not subject to rm-allocation caps
+      const normSapEntry = entry.raw_sap.replace(/^0+/, '')
+      if (entry.station === 'เลาะขา' && (beikKhaSaps.has(entry.raw_sap) || beikKhaSaps.has(normSapEntry))) continue
+
       const key = `${entry.station}|||${normMatName(entry.raw_name ?? '')}`
       const totalNeeded = stationRawTotal.get(key) ?? 0
       const rmAllocated = rmAllocMap.get(key)
