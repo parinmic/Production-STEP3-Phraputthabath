@@ -440,16 +440,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_no_withdrawal_skus_sap ON no_withdrawal_sk
 ALTER TABLE no_withdrawal_skus ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_no_withdrawal_skus" ON no_withdrawal_skus FOR ALL USING (true) WITH CHECK (true);
 
--- 22. QC ตรวจอุณหภูมิ Lot หมูซีก (ห้อง Chill + อุณหภูมิ 18 จุด ต่อ Lot)
+-- 22. QC ตรวจอุณหภูมิ Lot หมูซีก (ห้อง Chill + อุณหภูมิ 18 จุด ต่อ Lot ต่อรอบ)
+-- รอบนับเป็นรอบที่ 1, 2, 3, ... ไม่ได้ล็อกตามนาฬิกา — รอบจะหมดอายุ 1 ชม.
+-- หลังจาก started_at ของรอบนั้น แล้วรอบใหม่จะเริ่มนับ started_at ใหม่ตอนมีการบันทึกครั้งแรกของรอบ
+-- qc_check_rounds เป็นตาราง history (1 แถวต่อรอบ) ใช้ทำ dropdown ดูย้อนหลัง
+CREATE TABLE IF NOT EXISTS qc_check_rounds (
+  round_number int         PRIMARY KEY,
+  started_at   timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO qc_check_rounds (round_number, started_at) VALUES (1, now()) ON CONFLICT (round_number) DO NOTHING;
+ALTER TABLE qc_check_rounds ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_qc_check_rounds" ON qc_check_rounds FOR ALL USING (true) WITH CHECK (true);
+
 CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
-  id          uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
-  spec_code   text        NOT NULL,
-  chill_room  text,
-  temps       jsonb       NOT NULL DEFAULT '{}',
-  updated_at  timestamptz DEFAULT now()
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  spec_code    text        NOT NULL,
+  chill_room   text,
+  temps        jsonb       NOT NULL DEFAULT '{}',
+  round_number int         NOT NULL DEFAULT 1,
+  updated_at   timestamptz DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec ON qc_lot_temperature_checks(spec_code);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_roundnum ON qc_lot_temperature_checks(spec_code, round_number);
 ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
 

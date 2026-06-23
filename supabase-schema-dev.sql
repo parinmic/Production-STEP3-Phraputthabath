@@ -443,14 +443,24 @@ CREATE POLICY "allow_all_supp_plan" ON production_plan_supplementary FOR ALL USI
 
 -- -------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
-  id          uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
-  spec_code   text        NOT NULL,
-  chill_room  text,
-  temps       jsonb       NOT NULL DEFAULT '{}',
-  updated_at  timestamptz DEFAULT now()
+CREATE TABLE IF NOT EXISTS qc_check_rounds (
+  round_number int         PRIMARY KEY,
+  started_at   timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_dev ON qc_lot_temperature_checks(spec_code);
+INSERT INTO qc_check_rounds (round_number, started_at) VALUES (1, now()) ON CONFLICT (round_number) DO NOTHING;
+ALTER TABLE qc_check_rounds ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_qc_check_rounds" ON qc_check_rounds;
+CREATE POLICY "allow_all_qc_check_rounds" ON qc_check_rounds FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  spec_code    text        NOT NULL,
+  chill_room   text,
+  temps        jsonb       NOT NULL DEFAULT '{}',
+  round_number int         NOT NULL DEFAULT 1,
+  updated_at   timestamptz DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_roundnum_dev ON qc_lot_temperature_checks(spec_code, round_number);
 ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_qc_lot_temp" ON qc_lot_temperature_checks;
 CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
