@@ -1094,7 +1094,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
-    supabase.from('mas_beik_kha').select('sap'),
+    supabase.from('mas_beik_kha').select('sap, source_station, dest_station'),
   ])
 
   const wpbMapLocal = new Map<string, number>()
@@ -1105,10 +1105,17 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   }
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
-  const beikKhaSaps = new Set(
-    (beikKhaRes.data ?? []).map((r: { sap: string | null }) => String(r.sap ?? '').replace(/^0+/, '').trim()).filter(Boolean)
-  )
-  const activeAssignments = (assignments as { sku: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
+  const beikKhaMap = new Map<string, { source_station: string; dest_station: string }>()
+  for (const r of (beikKhaRes.data ?? []) as { sap: string | null; source_station: string | null; dest_station: string | null }[]) {
+    const src = String(r.source_station ?? '').trim()
+    const dst = String(r.dest_station   ?? '').trim()
+    if (!src || !dst) continue
+    const sapNorm = String(r.sap ?? '').replace(/^0+/, '').trim()
+    const sapRaw  = String(r.sap ?? '').trim()
+    if (sapNorm) beikKhaMap.set(sapNorm, { source_station: src, dest_station: dst })
+    if (sapRaw && sapRaw !== sapNorm) beikKhaMap.set(sapRaw, { source_station: src, dest_station: dst })
+  }
+  const activeAssignments = (assignments as { sku: unknown; table_name: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
   if (!activeAssignments.length) return
 
   interface MooIng { ingredient_type: string; priority: number; sap_code: string | null; product_name: string; fat_percent: number }
@@ -1123,7 +1130,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   const mooMeatIngs = mooWithdrawalIngs.filter(i => i.ingredient_type === 'เนื้อ')
   const mooFatIngs  = mooWithdrawalIngs.filter(i => i.ingredient_type === 'มัน')
 
-  const isMooChōdSku = (a: { table_name: unknown; sku: unknown }) =>
+  const isMooChōdSku = (a: { table_name: unknown; sku: unknown; [k: string]: unknown }) =>
     a.table_name === 'หมูบด' && mooFatMap.size > 0 &&
     (mooFatMap.has(normSku(String(a.sku ?? ''))) || mooFatMap.has(String(a.sku ?? '').trim()))
 
@@ -1285,15 +1292,16 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
 
       if (!lots) {
-        // WIP items produced in-house by เผาขา for เลาะขา
+        // WIP produced in-house: check mas ผลิตต่อกัน for source/dest station mapping
         const normSapRaw = raw_sap.replace(/^0+/, '')
-        const isBeikKha  = station === 'เลาะขา' && (beikKhaSaps.has(normSapRaw) || beikKhaSaps.has(raw_sap))
+        const beikEntry  = beikKhaMap.get(normSapRaw) ?? beikKhaMap.get(raw_sap)
+        const isBeikKha  = !!beikEntry && station === beikEntry.dest_station
         if (isBeikKha && needed > 0) {
-          const phaokaRound = Math.max(roundMins - 30, 510)
-          const forProds = rawToProducts.get(rawKey) ?? []
+          const sourceRound = Math.max(roundMins - 30, 510)
+          const forProds    = rawToProducts.get(rawKey) ?? []
           return [
-            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: station, note: 'WIP จากเผาขา', lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(roundMins) },
-            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: 'เผาขา', note: 'แผนผลิต WIP สำหรับเลาะขา', lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(phaokaRound) },
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: beikEntry.dest_station,   note: `WIP จาก${beikEntry.source_station}`,         lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(roundMins) },
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: beikEntry.source_station, note: `แผนผลิต WIP สำหรับ${beikEntry.dest_station}`, lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(sourceRound) },
           ]
         }
 

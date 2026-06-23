@@ -933,13 +933,17 @@ export function parseMasBeikKha(file: File): Promise<ParsedRow[]> {
             const keys = Object.keys(r)
             const find = (...kws: string[]) =>
               keys.find(k => kws.every(kw => k.toLowerCase().includes(kw))) ?? ''
-            const groupCol = find('กลุ่ม') || find('group') || ''
-            const sapCol   = find('sap')   || find('รหัส')  || ''
-            const nameCol  = find('ชื่อ')  || find('name')  || ''
+            const groupCol  = find('กลุ่ม')  || find('group')  || ''
+            const sapCol    = find('sap')    || find('รหัส')   || ''
+            const nameCol   = find('ชื่อ')   || find('name')   || ''
+            const sourceCol = find('ต้นทาง') || find('source') || ''
+            const destCol   = find('ปลายทาง') || find('dest')  || ''
             return {
-              product_group: String(r[groupCol] ?? '').trim() || null,
-              sap:           String(r[sapCol]   ?? '').trim(),
-              sku_name:      String(r[nameCol]  ?? '').trim() || null,
+              product_group:  String(r[groupCol]  ?? '').trim() || null,
+              sap:            String(r[sapCol]     ?? '').trim(),
+              sku_name:       String(r[nameCol]    ?? '').trim() || null,
+              source_station: String(r[sourceCol]  ?? '').trim() || null,
+              dest_station:   String(r[destCol]    ?? '').trim() || null,
             }
           })
           .filter(r => r.sap)

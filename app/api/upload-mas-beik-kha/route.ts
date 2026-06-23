@@ -19,9 +19,11 @@ export async function POST(req: NextRequest) {
 
     const records = rows
       .map((r: Record<string, unknown>) => ({
-        product_group: String(r['product_group'] ?? '').trim() || null,
-        sap:           String(r['sap']           ?? '').trim(),
-        sku_name:      String(r['sku_name']       ?? '').trim() || null,
+        product_group:  String(r['product_group']  ?? '').trim() || null,
+        sap:            String(r['sap']             ?? '').trim(),
+        sku_name:       String(r['sku_name']        ?? '').trim() || null,
+        source_station: String(r['source_station']  ?? '').trim() || null,
+        dest_station:   String(r['dest_station']    ?? '').trim() || null,
       }))
       .filter((r: { sap: string }) => r.sap)
 

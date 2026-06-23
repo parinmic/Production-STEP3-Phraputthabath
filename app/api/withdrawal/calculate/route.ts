@@ -219,14 +219,21 @@ export async function POST(req: NextRequest) {
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
-    supabase.from('mas_beik_kha').select('sap'),
+    supabase.from('mas_beik_kha').select('sap, source_station, dest_station'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
-  // beikKhaSaps: WIP items that เผาขา produces for เลาะขา (normalized, no leading zeros)
-  const beikKhaSaps = new Set(
-    (beikKhaRes.data ?? []).map(r => String(r.sap ?? '').replace(/^0+/, '').trim()).filter(Boolean)
-  )
+  // beikKhaMap: SAP (normalized) → { source_station: ต้นทาง (ผลิต WIP), dest_station: ปลายทาง (รับ WIP) }
+  const beikKhaMap = new Map<string, { source_station: string; dest_station: string }>()
+  for (const r of beikKhaRes.data ?? []) {
+    const src = String(r.source_station ?? '').trim()
+    const dst = String(r.dest_station   ?? '').trim()
+    if (!src || !dst) continue
+    const sapNorm = String(r.sap ?? '').replace(/^0+/, '').trim()
+    const sapRaw  = String(r.sap ?? '').trim()
+    if (sapNorm) beikKhaMap.set(sapNorm, { source_station: src, dest_station: dst })
+    if (sapRaw && sapRaw !== sapNorm) beikKhaMap.set(sapRaw, { source_station: src, dest_station: dst })
+  }
 
   // Build moo_chod fat map: sap_code → fat_percent
   const normSku = (s: string) => String(s ?? '').trim().replace(/^0+/, '') || String(s ?? '').trim()
@@ -382,9 +389,10 @@ export async function POST(req: NextRequest) {
 
     // Scale each entry proportionally to rm-allocation cap
     for (const entry of Array.from(rawMap.values())) {
-      // WIP materials produced in-house by เผาขา are not subject to rm-allocation caps
+      // WIP materials produced in-house (mas ผลิตต่อกัน) are not subject to rm-allocation caps
       const normSapEntry = entry.raw_sap.replace(/^0+/, '')
-      if (entry.station === 'เลาะขา' && (beikKhaSaps.has(entry.raw_sap) || beikKhaSaps.has(normSapEntry))) continue
+      const beikEntryAlloc = beikKhaMap.get(normSapEntry) ?? beikKhaMap.get(entry.raw_sap)
+      if (beikEntryAlloc && entry.station === beikEntryAlloc.dest_station) continue
 
       const key = `${entry.station}|||${normMatName(entry.raw_name ?? '')}`
       const totalNeeded = stationRawTotal.get(key) ?? 0
@@ -429,23 +437,25 @@ export async function POST(req: NextRequest) {
       const rawKey  = `${station}|||${raw_sap}|||${roundMins}`
 
       if (!lots) {
-        // WIP items produced in-house: if listed in mas_beik_kha (เผาขา produces for เลาะขา),
-        // include in เลาะขา output AND generate a production-plan entry for เผาขา.
-        const normSapRaw = raw_sap.replace(/^0+/, '')
-        const isBeikKha  = station === 'เลาะขา' && (beikKhaSaps.has(normSapRaw) || beikKhaSaps.has(raw_sap))
+        // WIP produced in-house: check mas ผลิตต่อกัน for source/dest station mapping
+        const normSapRaw  = raw_sap.replace(/^0+/, '')
+        const beikEntry   = beikKhaMap.get(normSapRaw) ?? beikKhaMap.get(raw_sap)
+        const isBeikKha   = !!beikEntry && station === beikEntry.dest_station
         if (!isBeikKha) return []
 
-        const forProds    = rawToProducts.get(rawKey) ?? []
-        const phaokaRound = Math.max(roundMins - 30, 510) // เผาขา starts 30 min before เลาะขา (floor 08:30)
-        const noteLeakha  = bom_priority !== null ? `P${bom_priority} — WIP จากเผาขา` : 'WIP จากเผาขา'
+        const forProds      = rawToProducts.get(rawKey) ?? []
+        const sourceStation = beikEntry.source_station
+        const destStation   = beikEntry.dest_station
+        const sourceRound   = Math.max(roundMins - 30, 510) // ต้นทางผลิตก่อน 30 นาที (floor 08:30)
+        const noteDestLabel = bom_priority !== null ? `P${bom_priority} — WIP จาก${sourceStation}` : `WIP จาก${sourceStation}`
         return [
           {
             sku:              raw_sap,
             sku_name:         raw_name,
             quantity:         needed,
             unit:             'กก.',
-            work_station:     station,   // เลาะขา
-            note:             noteLeakha,
+            work_station:     destStation,
+            note:             noteDestLabel,
             lots:             [] as LotInfo[],
             for_products:     forProds,
             withdrawal_round: minsToTime(roundMins),
@@ -456,11 +466,11 @@ export async function POST(req: NextRequest) {
             sku_name:         raw_name,
             quantity:         needed,
             unit:             'กก.',
-            work_station:     'เผาขา' as string,
-            note:             'แผนผลิต WIP สำหรับเลาะขา',
+            work_station:     sourceStation,
+            note:             `แผนผลิต WIP สำหรับ${destStation}`,
             lots:             [] as LotInfo[],
             for_products:     forProds,
-            withdrawal_round: minsToTime(phaokaRound),
+            withdrawal_round: minsToTime(sourceRound),
             bom_priority:     null,
           },
         ]
