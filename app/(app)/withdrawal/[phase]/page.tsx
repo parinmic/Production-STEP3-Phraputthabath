@@ -84,6 +84,7 @@ export default function WithdrawalPage() {
   const [downloading, setDownloading]     = useState(false)
   const [basketMap, setBasketMap]         = useState<Map<string, number>>(new Map())
   const [popupItem, setPopupItem]         = useState<PopupItem>(null)
+  const [selectedStation, setSelectedStation] = useState<string | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
@@ -107,7 +108,7 @@ export default function WithdrawalPage() {
     }
   }, [date, phase])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); setSelectedStation(null) }, [load])
 
   useEffect(() => {
     fetch('/api/master-trakra')
@@ -130,7 +131,8 @@ export default function WithdrawalPage() {
     setPrintModal(false)
     setDownloading(true)
     try {
-      const filteredItems = displayItems.filter(item => {
+      // PDF always uses ALL items regardless of station filter
+      const filteredItems = items.filter(item => {
         const r = (item as CalcItem).withdrawal_round
         return r ? printRoundSel.has(r) : true
       })
@@ -179,7 +181,10 @@ export default function WithdrawalPage() {
     return total
   }
 
-  const displayItems: RowItem[] = items
+  const availableStations = Array.from(new Set(items.map(i => i.work_station).filter(Boolean))) as string[]
+  const displayItems: RowItem[] = selectedStation
+    ? items.filter(item => item.work_station === selectedStation)
+    : items
   const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
@@ -377,6 +382,34 @@ export default function WithdrawalPage() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        {/* Station filter */}
+        {availableStations.length > 0 && (
+          <div className="no-print flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-500 font-medium">Station:</span>
+            <button
+              onClick={() => setSelectedStation(null)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                selectedStation === null
+                  ? 'bg-gray-800 text-white border-gray-800'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+              }`}>
+              ทั้งหมด
+            </button>
+            {availableStations.map(st => (
+              <button
+                key={st}
+                onClick={() => setSelectedStation(selectedStation === st ? null : st)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                  selectedStation === st
+                    ? `${STATION_COLORS[st] ?? 'bg-gray-100 text-gray-700'} border-transparent`
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                }`}>
+                {STATION_DISPLAY[st] ?? st}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Print area */}
         <div id="print-area" ref={printRef}>
