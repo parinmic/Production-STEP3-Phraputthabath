@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Scissors, Calendar, RefreshCw } from 'lucide-react'
+import { Scissors, Calendar, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -74,12 +74,19 @@ interface SawMachineSku {
   timing: string | null
 }
 
+interface ForProduct {
+  sku: string
+  sku_name: string | null
+  qty: number
+}
+
 interface WithdrawalRawItem {
   sku: string
   sku_name: string | null
   quantity: number
   unit: string
   withdrawal_round: string | null
+  for_products?: ForProduct[]
 }
 
 interface StationBlock {
@@ -172,6 +179,8 @@ function PhaseSection({ block }: { block: PhaseBlock }) {
 
   const ticks: number[] = []
   for (let m = block.axisStart; m <= block.axisEnd; m += 60) ticks.push(m)
+
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   const [nowMins, setNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
@@ -295,21 +304,51 @@ function PhaseSection({ block }: { block: PhaseBlock }) {
                           </span>
                         </div>
                       )}
-                      {items.map((item, i) => (
-                        <div key={`${item.sku}-${i}`} className="flex items-center gap-3 px-4 py-2">
-                          <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-medium text-gray-800 truncate block">
-                              {item.sku_name ?? item.sku}
-                            </span>
-                            <span className="text-[10px] font-mono text-gray-400">{item.sku}</span>
+                      {items.map((item, i) => {
+                        const key = `${station.station}|${round}|${item.sku}|${i}`
+                        const isOpen = expandedKey === key
+                        const hasSkus = (item.for_products?.length ?? 0) > 0
+                        return (
+                          <div key={key}>
+                            <div
+                              className={`flex items-center gap-3 px-4 py-2 ${hasSkus ? 'cursor-pointer hover:bg-gray-50 active:bg-gray-100' : ''}`}
+                              onClick={() => hasSkus && setExpandedKey(isOpen ? null : key)}
+                            >
+                              <span className="text-[10px] text-gray-400 w-4 shrink-0 text-right">{i + 1}.</span>
+                              {hasSkus ? (
+                                isOpen
+                                  ? <ChevronDown size={12} className="shrink-0" style={{ color }} />
+                                  : <ChevronRight size={12} className="shrink-0 text-gray-400" />
+                              ) : (
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-medium text-gray-800 truncate block">
+                                  {item.sku_name ?? item.sku}
+                                </span>
+                                <span className="text-[10px] font-mono text-gray-400">{item.sku}</span>
+                              </div>
+                              <span className="text-[11px] font-semibold text-gray-700 shrink-0 w-24 text-right">
+                                {item.quantity.toLocaleString()} {item.unit}
+                              </span>
+                            </div>
+                            {isOpen && hasSkus && (
+                              <div className="px-4 pb-2 pt-0.5">
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 pl-8">ใช้ผลิต</p>
+                                <div className="flex flex-wrap gap-1.5 pl-8">
+                                  {item.for_products!.map((p, pi) => (
+                                    <div key={pi} className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2.5 py-1">
+                                      <span className="text-[10px] font-mono text-gray-400">{p.sku}</span>
+                                      <span className="text-xs font-medium text-gray-700">{p.sku_name ?? p.sku}</span>
+                                      <span className="text-xs font-bold" style={{ color }}>{p.qty.toLocaleString()} กก.</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className="text-[11px] font-semibold text-gray-700 shrink-0 w-24 text-right">
-                            {item.quantity.toLocaleString()} {item.unit}
-                          </span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   ))}
                 </div>
@@ -351,7 +390,7 @@ export default function SawMachinePlanPage() {
       type WItem = {
         sku: string; sku_name: string | null; quantity: number; unit: string
         work_station: string | null; withdrawal_round?: string
-        for_products?: { sku: string }[]
+        for_products?: { sku: string; sku_name: string | null; qty: number }[]
       }
       const rawMap = new Map<string, Map<string, WithdrawalRawItem[]>>()
       for (const [period, res] of [['เช้า', w1], ['บ่าย', w2], ['ค่ำ', w3]] as [string, { items?: WItem[] }][]) {
@@ -370,6 +409,7 @@ export default function SawMachinePlanPage() {
             sku: item.sku, sku_name: item.sku_name,
             quantity: item.quantity, unit: item.unit,
             withdrawal_round: item.withdrawal_round ?? null,
+            for_products: fps,
           })
         }
         rawMap.set(period, stMap)
