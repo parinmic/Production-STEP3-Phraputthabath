@@ -1223,16 +1223,17 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
 
   const { data: stockUploadLog } = await supabase
     .from('upload_log').select('uploaded_at')
-    .in('table_name', ['stock_0010', 'stock_20'])
+    .in('table_name', ['stock_0010', 'stock_20', 'stock_100'])
     .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
   const stockUploaded = !!stockUploadLog
 
   if (rawSaps.length > 0) {
-    const [res0010, res20] = await Promise.all([
+    const [res0010, res20, res100] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
       supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
     ])
-    stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
+    stockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[], ...(res100.data ?? []) as StockRow[])
 
     const foundCodes = new Set(stockRows.map(r => r.material_code))
     const missingNames = Array.from(new Set([
@@ -1241,11 +1242,12 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     ]))
     if (missingNames.length > 0) {
       const expandedNames = Array.from(new Set(missingNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])))
-      const [res0010n, res20n] = await Promise.all([
+      const [res0010n, res20n, res100n] = await Promise.all([
         supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
         supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
       ])
-      stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+      stockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[], ...(res100n.data ?? []) as StockRow[])
     }
   }
 
@@ -2214,7 +2216,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   {
     const { data: stockPlanLog } = await supabase
       .from('upload_log').select('uploaded_at')
-      .in('table_name', ['stock_0010', 'stock_20'])
+      .in('table_name', ['stock_0010', 'stock_20', 'stock_100'])
       .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
     const stockWasUploaded = !!stockPlanLog
 
@@ -2247,11 +2249,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     const rawSaps2 = Array.from(rawSapsSet)
 
     if (rawSaps2.length > 0) {
-      const [res0010, res20] = await Promise.all([
+      const [res0010, res20, res100] = await Promise.all([
         supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps2).gt('weight_total', 0),
         supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps2).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps2).gt('weight_total', 0),
       ])
-      stockRows.push(...(res0010.data ?? []) as StockRow2[], ...(res20.data ?? []) as StockRow2[])
+      stockRows.push(...(res0010.data ?? []) as StockRow2[], ...(res20.data ?? []) as StockRow2[], ...(res100.data ?? []) as StockRow2[])
 
       const foundCodes = new Set(stockRows.map(r => r.material_code))
       const missingNames = Array.from(new Set(
@@ -2260,11 +2263,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       ))
       if (missingNames.length > 0) {
         const expanded = Array.from(new Set(missingNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])))
-        const [res0010n, res20n] = await Promise.all([
+        const [res0010n, res20n, res100n] = await Promise.all([
           supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expanded).gt('weight_total', 0),
           supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expanded).gt('weight_total', 0),
+          supabase.from('stock_100').select('material_code, material_name, spec_code, weight_total').in('material_name', expanded).gt('weight_total', 0),
         ])
-        stockRows.push(...(res0010n.data ?? []) as StockRow2[], ...(res20n.data ?? []) as StockRow2[])
+        stockRows.push(...(res0010n.data ?? []) as StockRow2[], ...(res20n.data ?? []) as StockRow2[], ...(res100n.data ?? []) as StockRow2[])
       }
     }
 
@@ -2438,11 +2442,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
             proms.push(
               supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_code', nonSharedSapsSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
               supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_code', nonSharedSapsSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+              supabase.from('stock_100').select('material_code, material_name, weight_total').in('material_code', nonSharedSapsSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
             )
           if (nonSharedExpSplit.length)
             proms.push(
               supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_name', nonSharedExpSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
               supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_name', nonSharedExpSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
+              supabase.from('stock_100').select('material_code, material_name, weight_total').in('material_name', nonSharedExpSplit).gt('weight_total', 0) as Promise<{ data: SR2[] | null }>,
             )
           for (const r of await Promise.all(proms)) {
             for (const row of r.data ?? []) {
