@@ -635,14 +635,12 @@ export async function POST(req: NextRequest) {
 
   // ── Step 6: BOM พิเศษ actual weight recheck ──────────────────────
   // For each SKU that has a BOM พิเศษ entry, recompute actual output
-  // from allocated lots using basket-weight-tiered yield. If short, allocate extra.
-  const extraItems: typeof rawItems = []
-
+  // from allocated lots using basket-weight-tiered yield. If short, merge
+  // extra lots directly into the existing rawItem (same row, same total).
   if (bomSpecialMap.size > 0) {
     for (const item of rawItems) {
-      const rawSap  = item.sku
-      const station = item.work_station ?? ''
-      const lots    = item.lots ?? []
+      const rawSap   = item.sku
+      const lots     = item.lots ?? []
       const forProds = item.for_products ?? []
       if (!lots.length || !forProds.length) continue
 
@@ -668,7 +666,6 @@ export async function POST(req: NextRequest) {
         const remainingLots = stockByMat.get(rawSap) ?? stockByName.get(normMatName(specialEntry.raw_name ?? ''))
         if (!remainingLots) continue
 
-        const extraLots: LotInfo[] = []
         let remainingShortfall = shortfall
 
         for (const lot of remainingLots) {
@@ -679,38 +676,23 @@ export async function POST(req: NextRequest) {
           if (yp <= 0) continue
           const take = Math.round(Math.min(remainingShortfall / yp, lot.weight) * 100) / 100
           if (take <= 0.005) continue
-          extraLots.push({
+          item.lots = [...(item.lots ?? []), {
             spec_code:   lot.spec_code,
             factory:     lot.factory,
             prod_date:   lot.prod_date,
             available:   Math.round(lot.weight * 100) / 100,
             to_withdraw: take,
-          })
+          }]
+          item.quantity = Math.round((item.quantity + take) * 100) / 100
           lot.weight -= take
           remainingShortfall -= take * yp
-        }
-
-        if (extraLots.length > 0) {
-          const totalExtra = extraLots.reduce((s, l) => s + l.to_withdraw, 0)
-          extraItems.push({
-            sku:              rawSap,
-            sku_name:         specialEntry.raw_name,
-            quantity:         Math.round(totalExtra * 100) / 100,
-            unit:             'กก.',
-            work_station:     station,
-            note:             'คำนวณจาก BOM',
-            lots:             extraLots,
-            for_products:     [{ sku: prod.sku, sku_name: prod.sku_name ?? null, qty: targetFinQty, rawQty: Math.round(totalExtra * 100) / 100 }],
-            withdrawal_round: item.withdrawal_round,
-            bom_priority:     item.bom_priority,
-          })
         }
       }
     }
   }
 
   // Combine and sort: round first, then bom_priority (P1 before null), then station, sku
-  const allItems = [...rawItems, ...noBomItems, ...mooItems, ...extraItems].sort((a, b) =>
+  const allItems = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
     ((a as { bom_priority?: number | null }).bom_priority ?? 99) - ((b as { bom_priority?: number | null }).bom_priority ?? 99) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
