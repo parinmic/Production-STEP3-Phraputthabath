@@ -917,6 +917,45 @@ export function parseSawMachineSku(file: File): Promise<ParsedRow[]> {
   })
 }
 
+export function parseMasSpecialRaw(file: File): Promise<ParsedRow[]> {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.csv')) return parseCsv(file)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+        const results: ParsedRow[] = raw
+          .map(r => {
+            const keys = Object.keys(r)
+            const find = (...kws: string[]) =>
+              keys.find(k => kws.every(kw => k.toLowerCase().includes(kw.toLowerCase()))) ?? ''
+            const groupCol   = find('กลุ่มสินค้า') || find('group') || ''
+            const stationCol = find('จุดงาน')      || find('station') || ''
+            const d16Col     = find('D16') || find('d16') || ''
+            const d17Col     = find('D17') || find('d17') || ''
+            return {
+              product_group: String(r[groupCol]   ?? '').trim() || null,
+              station:       String(r[stationCol] ?? '').trim() || null,
+              d16:           String(r[d16Col]     ?? '').trim() || null,
+              d17:           String(r[d17Col]     ?? '').trim() || null,
+            }
+          })
+          .filter(r => r.product_group && r.station)
+        if (!results.length) throw new Error('ไม่พบรายการที่มีกลุ่มสินค้าและจุดงาน')
+        resolve(results)
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 export function parseMasBeikKha(file: File): Promise<ParsedRow[]> {
   const name = file.name.toLowerCase()
   if (name.endsWith('.csv')) return parseCsv(file)

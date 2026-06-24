@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
+import { allocateFIFOWithRules, RawMaterialRule, SpecialRawRule } from '@/lib/withdrawal-rules'
 import { computeRmAllocation, buildRmAllocMap } from '@/lib/compute-rm-allocation'
 
 const PERIOD: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
@@ -213,16 +213,25 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Fetch masters in parallel
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes, specialRawRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
       .select('ingredient_type, priority, sap_code, product_name, fat_percent')
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
+    supabase.from('mas_special_raw').select('product_group, station, d16, d17'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
+
+  const specialRawRules: SpecialRawRule[] = (specialRawRes.data ?? []).map(r => ({
+    product_group: String(r.product_group ?? '').trim(),
+    station:       String(r.station       ?? '').trim(),
+    d16:           String(r.d16           ?? '').trim() || null,
+    d17:           String(r.d17           ?? '').trim() || null,
+  }))
+
   // beikKhaMap: SAP (normalized) → { source_station: ต้นทาง (ผลิต WIP), dest_station: ปลายทาง (รับ WIP) }
   const beikKhaMap = new Map<string, { source_station: string; dest_station: string }>()
   for (const r of beikKhaRes.data ?? []) {
@@ -476,7 +485,7 @@ export async function POST(req: NextRequest) {
         ]
       }
 
-      const lotsResult = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules)
+      const lotsResult = allocateFIFOWithRules(raw_name ?? '', lots, rawToProducts.get(rawKey) ?? [], rules, station, specialRawRules)
       const allocated = Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
       if (allocated <= 0.005 && lotsResult.every(l => l.insufficient)) return []
       const noteBase = bom_priority !== null ? `P${bom_priority} — คำนวณจาก BOM` : 'คำนวณจาก BOM'

@@ -13,6 +13,7 @@ interface LotInfo {
   available: number
   to_withdraw: number
   insufficient?: boolean
+  special_remark?: string
 }
 
 interface ForProduct {
@@ -314,24 +315,30 @@ export default function WithdrawalPage() {
                     </tr>
                   )}
                   {item.lots && item.lots.length > 0 && (() => {
-                    const byDate = new Map<string, { qty: number; insufficient: boolean }>()
+                    const byDate = new Map<string, { qty: number; insufficient: boolean; specialRemarks: Set<string> }>()
                     for (const lot of item.lots!) {
                       const key = lot.insufficient ? '⚠ ไม่เพียงพอ' : lot.prod_date
-                      const cur = byDate.get(key) ?? { qty: 0, insufficient: lot.insufficient ?? false }
+                      const cur = byDate.get(key) ?? { qty: 0, insufficient: lot.insufficient ?? false, specialRemarks: new Set() }
                       cur.qty += lot.to_withdraw
+                      if (lot.special_remark) cur.specialRemarks.add(lot.special_remark)
                       byDate.set(key, cur)
                     }
                     return Array.from(byDate.entries())
                       .sort(([, a], [, b]) => (a.insufficient ? 1 : 0) - (b.insufficient ? 1 : 0))
-                      .map(([date, { qty, insufficient }]) => (
+                      .map(([date, { qty, insufficient, specialRemarks }]) => (
                       <tr key={`${item.sku}-date-${date}`}
-                        className={`border-b text-xs ${insufficient ? 'bg-red-50' : 'bg-blue-50/40'}`}>
+                        className={`border-b text-xs ${insufficient ? 'bg-red-50' : specialRemarks.size > 0 ? 'bg-amber-50/60' : 'bg-blue-50/40'}`}>
                         <td className="hidden md:table-cell" />
                         <td className="hidden md:table-cell" />
                         <td className="px-3 py-1.5 text-gray-500">
                           {insufficient
                             ? <span className="text-red-500 font-medium">⚠ สต็อกไม่เพียงพอ</span>
-                            : <span>ผลิต <span className="font-medium">{date}</span></span>}
+                            : <span className="flex items-center gap-2 flex-wrap">
+                                <span>ผลิต <span className="font-medium">{date}</span></span>
+                                {specialRemarks.size > 0 && Array.from(specialRemarks).map(r => (
+                                  <span key={r} className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 font-semibold text-[10px] shrink-0">{r}</span>
+                                ))}
+                              </span>}
                         </td>
                         <td className={`px-2 py-1.5 text-center font-semibold ${insufficient ? 'text-red-600' : 'text-blue-700'}`}>
                           {roundTo5Or0(qty).toLocaleString()}

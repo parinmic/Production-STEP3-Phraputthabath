@@ -404,6 +404,10 @@ export default function Sidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/phlit-tor-kan' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-rose-400" />Mas ผลิตต่อกัน
               </Link>
+              <Link href="/master-logic/special-raw"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/master-logic/special-raw' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-amber-500" />Mas Special Raw
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -459,6 +463,11 @@ export default function Sidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/phlit-tor-kan' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas ผลิตต่อกัน">
                 <span className="w-2 h-2 rounded-full bg-rose-400" />
+              </Link>
+              <Link href="/master-logic/special-raw"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/master-logic/special-raw' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas Special Raw">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
               </Link>
             </div>
           )}

@@ -5,6 +5,13 @@ export interface RawMaterialRule {
   d17: string;          // D17
 }
 
+export interface SpecialRawRule {
+  product_group: string
+  station: string
+  d16: string | null
+  d17: string | null
+}
+
 export interface LotInfo {
   spec_code: string
   factory: string
@@ -12,6 +19,7 @@ export interface LotInfo {
   available: number
   to_withdraw: number
   insufficient?: boolean
+  special_remark?: string  // e.g. "D16=K D17=B" when lot matched via mas_special_raw
 }
 
 export interface LotEntry {
@@ -30,12 +38,45 @@ export interface ForProduct {
 }
 
 export function cleanGroupName(groupName: string): string {
-  // Remove leading "กลุ่ม" or "กลุ่มเนื้อ"
   return groupName.replace(/^กลุ่ม(เนื้อ)?/, '').trim();
 }
 
+// Normalize station name for matching: strip "พิเศษ" suffix
+function normalizeStation(s: string): string {
+  return s.replace(/พิเศษ$/, '').trim()
+}
+
+// Check if a spec_code matches a SpecialRawRule's D16/D17 conditions
+// D16 = 1-indexed position 16 = index 15; D17 = index 16
+function lotMatchesSpecialRule(spec_code: string, rule: SpecialRawRule): boolean {
+  const d16 = rule.d16?.trim()
+  const d17 = rule.d17?.trim()
+  if (!d16) return false
+  if (spec_code.length < 16) return false
+  if (spec_code[15] !== d16) return false
+  if (d17 && (spec_code.length < 17 || spec_code[16] !== d17)) return false
+  return true
+}
+
+// Find applicable SpecialRawRule for a given raw material + station
+export function findSpecialRawRule(
+  raw_name: string,
+  station: string,
+  specialRawRules: SpecialRawRule[],
+): SpecialRawRule | null {
+  const normStation = normalizeStation(station)
+  for (const rule of specialRawRules) {
+    const ruleGroupClean = cleanGroupName(rule.product_group)
+    const ruleStationNorm = normalizeStation(rule.station)
+    const groupMatches   = raw_name.includes(ruleGroupClean)
+    const stationMatches = normStation === ruleStationNorm || station === rule.station
+    if (groupMatches && stationMatches) return rule
+  }
+  return null
+}
+
 export function getLotType(raw_name: string, spec_code: string, rules: RawMaterialRule[]): string {
-  // Mas Raw Material rules are disabled: always return 'RAW' so lots are treated as standard raw materials
+  // Mas Raw Material rules are disabled: always return 'RAW'
   return 'RAW';
 }
 
@@ -43,106 +84,71 @@ export function allocateFIFOWithRules(
   raw_name: string,
   lots: LotEntry[],
   forProducts: ForProduct[],
-  rules: RawMaterialRule[]
+  rules: RawMaterialRule[],
+  station?: string,
+  specialRawRules?: SpecialRawRule[],
 ): LotInfo[] {
   const result: LotInfo[] = []
-  
-  // 1. Prepare requirements
+
   const requirements = forProducts.map(p => ({
     sku: p.sku,
     sku_name: p.sku_name ?? '',
     remainingQty: p.rawQty,
   }));
-  
-  // Track allocations per lot: lot index -> total allocated in this round
-  const allocations = new Map<number, number>();
-  
-  // To keep track of initial weights before allocation in this round
-  const initialWeights = lots.map(l => l.weight);
 
-  // Pre-calculate the type for each lot
-  const lotTypes = lots.map(l => getLotType(raw_name, l.spec_code, rules));
+  const totalNeeded = requirements.reduce((s, r) => s + r.remainingQty, 0)
+  let remaining = totalNeeded
 
-  // PASS 1: Allocate restricted lots to matching restricted requirements
-  for (let i = 0; i < lots.length; i++) {
-    const lot = lots[i];
-    const lotType = lotTypes[i];
-    
-    if (lotType === 'RAW' || lot.weight <= 0.005) {
-      continue;
-    }
-    
-    const typeUpper = lotType.toUpperCase();
-    for (const req of requirements) {
-      if (req.remainingQty <= 0.005) continue;
-      
-      // Does req.sku_name contain the lotType keyword?
-      if (req.sku_name.toUpperCase().includes(typeUpper)) {
-        const take = Math.min(lot.weight, req.remainingQty);
-        if (take > 0) {
-          lot.weight -= take;
-          req.remainingQty -= take;
-          allocations.set(i, (allocations.get(i) ?? 0) + take);
-        }
-      }
-      if (lot.weight <= 0.005) break;
+  // ── Special Raw pass: prioritize lots matching D16/D17 rule ─────────────
+  const activeRule = (station && specialRawRules?.length)
+    ? findSpecialRawRule(raw_name, station, specialRawRules)
+    : null
+
+  if (activeRule) {
+    const specialLots  = lots.filter(l => l.weight > 0.005 && lotMatchesSpecialRule(l.spec_code, activeRule))
+    const remarkStr    = ['D16=' + activeRule.d16, activeRule.d17 ? 'D17=' + activeRule.d17 : ''].filter(Boolean).join(' ')
+
+    for (const lot of specialLots) {
+      if (remaining <= 0.005) break
+      const take = Math.min(remaining, lot.weight)
+      result.push({
+        spec_code:      lot.spec_code,
+        factory:        lot.factory,
+        prod_date:      lot.prod_date,
+        available:      Math.round(lot.weight * 100) / 100,
+        to_withdraw:    Math.round(take * 100) / 100,
+        special_remark: remarkStr,
+      })
+      lot.weight -= take
+      remaining  -= take
     }
   }
 
-  // PASS 2: Allocate normal lots ('RAW') to any remaining requirements
-  for (let i = 0; i < lots.length; i++) {
-    const lot = lots[i];
-    const lotType = lotTypes[i];
-    
-    if (lotType !== 'RAW' || lot.weight <= 0.005) {
-      continue;
-    }
-    
-    for (const req of requirements) {
-      if (req.remainingQty <= 0.005) continue;
-      
-      const take = Math.min(lot.weight, req.remainingQty);
-      if (take > 0) {
-        lot.weight -= take;
-        req.remainingQty -= take;
-        allocations.set(i, (allocations.get(i) ?? 0) + take);
-      }
-      if (lot.weight <= 0.005) break;
-    }
-  }
-
-  // 2. Build result from allocations
-  for (let i = 0; i < lots.length; i++) {
-    const allocated = allocations.get(i) ?? 0;
-    if (allocated <= 0.005) continue;
-    
-    const lot = lots[i];
+  // ── Normal FIFO pass: oldest lot first ──────────────────────────────────
+  for (const lot of lots) {
+    if (remaining <= 0.005) break
+    if (lot.weight <= 0.005) continue
+    const take = Math.min(remaining, lot.weight)
     result.push({
       spec_code:   lot.spec_code,
       factory:     lot.factory,
       prod_date:   lot.prod_date,
-      available:   Math.round(initialWeights[i] * 100) / 100,
-      to_withdraw: Math.round(allocated * 100) / 100,
-    });
+      available:   Math.round(lot.weight * 100) / 100,
+      to_withdraw: Math.round(take * 100) / 100,
+    })
+    lot.weight -= take
+    remaining  -= take
   }
 
-  // Check if there are any unsatisfied requirements
-  let remainingNeeded = 0;
-  for (const req of requirements) {
-    if (req.remainingQty > 0.005) {
-      remainingNeeded += req.remainingQty;
-    }
-  }
-
-  if (remainingNeeded > 0.005) {
+  if (remaining > 0.005) {
     result.push({
       spec_code:   '— ไม่เพียงพอ —',
       factory:     '-',
       prod_date:   '-',
       available:   0,
-      to_withdraw: Math.round(remainingNeeded * 100) / 100,
+      to_withdraw: Math.round(remaining * 100) / 100,
       insufficient: true,
-    });
+    })
   }
 
   return result;
