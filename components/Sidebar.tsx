@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const TABLES = [
@@ -223,6 +223,13 @@ export default function Sidebar() {
               ))}
             </div>
           )}
+
+          <Link href="/breakline"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/breakline')}`}
+            title="Breakline">
+            <Slice size={18} className="shrink-0" />
+            <span className={labelCls}>Breakline</span>
+          </Link>
 
           <Link href="/saw-machine-plan"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/saw-machine-plan')}`}

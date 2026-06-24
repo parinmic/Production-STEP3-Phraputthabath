@@ -284,21 +284,7 @@ export default function BasicTemperatureCheckPage() {
   const badCount   = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
 
   return (
-    <div className="relative space-y-4 sm:space-y-6">
-      {rounds.length > 0 && (
-        <select
-          value={viewRound ?? ''}
-          onChange={e => selectRound(Number(e.target.value))}
-          className="absolute top-0 right-0 text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-        >
-          {rounds.map(r => (
-            <option key={r.round_number} value={r.round_number}>
-              รอบที่ {r.round_number} ({new Date(r.started_at).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)
-              {r.round_number === liveRoundRef.current ? ' ปัจจุบัน' : ''}
-            </option>
-          ))}
-        </select>
-      )}
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div>
@@ -307,25 +293,41 @@ export default function BasicTemperatureCheckPage() {
             ตรวจอุณหภูมิ (QC)
           </h1>
         </div>
-        <div className="flex items-center gap-2 sm:shrink-0">
-          {generated && (
+        <div className="flex flex-col items-stretch sm:items-end gap-2 sm:shrink-0">
+          {rounds.length > 0 && (
+            <select
+              value={viewRound ?? ''}
+              onChange={e => selectRound(Number(e.target.value))}
+              className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500 self-end"
+            >
+              {rounds.map(r => (
+                <option key={r.round_number} value={r.round_number}>
+                  รอบที่ {r.round_number} ({new Date(r.started_at).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)
+                  {r.round_number === liveRoundRef.current ? ' ปัจจุบัน' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex items-center gap-2">
+            {generated && (
+              <button
+                onClick={generate}
+                disabled={loading}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                รีโหลด
+              </button>
+            )}
             <button
               onClick={generate}
               disabled={loading}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              รีโหลด
+              <PlayCircle size={16} />
+              Generate
             </button>
-          )}
-          <button
-            onClick={generate}
-            disabled={loading}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50"
-          >
-            <PlayCircle size={16} />
-            Generate
-          </button>
+          </div>
         </div>
       </div>
 
