@@ -106,7 +106,7 @@ export function allocateFIFOWithRules(
 
   if (activeRule) {
     const specialLots  = lots.filter(l => l.weight > 0.005 && lotMatchesSpecialRule(l.spec_code, activeRule))
-    const remarkStr    = ['D16=' + activeRule.d16, activeRule.d17 ? 'D17=' + activeRule.d17 : ''].filter(Boolean).join(' ')
+    const remarkStr    = [activeRule.d16, activeRule.d17].filter(Boolean).join('')
 
     for (const lot of specialLots) {
       if (remaining <= 0.005) break
