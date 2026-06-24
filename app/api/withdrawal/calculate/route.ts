@@ -171,7 +171,7 @@ function buildStockMaps(stockRows: { material_code: string; material_name: strin
   return { byCode, byName }
 }
 
-type StockRow = { material_code: string; material_name: string | null; spec_code: string; weight_total: number }
+type StockRow = { material_code: string; material_name: string | null; spec_code: string; qty_total: number; weight_total: number }
 
 export async function POST(req: NextRequest) {
   try {
@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Fetch masters in parallel
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes, specialRawRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes, specialRawRes, bomSpecialRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
@@ -221,6 +221,7 @@ export async function POST(req: NextRequest) {
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
     supabase.from('mas_special_raw').select('product_group, station, d16, d17'),
+    supabase.from('bom_special').select('product_sap, raw_sap, raw_name, yield_lt16, yield_16_18, yield_gte18'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
@@ -358,8 +359,8 @@ export async function POST(req: NextRequest) {
 
   if (rawSaps.length > 0) {
     const [res0010, res20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
     ])
     regularStockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
   }
@@ -376,13 +377,43 @@ export async function POST(req: NextRequest) {
       n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
     ])))
     const [res0010n, res20n] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
     ])
     regularStockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
   }
 
   const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
+
+  // Build basket weight map: spec_code → kg per basket (weight_total / qty_total)
+  type BomSpecialEntry = { raw_sap: string; raw_name: string | null; yield_lt16: number; yield_16_18: number; yield_gte18: number }
+  const basketWeightMap = new Map<string, number>()
+  {
+    const agg = new Map<string, { w: number; q: number }>()
+    for (const row of regularStockRows) {
+      const cur = agg.get(row.spec_code) ?? { w: 0, q: 0 }
+      cur.w += row.weight_total
+      cur.q += row.qty_total
+      agg.set(row.spec_code, cur)
+    }
+    for (const [spec, { w, q }] of Array.from(agg.entries())) {
+      if (q > 0) basketWeightMap.set(spec, w / q)
+    }
+  }
+
+  // Build bomSpecialMap: product_sap → entries[]
+  const bomSpecialMap = new Map<string, BomSpecialEntry[]>()
+  for (const r of bomSpecialRes.data ?? []) {
+    const list = bomSpecialMap.get(r.product_sap) ?? []
+    list.push({ raw_sap: r.raw_sap, raw_name: r.raw_name ?? null, yield_lt16: r.yield_lt16, yield_16_18: r.yield_16_18, yield_gte18: r.yield_gte18 })
+    bomSpecialMap.set(r.product_sap, list)
+  }
+
+  const getSpecialYield = (basketKg: number, entry: BomSpecialEntry): number => {
+    if (basketKg <= 16) return entry.yield_lt16
+    if (basketKg <= 18) return entry.yield_16_18
+    return entry.yield_gte18
+  }
 
   // 6.5 Apply rm-allocation cap: scale rawMap quantities to match pool-allocated amounts
   const rmGroups   = await computeRmAllocation(date)
@@ -552,14 +583,14 @@ export async function POST(req: NextRequest) {
     const mooStockPromises = []
     if (mooAllSaps.length > 0) {
       mooStockPromises.push(
-        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
-        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
       )
     }
     if (mooAllNames.length > 0) {
       mooStockPromises.push(
-        supabase.from('stock_0010').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
-        supabase.from('stock_20').select('material_code, material_name, spec_code, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
       )
     }
     const mooStockResults = await Promise.all(mooStockPromises)
@@ -602,8 +633,84 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Step 6: BOM พิเศษ actual weight recheck ──────────────────────
+  // For each SKU that has a BOM พิเศษ entry, recompute actual output
+  // from allocated lots using basket-weight-tiered yield. If short, allocate extra.
+  const extraItems: typeof rawItems = []
+
+  if (bomSpecialMap.size > 0) {
+    for (const item of rawItems) {
+      const rawSap  = item.sku
+      const station = item.work_station ?? ''
+      const lots    = item.lots ?? []
+      const forProds = item.for_products ?? []
+      if (!lots.length || !forProds.length) continue
+
+      const totalRawInItem = forProds.reduce((s, p) => s + p.rawQty, 0)
+      if (totalRawInItem <= 0) continue
+
+      for (const prod of forProds) {
+        const specialEntry = (bomSpecialMap.get(prod.sku) ?? []).find(e => e.raw_sap === rawSap)
+        if (!specialEntry) continue
+
+        const fraction = prod.rawQty / totalRawInItem
+        let actualOutput = 0
+        for (const lot of lots) {
+          if (lot.insufficient) continue
+          const bw = basketWeightMap.get(lot.spec_code) ?? 0
+          actualOutput += lot.to_withdraw * fraction * getSpecialYield(bw, specialEntry)
+        }
+
+        const targetFinQty = prod.qty
+        if (actualOutput >= targetFinQty - 0.005) continue
+
+        const shortfall = targetFinQty - actualOutput
+        const remainingLots = stockByMat.get(rawSap) ?? stockByName.get(normMatName(specialEntry.raw_name ?? ''))
+        if (!remainingLots) continue
+
+        const extraLots: LotInfo[] = []
+        let remainingShortfall = shortfall
+
+        for (const lot of remainingLots) {
+          if (remainingShortfall <= 0.005) break
+          if (lot.weight <= 0.005) continue
+          const bw = basketWeightMap.get(lot.spec_code) ?? 0
+          const yp = getSpecialYield(bw, specialEntry)
+          if (yp <= 0) continue
+          const take = Math.round(Math.min(remainingShortfall / yp, lot.weight) * 100) / 100
+          if (take <= 0.005) continue
+          extraLots.push({
+            spec_code:   lot.spec_code,
+            factory:     lot.factory,
+            prod_date:   lot.prod_date,
+            available:   Math.round(lot.weight * 100) / 100,
+            to_withdraw: take,
+          })
+          lot.weight -= take
+          remainingShortfall -= take * yp
+        }
+
+        if (extraLots.length > 0) {
+          const totalExtra = extraLots.reduce((s, l) => s + l.to_withdraw, 0)
+          extraItems.push({
+            sku:              rawSap,
+            sku_name:         specialEntry.raw_name,
+            quantity:         Math.round(totalExtra * 100) / 100,
+            unit:             'กก.',
+            work_station:     station,
+            note:             'คำนวณจาก BOM',
+            lots:             extraLots,
+            for_products:     [{ sku: prod.sku, sku_name: prod.sku_name ?? null, qty: targetFinQty, rawQty: Math.round(totalExtra * 100) / 100 }],
+            withdrawal_round: item.withdrawal_round,
+            bom_priority:     item.bom_priority,
+          })
+        }
+      }
+    }
+  }
+
   // Combine and sort: round first, then bom_priority (P1 before null), then station, sku
-  const allItems = [...rawItems, ...noBomItems, ...mooItems].sort((a, b) =>
+  const allItems = [...rawItems, ...noBomItems, ...mooItems, ...extraItems].sort((a, b) =>
     a.withdrawal_round.localeCompare(b.withdrawal_round) ||
     ((a as { bom_priority?: number | null }).bom_priority ?? 99) - ((b as { bom_priority?: number | null }).bom_priority ?? 99) ||
     (a.work_station ?? '').localeCompare(b.work_station ?? '') ||
