@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const BASIC_STATIONS = [
@@ -179,6 +179,13 @@ function BasicSidebar() {
               ))}
             </div>
           )}
+
+          <Link href="/breakline"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/breakline')}`}
+            title="Breakline">
+            <Slice size={18} className="shrink-0" />
+            <span className={labelCls}>Breakline</span>
+          </Link>
 
           <Link href="/basic/workforce-daily-status"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/workforce-daily-status')}`}
