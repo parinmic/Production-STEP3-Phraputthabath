@@ -28,11 +28,11 @@ export default function WipPlanPage() {
         .eq('calculation_type', 'Mas Productivity')
         .order('uploaded_at', { ascending: false })
 
-      const { data: beikKhaData } = await supabase
+      const { data: philitTorKanData } = await supabase
         .from('mas_phlit_tor_kan')
         .select('sap')
 
-      const beikKhaSaps = new Set((beikKhaData ?? []).map(r => String(r.sap ?? '').trim()))
+      const philitTorKanSaps = new Set((philitTorKanData ?? []).map(r => String(r.sap ?? '').trim()))
 
       const seen = new Set<string>()
       const wipSkus: { sap_code: string; sku_name: string; station: string }[] = []
@@ -41,11 +41,13 @@ export default function WipPlanPage() {
         if (String(row['กลุ่มสินค้า'] ?? '') !== 'กลุ่ม WIP') continue
         const sap = String(row['SAP'] ?? '').trim()
         if (!sap || seen.has(sap)) continue
-        if (beikKhaSaps.has(sap) || beikKhaSaps.has(sap.replace(/^0+/, ''))) continue
+        if (philitTorKanSaps.has(sap) || philitTorKanSaps.has(sap.replace(/^0+/, ''))) continue
+        const skuName = String(row['ชื่อสินค้า'] ?? '').trim()
+        if (skuName.includes('WIP')) continue
         seen.add(sap)
         wipSkus.push({
           sap_code: sap,
-          sku_name: String(row['ชื่อสินค้า'] ?? '').trim(),
+          sku_name: skuName,
           station: String(row['จุดงาน'] ?? '').trim(),
         })
       }

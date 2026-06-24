@@ -1087,7 +1087,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   if (e1) throw new Error(`Fetch assignments error: ${e1.message}`)
   if (!assignments?.length) return
 
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, pickingUnitMooRes, beikKhaRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, pickingUnitMooRes, philitTorKanRes, bomSpecialRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
@@ -1095,6 +1095,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
     supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
+    supabase.from('bom_special').select('product_sap, raw_sap, yield_pct'),
   ])
 
   const wpbMapLocal = new Map<string, number>()
@@ -1105,15 +1106,15 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
   }
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? [] as { sap: string | null }[]).map((r: { sap: string | null }) => String(r.sap ?? '').trim()))
-  const beikKhaMap = new Map<string, { source_station: string; dest_station: string }>()
-  for (const r of (beikKhaRes.data ?? []) as { sap: string | null; source_station: string | null; dest_station: string | null }[]) {
+  const philitTorKanMap = new Map<string, { source_station: string; dest_station: string }>()
+  for (const r of (philitTorKanRes.data ?? []) as { sap: string | null; source_station: string | null; dest_station: string | null }[]) {
     const src = String(r.source_station ?? '').trim()
     const dst = String(r.dest_station   ?? '').trim()
     if (!src || !dst) continue
     const sapNorm = String(r.sap ?? '').replace(/^0+/, '').trim()
     const sapRaw  = String(r.sap ?? '').trim()
-    if (sapNorm) beikKhaMap.set(sapNorm, { source_station: src, dest_station: dst })
-    if (sapRaw && sapRaw !== sapNorm) beikKhaMap.set(sapRaw, { source_station: src, dest_station: dst })
+    if (sapNorm) philitTorKanMap.set(sapNorm, { source_station: src, dest_station: dst })
+    if (sapRaw && sapRaw !== sapNorm) philitTorKanMap.set(sapRaw, { source_station: src, dest_station: dst })
   }
   const activeAssignments = (assignments as { sku: unknown; table_name: unknown; [k: string]: unknown }[]).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
   if (!activeAssignments.length) return
@@ -1173,6 +1174,14 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     bomMap.set(b.product_sap, list)
   }
 
+  // bomSpecialMap for ผลิตต่อกัน min-yield calc: product_sap → { raw_sap, yield_pct }[]
+  const bomSpecialMinMap = new Map<string, { raw_sap: string; yield_pct: number }[]>()
+  for (const r of (bomSpecialRes.data ?? []) as { product_sap: string; raw_sap: string; yield_pct: number }[]) {
+    const list = bomSpecialMinMap.get(r.product_sap) ?? []
+    list.push({ raw_sap: r.raw_sap, yield_pct: r.yield_pct })
+    bomSpecialMinMap.set(r.product_sap, list)
+  }
+
   interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number }
   const rawMap = new Map<string, RawEntry>()
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
@@ -1185,7 +1194,17 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     for (const [rm, finQty] of Array.from(roundQtys.entries())) {
       if (!boms?.length) { noBom.push({ station, sku, sku_name, qty: finQty, roundMins: rm }); continue }
       for (const b of boms) {
-        const rawQty = b.yield_pct > 0 ? finQty / b.yield_pct : finQty
+        const normBomRaw = b.raw_sap.replace(/^0+/, '')
+        const isPhilitTorKanRaw = philitTorKanMap.has(normBomRaw) || philitTorKanMap.has(b.raw_sap)
+        let effectiveYield = b.yield_pct
+        if (isPhilitTorKanRaw && bomSpecialMinMap.size > 0) {
+          const specialEntries = (bomSpecialMinMap.get(sku) ?? []).filter(e => e.raw_sap === b.raw_sap || e.raw_sap === normBomRaw)
+          if (specialEntries.length > 0) {
+            const yields = specialEntries.map(e => e.yield_pct).filter(y => y > 0)
+            if (yields.length > 0) effectiveYield = Math.min(...yields)
+          }
+        }
+        const rawQty = effectiveYield > 0 ? finQty / effectiveYield : finQty
         const rawKey = `${station}|||${b.raw_sap}|||${rm}`
         const cur = rawMap.get(rawKey)
         if (cur) { cur.qty += rawQty }
@@ -1294,14 +1313,14 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
       if (!lots) {
         // WIP produced in-house: check mas ผลิตต่อกัน for source/dest station mapping
         const normSapRaw = raw_sap.replace(/^0+/, '')
-        const beikEntry  = beikKhaMap.get(normSapRaw) ?? beikKhaMap.get(raw_sap)
-        const isBeikKha  = !!beikEntry && station === beikEntry.dest_station
-        if (isBeikKha && needed > 0) {
+        const philitTorKanEntry = philitTorKanMap.get(normSapRaw) ?? philitTorKanMap.get(raw_sap)
+        const isPhilitTorKan    = !!philitTorKanEntry && station === philitTorKanEntry.dest_station
+        if (isPhilitTorKan && needed > 0) {
           const sourceRound = Math.max(roundMins - 30, 510)
           const forProds    = rawToProducts.get(rawKey) ?? []
           return [
-            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: beikEntry.dest_station,   note: `WIP จาก${beikEntry.source_station}`,         lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(roundMins) },
-            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: beikEntry.source_station, note: `แผนผลิต WIP สำหรับ${beikEntry.dest_station}`, lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(sourceRound) },
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: philitTorKanEntry.dest_station,   note: `WIP จาก${philitTorKanEntry.source_station}`,         lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(roundMins) },
+            { sku: raw_sap, sku_name: raw_name, quantity: needed, unit: 'กก.', work_station: philitTorKanEntry.source_station, note: `แผนผลิต WIP สำหรับ${philitTorKanEntry.dest_station}`, lots: [] as LotInfo[], for_products: forProds, withdrawal_round: minsToTime(sourceRound) },
           ]
         }
 

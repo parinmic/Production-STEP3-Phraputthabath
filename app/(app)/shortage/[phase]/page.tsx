@@ -79,11 +79,10 @@ export default function ShortagePage() {
       // 2. BOM for deficit SKUs → convert finished-product qty to raw material needs
       const skus     = Array.from(new Set(deficitRows.map(a => String(a.sku))))
       const skusNorm = Array.from(new Set(skus.map(s => s.replace(/^0+/, ''))))
-      const [{ data: bomRows }, { data: wipRows }] = await Promise.all([
-        supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', [...skus, ...skusNorm]),
-        supabase.from('mas_phlit_tor_kan').select('sap'),
-      ])
-      const wipSapSet = new Set((wipRows ?? []).map(w => String(w.sap).replace(/^0+/, '')))
+      const { data: bomRows } = await supabase
+        .from('bom_items')
+        .select('product_sap, raw_sap, raw_name, yield_pct')
+        .in('product_sap', [...skus, ...skusNorm])
 
       const bomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
       for (const b of bomRows ?? []) {
@@ -131,7 +130,6 @@ export default function ShortagePage() {
       }
 
       const merged = Array.from(rawMap.values())
-        .filter(r => !wipSapSet.has(r.sku.replace(/^0+/, '')))
         .map(r => ({ ...r, quantity: Math.round(r.quantity * 100) / 100, deficit: Math.round((r.deficit ?? 0) * 100) / 100 }))
         .sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')

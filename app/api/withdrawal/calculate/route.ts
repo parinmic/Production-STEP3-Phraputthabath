@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Fetch masters in parallel
-  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, beikKhaRes, specialRawRes, bomSpecialRes] = await Promise.all([
+  const [noWithdrawalRes, mooMasterRes, mooWithdrawalRes, philitTorKanRes, specialRawRes, bomSpecialRes] = await Promise.all([
     supabase.from('no_withdrawal_skus').select('sap'),
     supabase.from('moo_chod_master').select('sap_code, fat_percent'),
     supabase.from('moo_chod_withdrawal_master')
@@ -233,16 +233,16 @@ export async function POST(req: NextRequest) {
     d17:           String(r.d17           ?? '').trim() || null,
   }))
 
-  // beikKhaMap: SAP (normalized) → { source_station: ต้นทาง (ผลิต WIP), dest_station: ปลายทาง (รับ WIP) }
-  const beikKhaMap = new Map<string, { source_station: string; dest_station: string }>()
-  for (const r of beikKhaRes.data ?? []) {
+  // philitTorKanMap: SAP (normalized) → { source_station: ต้นทาง (ผลิต WIP), dest_station: ปลายทาง (รับ WIP) }
+  const philitTorKanMap = new Map<string, { source_station: string; dest_station: string }>()
+  for (const r of philitTorKanRes.data ?? []) {
     const src = String(r.source_station ?? '').trim()
     const dst = String(r.dest_station   ?? '').trim()
     if (!src || !dst) continue
     const sapNorm = String(r.sap ?? '').replace(/^0+/, '').trim()
     const sapRaw  = String(r.sap ?? '').trim()
-    if (sapNorm) beikKhaMap.set(sapNorm, { source_station: src, dest_station: dst })
-    if (sapRaw && sapRaw !== sapNorm) beikKhaMap.set(sapRaw, { source_station: src, dest_station: dst })
+    if (sapNorm) philitTorKanMap.set(sapNorm, { source_station: src, dest_station: dst })
+    if (sapRaw && sapRaw !== sapNorm) philitTorKanMap.set(sapRaw, { source_station: src, dest_station: dst })
   }
 
   // Build moo_chod fat map: sap_code → fat_percent
@@ -323,6 +323,15 @@ export async function POST(req: NextRequest) {
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
 
+  // bomSpecialMap: product_sap → entries[] — built early for ผลิตต่อกัน min-yield calc
+  type BomSpecialEntry = { raw_sap: string; raw_name: string | null; weight_condition: string; yield_pct: number }
+  const bomSpecialMap = new Map<string, BomSpecialEntry[]>()
+  for (const r of bomSpecialRes.data ?? []) {
+    const list = bomSpecialMap.get(r.product_sap) ?? []
+    list.push({ raw_sap: r.raw_sap, raw_name: r.raw_name ?? null, weight_condition: r.weight_condition, yield_pct: r.yield_pct })
+    bomSpecialMap.set(r.product_sap, list)
+  }
+
   for (const [finKey, roundQtys] of Array.from(finRoundMap.entries())) {
     const [station, sku] = finKey.split('|||')
     const sku_name = finNameMap.get(finKey) ?? null
@@ -334,7 +343,17 @@ export async function POST(req: NextRequest) {
         continue
       }
       for (const b of boms) {
-        const rawQty = b.yield_pct > 0 ? finQty / b.yield_pct : finQty
+        const normBomRaw = b.raw_sap.replace(/^0+/, '')
+        const isPhilitTorKanRaw = philitTorKanMap.has(normBomRaw) || philitTorKanMap.has(b.raw_sap)
+        let effectiveYield = b.yield_pct
+        if (isPhilitTorKanRaw && bomSpecialMap.size > 0) {
+          const specialEntries = (bomSpecialMap.get(sku) ?? []).filter(e => e.raw_sap === b.raw_sap || e.raw_sap === normBomRaw)
+          if (specialEntries.length > 0) {
+            const yields = specialEntries.map(e => e.yield_pct).filter(y => y > 0)
+            if (yields.length > 0) effectiveYield = Math.min(...yields)
+          }
+        }
+        const rawQty = effectiveYield > 0 ? finQty / effectiveYield : finQty
         const rawKey = `${station}|||${b.raw_sap}|||${rm}`
         const cur = rawMap.get(rawKey)
         if (cur) {
@@ -388,7 +407,6 @@ export async function POST(req: NextRequest) {
   const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
 
   // Build basket weight map: spec_code → kg per basket (weight_total / qty_total)
-  type BomSpecialEntry = { raw_sap: string; raw_name: string | null; weight_condition: string; yield_pct: number }
   const basketWeightMap = new Map<string, number>()
   {
     const agg = new Map<string, { w: number; q: number }>()
@@ -401,14 +419,6 @@ export async function POST(req: NextRequest) {
     for (const [spec, { w, q }] of Array.from(agg.entries())) {
       if (q > 0) basketWeightMap.set(spec, w / q)
     }
-  }
-
-  // Build bomSpecialMap: product_sap → entries[] (one entry per condition row)
-  const bomSpecialMap = new Map<string, BomSpecialEntry[]>()
-  for (const r of bomSpecialRes.data ?? []) {
-    const list = bomSpecialMap.get(r.product_sap) ?? []
-    list.push({ raw_sap: r.raw_sap, raw_name: r.raw_name ?? null, weight_condition: r.weight_condition, yield_pct: r.yield_pct })
-    bomSpecialMap.set(r.product_sap, list)
   }
 
   // Parse condition string: "< 17.6", ">= 17.6", "<= 20", "> 10" etc.
@@ -446,8 +456,8 @@ export async function POST(req: NextRequest) {
     for (const entry of Array.from(rawMap.values())) {
       // WIP materials produced in-house (mas ผลิตต่อกัน) are not subject to rm-allocation caps
       const normSapEntry = entry.raw_sap.replace(/^0+/, '')
-      const beikEntryAlloc = beikKhaMap.get(normSapEntry) ?? beikKhaMap.get(entry.raw_sap)
-      if (beikEntryAlloc && entry.station === beikEntryAlloc.dest_station) continue
+      const philitTorKanEntryAlloc = philitTorKanMap.get(normSapEntry) ?? philitTorKanMap.get(entry.raw_sap)
+      if (philitTorKanEntryAlloc && entry.station === philitTorKanEntryAlloc.dest_station) continue
 
       const key = `${entry.station}|||${normMatName(entry.raw_name ?? '')}`
       const totalNeeded = stationRawTotal.get(key) ?? 0
@@ -494,13 +504,13 @@ export async function POST(req: NextRequest) {
       if (!lots) {
         // WIP produced in-house: check mas ผลิตต่อกัน for source/dest station mapping
         const normSapRaw  = raw_sap.replace(/^0+/, '')
-        const beikEntry   = beikKhaMap.get(normSapRaw) ?? beikKhaMap.get(raw_sap)
-        const isBeikKha   = !!beikEntry && station === beikEntry.dest_station
-        if (!isBeikKha) return []
+        const philitTorKanEntry = philitTorKanMap.get(normSapRaw) ?? philitTorKanMap.get(raw_sap)
+        const isPhilitTorKan    = !!philitTorKanEntry && station === philitTorKanEntry.dest_station
+        if (!isPhilitTorKan) return []
 
         const forProds      = rawToProducts.get(rawKey) ?? []
-        const sourceStation = beikEntry.source_station
-        const destStation   = beikEntry.dest_station
+        const sourceStation = philitTorKanEntry.source_station
+        const destStation   = philitTorKanEntry.dest_station
         const sourceRound   = Math.max(roundMins - 30, 510) // ต้นทางผลิตก่อน 30 นาที (floor 08:30)
         const noteDestLabel = bom_priority !== null ? `P${bom_priority} — WIP จาก${sourceStation}` : `WIP จาก${sourceStation}`
         return [
