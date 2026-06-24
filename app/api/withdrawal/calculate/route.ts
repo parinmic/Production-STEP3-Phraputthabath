@@ -358,11 +358,12 @@ export async function POST(req: NextRequest) {
   const regularStockRows: StockRow[] = []
 
   if (rawSaps.length > 0) {
-    const [res0010, res20] = await Promise.all([
+    const [res0010, res20, res100] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
       supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
     ])
-    regularStockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[])
+    regularStockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[], ...(res100.data ?? []) as StockRow[])
   }
 
   // Name-based fallback
@@ -376,11 +377,12 @@ export async function POST(req: NextRequest) {
     const expandedNames = Array.from(new Set(missingNames.flatMap(n => [
       n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
     ])))
-    const [res0010n, res20n] = await Promise.all([
+    const [res0010n, res20n, res100n] = await Promise.all([
       supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
       supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
     ])
-    regularStockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[])
+    regularStockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[], ...(res100n.data ?? []) as StockRow[])
   }
 
   const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
@@ -598,12 +600,14 @@ export async function POST(req: NextRequest) {
       mooStockPromises.push(
         supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
         supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
       )
     }
     if (mooAllNames.length > 0) {
       mooStockPromises.push(
         supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
         supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
       )
     }
     const mooStockResults = await Promise.all(mooStockPromises)
