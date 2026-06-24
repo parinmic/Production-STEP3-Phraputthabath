@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
       .order('ingredient_type').order('priority').order('id'),
     supabase.from('mas_phlit_tor_kan').select('sap, source_station, dest_station'),
     supabase.from('mas_special_raw').select('product_group, station, d16, d17'),
-    supabase.from('bom_special').select('product_sap, raw_sap, raw_name, yield_lt16, yield_16_18, yield_gte18'),
+    supabase.from('bom_special').select('product_sap, raw_sap, raw_name, weight_condition, yield_pct'),
   ])
 
   const noWithdrawalSaps = new Set((noWithdrawalRes.data ?? []).map(r => String(r.sap ?? '').trim()))
@@ -386,7 +386,7 @@ export async function POST(req: NextRequest) {
   const { byCode: stockByMat, byName: stockByName } = buildStockMaps(regularStockRows)
 
   // Build basket weight map: spec_code → kg per basket (weight_total / qty_total)
-  type BomSpecialEntry = { raw_sap: string; raw_name: string | null; yield_lt16: number; yield_16_18: number; yield_gte18: number }
+  type BomSpecialEntry = { raw_sap: string; raw_name: string | null; weight_condition: string; yield_pct: number }
   const basketWeightMap = new Map<string, number>()
   {
     const agg = new Map<string, { w: number; q: number }>()
@@ -401,18 +401,31 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Build bomSpecialMap: product_sap → entries[]
+  // Build bomSpecialMap: product_sap → entries[] (one entry per condition row)
   const bomSpecialMap = new Map<string, BomSpecialEntry[]>()
   for (const r of bomSpecialRes.data ?? []) {
     const list = bomSpecialMap.get(r.product_sap) ?? []
-    list.push({ raw_sap: r.raw_sap, raw_name: r.raw_name ?? null, yield_lt16: r.yield_lt16, yield_16_18: r.yield_16_18, yield_gte18: r.yield_gte18 })
+    list.push({ raw_sap: r.raw_sap, raw_name: r.raw_name ?? null, weight_condition: r.weight_condition, yield_pct: r.yield_pct })
     bomSpecialMap.set(r.product_sap, list)
   }
 
-  const getSpecialYield = (basketKg: number, entry: BomSpecialEntry): number => {
-    if (basketKg <= 16) return entry.yield_lt16
-    if (basketKg <= 18) return entry.yield_16_18
-    return entry.yield_gte18
+  // Parse condition string: "< 17.6", ">= 17.6", "<= 20", "> 10" etc.
+  const matchesWeightCondition = (basketKg: number, condition: string): boolean => {
+    const lt  = condition.match(/^<\s*([\d.]+)$/)
+    if (lt)  return basketKg <  parseFloat(lt[1])
+    const gte = condition.match(/^>=\s*([\d.]+)$/)
+    if (gte) return basketKg >= parseFloat(gte[1])
+    const lte = condition.match(/^<=\s*([\d.]+)$/)
+    if (lte) return basketKg <= parseFloat(lte[1])
+    const gt  = condition.match(/^>\s*([\d.]+)$/)
+    if (gt)  return basketKg >  parseFloat(gt[1])
+    return false
+  }
+
+  // Find yield for a basket weight from filtered entries (same product+raw, different conditions)
+  const getSpecialYield = (basketKg: number, entries: BomSpecialEntry[]): number => {
+    const match = entries.find(e => matchesWeightCondition(basketKg, e.weight_condition))
+    return match?.yield_pct ?? 0
   }
 
   // 6.5 Apply rm-allocation cap: scale rawMap quantities to match pool-allocated amounts
@@ -648,22 +661,24 @@ export async function POST(req: NextRequest) {
       if (totalRawInItem <= 0) continue
 
       for (const prod of forProds) {
-        const specialEntry = (bomSpecialMap.get(prod.sku) ?? []).find(e => e.raw_sap === rawSap)
-        if (!specialEntry) continue
+        // All condition rows for this (product, raw) pair
+        const specialEntries = (bomSpecialMap.get(prod.sku) ?? []).filter(e => e.raw_sap === rawSap)
+        if (!specialEntries.length) continue
+        const rawName = specialEntries[0].raw_name
 
         const fraction = prod.rawQty / totalRawInItem
         let actualOutput = 0
         for (const lot of lots) {
           if (lot.insufficient) continue
           const bw = basketWeightMap.get(lot.spec_code) ?? 0
-          actualOutput += lot.to_withdraw * fraction * getSpecialYield(bw, specialEntry)
+          actualOutput += lot.to_withdraw * fraction * getSpecialYield(bw, specialEntries)
         }
 
         const targetFinQty = prod.qty
         if (actualOutput >= targetFinQty - 0.005) continue
 
         const shortfall = targetFinQty - actualOutput
-        const remainingLots = stockByMat.get(rawSap) ?? stockByName.get(normMatName(specialEntry.raw_name ?? ''))
+        const remainingLots = stockByMat.get(rawSap) ?? stockByName.get(normMatName(rawName ?? ''))
         if (!remainingLots) continue
 
         let remainingShortfall = shortfall
@@ -672,7 +687,7 @@ export async function POST(req: NextRequest) {
           if (remainingShortfall <= 0.005) break
           if (lot.weight <= 0.005) continue
           const bw = basketWeightMap.get(lot.spec_code) ?? 0
-          const yp = getSpecialYield(bw, specialEntry)
+          const yp = getSpecialYield(bw, specialEntries)
           if (yp <= 0) continue
           const take = Math.round(Math.min(remainingShortfall / yp, lot.weight) * 100) / 100
           if (take <= 0.005) continue

@@ -997,7 +997,8 @@ export function parseMasBeikKha(file: File): Promise<ParsedRow[]> {
   })
 }
 
-// BOM พิเศษ — header row 0: [...,"<= 16","16-18",">= 18"], row 1: ["Code","Sap","สินค้า","รหัส Raw","SAP RAW","ชื่อ Raw",...]
+// BOM พิเศษ — row 0: headers ["Code","Sap","สินค้า","รหัส Raw","SAP RAW","ชื่อ Raw","น้ำหนักต่อตะกร้า","% Yield สินค้า"]
+// Data rows: one row per (product, raw, weight_condition), e.g. "< 17.6" / ">= 17.6"
 export function parseBomSpecial(file: File): Promise<ParsedRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -1009,25 +1010,25 @@ export function parseBomSpecial(file: File): Promise<ParsedRow[]> {
         const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, { header: 1, defval: null })
 
         const results: ParsedRow[] = []
-        for (let i = 2; i < raw.length; i++) {
+        for (let i = 1; i < raw.length; i++) {
           const r = raw[i]
           if (!r) continue
-          const productSap = String(r[1] ?? '').trim()
-          const rawSap     = String(r[4] ?? '').trim()
-          if (!productSap || !rawSap) continue
+          const productSap      = String(r[1] ?? '').trim()
+          const rawSap          = String(r[4] ?? '').trim()
+          const weightCondition = String(r[6] ?? '').trim()
+          if (!productSap || !rawSap || !weightCondition) continue
           results.push({
-            product_code: String(r[0] ?? '').trim() || null,
-            product_sap:  productSap,
-            product_name: String(r[2] ?? '').trim() || null,
-            raw_code:     String(r[3] ?? '').trim() || null,
-            raw_sap:      rawSap,
-            raw_name:     String(r[5] ?? '').trim() || null,
-            yield_lt16:   Number(r[6]) || 0,
-            yield_16_18:  Number(r[7]) || 0,
-            yield_gte18:  Number(r[8]) || 0,
+            product_code:     String(r[0] ?? '').trim() || null,
+            product_sap:      productSap,
+            product_name:     String(r[2] ?? '').trim() || null,
+            raw_code:         String(r[3] ?? '').trim() || null,
+            raw_sap:          rawSap,
+            raw_name:         String(r[5] ?? '').trim() || null,
+            weight_condition:  weightCondition,
+            yield_pct:        Number(r[7]) || 0,
           })
         }
-        if (!results.length) throw new Error('ไม่พบรายการที่มี SAP สินค้าและ SAP Raw')
+        if (!results.length) throw new Error('ไม่พบรายการที่มี SAP สินค้า, SAP Raw และเงื่อนไขน้ำหนัก')
         resolve(results)
       } catch (e) {
         reject(e instanceof Error ? e : new Error('ไม่สามารถอ่านไฟล์ BOM พิเศษ ได้'))

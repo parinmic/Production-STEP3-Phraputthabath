@@ -20,15 +20,24 @@ async function uploadStock20(rows: ParsedRow[], filename: string) {
   return res.json()
 }
 
+async function uploadStock100(rows: ParsedRow[], filename: string) {
+  const res = await fetch('/api/upload-stock-100', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows, filename }),
+  })
+  return res.json()
+}
+
 export default function StockRawMaterialPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Stock Raw Material</h1>
-        <p className="text-gray-500 mt-1">อัพโหลดข้อมูล Stock วัตถุดิบ — ต้องอัพโหลด 2 ไฟล์</p>
+        <p className="text-gray-500 mt-1">อัพโหลดข้อมูล Stock วัตถุดิบ — ต้องอัพโหลด 3 ไฟล์</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-3 gap-6">
         <div className="border-t-4 border-blue-500 pt-4 rounded-t-sm">
           <div className="flex items-center gap-2 pb-3 mb-2">
             <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0" />
@@ -56,6 +65,21 @@ export default function StockRawMaterialPage() {
             onUpload={uploadStock20}
             parseFileFn={parseStockRawMaterial}
             downloadTable="stock_20"
+          />
+        </div>
+
+        <div className="border-t-4 border-green-500 pt-4 rounded-t-sm">
+          <div className="flex items-center gap-2 pb-3 mb-2">
+            <span className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
+            <h2 className="text-base font-semibold text-gray-700">ไฟล์ Stock คลัง 100</h2>
+          </div>
+          <FileUpload
+            title=""
+            description="อัพโหลดไฟล์ Stock คลัง 100 (.xlsx / .xls / .csv)"
+            historyEndpoint="/api/upload-stock-100"
+            onUpload={uploadStock100}
+            parseFileFn={parseStockRawMaterial}
+            downloadTable="stock_100"
           />
         </div>
       </div>
