@@ -1545,6 +1545,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     wmTodayRaw, wmHistRaw,
     lotusTodayRaw, lotusHistRaw,
     makroTodayRaw, makroHistRaw,
+    fsTodayRaw,
     { data: masterProdRaw },
     { data: masterChannelRaw },
     { data: jobAssignRaw },
@@ -1579,6 +1580,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: orderRound }]),
     fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
+    fetchAll<OrderRow>('fs_orders', 'sku, sku_name, quantity, delivery_date',
+      [{ col: 'delivery_date', op: 'eq', val: productionDate }])
+      .catch(() => [] as OrderRow[]),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
@@ -1643,6 +1647,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const lotusHist  = (lotusHistRaw  ?? []) as OrderRow[]
   const makroToday = (makroTodayRaw ?? []) as OrderRow[]
   const makroHist  = (makroHistRaw  ?? []) as OrderRow[]
+  const fsToday    = (fsTodayRaw    ?? []) as OrderRow[]
 
   const quotaMap = new Map<string, number>()
   for (const q of (quotasRaw ?? []) as { sku: string; quantity: number }[]) {
@@ -1656,11 +1661,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   } else {
     const hasBkpOrders = (bkpOrdersRaw ?? []).length > 0
     const hasOrders = isPhase2
-      ? (wmToday.length || lotusToday.length || makroToday.length || hasBkpOrders)
-      : (wmHist.length  || lotusHist.length  || makroToday.length || hasBkpOrders)
+      ? (wmToday.length || lotusToday.length || makroToday.length || hasBkpOrders || fsToday.length)
+      : (wmHist.length  || lotusHist.length  || makroToday.length || hasBkpOrders || fsToday.length)
     if (!hasOrders) return {
       success: false,
-      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP) — กรุณาอัพโหลดก่อน`,
+      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP / FS) — กรุณาอัพโหลดก่อน`,
     }
   }
 
@@ -1976,6 +1981,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const wmMap    = aggregateToday(wmToday)
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
+  const fsMap    = aggregateToday(fsToday)
 
   // Build targets per channel
   const buildWetMarketTargets = (): SkuTarget[] => {
@@ -2094,11 +2100,34 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }).filter(t => t.targetQty > 0)
   }
 
+  function buildFsTargets(): SkuTarget[] {
+    const ch = 'FS'
+    if (isPhase2) {
+      const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
+      return Object.entries(fsMap).map(([sku, { qty: orderQty, name }]) => {
+        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
+        const p1Actual = p1.get(sku) ?? 0
+        let targetQty: number
+        if (wpb > 0) {
+          targetQty = Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
+        } else {
+          targetQty = Math.max(0, orderQty - p1Actual)
+        }
+        return { sku, skuName: name, targetQty, channel: ch }
+      }).filter(s => s.targetQty > 0)
+    }
+    // Phase 1: ใช้ยอดจริงทั้งหมด ไม่คูณ %variance
+    return Object.entries(fsMap).map(([sku, { qty: orderQty, name }]) => {
+      return { sku, skuName: name, targetQty: roundDownToBag(sku, orderQty), channel: ch }
+    }).filter(s => s.targetQty > 0)
+  }
+
   const channelTargets: Record<string, SkuTarget[]> = {
     'Wet Market': buildWetMarketTargets(),
     'Makro':      buildMakroTargets(),
     'LOTUS':      buildLotusTargets(),
     'BKP':        buildBKPTargets(),
+    'FS':         buildFsTargets(),
   }
 
   // Phase 2: cap each SKU's total target across all channels so it doesn't exceed
@@ -2110,6 +2139,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [sku, { qty }] of Object.entries(makroMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
     for (const [sku, { qty }] of Object.entries(lotusMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
     for (const [sku, { qty }] of bkpOrderMap)              p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
+    for (const [sku, { qty }] of Object.entries(fsMap))    p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
     crossChannelCap(channelTargets, p2RawBySku, activeChannels)
   }
 
@@ -2143,7 +2173,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }).filter(t => t.targetQty > 0)
 
     // Append remaining WM/LOTUS/Makro that Phase 1+2 didn't fully cover
-    if (wmToday.length || lotusToday.length || makroToday.length) {
+    if (wmToday.length || lotusToday.length || makroToday.length || fsToday.length) {
       const phase3Plan100Skus = new Set(allPhase3Targets.map(t => t.sku.replace(/^0+/, '')))
       const appendRemaining = (orderMap: Record<string, { qty: number; name: string | null }>, ch: string) => {
         for (const [sku, { qty: orderQty, name }] of Object.entries(orderMap)) {
@@ -2163,12 +2193,14 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       appendRemaining(wmMap, 'Wet Market')
       appendRemaining(lotusMap, 'LOTUS')
       appendRemaining(makroMap, 'Makro')
+      appendRemaining(fsMap, 'FS')
 
       // Phase 3: same cross-channel cap for appended (non-plan100) SKUs
       const p3RawBySku = new Map<string, number>()
       for (const [sku, { qty }] of Object.entries(wmMap))    p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
       for (const [sku, { qty }] of Object.entries(makroMap)) p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
       for (const [sku, { qty }] of Object.entries(lotusMap)) p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
+      for (const [sku, { qty }] of Object.entries(fsMap))    p3RawBySku.set(sku, (p3RawBySku.get(sku) ?? 0) + qty)
       const appendMap: Record<string, SkuTarget[]> = {}
       for (const t of allPhase3Targets) {
         if (phase3Plan100Skus.has(t.sku)) continue

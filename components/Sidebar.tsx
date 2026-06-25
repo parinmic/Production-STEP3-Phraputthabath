@@ -299,6 +299,7 @@ export default function Sidebar() {
             { href: '/makro',              icon: ShoppingCart,   label: 'คำสั่งซื้อ Makro' },
             { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS' },
             { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market' },
+            { href: '/fs',                 icon: Slice,          label: 'คำสั่งซื้อ FS' },
             { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%' },
             { href: '/wip-plan',           icon: Layers,         label: 'แผนผลิต WIP' },
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม' },
