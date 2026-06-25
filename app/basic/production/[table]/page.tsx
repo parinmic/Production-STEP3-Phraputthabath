@@ -974,18 +974,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Carcass yield summary card */}
-      {carcassGroupSummary.length > 0 && (
-        <div className="px-3 sm:px-4 py-2 bg-orange-50 border-b border-orange-100 flex flex-wrap gap-x-4 gap-y-1">
-          <span className="text-[10px] font-bold text-orange-700 w-full sm:w-auto">ผลผลิตจากหมูซีก (เฉพาะ Phase นี้)</span>
-          {carcassGroupSummary.map(({ grp, kg }) => (
-            <span key={grp} className="text-[10px] text-orange-600">
-              {grp}: <span className="font-semibold">~{kg.toLocaleString()} กก.</span>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div className="grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(ถุง)</span>
@@ -1037,18 +1025,13 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                       </div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs sm:text-sm font-semibold text-gray-600">
-                      {bags !== null
-                        ? bags.toLocaleString()
-                        : stat.isRaw
-                          ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
-                          : '—'}
-                    </p>
-                    {(() => { const cb = carcassBagsForSku(sku); return cb !== null && cb > 0 ? (
-                      <p className="text-[9px] text-orange-500 font-medium leading-tight">~{cb.toLocaleString()} หมูซีก</p>
-                    ) : null })()}
-                  </div>
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
+                    {bags !== null
+                      ? bags.toLocaleString()
+                      : stat.isRaw
+                        ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
+                        : '—'}
+                  </p>
                   <button
                     onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
                     className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
