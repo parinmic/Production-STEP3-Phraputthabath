@@ -161,9 +161,10 @@ export async function POST(req: NextRequest) {
 
       const sawIds = sawAssigns.map(a => a.id)
 
-      // Non-saw SKUs at this station that can fill the freed gap (sorted by seq)
+      // Only workers who are assigned to saw-requiring SKUs can fill the freed gap
+      const sawWorkerNames = new Set(sawAssigns.map(a => String(a.worker_name ?? '')))
       const gapFillAssigns = sas
-        .filter(a => !sawIds.includes(a.id))
+        .filter(a => !sawIds.includes(a.id) && sawWorkerNames.has(String(a.worker_name ?? '')))
         .sort((a, b) => (a.seq ?? 9999) - (b.seq ?? 9999))
       const gapFillIds = gapFillAssigns.map(a => a.id)
 
