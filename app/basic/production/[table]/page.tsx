@@ -765,11 +765,13 @@ interface ProductionSummaryViewProps {
   tableName: string
   groupMap?: Record<string, string>
   productTypeMap?: Record<string, string>
+  carcassThroughputByGroup?: Record<string, number>
+  phaseNetMins?: number
 }
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap, productTypeMap }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap, productTypeMap, carcassThroughputByGroup, phaseNetMins = 300 }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -910,6 +912,31 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
   if (!sortedSkus.length) return null
 
+  // Carcass-based yield calculation (Approach B — display only)
+  const hasCarcass = carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0
+  // group total qty (non-RAW) used as distribution weights for SKUs within each group
+  const grpTotalQty: Record<string, number> = {}
+  for (const sku of sortedSkus) {
+    if (skuStats[sku].isRaw) continue
+    const grp = getSummaryGrp(sku)
+    if (grp) grpTotalQty[grp] = (grpTotalQty[grp] ?? 0) + skuStats[sku].totalQty
+  }
+  // Expected bags from pig carcasses for a given SKU
+  const carcassBagsForSku = (sku: string): number | null => {
+    if (!hasCarcass || skuStats[sku].isRaw) return null
+    const grp = getSummaryGrp(sku)
+    if (!grp || !carcassThroughputByGroup![grp] || !grpTotalQty[grp]) return null
+    const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+    if (!wpb || wpb <= 0) return null
+    const groupKg  = carcassThroughputByGroup![grp] * phaseNetMins
+    const fraction = skuStats[sku].totalQty / grpTotalQty[grp]
+    return Math.round((groupKg * fraction) / wpb)
+  }
+  // Group-level summary for the header card
+  const carcassGroupSummary = hasCarcass
+    ? Object.entries(carcassThroughputByGroup!).map(([grp, rate]) => ({ grp, kg: Math.round(rate * phaseNetMins) })).filter(e => e.kg > 0)
+    : []
+
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
   const totalBags   = sortedSkus.reduce((s, sku) => {
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
@@ -947,6 +974,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Carcass yield summary card */}
+      {carcassGroupSummary.length > 0 && (
+        <div className="px-3 sm:px-4 py-2 bg-orange-50 border-b border-orange-100 flex flex-wrap gap-x-4 gap-y-1">
+          <span className="text-[10px] font-bold text-orange-700 w-full sm:w-auto">ผลผลิตจากหมูซีก (เฉพาะ Phase นี้)</span>
+          {carcassGroupSummary.map(({ grp, kg }) => (
+            <span key={grp} className="text-[10px] text-orange-600">
+              {grp}: <span className="font-semibold">~{kg.toLocaleString()} กก.</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(ถุง)</span>
@@ -998,13 +1037,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                       </div>
                     )}
                   </div>
-                  <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
-                    {bags !== null
-                      ? bags.toLocaleString()
-                      : stat.isRaw
-                        ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
-                        : '—'}
-                  </p>
+                  <div className="text-right">
+                    <p className="text-xs sm:text-sm font-semibold text-gray-600">
+                      {bags !== null
+                        ? bags.toLocaleString()
+                        : stat.isRaw
+                          ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
+                          : '—'}
+                    </p>
+                    {(() => { const cb = carcassBagsForSku(sku); return cb !== null && cb > 0 ? (
+                      <p className="text-[9px] text-orange-500 font-medium leading-tight">~{cb.toLocaleString()} หมูซีก</p>
+                    ) : null })()}
+                  </div>
                   <button
                     onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
                     className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
@@ -1607,9 +1651,10 @@ export default function BasicTablePage() {
   const dateDisplay  = new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   const skuColor     = buildSkuColorMap(items)
 
-  // Phase net working minutes (excluding breaks)
-  // Phase 1: 8:30-12:00 (210) + 13:00-14:30 (90) = 300 | Phase 2: 90 | Phase 3: 60 | all: 450
-  const PHASE_NET_MINS: Record<string, number> = { '1': 300, '2': 90, '3': 60, 'all': 450 }
+  // Phase net working minutes (excluding static breaks)
+  // Phase 1: 8:30-12:00(210) + 13:00-14:30(90) = 300  Phase 2: 14:30-16:30 = 120
+  // Phase 3: 16:30-17:00(30) + 18:00 onwards(90) = 120  all: 540
+  const PHASE_NET_MINS: Record<string, number> = { '1': 300, '2': 120, '3': 120, 'all': 540 }
 
   // Per-group throughput = total_group_kg / phase_net_mins (กก./นาที)
   const carcassThroughputByGroup = (() => {
@@ -1759,7 +1804,7 @@ export default function BasicTablePage() {
             <CurrentTimeView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'summary' && filtered.length > 0 && (
-            <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} />
+            <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} phaseNetMins={PHASE_NET_MINS[String(selectedPhase)] ?? 300} />
           )}
         </div>
       )}
