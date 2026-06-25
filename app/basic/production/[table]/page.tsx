@@ -51,6 +51,20 @@ interface Assignment {
   note: string | null
 }
 
+interface LineBreak {
+  id: string
+  production_date: string
+  station: string
+  start_time: string  // 'HH:MM'
+  end_time: string    // 'HH:MM'
+  reason: string | null
+}
+
+function timeToMins(t: string) {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
 
 function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
@@ -331,9 +345,10 @@ interface SkuScheduleViewProps {
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
+  lineBreaks?: LineBreak[]
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [] }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -500,6 +515,16 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
               </span>
             </div>
           ))}
+          {lineBreaks.map((lb, i) => {
+            const bs = timeToMins(lb.start_time), be = timeToMins(lb.end_time)
+            if (bs >= chartEnd || be <= chartStart) return null
+            const l = pct(Math.max(bs, chartStart))
+            const w = Math.max(pct(Math.min(be, chartEnd)) - l, 0)
+            return (
+              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20"
+                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }} />
+            )
+          })}
           {nowMins >= chartStart && nowMins <= chartEnd && (
             <div className="absolute top-0 bottom-0 w-px bg-red-400 z-30 pointer-events-none" style={{ left: `${pct(nowMins)}%` }} />
           )}
@@ -626,6 +651,33 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             <div key={`${bs}-d`} className="hidden sm:block absolute top-0 bottom-0 pointer-events-none z-20"
               style={{ left: `calc(11rem + (100% - 19rem) * ${l})`, width: `calc((100% - 19rem) * ${w})`,
                 backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
+          ]
+        })}
+
+        {lineBreaks.flatMap((lb, i) => {
+          const bs = timeToMins(lb.start_time)
+          const be = timeToMins(lb.end_time)
+          if (bs >= chartEnd || be <= chartStart) return []
+          const l = pct(Math.max(bs, chartStart)) / 100
+          const w = Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0) / 100
+          const style = (side: 'sm:hidden' | 'hidden sm:block', labelW: string) => ({
+            left: side === 'sm:hidden'
+              ? `calc(7rem + (100% - 13rem) * ${l})`
+              : `calc(11rem + (100% - 19rem) * ${l})`,
+            width: side === 'sm:hidden'
+              ? `calc((100% - 13rem) * ${w})`
+              : `calc((100% - 19rem) * ${w})`,
+          })
+          return [
+            <div key={`lb-${i}-m`} className={`sm:hidden absolute top-0 bottom-0 z-25 pointer-events-none flex flex-col justify-center overflow-hidden`}
+              style={{ ...style('sm:hidden', ''), backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }}>
+              {lb.reason && <span className="text-[8px] font-semibold text-amber-800 px-1 truncate leading-tight">{lb.reason}</span>}
+            </div>,
+            <div key={`lb-${i}-d`} className={`hidden sm:flex absolute top-0 bottom-0 z-25 pointer-events-none flex-col justify-center overflow-hidden`}
+              style={{ ...style('hidden sm:block', ''), backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }}>
+              {lb.reason && <span className="text-[9px] font-semibold text-amber-800 px-1.5 truncate leading-tight">{lb.reason}</span>}
+              <span className="text-[8px] text-amber-600 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
+            </div>,
           ]
         })}
 
@@ -1378,6 +1430,7 @@ export default function BasicTablePage() {
   const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
   const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
   const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
+  const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -1458,6 +1511,21 @@ export default function BasicTablePage() {
   useEffect(() => {
     loadData(date)
     const id = setInterval(() => loadData(date, true), 3000)
+    return () => clearInterval(id)
+  }, [date, cfg?.label])
+
+  useEffect(() => {
+    if (!cfg) return
+    fetch(`/api/basic/line-break?date=${date}&station=${encodeURIComponent(cfg.label)}`)
+      .then(r => r.json())
+      .then(data => setLineBreaks(data.breaks ?? []))
+      .catch(() => {})
+    const id = setInterval(() => {
+      fetch(`/api/basic/line-break?date=${date}&station=${encodeURIComponent(cfg.label)}`)
+        .then(r => r.json())
+        .then(data => setLineBreaks(data.breaks ?? []))
+        .catch(() => {})
+    }, 15000)
     return () => clearInterval(id)
   }, [date, cfg?.label])
 
@@ -1639,7 +1707,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />

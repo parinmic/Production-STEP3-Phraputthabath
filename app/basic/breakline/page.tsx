@@ -1,0 +1,255 @@
+'use client'
+import { useState, useEffect, useCallback } from 'react'
+import { Slice, Trash2, Plus, AlertCircle } from 'lucide-react'
+
+const STATIONS = ['ทั้งหมด', 'สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
+
+const STATION_COLOR: Record<string, { border: string; bg: string; text: string; dot: string }> = {
+  'ทั้งหมด':      { border: 'border-gray-400',   bg: 'bg-gray-50',   text: 'text-gray-700',   dot: 'bg-gray-400' },
+  'สะโพกเบสิค':  { border: 'border-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
+  'ไหล่เบสิค':   { border: 'border-green-400',  bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400' },
+  'สามชั้นเบสิค': { border: 'border-blue-400',  bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400' },
+}
+
+interface LineBreak {
+  id: string
+  production_date: string
+  station: string
+  start_time: string
+  end_time: string
+  reason: string | null
+  created_at: string
+}
+
+function durationLabel(start: string, end: string) {
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const mins = (eh * 60 + em) - (sh * 60 + sm)
+  if (mins <= 0) return ''
+  return mins >= 60 ? `${Math.floor(mins / 60)}ชม. ${mins % 60 > 0 ? `${mins % 60}น.` : ''}`.trim() : `${mins} นาที`
+}
+
+export default function BreaklinePage() {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const [date, setDate]           = useState(today)
+  const [breaks, setBreaks]       = useState<LineBreak[]>([])
+  const [loading, setLoading]     = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  // Form state
+  const [station,   setStation]   = useState('ทั้งหมด')
+  const [startTime, setStartTime] = useState('')
+  const [endTime,   setEndTime]   = useState('')
+  const [reason,    setReason]    = useState('')
+
+  const fetchBreaks = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/basic/line-break?date=${date}`)
+      const data = await res.json()
+      setBreaks(data.breaks ?? [])
+    } finally {
+      setLoading(false)
+    }
+  }, [date])
+
+  useEffect(() => { fetchBreaks() }, [fetchBreaks])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!startTime || !endTime) { setError('กรุณากรอกเวลาเริ่มและสิ้นสุด'); return }
+    if (startTime >= endTime)   { setError('เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด'); return }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res  = await fetch('/api/basic/line-break', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ production_date: date, station, start_time: startTime, end_time: endTime, reason }),
+      })
+      const data = await res.json()
+      if (!data.success) { setError(data.message); return }
+      setStartTime(''); setEndTime(''); setReason('')
+      fetchBreaks()
+    } catch { setError('เกิดข้อผิดพลาด') }
+    finally { setSubmitting(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id)
+    try {
+      await fetch(`/api/basic/line-break?id=${id}`, { method: 'DELETE' })
+      fetchBreaks()
+    } finally { setDeletingId(null) }
+  }
+
+  const grouped = STATIONS.filter(s => s !== 'ทั้งหมด').reduce<Record<string, LineBreak[]>>((acc, s) => {
+    acc[s] = breaks.filter(b => b.station === s || b.station === 'ทั้งหมด')
+    return acc
+  }, {})
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+          <Slice size={20} className="text-amber-600" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Breakline</h1>
+          <p className="text-xs text-gray-500">บันทึกการหยุดสาย — แสดงบน Gantt คำสั่งผลิตราย Station</p>
+        </div>
+        <input
+          type="date" value={date} onChange={e => setDate(e.target.value)}
+          className="ml-auto text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+        />
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
+        <p className="text-sm font-semibold text-gray-700">เพิ่มการหยุดสายใหม่</p>
+
+        {/* Station */}
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1.5 block">สถานี</label>
+          <div className="flex flex-wrap gap-2">
+            {STATIONS.map(s => {
+              const c = STATION_COLOR[s]
+              return (
+                <button key={s} type="button"
+                  onClick={() => setStation(s)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    station === s ? `${c.border} ${c.bg} ${c.text} shadow-sm` : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                  {s}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Time range */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">เวลาเริ่ม</label>
+            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1.5 block">เวลาสิ้นสุด</label>
+            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+        </div>
+        {startTime && endTime && startTime < endTime && (
+          <p className="text-xs text-amber-600 font-medium -mt-2">ระยะเวลา {durationLabel(startTime, endTime)}</p>
+        )}
+
+        {/* Reason */}
+        <div>
+          <label className="text-xs font-medium text-gray-500 mb-1.5 block">สาเหตุ</label>
+          <input type="text" value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="เช่น รอวัตถุดิบ, เครื่องจักรขัดข้อง, ประชุม..."
+            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+            <AlertCircle size={14} />{error}
+          </div>
+        )}
+
+        <button type="submit" disabled={submitting}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
+          <Plus size={16} />
+          {submitting ? 'กำลังบันทึก...' : 'บันทึก Breakline'}
+        </button>
+      </form>
+
+      {/* Break list */}
+      <div className="space-y-3">
+        {loading ? (
+          <div className="text-center py-8 text-gray-400 text-sm">กำลังโหลด...</div>
+        ) : breaks.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm bg-white rounded-2xl border border-gray-200">
+            ยังไม่มี Breakline วันที่ {new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+          </div>
+        ) : (
+          <>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">
+              รายการ Breakline — {breaks.length} รายการ
+            </p>
+            {/* Group by station for display */}
+            {(['ทั้งหมด', ...STATIONS.filter(s => s !== 'ทั้งหมด')] as string[]).map(s => {
+              const rows = breaks.filter(b => b.station === s)
+              if (!rows.length) return null
+              const c = STATION_COLOR[s]
+              return (
+                <div key={s} className={`bg-white rounded-2xl border ${c.border} shadow-sm overflow-hidden`}>
+                  <div className={`px-4 py-2 ${c.bg} border-b ${c.border} flex items-center gap-2`}>
+                    <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                    <span className={`text-xs font-bold ${c.text}`}>{s}</span>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {rows.map(b => (
+                      <div key={b.id} className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 font-mono">
+                              {b.start_time} – {b.end_time}
+                            </span>
+                            <span className="text-xs text-amber-600 font-medium">
+                              {durationLabel(b.start_time, b.end_time)}
+                            </span>
+                          </div>
+                          {b.reason && (
+                            <p className="text-xs text-gray-500 mt-0.5 truncate">{b.reason}</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(b.id)}
+                          disabled={deletingId === b.id}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Summary per station */}
+            <div className="bg-gray-50 rounded-2xl border border-gray-200 p-4">
+              <p className="text-xs font-bold text-gray-500 mb-3">สรุปเวลาหยุดสายต่อสถานี</p>
+              <div className="space-y-2">
+                {STATIONS.filter(s => s !== 'ทั้งหมด').map(s => {
+                  const rows = grouped[s] ?? []
+                  const totalMins = rows.reduce((sum, b) => {
+                    const [sh, sm] = b.start_time.split(':').map(Number)
+                    const [eh, em] = b.end_time.split(':').map(Number)
+                    return sum + Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+                  }, 0)
+                  const c = STATION_COLOR[s]
+                  return (
+                    <div key={s} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                        <span className="text-xs text-gray-700">{s}</span>
+                      </div>
+                      <span className={`text-xs font-bold ${totalMins > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                        {totalMins > 0 ? `${totalMins} นาที` : '—'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
