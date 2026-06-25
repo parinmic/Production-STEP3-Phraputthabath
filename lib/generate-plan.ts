@@ -1149,15 +1149,18 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
     skuSet.add(a.sku as string)
     const roundQtys = finRoundMap.get(key)!
     const noteRounds = parseRoundNote(a.note as string | null)
+    const tgtQty = Number(a.target_quantity)
     if (noteRounds.size > 0) {
+      const totalNoteQty = Array.from(noteRounds.values()).reduce((s, v) => s + v, 0)
       for (const [rm, q] of Array.from(noteRounds.entries())) {
         const mappedRm = getRoundMins(rm, roundMins)
-        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
+        const share = totalNoteQty > 0 ? (q / totalNoteQty) * tgtQty : tgtQty / noteRounds.size
+        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + share)
       }
     } else {
       const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : (defaultStartMinsConfig[phaseStr] ?? 480)
       const rm = getRoundMins(startMins, roundMins)
-      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + Number(a.target_quantity))
+      roundQtys.set(rm, (roundQtys.get(rm) ?? 0) + tgtQty)
     }
   }
 

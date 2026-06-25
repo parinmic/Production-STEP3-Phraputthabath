@@ -60,6 +60,22 @@ export default function ShortagePage() {
 
   const PERIOD_MAP: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
+  // Parse total qty from note rounds (e.g. "rounds:510=60;600=40" → 100).
+  // This is the original demand the system tried to schedule, which is more
+  // accurate than target_quantity for deficit-backlog entries where the system
+  // could only fit a small residual amount at the end of the shift.
+  const parseNoteTotal = (note: string | null): number => {
+    if (!note) return 0
+    const clean = note.split('|')[0]
+    if (!clean.startsWith('rounds:')) return 0
+    return clean.replace('rounds:', '').split(';').reduce((s, p) => {
+      const [, q] = p.split('=')
+      return s + (parseFloat(q) || 0)
+    }, 0)
+  }
+
+  const normName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
+
   const load = useCallback(async () => {
     setLoad(true)
     try {
@@ -68,7 +84,7 @@ export default function ShortagePage() {
       // 1. Deficit production assignments
       const { data: deficitRows } = await supabase
         .from('production_assignments')
-        .select('sku, sku_name, target_quantity, deadline_time, table_name')
+        .select('sku, sku_name, target_quantity, deadline_time, note, table_name')
         .eq('production_date', date)
         .eq('period', period)
         .like('note', '%|deficit%')
@@ -98,12 +114,14 @@ export default function ShortagePage() {
       }
 
       // 3. Aggregate raw material deficit by (station, raw_sap)
+      //    Use note total qty as the original demand; fall back to target_quantity.
       const rawMap = new Map<string, ShortageRow>()
 
       for (const a of deficitRows) {
         const sku  = String(a.sku)
         const norm = sku.replace(/^0+/, '')
-        const qty  = Number(a.target_quantity)
+        const noteTotal = parseNoteTotal(a.note)
+        const qty  = noteTotal > 0 ? noteTotal : Number(a.target_quantity)
         const stn  = String(a.table_name)
         const time = String(a.deadline_time ?? '').slice(0, 5)
         const boms = bomMap.get(norm) ?? bomMap.get(sku) ?? []
@@ -129,7 +147,35 @@ export default function ShortagePage() {
         }
       }
 
+      // 4. Check actual stock — only show rows where stock is truly insufficient.
+      //    Query all 3 warehouses by raw material name (name-based match is more
+      //    reliable than SAP code since BOM codes may differ from stock codes).
+      const rawNames = Array.from(new Set(
+        Array.from(rawMap.values()).map(r => r.sku_name).filter(Boolean) as string[]
+      ))
+      const expandedNames = Array.from(new Set(rawNames.flatMap(n => [
+        n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
+      ])))
+
+      const stockByName = new Map<string, number>()
+      if (expandedNames.length > 0) {
+        const [s0010, s20, s100] = await Promise.all([
+          supabase.from('stock_0010').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+          supabase.from('stock_20').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+          supabase.from('stock_100').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+        ])
+        for (const row of [...(s0010.data ?? []), ...(s20.data ?? []), ...(s100.data ?? [])]) {
+          const k = normName(row.material_name ?? '')
+          stockByName.set(k, (stockByName.get(k) ?? 0) + Number(row.weight_total))
+        }
+      }
+
       const merged = Array.from(rawMap.values())
+        .filter(r => {
+          // Only show if stock is less than needed (insufficient)
+          const available = stockByName.get(normName(r.sku_name ?? '')) ?? 0
+          return available < (r.quantity - 0.005)
+        })
         .map(r => ({ ...r, quantity: Math.round(r.quantity * 100) / 100, deficit: Math.round((r.deficit ?? 0) * 100) / 100 }))
         .sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')

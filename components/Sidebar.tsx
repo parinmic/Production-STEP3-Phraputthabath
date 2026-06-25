@@ -154,7 +154,61 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* สินค้าขาด */}
+          {/* คำสั่งผลิตราย Station */}
+          <button
+            onClick={() => setOpen(!open)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/production') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="คำสั่งผลิตราย Station"
+          >
+            <ClipboardList size={18} className="shrink-0" />
+            <span className={`flex-1 text-left ${labelCls}`}>คำสั่งผลิตราย Station</span>
+            {!collapsed && (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {open && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              {TABLES.map((t) => (
+                <Link key={t.slug} href={`/production/${t.slug}`}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                </Link>
+              ))}
+            </div>
+          )}
+          {open && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              {TABLES.map((t) => (
+                <Link key={t.slug} href={`/production/${t.slug}`}
+                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                  title={t.label}>
+                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <Link href="/saw-machine-plan"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/saw-machine-plan')}`}
+            title="แผนการใช้เครื่องเลื่อย">
+            <Scissors size={18} className="shrink-0" />
+            <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
+          </Link>
+
+          <Link href="/workforce-daily-status"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/workforce-daily-status')}`}
+            title="ตรวจสอบสถานะกำลังคนประจำวัน">
+            <CalendarDays size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
+          </Link>
+
+          <Link href="/wip-plan"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/wip-plan')}`}
+            title="แผนผลิต WIP">
+            <Layers size={18} className="shrink-0" />
+            <span className={labelCls}>แผนผลิต WIP</span>
+          </Link>
+
+          {/* รายการ Raw รอผลิต */}
           <button
             onClick={() => setOpenShortage(!openShortage)}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/shortage') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
@@ -190,67 +244,6 @@ export default function Sidebar() {
               ))}
             </div>
           )}
-
-          {/* คำสั่งผลิตราย Station */}
-          <button
-            onClick={() => setOpen(!open)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/production') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
-            title="คำสั่งผลิตราย Station"
-          >
-            <ClipboardList size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>คำสั่งผลิตราย Station</span>
-            {!collapsed && (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {open && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {TABLES.map((t) => (
-                <Link key={t.slug} href={`/production/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {open && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {TABLES.map((t) => (
-                <Link key={t.slug} href={`/production/${t.slug}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={t.label}>
-                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                </Link>
-              ))}
-            </div>
-          )}
-
-          <Link href="/breakline"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/breakline')}`}
-            title="Breakline">
-            <Slice size={18} className="shrink-0" />
-            <span className={labelCls}>Breakline</span>
-          </Link>
-
-          <Link href="/saw-machine-plan"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/saw-machine-plan')}`}
-            title="แผนการใช้เครื่องเลื่อย">
-            <Scissors size={18} className="shrink-0" />
-            <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
-          </Link>
-
-          <Link href="/workforce-daily-status"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/workforce-daily-status')}`}
-            title="ตรวจสอบสถานะกำลังคนประจำวัน">
-            <CalendarDays size={18} className="shrink-0" />
-            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
-          </Link>
-
-          <Link href="/wip-plan"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/wip-plan')}`}
-            title="แผนผลิต WIP">
-            <Layers size={18} className="shrink-0" />
-            <span className={labelCls}>แผนผลิต WIP</span>
-          </Link>
 
           <Link href="/withdrawal/rm-allocation"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/withdrawal/rm-allocation')}`}

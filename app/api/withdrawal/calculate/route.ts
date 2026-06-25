@@ -291,9 +291,15 @@ export async function POST(req: NextRequest) {
     const noteRounds = parseRoundNote(a.note)
 
     if (noteRounds.size > 0) {
+      // Use note rounds only to determine WHICH round each portion belongs to.
+      // Quantities come from target_quantity (proportionally distributed), not the raw note
+      // values — note values can be inflated for deficit-backlog assignments where the note
+      // records the original unscheduled order qty rather than the actual assigned qty.
+      const totalNoteQty = Array.from(noteRounds.values()).reduce((s, v) => s + v, 0)
       for (const [rm, q] of Array.from(noteRounds.entries())) {
         const mappedRm = getRoundMins(rm, roundMins)
-        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + q)
+        const share = totalNoteQty > 0 ? (q / totalNoteQty) * qty : qty / noteRounds.size
+        roundQtys.set(mappedRm, (roundQtys.get(mappedRm) ?? 0) + share)
       }
     } else {
       const startMins = a.deadline_time ? timeStrToMins(String(a.deadline_time)) : DEFAULT_START_MINS[phaseStr]
