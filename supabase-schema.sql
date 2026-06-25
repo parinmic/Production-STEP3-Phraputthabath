@@ -465,5 +465,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_roundnum ON qc_lot_temper
 ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
 
+-- 23. Basic Line Breaks — บันทึกการหยุดสาย (Breakline) พร้อมสาเหตุและช่วงเวลา
+CREATE TABLE IF NOT EXISTS basic_line_breaks (
+  id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  production_date date        NOT NULL,
+  station         text        NOT NULL DEFAULT 'ทั้งหมด',
+  start_time      text        NOT NULL,
+  end_time        text        NOT NULL,
+  reason          text,
+  created_at      timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_basic_line_breaks_date ON basic_line_breaks(production_date);
+ALTER TABLE basic_line_breaks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_basic_line_breaks" ON basic_line_breaks FOR ALL USING (true) WITH CHECK (true);
+
 
 

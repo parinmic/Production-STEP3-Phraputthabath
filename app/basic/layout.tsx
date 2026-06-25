@@ -180,8 +180,8 @@ function BasicSidebar() {
             </div>
           )}
 
-          <Link href="/breakline"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/breakline')}`}
+          <Link href="/basic/breakline"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/breakline')}`}
             title="Breakline">
             <Slice size={18} className="shrink-0" />
             <span className={labelCls}>Breakline</span>
