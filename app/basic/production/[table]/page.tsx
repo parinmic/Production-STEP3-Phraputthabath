@@ -889,12 +889,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   }
 
   const getSummaryGrp = (sku: string) => groupMap?.[sku] ?? groupMap?.[sku.replace(/^0+/, '')] ?? ''
-  const getSummaryProdType = (sku: string): 0 | 1 | 2 => {
-    if (skuStats[sku].isRaw) return 2
-    const pt = (productTypeMap?.[sku] ?? productTypeMap?.[sku.replace(/^0+/, '')] ?? '').toLowerCase()
-    if (pt.includes('by')) return 1
-    return 0
-  }
 
   const sortedSkus = allSkus.filter(sku => skuStats[sku]).sort((a, b) => {
     const grpA = getSummaryGrp(a), grpB = getSummaryGrp(b)
@@ -904,18 +898,15 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     return skuStats[b].totalQty - skuStats[a].totalQty
   })
 
-  // Build groups sorted by product type then total qty desc
-  const summaryGroups: { grp: string; skus: string[]; totalQty: number; prodType: 0 | 1 | 2 }[] = []
+  // Build groups sorted by total qty desc
+  const summaryGroups: { grp: string; skus: string[]; totalQty: number }[] = []
   for (const sku of sortedSkus) {
     const grp = getSummaryGrp(sku)
     const last = summaryGroups[summaryGroups.length - 1]
-    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty, prodType: getSummaryProdType(sku) })
+    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
     else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
   }
-  summaryGroups.sort((a, b) => {
-    if (a.prodType !== b.prodType) return a.prodType - b.prodType
-    return b.totalQty - a.totalQty
-  })
+  summaryGroups.sort((a, b) => b.totalQty - a.totalQty)
 
   if (!sortedSkus.length) return null
 
@@ -966,8 +957,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
       <div className="divide-y divide-gray-50">
         {(() => {
-          const flatSkus = summaryGroups.flatMap(g => g.skus)
-          const rawStartIdx = flatSkus.findIndex(sku => skuStats[sku].isRaw)
+          const nonRawSkus = summaryGroups.flatMap(g => g.skus.filter(sku => !skuStats[sku].isRaw))
+          const rawSkus    = summaryGroups.flatMap(g => g.skus.filter(sku => skuStats[sku].isRaw))
+          const flatSkus   = [...nonRawSkus, ...rawSkus]
+          const rawStartIdx = nonRawSkus.length
           return flatSkus.map((sku, globalIdx) => {
             const stat      = skuStats[sku]
             const wpb       = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
