@@ -346,9 +346,10 @@ interface SkuScheduleViewProps {
   groupMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
   lineBreaks?: LineBreak[]
+  pigLots?: { qty: number; avg_weight: number }[]
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [] }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [] }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -497,6 +498,24 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const chartEnd   = Math.max(phaseEnd * 60, ...sortedSkus.map(s => skuStats[s].maxEnd))
   const totalRange = chartEnd - chartStart
 
+  // Pre-calculate lineBreak impact: carcasses lost + kg lost per group
+  const totalQty = pigLots.reduce((s, l) => s + l.qty, 0)
+  const totalWgt = pigLots.reduce((s, l) => s + l.qty * l.avg_weight, 0)
+  const avgCarcassWgt = totalQty > 0 ? totalWgt / totalQty : 0
+  const totalThroughput = Object.values(carcassThroughputByGroup ?? {}).reduce((s, v) => s + v, 0) // product kg/min
+  // carcass kg/min ≈ product kg/min (approx — close enough for display)
+  const lbImpact = lineBreaks.map(lb => {
+    const dur = timeToMins(lb.end_time) - timeToMins(lb.start_time)
+    const lostCarcasses = avgCarcassWgt > 0 && totalThroughput > 0
+      ? Math.round((totalThroughput * dur) / avgCarcassWgt)
+      : null
+    const groupLoss: { grp: string; kg: number }[] = Object.entries(carcassThroughputByGroup ?? {})
+      .map(([grp, rate]) => ({ grp, kg: Math.round(rate * dur) }))
+      .filter(e => e.kg > 0)
+      .sort((a, b) => b.kg - a.kg)
+    return { lb, dur, lostCarcasses, groupLoss }
+  })
+
   const ticks: number[] = []
   for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
 
@@ -521,8 +540,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             const l = pct(Math.max(bs, chartStart))
             const w = Math.max(pct(Math.min(be, chartEnd)) - l, 0)
             return (
-              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20"
-                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }} />
+              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20 flex items-end pb-1 overflow-hidden"
+                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }}>
+                <span className="text-[9px] font-semibold text-gray-500 px-1 truncate leading-tight">{lb.reason || 'Break'}</span>
+              </div>
             )
           })}
           {nowMins >= chartStart && nowMins <= chartEnd && (
@@ -654,29 +675,35 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           ]
         })}
 
-        {lineBreaks.flatMap((lb, i) => {
+        {lbImpact.flatMap(({ lb, lostCarcasses, groupLoss }, i) => {
           const bs = timeToMins(lb.start_time)
           const be = timeToMins(lb.end_time)
           if (bs >= chartEnd || be <= chartStart) return []
           const l = pct(Math.max(bs, chartStart)) / 100
           const w = Math.max(pct(Math.min(be, chartEnd)) - pct(Math.max(bs, chartStart)), 0) / 100
-          const style = (side: 'sm:hidden' | 'hidden sm:block', labelW: string) => ({
-            left: side === 'sm:hidden'
-              ? `calc(7rem + (100% - 13rem) * ${l})`
-              : `calc(11rem + (100% - 19rem) * ${l})`,
-            width: side === 'sm:hidden'
-              ? `calc((100% - 13rem) * ${w})`
-              : `calc((100% - 19rem) * ${w})`,
-          })
+          const lm = `calc(7rem + (100% - 13rem) * ${l})`
+          const wm = `calc((100% - 13rem) * ${w})`
+          const ld = `calc(11rem + (100% - 19rem) * ${l})`
+          const wd = `calc((100% - 19rem) * ${w})`
+          const bandStyle = { backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }
           return [
-            <div key={`lb-${i}-m`} className={`sm:hidden absolute top-0 bottom-0 z-25 pointer-events-none flex flex-col justify-center overflow-hidden`}
-              style={{ ...style('sm:hidden', ''), backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }}>
-              {lb.reason && <span className="text-[8px] font-semibold text-amber-800 px-1 truncate leading-tight">{lb.reason}</span>}
+            <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-25 pointer-events-none flex flex-col justify-center overflow-hidden"
+              style={{ left: lm, width: wm, ...bandStyle }}>
+              <span className="text-[8px] font-bold text-gray-600 px-1 truncate leading-tight">{lb.reason || 'Breakline'}</span>
+              {lostCarcasses !== null && lostCarcasses > 0 && (
+                <span className="text-[7px] text-gray-500 px-1 font-mono">-{lostCarcasses} ตัว</span>
+              )}
             </div>,
-            <div key={`lb-${i}-d`} className={`hidden sm:flex absolute top-0 bottom-0 z-25 pointer-events-none flex-col justify-center overflow-hidden`}
-              style={{ ...style('hidden sm:block', ''), backgroundColor: '#fef3c7bb', borderLeft: '2px solid #f59e0b', borderRight: '2px solid #f59e0b' }}>
-              {lb.reason && <span className="text-[9px] font-semibold text-amber-800 px-1.5 truncate leading-tight">{lb.reason}</span>}
-              <span className="text-[8px] text-amber-600 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
+            <div key={`lb-${i}-d`} className="hidden sm:flex absolute top-0 bottom-0 z-25 pointer-events-none flex-col justify-center overflow-hidden"
+              style={{ left: ld, width: wd, ...bandStyle }}>
+              <span className="text-[9px] font-bold text-gray-600 px-1.5 truncate leading-tight">{lb.reason || 'Breakline'}</span>
+              <span className="text-[8px] text-gray-500 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
+              {lostCarcasses !== null && lostCarcasses > 0 && (
+                <span className="text-[8px] font-semibold text-red-500 px-1.5">-{lostCarcasses} ตัว</span>
+              )}
+              {groupLoss.slice(0, 3).map(({ grp, kg }) => (
+                <span key={grp} className="text-[7px] text-gray-500 px-1.5 truncate">{grp}: -{kg} กก.</span>
+              ))}
             </div>,
           ]
         })}
@@ -1727,7 +1754,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
