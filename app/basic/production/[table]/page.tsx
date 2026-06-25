@@ -737,11 +737,12 @@ interface ProductionSummaryViewProps {
   date: string
   tableName: string
   groupMap?: Record<string, string>
+  productTypeMap?: Record<string, string>
 }
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap, productTypeMap }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -861,6 +862,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   }
 
   const getSummaryGrp = (sku: string) => groupMap?.[sku] ?? groupMap?.[sku.replace(/^0+/, '')] ?? ''
+  const getSummaryProdType = (sku: string): 0 | 1 | 2 => {
+    if (skuStats[sku].isRaw) return 2
+    const pt = (productTypeMap?.[sku] ?? productTypeMap?.[sku.replace(/^0+/, '')] ?? '').toLowerCase()
+    if (pt.includes('by')) return 1
+    return 0
+  }
 
   const sortedSkus = allSkus.filter(sku => skuStats[sku]).sort((a, b) => {
     const grpA = getSummaryGrp(a), grpB = getSummaryGrp(b)
@@ -870,15 +877,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     return skuStats[b].totalQty - skuStats[a].totalQty
   })
 
-  // Build groups sorted by total qty desc
-  const summaryGroups: { grp: string; skus: string[]; totalQty: number }[] = []
+  // Build groups sorted by product type then total qty desc
+  const summaryGroups: { grp: string; skus: string[]; totalQty: number; prodType: 0 | 1 | 2 }[] = []
   for (const sku of sortedSkus) {
     const grp = getSummaryGrp(sku)
     const last = summaryGroups[summaryGroups.length - 1]
-    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
+    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty, prodType: getSummaryProdType(sku) })
     else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
   }
-  summaryGroups.sort((a, b) => b.totalQty - a.totalQty)
+  summaryGroups.sort((a, b) => {
+    if (a.prodType !== b.prodType) return a.prodType - b.prodType
+    return b.totalQty - a.totalQty
+  })
 
   if (!sortedSkus.length) return null
 
@@ -928,24 +938,27 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
       </div>
 
       <div className="divide-y divide-gray-50">
-        {summaryGroups.map(({ grp, skus }) => (
-          <div key={grp || '__other__'}>
-            {grp && (
-              <div className="grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-1 bg-gray-100/80 border-y border-gray-200 sticky top-0 z-10">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide col-span-5">{grp}</span>
-              </div>
-            )}
-            {skus.map((sku, i) => {
-              const stat    = skuStats[sku]
-              const wpb     = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-              const bags    = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : null
-              const total   = skuTotal(sku)
-              const hasData = total > 0
-              const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
+        {(() => {
+          const flatSkus = summaryGroups.flatMap(g => g.skus)
+          const rawStartIdx = flatSkus.findIndex(sku => skuStats[sku].isRaw)
+          return flatSkus.map((sku, globalIdx) => {
+            const stat      = skuStats[sku]
+            const wpb       = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+            const bags      = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : null
+            const total     = skuTotal(sku)
+            const hasData   = total > 0
+            const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
+            const isFirstRaw = globalIdx === rawStartIdx && rawStartIdx > 0
 
-              return (
-                <div key={sku}
-                  className={`grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${i % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
+            return (
+              <div key={sku}>
+                {isFirstRaw && (
+                  <div className="px-3 sm:px-4 py-1 bg-amber-50 border-y border-amber-100">
+                    <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wide">RAW</span>
+                  </div>
+                )}
+                <div
+                  className={`grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2 items-center ${globalIdx % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
                   <div className="flex items-start gap-2 min-w-0 pr-1">
                     <p className="text-[11px] sm:text-sm font-medium text-gray-800 leading-snug break-words overflow-hidden min-w-0" style={{display:'-webkit-box',WebkitBoxOrient:'vertical',WebkitLineClamp:2,overflow:'hidden'}}>
                       {stat.name ?? sku}
@@ -997,10 +1010,10 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                     />
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        ))}
+              </div>
+            )
+          })
+        })()}
       </div>
 
       <div className="grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-3 border-t border-gray-200 bg-gray-50">
@@ -1427,7 +1440,8 @@ export default function BasicTablePage() {
   const [rateMap, setRateMap]     = useState<Record<string, number>>({})
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
-  const [groupMap, setGroupMap]   = useState<Record<string, string>>({})
+  const [groupMap, setGroupMap]         = useState<Record<string, string>>({})
+  const [productTypeMap, setProductTypeMap] = useState<Record<string, string>>({})
   const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
   const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
   const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
@@ -1491,13 +1505,19 @@ export default function BasicTablePage() {
       .then(r => r.json())
       .then(data => {
         const m: Record<string, string> = {}
-        for (const r of (data.rows ?? []) as { sku: string; product_group: string }[]) {
+        const pt: Record<string, string> = {}
+        for (const r of (data.rows ?? []) as { sku: string; product_group: string; product: string }[]) {
           if (!r.product_group) continue
           const norm = r.sku.replace(/^0+/, '')
           if (!m[r.sku]) m[r.sku] = r.product_group
           if (!m[norm])  m[norm]  = r.product_group
+          if (r.product) {
+            if (!pt[r.sku]) pt[r.sku] = r.product
+            if (!pt[norm])  pt[norm]  = r.product
+          }
         }
         setGroupMap(m)
+        setProductTypeMap(pt)
       })
     fetch('/api/basic/mas-yield')
       .then(r => r.json())

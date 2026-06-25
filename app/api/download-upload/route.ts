@@ -229,6 +229,9 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
   },
 }
 
+// Tables that wipe-and-replace on every upload — only latest data is kept in the table
+const REPLACE_ALL_TABLES = new Set(['stock_0010', 'stock_20', 'stock_100'])
+
 async function fetchAllRows(
   table: string,
   select: string,
@@ -242,8 +245,11 @@ async function fetchAllRows(
     let q = supabase
       .from(table)
       .select(select)
-      .eq('source_file', sourceFile)
       .range(from, from + PAGE - 1)
+
+    if (!REPLACE_ALL_TABLES.has(table)) {
+      q = q.eq('source_file', sourceFile)
+    }
 
     if (slot && table === 'production_plan_supplementary') {
       q = q.eq('slot', slot)
@@ -275,15 +281,10 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data || !data.length) return NextResponse.json({ headers: {}, data: [] })
 
-    // Flatten rows
     const rows = data.map(r => (r.row_data ?? {}) as Record<string, unknown>)
-    
-    // Dynamically build headers mapping (key -> key)
     const allKeys = Array.from(new Set(rows.flatMap(r => Object.keys(r))))
     const headers: Record<string, string> = {}
-    for (const k of allKeys) {
-      headers[k] = k
-    }
+    for (const k of allKeys) headers[k] = k
 
     return NextResponse.json({ headers, data: rows })
   }
