@@ -938,12 +938,14 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     : []
 
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
-  const totalBags   = sortedSkus.reduce((s, sku) => {
+  const totalBags   = sortedSkus.reduce((s, sku) => s + skuStats[sku].totalQty, 0)
+  const totalProduced = sortedSkus.reduce((s, sku) => {
+    const t = skuTotal(sku)
+    if (!t) return s
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-    if (!wpb || wpb <= 0) return s
-    return s + Math.floor(skuStats[sku].totalQty / wpb)
+    if (!skuStats[sku].isRaw && wpb && wpb > 0) return s + Math.round(t * wpb)
+    return s + t
   }, 0)
-  const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
   const confirm = async (sku: string, rawValue: string) => {
     const val = parseInt(rawValue.replace(/[^0-9]/g, ''), 10)
@@ -976,9 +978,9 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="grid grid-cols-[minmax(0,1fr)_54px_54px_54px_80px] sm:grid-cols-[minmax(0,1fr)_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-2.5 bg-gray-50 border-b border-gray-100">
         <span className="text-xs font-semibold text-gray-500">ชื่อ SKU</span>
-        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(ถุง)</span>
-        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />(ถุง)</span>
-        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">รับผล<br className="sm:hidden" />ได้(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(กก.)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />(กก.)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">รับผล<br className="sm:hidden" />ได้(กก.)</span>
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />ได้(ถุง)</span>
       </div>
 
@@ -991,7 +993,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           return flatSkus.map((sku, globalIdx) => {
             const stat      = skuStats[sku]
             const wpb       = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-            const bags      = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : null
             const total     = skuTotal(sku)
             const hasData   = total > 0
             const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
@@ -1011,34 +1012,34 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
                       {stat.name ?? sku}
                       {stat.isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
                     </p>
-                    {!stat.isRaw && bags !== null && bags > 0 && (
+                    {!stat.isRaw && wpb && wpb > 0 && stat.totalQty > 0 && (
                       <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
                         <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
                         {yieldBags !== null && yieldBags > 0 && (
                           <div className="absolute top-0.5 bottom-0.5 left-0 rounded transition-all duration-500"
-                            style={{ width: `${Math.min(100, (yieldBags / bags) * 100)}%`, backgroundColor: '#4ade80' }} />
+                            style={{ width: `${Math.min(100, (yieldBags * wpb / stat.totalQty) * 100)}%`, backgroundColor: '#4ade80' }} />
                         )}
                         {hasData && (
                           <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
-                            style={{ width: `${Math.min(100, (total / bags) * 100)}%`, backgroundColor: '#3b82f6' }} />
+                            style={{ width: `${Math.min(100, (total * wpb / stat.totalQty) * 100)}%`, backgroundColor: '#3b82f6' }} />
                         )}
                       </div>
                     )}
                   </div>
                   <p className="text-xs sm:text-sm font-semibold text-gray-600 text-right">
-                    {bags !== null
-                      ? bags.toLocaleString()
-                      : stat.isRaw
-                        ? <span className="text-amber-600 font-bold text-[10px] sm:text-xs">{Math.round(stat.totalQty).toLocaleString()} กก.</span>
-                        : '—'}
+                    {Math.round(stat.totalQty) > 0 ? Math.round(stat.totalQty).toLocaleString() : '—'}
                   </p>
                   <button
                     onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
                     className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
-                    {hasData ? total.toLocaleString() : '—'}
+                    {hasData
+                      ? (!stat.isRaw && wpb && wpb > 0 ? Math.round(total * wpb).toLocaleString() : total.toLocaleString())
+                      : '—'}
                   </button>
                   <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
-                    {yieldBags !== null ? yieldBags.toLocaleString() : '—'}
+                    {yieldBags !== null
+                      ? (!stat.isRaw && wpb && wpb > 0 ? Math.round(yieldBags * wpb).toLocaleString() : yieldBags.toLocaleString())
+                      : '—'}
                   </p>
                   <div className="flex justify-end">
                     <input
@@ -1065,10 +1066,18 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 
       <div className="grid grid-cols-[1fr_54px_54px_54px_80px] sm:grid-cols-[1fr_80px_80px_80px_110px] gap-0 px-3 sm:px-4 py-3 border-t border-gray-200 bg-gray-50">
         <span className="text-xs sm:text-sm font-bold text-gray-700">รวมทั้งหมด</span>
-        <span className="text-xs sm:text-sm font-bold text-right text-gray-900">{totalBags > 0 ? totalBags.toLocaleString() : '—'}</span>
+        <span className="text-xs sm:text-sm font-bold text-right text-gray-900">{totalBags > 0 ? Math.round(totalBags).toLocaleString() : '—'}</span>
         <span className="text-xs sm:text-sm font-bold text-right text-blue-600">{totalProduced > 0 ? totalProduced.toLocaleString() : '—'}</span>
         <span className="text-xs sm:text-sm font-bold text-right text-green-600">
-          {(() => { const t = sortedSkus.reduce((s, sku) => s + (yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0), 0); return t > 0 ? t.toLocaleString() : '—' })()}
+          {(() => {
+            const t = sortedSkus.reduce((s, sku) => {
+              const y = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0
+              const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+              if (!skuStats[sku].isRaw && wpb && wpb > 0) return s + Math.round(y * wpb)
+              return s + y
+            }, 0)
+            return t > 0 ? t.toLocaleString() : '—'
+          })()}
         </span>
         <span />
       </div>
