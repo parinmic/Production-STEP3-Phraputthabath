@@ -631,16 +631,37 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     return { lb, dur, lostCarcasses: Math.round(totalLostCarcasses), groupLoss }
   })
 
-  // Attribute group loss proportionally to each non-RAW SKU in that group
+  // Breakline loss: reduce RAW first (SKUs have priority), overflow to non-RAW only if loss > RAW qty
   const skuLostKgMap = new Map<string, number>()
   for (const { groupLoss } of lbImpact) {
     for (const { grp, kg } of groupLoss) {
-      const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
-      const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
-      if (grpTotal <= 0) continue
-      for (const s of grpSkus) {
-        const share = skuStats[s].totalQty / grpTotal
-        skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(kg * share))
+      const rawSku = sortedSkus.find(s => (groupMap[s] ?? '') === grp && skuStats[s].isRaw)
+      const rawQty = rawSku ? skuStats[rawSku].totalQty : 0
+      if (rawSku && rawQty > 0) {
+        // Loss comes from RAW first
+        const rawLoss = Math.min(kg, rawQty)
+        skuLostKgMap.set(rawSku, (skuLostKgMap.get(rawSku) ?? 0) + rawLoss)
+        const overflow = kg - rawLoss
+        if (overflow > 0) {
+          // Only overflow (loss exceeding RAW) hits the regular SKUs
+          const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
+          const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
+          if (grpTotal > 0) {
+            for (const s of grpSkus) {
+              const share = skuStats[s].totalQty / grpTotal
+              skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(overflow * share))
+            }
+          }
+        }
+      } else {
+        // By-group (no RAW) — distribute proportionally to all SKUs in group
+        const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
+        const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
+        if (grpTotal <= 0) continue
+        for (const s of grpSkus) {
+          const share = skuStats[s].totalQty / grpTotal
+          skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(kg * share))
+        }
       }
     }
   }
@@ -669,10 +690,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             const l = pct(Math.max(bs, chartStart))
             const w = Math.max(pct(Math.min(be, chartEnd)) - l, 0)
             return (
-              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20 flex items-end pb-1 overflow-hidden"
-                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#fee2e2', borderLeft: '2px dashed #ef4444', borderRight: '2px dashed #ef4444' }}>
-                <span className="text-[9px] font-semibold text-red-500 px-1 truncate leading-tight">{lb.reason || 'Break'}</span>
-              </div>
+              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20"
+                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#e5e7eb' }} />
             )
           })}
           {nowMins >= chartStart && nowMins <= chartEnd && (
@@ -744,7 +763,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                             return (
                               <>
                                 {bagsLabel}{displayQty.toLocaleString()} กก.
-                                {lostKg > 0 && <span className="ml-1 text-red-500 font-semibold text-[9px]">(-{lostKg} กก.)</span>}
                               </>
                             )
                           })()}
@@ -821,12 +839,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           const wm = `calc((100% - 13rem) * ${w})`
           const ld = `calc(11rem + (100% - 19rem) * ${l})`
           const wd = `calc((100% - 19rem) * ${w})`
-          const bandStyle = { backgroundColor: '#fff', borderLeft: '2px dashed #ef4444', borderRight: '2px dashed #ef4444' }
           return [
             <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-30 pointer-events-none"
-              style={{ left: lm, width: wm, ...bandStyle }} />,
+              style={{ left: lm, width: wm, backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
             <div key={`lb-${i}-d`} className="hidden sm:block absolute top-0 bottom-0 z-30 pointer-events-none"
-              style={{ left: ld, width: wd, ...bandStyle }} />,
+              style={{ left: ld, width: wd, backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }} />,
           ]
         })}
 
