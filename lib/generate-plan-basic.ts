@@ -889,10 +889,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   }
 
   if (!workforce.length) {
-    // No workforce data — use one dummy worker per station so the plan can still be generated for testing
-    for (const station of BASIC_TABLE_NAMES) {
-      workforce.push({ emp_id: 'DEMO', name: 'ทดสอบ', work_station: station, shift: 'เช้า' })
-    }
+    return { success: false, message: 'ไม่มีข้อมูลกำลังคน กรุณาอัปโหลดข้อมูลกำลังคนก่อนสร้างแผน' }
   }
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
