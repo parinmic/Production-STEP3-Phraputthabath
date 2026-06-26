@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Slice, Trash2, Plus, AlertCircle } from 'lucide-react'
+import { Slice, Trash2, Plus, AlertCircle, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const STATIONS = ['ทั้งหมด', 'สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
@@ -27,6 +28,64 @@ function durationLabel(start: string, end: string) {
   const mins = (eh * 60 + em) - (sh * 60 + sm)
   if (mins <= 0) return ''
   return mins >= 60 ? `${Math.floor(mins / 60)}ชม. ${mins % 60 > 0 ? `${mins % 60}น.` : ''}`.trim() : `${mins} นาที`
+}
+
+function breakMins(b: LineBreak): number {
+  const [sh, sm] = b.start_time.split(':').map(Number)
+  const [eh, em] = b.end_time.split(':').map(Number)
+  return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
+}
+
+function exportExcel(date: string, breaks: LineBreak[]) {
+  const wb = XLSX.utils.book_new()
+
+  // Sheet 1: detail rows
+  const detail = breaks.map(b => ({
+    'วันที่':            date,
+    'สถานี':            b.station,
+    'เวลาเริ่ม':        b.start_time,
+    'เวลาสิ้นสุด':      b.end_time,
+    'ระยะเวลา (นาที)': breakMins(b),
+    'สาเหตุ':           b.reason ?? '',
+  }))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'รายการ Breakline')
+
+  // Sheet 2: summary by reason
+  const reasonMap = new Map<string, { count: number; mins: number; stations: Set<string> }>()
+  for (const b of breaks) {
+    const key = b.reason?.trim() || '(ไม่ระบุสาเหตุ)'
+    const prev = reasonMap.get(key) ?? { count: 0, mins: 0, stations: new Set<string>() }
+    prev.count++
+    prev.mins += breakMins(b)
+    prev.stations.add(b.station)
+    reasonMap.set(key, prev)
+  }
+  const summary = [...reasonMap.entries()]
+    .sort((a, b) => b[1].mins - a[1].mins)
+    .map(([reason, { count, mins, stations }]) => ({
+      'สาเหตุ':            reason,
+      'จำนวนครั้ง':       count,
+      'รวมเวลา (นาที)':  mins,
+      'สถานีที่เกิด':     [...stations].join(', '),
+    }))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'สรุปสาเหตุ')
+
+  // Sheet 3: summary by station
+  const stationMap = new Map<string, { count: number; mins: number }>()
+  for (const b of breaks) {
+    const prev = stationMap.get(b.station) ?? { count: 0, mins: 0 }
+    prev.count++
+    prev.mins += breakMins(b)
+    stationMap.set(b.station, prev)
+  }
+  const byStation = [...stationMap.entries()].map(([station, { count, mins }]) => ({
+    'สถานี':            station,
+    'จำนวนครั้ง':       count,
+    'รวมเวลา (นาที)':  mins,
+  }))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(byStation), 'สรุปต่อสถานี')
+
+  XLSX.writeFile(wb, `Breakline_${date}.xlsx`)
 }
 
 export default function BreaklinePage() {
@@ -100,10 +159,21 @@ export default function BreaklinePage() {
           <h1 className="text-xl font-bold text-gray-900">Breakline</h1>
           <p className="text-xs text-gray-500">บันทึกการหยุดสาย — แสดงบน Gantt คำสั่งผลิตราย Station</p>
         </div>
-        <input
-          type="date" value={date} onChange={e => setDate(e.target.value)}
-          className="ml-auto text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
-        />
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+          <button
+            onClick={() => exportExcel(date, breaks)}
+            disabled={breaks.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Export Excel"
+          >
+            <Download size={14} />
+            Excel
+          </button>
+        </div>
       </div>
 
       {/* Form */}

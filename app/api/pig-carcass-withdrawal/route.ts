@@ -10,12 +10,25 @@ export async function GET() {
     .limit(1)
     .single()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('stock_20')
-    .select('spec_code, qty_3, weight_3')
+    .select('spec_code, qty_total, weight_total')
     .eq('material_code', '90007')
+
+  if (log?.source_file) {
+    query = query.eq('source_file', log.source_file)
+  }
+
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ rows: data ?? [], source_file: log?.source_file ?? '' })
+  // Normalise to qty_3/weight_3 field names that both frontend pages expect
+  const rows = (data ?? []).map(r => ({
+    spec_code: r.spec_code,
+    qty_3:     r.qty_total   ?? 0,
+    weight_3:  r.weight_total ?? 0,
+  }))
+
+  return NextResponse.json({ rows, source_file: log?.source_file ?? '' })
 }
