@@ -43,7 +43,6 @@ export default function WipPlanPage() {
         if (!sap || seen.has(sap)) continue
         if (philitTorKanSaps.has(sap) || philitTorKanSaps.has(sap.replace(/^0+/, ''))) continue
         const skuName = String(row['ชื่อสินค้า'] ?? '').trim()
-        if (skuName.includes('WIP')) continue
         seen.add(sap)
         wipSkus.push({
           sap_code: sap,

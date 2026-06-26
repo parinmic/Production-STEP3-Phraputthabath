@@ -139,6 +139,7 @@ function computeRawMatBlocks(
 
     for (const [normSt, items] of stationMap) {
       if (!items.length) continue
+      if (!stationInfo.has(normSt)) continue   // skip stations not in mas_saw_machine_sku
       const totalQty = items.reduce((s, i) => s + i.quantity, 0)
       if (totalQty <= 0) continue
 
