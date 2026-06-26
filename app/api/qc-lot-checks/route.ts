@@ -35,6 +35,32 @@ async function getCurrentRound(): Promise<RoundRow & { isNew: boolean }> {
 export async function GET(req: NextRequest) {
   const roundParam = req.nextUrl.searchParams.get('round')
 
+  // Used by pages that just want each lot's latest known reading regardless of
+  // which round it happened in (e.g. when a lot wasn't re-checked this round).
+  if (req.nextUrl.searchParams.get('latest')) {
+    const { data, error } = await supabase
+      .from('qc_lot_temperature_checks')
+      .select('spec_code, chill_room, temps, recorded_by, updated_at')
+      .order('updated_at', { ascending: false })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    const temps:      Record<string, unknown> = {}
+    const chillRoom:  Record<string, string>  = {}
+    const savedAt:    Record<string, string>  = {}
+    const recordedBy: Record<string, string>  = {}
+    const seen = new Set<string>()
+    for (const row of data ?? []) {
+      if (seen.has(row.spec_code)) continue
+      seen.add(row.spec_code)
+      if (row.temps)        temps[row.spec_code]      = row.temps
+      if (row.chill_room)   chillRoom[row.spec_code]  = row.chill_room
+      if (row.updated_at)   savedAt[row.spec_code]    = row.updated_at
+      if (row.recorded_by)  recordedBy[row.spec_code] = row.recorded_by
+    }
+    return NextResponse.json({ temps, chillRoom, savedAt, recordedBy })
+  }
+
   const current = await getCurrentRound()
   const { data: history } = await supabase
     .from('qc_check_rounds')

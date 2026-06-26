@@ -35,6 +35,7 @@ function BasicSidebar() {
   const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
   const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
+  const [openQc,          setOpenQc]          = useState(p.startsWith('/basic/temperature-check'))
   const [collapsed, setCollapsed]             = useState(true)
   const [mobileOpen, setMobileOpen]           = useState(false)
 
@@ -95,12 +96,42 @@ function BasicSidebar() {
           <div className={dividerCls} />
 
           {/* QC */}
-          <Link href="/basic/temperature-check"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/basic/temperature-check')}`}
-            title="ตรวจอุณหภูมิ(QC)">
+          <button
+            onClick={() => setOpenQc(!openQc)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/basic/temperature-check') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            title="ตรวจอุณหภูมิ(QC)"
+          >
             <Thermometer size={18} className="shrink-0" />
-            <span className={labelCls}>ตรวจอุณหภูมิ(QC)</span>
-          </Link>
+            <span className={`flex-1 text-left ${labelCls}`}>ตรวจอุณหภูมิ(QC)</span>
+            {!collapsed && (openQc ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+          </button>
+
+          {openQc && (
+            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+              <Link href="/basic/temperature-check"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/temperature-check' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-cyan-500" />อุณหภูมิหมูซีก
+              </Link>
+              <Link href="/basic/temperature-check-parts"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/temperature-check-parts' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อุณหภูมิชิ้นส่วน
+              </Link>
+            </div>
+          )}
+          {openQc && collapsed && (
+            <div className="space-y-1 hidden md:block">
+              <Link href="/basic/temperature-check"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/temperature-check' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="อุณหภูมิหมูซีก">
+                <span className="w-2 h-2 rounded-full bg-cyan-500" />
+              </Link>
+              <Link href="/basic/temperature-check-parts"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/temperature-check-parts' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="อุณหภูมิชิ้นส่วน">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              </Link>
+            </div>
+          )}
 
           {/* เบิกหมูซีก */}
           <Link href="/basic/pig-carcass-withdrawal"

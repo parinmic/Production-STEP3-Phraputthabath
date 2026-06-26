@@ -120,7 +120,7 @@ export default function PigCarcassWithdrawalPage() {
 
   const loadQcTemps = useCallback(async () => {
     try {
-      const res  = await fetch('/api/qc-lot-checks')
+      const res  = await fetch('/api/qc-lot-checks?latest=1')
       const json = await res.json()
       if (json.temps)     setQcTemps(json.temps)
       if (json.chillRoom) setChillRoom(json.chillRoom)
