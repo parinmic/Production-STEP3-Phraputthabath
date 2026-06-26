@@ -492,6 +492,57 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     }
   }
 
+  // For "By" groups (no RAW SKUs): cycle through SKUs to fill remaining phase capacity
+  if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
+    const phaseEndWall = phaseEnd * 60
+    // Net working minutes in this phase (subtract static break overlaps)
+    let phaseNetMins = phaseEndWall - phaseStartMins
+    for (const [bs, be] of BREAKS) {
+      phaseNetMins -= Math.max(0, Math.min(be, phaseEndWall) - Math.max(bs, phaseStartMins))
+    }
+
+    for (const grp of skuGroups) {
+      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
+      if (throughput <= 0) continue
+      if (grp.skus.some(sku => skuStats[sku].isRaw)) continue // Main group → skip
+
+      const bySkus = grp.skus.filter(sku => skuStats[sku].totalQty > 0)
+      if (!bySkus.length) continue
+
+      // Snapshot original order qty (fixed cycle batch size)
+      const orderQty: Record<string, number> = {}
+      for (const sku of bySkus) orderQty[sku] = skuStats[sku].totalQty
+
+      const groupCapacity = throughput * phaseNetMins
+      let totalProduced  = bySkus.reduce((s, sku) => s + orderQty[sku], 0)
+      let cursor         = Math.max(...bySkus.map(sku => skuStats[sku].maxEnd))
+      let cycleIdx       = 0
+
+      for (let guard = 0; guard < 10000 && cursor < phaseEndWall && totalProduced < groupCapacity; guard++) {
+        const sku     = bySkus[cycleIdx % bySkus.length]
+        const durMins = Math.max(1, Math.round(orderQty[sku] / throughput))
+        const rawEnd  = wallClockFinish(cursor, durMins)
+        const segEnd  = Math.min(rawEnd, phaseEndWall)
+
+        // Pro-rate kg if cut short by phase end
+        const addKg = rawEnd <= phaseEndWall
+          ? orderQty[sku]
+          : (() => {
+              let net = segEnd - cursor
+              for (const [bs, be] of BREAKS) net -= Math.max(0, Math.min(be, segEnd) - Math.max(bs, cursor))
+              return Math.round(throughput * Math.max(0, net))
+            })()
+
+        skuStats[sku].segments.push(...skuStats[sku].workers.map(w => ({ start: cursor, end: segEnd, worker: w, isDeficit: false })))
+        skuStats[sku].maxEnd    = Math.max(skuStats[sku].maxEnd, segEnd)
+        skuStats[sku].totalQty += addKg
+        totalProduced          += addKg
+        cursor  = segEnd
+        cycleIdx++
+      }
+    }
+  }
+
   if (!sortedSkus.length) return null
 
   const chartStart = Math.floor(phaseStartMins / 60) * 60
