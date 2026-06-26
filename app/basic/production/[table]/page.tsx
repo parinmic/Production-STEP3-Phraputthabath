@@ -480,14 +480,30 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
   // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially
   if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
+    const phaseEndWallSeq = phaseEnd * 60
     for (const grp of skuGroups) {
       const throughput = carcassThroughputByGroup[grp.grp] ?? 0
       if (throughput <= 0) continue
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
       for (const sku of bySeq) {
+        if (cursor >= phaseEndWallSeq) {
+          // No time left in this phase
+          skuStats[sku].minStart = phaseEndWallSeq
+          skuStats[sku].maxEnd   = phaseEndWallSeq
+          skuStats[sku].segments = []
+          skuStats[sku].totalQty = 0
+          continue
+        }
         const durMins = Math.round(skuStats[sku].totalQty / throughput)
-        const endMins = wallClockFinish(cursor, durMins)
+        const rawEnd  = wallClockFinish(cursor, durMins)
+        const endMins = Math.min(rawEnd, phaseEndWallSeq)
+        // Pro-rate qty if truncated by phase end
+        if (rawEnd > phaseEndWallSeq) {
+          let netMins = endMins - cursor
+          for (const [bs, be] of BREAKS) netMins -= Math.max(0, Math.min(be, endMins) - Math.max(bs, cursor))
+          skuStats[sku].totalQty = Math.round(throughput * Math.max(0, netMins))
+        }
         skuStats[sku].minStart = cursor
         skuStats[sku].maxEnd   = endMins
         skuStats[sku].segments = skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false }))
