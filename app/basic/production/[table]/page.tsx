@@ -335,6 +335,9 @@ function mergeSegmentsWithWorkers(segs: { start: number; end: number; worker: st
 
 type BarPopup = { name: string; start: number; end: number; workers: string[]; color: string } | null
 
+interface PigLot { spec_code: string; qty: number; avg_weight: number; order: number }
+interface MasYieldRow { carcass_weight: number; product_group: string; yield_pct: number }
+
 interface SkuScheduleViewProps {
   items: Assignment[]
   phaseStart: number
@@ -346,10 +349,12 @@ interface SkuScheduleViewProps {
   groupMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
   lineBreaks?: LineBreak[]
-  pigLots?: { qty: number; avg_weight: number }[]
+  pigLots?: PigLot[]
+  masYieldRows?: MasYieldRow[]
+  carcassRate?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [] }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -549,22 +554,65 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const chartEnd   = Math.max(phaseEnd * 60, ...sortedSkus.map(s => skuStats[s].maxEnd))
   const totalRange = chartEnd - chartStart
 
-  // Pre-calculate lineBreak impact: carcasses lost + kg lost per group
-  const totalQty = pigLots.reduce((s, l) => s + l.qty, 0)
-  const totalWgt = pigLots.reduce((s, l) => s + l.qty * l.avg_weight, 0)
-  const avgCarcassWgt = totalQty > 0 ? totalWgt / totalQty : 0
-  const totalThroughput = Object.values(carcassThroughputByGroup ?? {}).reduce((s, v) => s + v, 0) // product kg/min
-  // carcass kg/min ≈ product kg/min (approx — close enough for display)
+  // Net-work minutes from phaseStart to wallClock (excluding static breaks)
+  const wallClockToNetWork = (wallClock: number) => {
+    let net = Math.max(0, wallClock - phaseStartMins)
+    for (const [bs, be] of BREAKS) {
+      const oStart = Math.max(bs, phaseStartMins)
+      const oEnd   = Math.min(be, wallClock)
+      if (oEnd > oStart) net -= (oEnd - oStart)
+    }
+    return Math.max(0, net)
+  }
+
+  // Pre-calculate lineBreak impact using lot-by-lot carcass timeline
+  const rateMin = carcassRate / 60  // sec/carcass → min/carcass
+  const sortedLots = [...pigLots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const uniqueWeights = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+
+  // Build cumulative net-work-minute boundaries for each lot
+  let cumNet = 0
+  const lotBounds: { netStart: number; netEnd: number; lot: PigLot }[] = []
+  for (const lot of sortedLots) {
+    const dur = lot.qty * rateMin
+    lotBounds.push({ netStart: cumNet, netEnd: cumNet + dur, lot })
+    cumNet += dur
+  }
+
   const lbImpact = lineBreaks.map(lb => {
-    const dur = timeToMins(lb.end_time) - timeToMins(lb.start_time)
-    const lostCarcasses = avgCarcassWgt > 0 && totalThroughput > 0
-      ? Math.round((totalThroughput * dur) / avgCarcassWgt)
-      : null
-    const groupLoss: { grp: string; kg: number }[] = Object.entries(carcassThroughputByGroup ?? {})
-      .map(([grp, rate]) => ({ grp, kg: Math.round(rate * dur) }))
+    const bs  = timeToMins(lb.start_time)
+    const be  = timeToMins(lb.end_time)
+    const dur = be - bs
+
+    const netBreakStart = wallClockToNetWork(bs)
+    const netBreakEnd   = wallClockToNetWork(be)
+
+    const groupLossKg: Record<string, number> = {}
+    let totalLostCarcasses = 0
+
+    for (const { netStart, netEnd, lot } of lotBounds) {
+      const overlapStart = Math.max(netStart, netBreakStart)
+      const overlapEnd   = Math.min(netEnd, netBreakEnd)
+      if (overlapEnd <= overlapStart) continue
+      const lostQty = (overlapEnd - overlapStart) / rateMin
+      totalLostCarcasses += lostQty
+      if (!uniqueWeights.length) continue
+      const closestW = uniqueWeights.reduce((best, ww) =>
+        Math.abs(ww - lot.avg_weight) < Math.abs(best - lot.avg_weight) ? ww : best,
+        uniqueWeights[0]
+      )
+      for (const row of masYieldRows.filter(r => r.carcass_weight === closestW)) {
+        groupLossKg[row.product_group] = (groupLossKg[row.product_group] ?? 0)
+          + lostQty * lot.avg_weight * (row.yield_pct / 100)
+      }
+    }
+
+    const groupLoss: { grp: string; kg: number }[] = Object.entries(groupLossKg)
+      .map(([grp, kg]) => ({ grp, kg: Math.round(kg) }))
       .filter(e => e.kg > 0)
       .sort((a, b) => b.kg - a.kg)
-    return { lb, dur, lostCarcasses, groupLoss }
+
+    return { lb, dur, lostCarcasses: Math.round(totalLostCarcasses), groupLoss }
   })
 
   // Attribute group loss proportionally to each non-RAW SKU in that group
@@ -747,7 +795,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           ]
         })}
 
-        {lbImpact.flatMap(({ lb, lostCarcasses, groupLoss }, i) => {
+        {lbImpact.flatMap(({ lb }, i) => {
           const bs = timeToMins(lb.start_time)
           const be = timeToMins(lb.end_time)
           if (bs >= chartEnd || be <= chartStart) return []
@@ -759,24 +807,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           const wd = `calc((100% - 19rem) * ${w})`
           const bandStyle = { backgroundColor: '#fff', borderLeft: '2px dashed #ef4444', borderRight: '2px dashed #ef4444' }
           return [
-            <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-30 pointer-events-none flex flex-col justify-center overflow-hidden"
-              style={{ left: lm, width: wm, ...bandStyle }}>
-              <span className="text-[8px] font-bold text-red-500 px-1 truncate leading-tight">{lb.reason || 'Breakline'}</span>
-              {lostCarcasses !== null && lostCarcasses > 0 && (
-                <span className="text-[7px] text-red-400 px-1 font-mono">-{lostCarcasses} ตัว</span>
-              )}
-            </div>,
-            <div key={`lb-${i}-d`} className="hidden sm:flex absolute top-0 bottom-0 z-30 pointer-events-none flex-col justify-center overflow-hidden"
-              style={{ left: ld, width: wd, ...bandStyle }}>
-              <span className="text-[9px] font-bold text-red-500 px-1.5 truncate leading-tight">{lb.reason || 'Breakline'}</span>
-              <span className="text-[8px] text-red-400 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
-              {lostCarcasses !== null && lostCarcasses > 0 && (
-                <span className="text-[8px] font-semibold text-red-500 px-1.5">-{lostCarcasses} ตัว</span>
-              )}
-              {groupLoss.slice(0, 3).map(({ grp, kg }) => (
-                <span key={grp} className="text-[7px] text-red-400 px-1.5 truncate">{grp}: -{kg} กก.</span>
-              ))}
-            </div>,
+            <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-30 pointer-events-none"
+              style={{ left: lm, width: wm, ...bandStyle }} />,
+            <div key={`lb-${i}-d`} className="hidden sm:block absolute top-0 bottom-0 z-30 pointer-events-none"
+              style={{ left: ld, width: wd, ...bandStyle }} />,
           ]
         })}
 
@@ -1570,8 +1604,9 @@ export default function BasicTablePage() {
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
   const [groupMap, setGroupMap]         = useState<Record<string, string>>({})
   const [productTypeMap, setProductTypeMap] = useState<Record<string, string>>({})
-  const [pigLots,      setPigLots]      = useState<{ qty: number; avg_weight: number }[]>([])
-  const [masYieldRows, setMasYieldRows] = useState<{ carcass_weight: number; product_group: string; yield_pct: number }[]>([])
+  const [pigLots,      setPigLots]      = useState<PigLot[]>([])
+  const [masYieldRows, setMasYieldRows] = useState<MasYieldRow[]>([])
+  const [carcassRate,  setCarcassRate]  = useState<number>(90)
   const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -1596,11 +1631,15 @@ export default function BasicTablePage() {
     try {
       const l = localStorage.getItem('pig_carcass_selected')
       if (l) setPigLots(JSON.parse(l))
+      const r = localStorage.getItem('pig_carcass_rate')
+      if (r) setCarcassRate(parseFloat(r) || 90)
     } catch { /* ignore */ }
     const onStorage = () => {
       try {
         const l = localStorage.getItem('pig_carcass_selected')
         if (l) setPigLots(JSON.parse(l))
+        const r = localStorage.getItem('pig_carcass_rate')
+        if (r) setCarcassRate(parseFloat(r) || 90)
       } catch { /* ignore */ }
     }
     window.addEventListener('storage', onStorage)
@@ -1856,7 +1895,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
