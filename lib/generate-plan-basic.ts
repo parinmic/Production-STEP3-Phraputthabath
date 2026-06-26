@@ -320,6 +320,7 @@ function allocateBalanced(params: {
     normSku: string; rawSku: string; skuName: string | null
     totalQty: number; isDeficit: boolean; productGroup: string
     rate: number; wpb: number; channels: ChEntry[]
+    isYieldCapped: boolean
   }
 
   const skuBlockMap = new Map<string, SkuBlock>()
@@ -342,6 +343,7 @@ function allocateBalanced(params: {
         totalQty: t.targetQty, isDeficit: t.isDeficit || false,
         productGroup: prod.product_group, rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate, wpb,
         channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
+        isYieldCapped: skuRateOverrideMap?.has(cleanSku) ?? false,
       })
     }
   }
@@ -399,7 +401,7 @@ function allocateBalanced(params: {
   const assignments: Record<string, unknown>[] = []
 
   for (const block of skuBlocks) {
-    const { normSku, rawSku, skuName, totalQty, productGroup, rate, wpb, channels } = block
+    const { normSku, rawSku, skuName, totalQty, productGroup, rate, wpb, channels, isYieldCapped } = block
 
     let eligibleWorkers = workers.filter(w => isWorkerEligible(w, productGroup))
     if (!eligibleWorkers.length) eligibleWorkers = workers
@@ -434,8 +436,11 @@ function allocateBalanced(params: {
       const specialEntry = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
       const specialStart = specialEntry?.startMins ?? null
       const specialStop  = specialEntry?.stopMins  ?? null
+      // Yield-capped SKUs: rate is the group's shared raw-material throughput, not a per-worker
+      // rate — duration stays anchored to totalQty/rate no matter how many workers join.
       const estimatedDur = remaining / rate * 60
-      const finish = estimateWorkerFinish(freeAt, estimatedDur / Math.max(workersForSku.length + 1, 1), busySegs, phaseEndMins, specialStart, specialStop)
+      const perWorkerDur = isYieldCapped ? estimatedDur : estimatedDur / Math.max(workersForSku.length + 1, 1)
+      const finish = estimateWorkerFinish(freeAt, perWorkerDur, busySegs, phaseEndMins, specialStart, specialStop)
       if (finish === null) continue
       workersForSku.push(worker)
     }
@@ -491,7 +496,9 @@ function allocateBalanced(params: {
 
       // Advance worker free time — skip for forced deficit backlog (not a real timeslot)
       if (!forcedDeficitWorkers.has(nameKey)) {
-        const dur = finalQty / rate * 60
+        // Yield-capped SKUs: every worker on the batch is occupied for the full batch
+        // duration (gated by raw-material supply), not just their split share of the qty.
+        const dur = isYieldCapped ? (totalQty / rate * 60) : (finalQty / rate * 60)
         const endMins = wallClockFinish(startMins, dur)
         const busySegs = workerBusySegments.get(nameKey) ?? []
         if (specialStart === null) {
@@ -1103,6 +1110,20 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const workerKeptMaxEndMins = new Map<string, number>()
 
   if (useRegen && oldAssignmentsRaw) {
+    // Yield-capped SKUs: total kept qty across every worker sharing the SKU before the
+    // checkpoint, since duration is gated by raw-material throughput, not worker split share.
+    const keptSkuTotalQty = new Map<string, number>()
+    for (const a of oldAssignmentsRaw) {
+      const wName = normName(a.worker_name || '')
+      if (!currentWorkforceNames.has(wName)) continue
+      const deadlineStr = a.deadline_time as string | null
+      if (!deadlineStr?.includes(':')) continue
+      const [h, m] = deadlineStr.split(':').map(Number)
+      if (h * 60 + m >= checkpointMins) continue
+      const cleanSku = (a.sku as string).replace(/^0+/, '')
+      keptSkuTotalQty.set(cleanSku, (keptSkuTotalQty.get(cleanSku) ?? 0) + Number(a.target_quantity))
+    }
+
     for (const a of oldAssignmentsRaw) {
       const wName = normName(a.worker_name || '')
       if (currentWorkforceNames.has(wName)) {
@@ -1113,8 +1134,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           if (startMins < checkpointMins) {
             const cleanSku = (a.sku as string).replace(/^0+/, '')
             const prod = skuMap.get(cleanSku) ?? skuMap.get(a.sku as string)
+            const isYieldCapped = skuEffectiveRateMap.has(cleanSku)
             const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
-            const duration = rate > 0 ? Math.round((Number(a.target_quantity) / rate) * 60) : 0
+            const qtyForDuration = isYieldCapped ? (keptSkuTotalQty.get(cleanSku) ?? Number(a.target_quantity)) : Number(a.target_quantity)
+            const duration = rate > 0 ? Math.round((qtyForDuration / rate) * 60) : 0
             const endMins = wallClockFinish(startMins, duration)
             workerKeptMaxEndMins.set(wName, Math.max(workerKeptMaxEndMins.get(wName) ?? 0, endMins))
             const { id, created_at, updated_at, ...rest } = a
@@ -1515,10 +1538,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   // Resequence wall-clock start times per worker
   const byWorkerPost: Record<string, any[]> = {}
+  // Yield-capped SKUs: total qty across every worker sharing the SKU, since duration is
+  // gated by raw-material throughput, not by any one worker's split share.
+  const skuTotalQtyAcrossWorkers = new Map<string, number>()
   for (const a of assignments) {
     const name = a.worker_name as string
     byWorkerPost[name] ??= []
     byWorkerPost[name].push({ ...a, is_deficit: !!(a as any).is_deficit })
+    const cleanSku = (a.sku as string).replace(/^0+/, '')
+    skuTotalQtyAcrossWorkers.set(cleanSku, (skuTotalQtyAcrossWorkers.get(cleanSku) ?? 0) + Number(a.target_quantity))
   }
 
   const resequenced: any[] = []
@@ -1563,8 +1591,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     for (const task of workerTasks) {
       const cleanSku = (task.sku as string).replace(/^0+/, '')
       const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
+      const isYieldCapped = skuEffectiveRateMap.has(cleanSku)
       const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
-      const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
+      const qtyForDuration = isYieldCapped ? (skuTotalQtyAcrossWorkers.get(cleanSku) ?? Number(task.target_quantity)) : Number(task.target_quantity)
+      const duration = rate > 0 ? Math.round((qtyForDuration / rate) * 60) : 0
 
       if (task.isKept) {
         const [h, m] = (task.deadline_time as string).split(':').map(Number)
