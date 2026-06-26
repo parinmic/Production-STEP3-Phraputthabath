@@ -89,6 +89,13 @@ export default function CarcassGanttPanel({
     }
   }, [])
 
+  const loadSelectedLots = useCallback(() => {
+    fetch('/api/pig-carcass-lot-selection')
+      .then(r => r.json())
+      .then(json => { if (json.selected) setLots(json.selected as SelectedLot[]) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     try {
       const r = localStorage.getItem('pig_carcass_rate')
@@ -96,8 +103,12 @@ export default function CarcassGanttPanel({
       if (r) setRate(parseFloat(r) || 90)
       if (l) setLots(JSON.parse(l) as SelectedLot[])
     } catch { /* ignore */ }
+    loadSelectedLots()
     loadData()
-  }, [loadData])
+    // Other machines can change the selected lots — poll so this view stays in sync.
+    const id = setInterval(loadSelectedLots, 20_000)
+    return () => clearInterval(id)
+  }, [loadData, loadSelectedLots])
 
   // Determine visible segments for this phase
   const phaseKey     = String(selectedPhase)

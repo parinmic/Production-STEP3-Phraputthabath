@@ -1660,6 +1660,13 @@ export default function BasicTablePage() {
       .finally(() => { if (!silent) setLoading(false) })
   }
 
+  const loadPigLots = useCallback(() => {
+    fetch('/api/pig-carcass-lot-selection')
+      .then(r => r.json())
+      .then(json => { if (json.selected) setPigLots(json.selected as PigLot[]) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     try {
       const l = localStorage.getItem('pig_carcass_selected')
@@ -1667,6 +1674,7 @@ export default function BasicTablePage() {
       const r = localStorage.getItem('pig_carcass_rate')
       if (r) setCarcassRate(parseFloat(r) || 90)
     } catch { /* ignore */ }
+    loadPigLots()
     const onStorage = () => {
       try {
         const l = localStorage.getItem('pig_carcass_selected')
@@ -1676,8 +1684,10 @@ export default function BasicTablePage() {
       } catch { /* ignore */ }
     }
     window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    // Other machines can change the selected lots — poll so this view stays in sync.
+    const id = setInterval(loadPigLots, 20_000)
+    return () => { window.removeEventListener('storage', onStorage); clearInterval(id) }
+  }, [loadPigLots])
 
   useEffect(() => {
     fetch('/api/master/productivity')
@@ -1756,9 +1766,11 @@ export default function BasicTablePage() {
       let carcassLots: unknown = undefined
       let carcassRate: number | undefined = undefined
       try {
-        const lotsRaw = localStorage.getItem('pig_carcass_selected')
+        // Pull the shared selection from the server — it may have been set on a different machine.
+        const selRes  = await fetch('/api/pig-carcass-lot-selection')
+        const selJson = await selRes.json()
+        if (selJson.selected?.length) carcassLots = selJson.selected
         const rateRaw = localStorage.getItem('pig_carcass_rate')
-        if (lotsRaw) carcassLots = JSON.parse(lotsRaw)
         if (rateRaw) carcassRate = parseFloat(rateRaw) || undefined
       } catch { /* ignore */ }
       const res = await fetch('/api/production/generate-basic', {

@@ -155,6 +155,13 @@ export default function CarcassProductionView({ stationName }: { stationName: st
     }
   }, [])
 
+  const loadSelectedLots = useCallback(() => {
+    fetch('/api/pig-carcass-lot-selection')
+      .then(r => r.json())
+      .then(json => { if (json.selected) setLots(json.selected as SelectedLot[]) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     try {
       const savedRate = localStorage.getItem('pig_carcass_rate')
@@ -162,8 +169,12 @@ export default function CarcassProductionView({ stationName }: { stationName: st
       if (savedRate) setRate(parseFloat(savedRate) || 90)
       if (savedLots) setLots(JSON.parse(savedLots) as SelectedLot[])
     } catch { /* ignore */ }
+    loadSelectedLots()
     loadData()
-  }, [loadData])
+    // Other machines can change the selected lots — poll so this view stays in sync.
+    const id = setInterval(loadSelectedLots, 20_000)
+    return () => clearInterval(id)
+  }, [loadData, loadSelectedLots])
 
   // Product groups for this station (in insertion order = slot order)
   const productGroups = [...new Set(

@@ -457,6 +457,7 @@ CREATE TABLE IF NOT EXISTS qc_lot_temperature_checks (
   spec_code    text        NOT NULL,
   chill_room   text,
   temps        jsonb       NOT NULL DEFAULT '{}',
+  recorded_by  text,
   round_number int         NOT NULL DEFAULT 1,
   updated_at   timestamptz DEFAULT now()
 );
@@ -464,6 +465,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_temp_spec_roundnum_dev ON qc_lot_te
 ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_qc_lot_temp" ON qc_lot_temperature_checks;
 CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
+  id           smallint    PRIMARY KEY DEFAULT 1,
+  selected     jsonb       NOT NULL DEFAULT '[]',
+  trimming_qty text,
+  updated_at   timestamptz DEFAULT now(),
+  CONSTRAINT pig_carcass_lot_selection_singleton CHECK (id = 1)
+);
+INSERT INTO pig_carcass_lot_selection (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+ALTER TABLE pig_carcass_lot_selection ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection;
+CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection FOR ALL USING (true) WITH CHECK (true);
 
 -- ======================================================
 -- Realtime (ถ้าใช้ Supabase Realtime สำหรับ dev ด้วย)

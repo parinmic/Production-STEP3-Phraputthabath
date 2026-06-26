@@ -1,6 +1,6 @@
 'use client'
 import { Fragment, useState, useEffect, useRef } from 'react'
-import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown } from 'lucide-react'
+import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown, X } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -135,9 +135,12 @@ export default function BasicTemperatureCheckPage() {
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [chillRoom,  setChillRoom]  = useState<Record<string, string>>({})
   const [savedAt,    setSavedAt]    = useState<Record<string, string>>({})
+  const [recordedBy, setRecordedBy] = useState<Record<string, string>>({})
   const [rounds,     setRounds]     = useState<{ round_number: number; started_at: string }[]>([])
   const [viewRound,  setViewRound]  = useState<number | null>(null)
   const [isCurrent,  setIsCurrent]  = useState(true)
+  const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
+  const [recorderName,  setRecorderName]  = useState('')
   const liveRoundRef   = useRef<number | null>(null)
   const followLiveRef  = useRef(true)
 
@@ -154,6 +157,7 @@ export default function BasicTemperatureCheckPage() {
         setTemps(json.temps ?? {})
         setChillRoom(json.chillRoom ?? {})
         setSavedAt(json.savedAt ?? {})
+        setRecordedBy(json.recordedBy ?? {})
         setRounds(json.rounds ?? [])
         setIsCurrent(!!json.isCurrent)
         setViewRound(json.round ?? null)
@@ -181,8 +185,10 @@ export default function BasicTemperatureCheckPage() {
     try {
       const savedRows = localStorage.getItem('qc_rows')
       const savedFile = localStorage.getItem('qc_source_file')
+      const savedName = localStorage.getItem('qc_recorder_name')
       if (savedRows) { setRows(JSON.parse(savedRows)); setGenerated(true) }
       if (savedFile) setSourceFile(savedFile)
+      if (savedName) setRecorderName(savedName)
     } catch { /* ignore */ }
 
     fetchRound()
@@ -193,16 +199,17 @@ export default function BasicTemperatureCheckPage() {
   useEffect(() => { localStorage.setItem('qc_rows', JSON.stringify(rows)) }, [rows])
   useEffect(() => { localStorage.setItem('qc_source_file', sourceFile) }, [sourceFile])
 
-  async function persistLot(spec: string, chill: string, t: TempRecord) {
+  async function persistLot(spec: string, chill: string, t: TempRecord, recordedByName?: string) {
     if (!isCurrent) return
     try {
       const res  = await fetch('/api/qc-lot-checks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spec_code: spec, chill_room: chill || null, temps: t }),
+        body: JSON.stringify({ spec_code: spec, chill_room: chill || null, temps: t, recorded_by: recordedByName || null }),
       })
       const json = await res.json()
       if (json.updated_at) setSavedAt(prev => ({ ...prev, [spec]: json.updated_at }))
+      if (json.recordedBy !== undefined) setRecordedBy(prev => ({ ...prev, [spec]: json.recordedBy }))
       if (json.round != null) {
         liveRoundRef.current = json.round
         setViewRound(json.round)
@@ -258,13 +265,22 @@ export default function BasicTemperatureCheckPage() {
     setExpanded(prev => ({ ...prev, [spec]: opening }))
   }
 
-  function closeExpanded(spec: string) {
+  function requestSave(spec: string) {
     if (!isCurrent) return
-    if (!confirm(`ยืนยันบันทึกอุณหภูมิ Lot ${spec}?`)) return
+    setConfirmFor(spec)
+  }
+
+  function confirmSave() {
+    const spec = confirmFor
+    const name = recorderName.trim()
+    if (!spec || !name) return
+    localStorage.setItem('qc_recorder_name', name)
     const newTemp = draftTemps[spec] ?? temps[spec] ?? EMPTY_TEMP
     setTemps(prev => ({ ...prev, [spec]: newTemp }))
     setExpanded(prev => ({ ...prev, [spec]: false }))
-    persistLot(spec, chillRoom[spec] ?? '', newTemp)
+    setRecordedBy(prev => ({ ...prev, [spec]: name }))
+    setConfirmFor(null)
+    persistLot(spec, chillRoom[spec] ?? '', newTemp, name)
   }
 
   function clearTemps(spec: string) {
@@ -276,6 +292,7 @@ export default function BasicTemperatureCheckPage() {
   function saveChillRoom(spec: string, value: string) {
     if (!isCurrent) return
     setChillRoom(prev => ({ ...prev, [spec]: value }))
+    // No new name here — the server keeps whatever names were already recorded for this lot.
     persistLot(spec, value, temps[spec] ?? EMPTY_TEMP)
   }
 
@@ -454,7 +471,10 @@ export default function BasicTemperatureCheckPage() {
                           {status === 'red'   && <span className="ml-0.5">✗</span>}
                         </span>
                         {fmtSavedAt(savedAt[r.spec_code]) && (
-                          <span className="block text-[10px] text-gray-400 leading-tight">{fmtSavedAt(savedAt[r.spec_code])}</span>
+                          <span className="block text-[10px] text-gray-400 leading-tight">
+                            {fmtSavedAt(savedAt[r.spec_code])}
+                            {recordedBy[r.spec_code] && <> · {recordedBy[r.spec_code]}</>}
+                          </span>
                         )}
                       </>
                     ) : <span className="text-gray-300 text-xs">—</span>}
@@ -497,7 +517,7 @@ export default function BasicTemperatureCheckPage() {
                           ล้างค่า
                         </button>
                         <button
-                          onClick={() => closeExpanded(r.spec_code)}
+                          onClick={() => requestSave(r.spec_code)}
                           className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 text-white bg-cyan-600 active:bg-cyan-700 transition-colors"
                         >
                           บันทึก
@@ -572,7 +592,7 @@ export default function BasicTemperatureCheckPage() {
                                 ล้างค่า
                               </button>
                               <button
-                                onClick={() => closeExpanded(r.spec_code)}
+                                onClick={() => requestSave(r.spec_code)}
                                 className="text-xs font-semibold px-3 py-1.5 rounded border border-cyan-600 text-white bg-cyan-600 hover:bg-cyan-700 transition-colors"
                               >
                                 บันทึก
@@ -607,7 +627,10 @@ export default function BasicTemperatureCheckPage() {
                                 {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
                               </span>
                               {fmtSavedAt(savedAt[r.spec_code]) && (
-                                <span className="block text-[11px] text-gray-400">{fmtSavedAt(savedAt[r.spec_code])}</span>
+                                <span className="block text-[11px] text-gray-400">
+                                  {fmtSavedAt(savedAt[r.spec_code])}
+                                  {recordedBy[r.spec_code] && <> · {recordedBy[r.spec_code]}</>}
+                                </span>
                               )}
                             </>
                           ) : <span className="text-gray-300">—</span>}
@@ -654,6 +677,45 @@ export default function BasicTemperatureCheckPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm save — requires recorder name */}
+      {confirmFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmFor(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-5 w-full max-w-xs z-10">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-gray-800 text-sm">ยืนยันบันทึกอุณหภูมิ</h3>
+              <button onClick={() => setConfirmFor(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4 font-mono">Lot {confirmFor}</p>
+            <label className="text-xs font-medium text-gray-600 block mb-1">ชื่อผู้บันทึก</label>
+            <input
+              type="text"
+              autoFocus
+              value={recorderName}
+              onChange={e => setRecorderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && recorderName.trim()) confirmSave() }}
+              placeholder="พิมพ์ชื่อผู้บันทึก"
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmFor(null)}
+                className="flex-1 text-sm font-medium px-3 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmSave}
+                disabled={!recorderName.trim()}
+                className="flex-1 text-sm font-semibold px-3 py-2 rounded bg-cyan-600 text-white hover:bg-cyan-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ยืนยันบันทึก
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -91,6 +91,13 @@ export default function CarcassYieldPlanView({
     }
   }, [selectedPhase, date, stationName])
 
+  const loadSelectedLots = useCallback(() => {
+    fetch('/api/pig-carcass-lot-selection')
+      .then(r => r.json())
+      .then(json => { if (json.selected) setLots(json.selected as CarcassLot[]) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     try {
       const r = localStorage.getItem('pig_carcass_rate')
@@ -98,8 +105,12 @@ export default function CarcassYieldPlanView({
       if (r) setRate(parseFloat(r) || 90)
       if (l) setLots(JSON.parse(l) as CarcassLot[])
     } catch { }
+    loadSelectedLots()
     loadData()
-  }, [loadData])
+    // Other machines can change the selected lots — poll so this view stays in sync.
+    const id = setInterval(loadSelectedLots, 20_000)
+    return () => clearInterval(id)
+  }, [loadData, loadSelectedLots])
 
   if (selectedPhase === 'all') {
     return <p className="text-center py-8 text-gray-400 text-sm">กรุณาเลือก Phase เพื่อดูแผนตาม Yield</p>

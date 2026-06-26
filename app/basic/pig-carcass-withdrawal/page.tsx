@@ -1,11 +1,30 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Package } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
   qty_3:     number
   weight_3:  number
+}
+
+interface SelectedLot {
+  spec_code:  string
+  qty:        number
+  avg_weight: number
+  order:      number
+}
+
+function computeSelected(rows: LotRow[], lotOrder: Record<string, string>): SelectedLot[] {
+  return rows
+    .filter(r => lotOrder[r.spec_code])
+    .map(r => ({
+      spec_code:  r.spec_code,
+      qty:        r.qty_3,
+      avg_weight: r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0,
+      order:      Number(lotOrder[r.spec_code]),
+    }))
+    .sort((a, b) => a.order - b.order)
 }
 
 interface PointTemps {
@@ -51,6 +70,11 @@ function avgTempStatus(avg: number | null): 'green' | 'red' | 'none' {
   return avg >= 4 && avg <= 7 ? 'green' : 'red'
 }
 
+function fmtSavedAt(iso: string | undefined): string | null {
+  if (!iso) return null
+  return new Date(iso).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' น.'
+}
+
 // Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
@@ -65,7 +89,34 @@ export default function PigCarcassWithdrawalPage() {
   const [lotOrder,    setLotOrder]    = useState<Record<string, string>>({})
   const [qcTemps,     setQcTemps]     = useState<Record<string, TempRecord>>({})
   const [chillRoom,   setChillRoom]   = useState<Record<string, string>>({})
+  const [savedAt,     setSavedAt]     = useState<Record<string, string>>({})
   const [trimmingQty, setTrimmingQty] = useState('')
+  const loadedSelectionRef   = useRef(false)
+  const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function persistSelection(selected: SelectedLot[], trimming: string) {
+    try {
+      await fetch('/api/pig-carcass-lot-selection', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ selected, trimmingQty: trimming }),
+      })
+    } catch { /* ignore */ }
+  }
+
+  const loadSelection = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/pig-carcass-lot-selection')
+      const json = await res.json()
+      const sel  = (json.selected ?? []) as SelectedLot[]
+      const order: Record<string, string> = {}
+      for (const s of sel) order[s.spec_code] = String(s.order)
+      setLotOrder(order)
+      setTrimmingQty(json.trimmingQty ?? '')
+    } catch { /* ignore */ } finally {
+      loadedSelectionRef.current = true
+    }
+  }, [])
 
   const loadQcTemps = useCallback(async () => {
     try {
@@ -73,6 +124,7 @@ export default function PigCarcassWithdrawalPage() {
       const json = await res.json()
       if (json.temps)     setQcTemps(json.temps)
       if (json.chillRoom) setChillRoom(json.chillRoom)
+      if (json.savedAt)   setSavedAt(json.savedAt)
     } catch { /* ignore */ }
   }, [])
 
@@ -103,24 +155,32 @@ export default function PigCarcassWithdrawalPage() {
       if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
       if (savedTrimming) setTrimmingQty(savedTrimming)
     } catch { /* ignore */ }
+    loadSelection()
     load()
-  }, [load])
+  }, [load, loadSelection])
+
+  // Re-pull the shared selection periodically so changes made on other machines show up here too.
+  useEffect(() => {
+    const id = setInterval(loadSelection, 20_000)
+    return () => clearInterval(id)
+  }, [loadSelection])
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))
-    const selected = rows
-      .filter(r => lotOrder[r.spec_code])
-      .map(r => ({
-        spec_code:  r.spec_code,
-        qty:        r.qty_3,
-        avg_weight: r.qty_3 > 0 ? r.weight_3 / r.qty_3 : 0,
-        order:      Number(lotOrder[r.spec_code]),
-      }))
-      .sort((a, b) => a.order - b.order)
+    const selected = computeSelected(rows, lotOrder)
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
-  }, [lotOrder, rows])
+    if (loadedSelectionRef.current) persistSelection(selected, trimmingQty)
+  }, [lotOrder, rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { localStorage.setItem('pig_carcass_trimming', trimmingQty) }, [trimmingQty])
+  useEffect(() => {
+    localStorage.setItem('pig_carcass_trimming', trimmingQty)
+    if (!loadedSelectionRef.current) return
+    if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current)
+    trimmingDebounceRef.current = setTimeout(() => {
+      persistSelection(computeSelected(rows, lotOrder), trimmingQty)
+    }, 600)
+    return () => { if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current) }
+  }, [trimmingQty]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalQty  = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt  = rows.reduce((s, r) => s + r.weight_3, 0)
@@ -266,7 +326,7 @@ export default function PigCarcassWithdrawalPage() {
                 <div className="flex items-center gap-3 mt-1 text-xs">
                   <span className="text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
                   <span className="text-orange-600 font-semibold">{fmt(avg)} <span className="text-gray-400 font-normal">กก./ตัว</span></span>
-                  <span className="ml-auto">
+                  <div className="ml-auto text-right">
                     {tAvg !== null ? (
                       <span className={`font-bold ${tStatus === 'green' ? 'text-green-600' : tStatus === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
                         {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
@@ -274,7 +334,10 @@ export default function PigCarcassWithdrawalPage() {
                         {tStatus === 'red'   && <span className="ml-0.5">✗</span>}
                       </span>
                     ) : <span className="text-gray-300">ยังไม่ได้ตรวจ</span>}
-                  </span>
+                    {fmtSavedAt(savedAt[r.spec_code]) && (
+                      <div className="text-[11px] text-gray-400">วัดเมื่อ {fmtSavedAt(savedAt[r.spec_code])}</div>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -301,6 +364,9 @@ export default function PigCarcassWithdrawalPage() {
                   </th>
                   <th className="px-4 py-3 text-center font-semibold text-cyan-700">
                     <div>อุณหภูมิเฉลี่ย</div><div className="font-normal text-cyan-400">(°C จาก QC)</div>
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold text-cyan-700">
+                    <div>เวลาวัดอุณหภูมิ</div>
                   </th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-500 w-28">ลำดับตัดแต่ง</th>
                 </tr>
@@ -346,6 +412,9 @@ export default function PigCarcassWithdrawalPage() {
                           <span className="text-gray-300 text-xs">ยังไม่ได้ตรวจ</span>
                         )}
                       </td>
+                      <td className="px-4 py-2.5 text-center text-xs text-gray-500">
+                        {fmtSavedAt(savedAt[r.spec_code]) ?? <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-center">
                         <select
                           value={lotOrder[r.spec_code] ?? ''}
@@ -371,6 +440,7 @@ export default function PigCarcassWithdrawalPage() {
                   <td className="px-4 py-3 text-right text-blue-700">{totalQty.toLocaleString('th-TH')}</td>
                   <td className="px-4 py-3 text-right text-emerald-700">{fmt(totalWgt)}</td>
                   <td className="px-4 py-3 text-right text-orange-700">{fmt(totalAvg)}</td>
+                  <td className="px-4 py-3" />
                   <td className="px-4 py-3" />
                   <td className="px-3 py-3 text-center text-xs text-gray-400">
                     {selRows.length > 0 ? `${selRows.length} เลือก` : ''}

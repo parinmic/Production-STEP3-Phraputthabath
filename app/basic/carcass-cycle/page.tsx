@@ -56,6 +56,13 @@ export default function CarcassCyclePage() {
     }
   }, [])
 
+  const loadSelectedLots = useCallback(() => {
+    fetch('/api/pig-carcass-lot-selection')
+      .then(r => r.json())
+      .then(json => { if (json.selected) setLots(json.selected as SelectedLot[]) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     try {
       const savedLots = localStorage.getItem('pig_carcass_selected')
@@ -63,8 +70,12 @@ export default function CarcassCyclePage() {
       if (savedLots) setLots(JSON.parse(savedLots))
       if (savedRate) setRate(savedRate)
     } catch { /* ignore */ }
+    loadSelectedLots()
     loadMaster()
-  }, [loadMaster])
+    // Other machines can change the selected lots — poll so this view stays in sync.
+    const id = setInterval(loadSelectedLots, 20_000)
+    return () => clearInterval(id)
+  }, [loadMaster, loadSelectedLots])
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_rate', rate)
