@@ -75,6 +75,11 @@ function fmtSavedAt(iso: string | undefined): string | null {
   return new Date(iso).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' น.'
 }
 
+function fmtSavedTime(iso: string | undefined): string | null {
+  if (!iso) return null
+  return new Date(iso).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
+}
+
 // Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
@@ -301,44 +306,66 @@ export default function PigCarcassWithdrawalPage() {
             const availableNums = Array.from({ length: rows.length }, (_, k) => k + 1)
               .filter(n => !usedOrders.has(String(n)) || lotOrder[r.spec_code] === String(n))
 
+            const lead = r.spec_code.slice(-1)
+
             return (
-              <div key={r.spec_code} className={`border rounded-lg overflow-hidden px-2.5 py-1.5 transition-colors ${picked ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-semibold text-gray-800 text-xs shrink-0 truncate">{r.spec_code}</span>
-                  {chillRoom[r.spec_code] && (
-                    <span className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5 shrink-0">
-                      Chill {chillRoom[r.spec_code]}
-                    </span>
-                  )}
-                  <select
-                    value={lotOrder[r.spec_code] ?? ''}
-                    onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
-                    className={`ml-auto shrink-0 text-xs border rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
-                      picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
-                    }`}
-                  >
-                    <option value="">—</option>
-                    {availableNums.map(n => (
-                      <option key={n} value={String(n)}>{n}</option>
-                    ))}
-                  </select>
+              <div key={r.spec_code} className={`flex items-center gap-1 border rounded-2xl overflow-hidden pl-2 pr-1.5 py-2 transition-colors ${picked ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}>
+                <span className="text-4xl font-bold text-gray-900 leading-none shrink-0 w-8 text-center">{lead}</span>
+
+                <div className="min-w-0 shrink-0 w-14 self-stretch flex flex-col justify-center gap-0.5">
+                  <div className="font-mono font-semibold text-gray-800 text-[10px] truncate">{r.spec_code}</div>
+                  <span className="text-[11px] font-bold text-gray-400 leading-none whitespace-nowrap">{fmt(avg, 0)} กก./ตัว</span>
                 </div>
-                <div className="flex items-center gap-3 mt-1 text-xs">
-                  <span className="text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
-                  <span className="text-orange-600 font-semibold">{fmt(avg)} <span className="text-gray-400 font-normal">กก./ตัว</span></span>
-                  <div className="ml-auto text-right">
-                    {tAvg !== null ? (
-                      <span className={`font-bold ${tStatus === 'green' ? 'text-green-600' : tStatus === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
-                        {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
-                        {tStatus === 'green' && <span className="ml-0.5">✓</span>}
-                        {tStatus === 'red'   && <span className="ml-0.5">✗</span>}
+
+                <div className="flex items-stretch flex-1 justify-end gap-1 mr-5 text-center min-w-0">
+                  <div className="shrink-0 w-12 flex flex-col items-center">
+                    <span className="text-[9px] leading-none invisible">น้ำหนัก</span>
+                    <div className="flex-1 flex items-center">
+                      <span className="text-4xl font-bold text-gray-900 leading-none whitespace-nowrap">
+                        {r.qty_3.toLocaleString('th-TH')} <span className="text-[9px] font-medium text-cyan-700">ตัว</span>
                       </span>
-                    ) : <span className="text-gray-300">ยังไม่ได้ตรวจ</span>}
-                    {fmtSavedAt(savedAt[r.spec_code]) && (
-                      <div className="text-[11px] text-gray-400">วัดเมื่อ {fmtSavedAt(savedAt[r.spec_code])}</div>
-                    )}
+                    </div>
+                    <span className="text-[9px] leading-none invisible">น้ำหนัก</span>
+                  </div>
+                  <div className="shrink-0 w-16 flex flex-col items-center">
+                    <span className="text-[9px] leading-none invisible">น้ำหนัก</span>
+                    <div className="flex-1 flex items-center">
+                      {chillRoom[r.spec_code] ? (
+                        <span className="flex flex-col items-center justify-center w-12 h-12 text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-xl leading-tight shrink-0">
+                          <span className="text-[10px] font-medium">Chill</span>
+                          <span className="text-lg font-bold">{chillRoom[r.spec_code]}</span>
+                        </span>
+                      ) : <span className="w-12 h-12 invisible" />}
+                    </div>
+                    <span className="text-[9px] leading-none invisible">น้ำหนัก</span>
+                  </div>
+                  <div className="shrink-0 w-16 flex flex-col items-center">
+                    <span className="text-[9px] leading-none invisible">น้ำหนัก</span>
+                    <div className="flex-1 flex items-center">
+                      {tAvg !== null ? (
+                        <span className={`text-2xl font-bold leading-none ${tStatus === 'green' ? 'text-green-600' : tStatus === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
+                          {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
+                        </span>
+                      ) : <span className="text-[10px] text-gray-300">ยังไม่ได้ตรวจ</span>}
+                    </div>
+                    <span className={`text-[9px] text-gray-400 whitespace-nowrap ${fmtSavedTime(savedAt[r.spec_code]) ? '' : 'invisible'}`}>
+                      วัดเมื่อ {fmtSavedTime(savedAt[r.spec_code]) ?? '00:00 น.'}
+                    </span>
                   </div>
                 </div>
+
+                <select
+                  value={lotOrder[r.spec_code] ?? ''}
+                  onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
+                  className={`shrink-0 w-11 h-11 ml-0.5 rounded-xl border text-center text-xl font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
+                  }`}
+                >
+                  <option value="">-</option>
+                  {availableNums.map(n => (
+                    <option key={n} value={String(n)}>{n}</option>
+                  ))}
+                </select>
               </div>
             )
           })}
