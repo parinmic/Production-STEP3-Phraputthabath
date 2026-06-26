@@ -73,6 +73,9 @@ export async function DELETE(req: NextRequest) {
     const tableName = round ? `daily_workforce_${round}` : 'daily_workforce'
     await supabase.from('daily_workforce').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
+    syncToDev(async (dev) => {
+      await dev.from('daily_workforce').delete().eq('source_file', sourceFile)
+    })
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })

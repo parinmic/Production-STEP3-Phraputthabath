@@ -130,6 +130,10 @@ export async function DELETE(req: NextRequest) {
       .eq('table_name', logTableName)
       .eq('source_file', sourceFile)
 
+    syncToDev(async (dev) => {
+      await dev.from('workforce_weekly').delete().eq('weekly_type', type).eq('source_file', sourceFile)
+    })
+
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json(

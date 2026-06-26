@@ -57,6 +57,9 @@ export async function DELETE(req: NextRequest) {
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
     await supabase.from('mas_priority_withdrawal').delete().gte('id', 1)
     await supabase.from('upload_log').delete().eq('table_name', 'mas_priority_withdrawal').eq('source_file', sourceFile)
+    syncToDev(async (dev) => {
+      await dev.from('mas_priority_withdrawal').delete().gte('id', 1)
+    })
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
