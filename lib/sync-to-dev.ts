@@ -3,9 +3,9 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 let _client: SupabaseClient | null = null
 
 function getDevClient(): SupabaseClient | null {
-  if (!process.env.DEV_SUPABASE_URL || !process.env.DEV_SUPABASE_KEY) return null
+  if (!process.env.DEV_SYNC_SUPABASE_URL || !process.env.DEV_SYNC_SUPABASE_ANON_KEY) return null
   if (!_client) {
-    _client = createClient(process.env.DEV_SUPABASE_URL, process.env.DEV_SUPABASE_KEY)
+    _client = createClient(process.env.DEV_SYNC_SUPABASE_URL, process.env.DEV_SYNC_SUPABASE_ANON_KEY)
   }
   return _client
 }
