@@ -516,6 +516,20 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     return { lb, dur, lostCarcasses, groupLoss }
   })
 
+  // Attribute group loss proportionally to each non-RAW SKU in that group
+  const skuLostKgMap = new Map<string, number>()
+  for (const { groupLoss } of lbImpact) {
+    for (const { grp, kg } of groupLoss) {
+      const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
+      const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
+      if (grpTotal <= 0) continue
+      for (const s of grpSkus) {
+        const share = skuStats[s].totalQty / grpTotal
+        skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(kg * share))
+      }
+    }
+  }
+
   const ticks: number[] = []
   for (let m = chartStart; m <= chartEnd; m += 60) ticks.push(m)
 
@@ -541,8 +555,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
             const w = Math.max(pct(Math.min(be, chartEnd)) - l, 0)
             return (
               <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20 flex items-end pb-1 overflow-hidden"
-                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }}>
-                <span className="text-[9px] font-semibold text-gray-500 px-1 truncate leading-tight">{lb.reason || 'Break'}</span>
+                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#fee2e2', borderLeft: '2px dashed #ef4444', borderRight: '2px dashed #ef4444' }}>
+                <span className="text-[9px] font-semibold text-red-500 px-1 truncate leading-tight">{lb.reason || 'Break'}</span>
               </div>
             )
           })}
@@ -606,11 +620,18 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
                               </>
                             )
                           })() : (() => {
+                            const lostKg = skuLostKgMap.get(sku) ?? 0
+                            const effectiveQty = Math.max(0, stat.totalQty - lostKg)
                             const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-                            const bags = wpb && wpb > 0 ? Math.floor(stat.totalQty / wpb) : 0
-                            const displayQty = wpb && wpb > 0 ? bags * wpb : stat.totalQty
+                            const bags = wpb && wpb > 0 ? Math.floor(effectiveQty / wpb) : 0
+                            const displayQty = wpb && wpb > 0 ? bags * wpb : effectiveQty
                             const bagsLabel = bags > 0 ? `${bags} ถุง · ` : ''
-                            return `${bagsLabel}${displayQty.toLocaleString()} กก.`
+                            return (
+                              <>
+                                {bagsLabel}{displayQty.toLocaleString()} กก.
+                                {lostKg > 0 && <span className="ml-1 text-red-500 font-semibold text-[9px]">(-{lostKg} กก.)</span>}
+                              </>
+                            )
                           })()}
                           <span className="text-[9px] sm:text-[10px] font-normal text-gray-400 ml-1">· {stat.workers.length} คน</span>
                         </p>
@@ -685,24 +706,24 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           const wm = `calc((100% - 13rem) * ${w})`
           const ld = `calc(11rem + (100% - 19rem) * ${l})`
           const wd = `calc((100% - 19rem) * ${w})`
-          const bandStyle = { backgroundColor: '#e5e7eb', borderLeft: '1px dashed #9ca3af', borderRight: '1px dashed #9ca3af' }
+          const bandStyle = { backgroundColor: '#fff', borderLeft: '2px dashed #ef4444', borderRight: '2px dashed #ef4444' }
           return [
-            <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-25 pointer-events-none flex flex-col justify-center overflow-hidden"
+            <div key={`lb-${i}-m`} className="sm:hidden absolute top-0 bottom-0 z-30 pointer-events-none flex flex-col justify-center overflow-hidden"
               style={{ left: lm, width: wm, ...bandStyle }}>
-              <span className="text-[8px] font-bold text-gray-600 px-1 truncate leading-tight">{lb.reason || 'Breakline'}</span>
+              <span className="text-[8px] font-bold text-red-500 px-1 truncate leading-tight">{lb.reason || 'Breakline'}</span>
               {lostCarcasses !== null && lostCarcasses > 0 && (
-                <span className="text-[7px] text-gray-500 px-1 font-mono">-{lostCarcasses} ตัว</span>
+                <span className="text-[7px] text-red-400 px-1 font-mono">-{lostCarcasses} ตัว</span>
               )}
             </div>,
-            <div key={`lb-${i}-d`} className="hidden sm:flex absolute top-0 bottom-0 z-25 pointer-events-none flex-col justify-center overflow-hidden"
+            <div key={`lb-${i}-d`} className="hidden sm:flex absolute top-0 bottom-0 z-30 pointer-events-none flex-col justify-center overflow-hidden"
               style={{ left: ld, width: wd, ...bandStyle }}>
-              <span className="text-[9px] font-bold text-gray-600 px-1.5 truncate leading-tight">{lb.reason || 'Breakline'}</span>
-              <span className="text-[8px] text-gray-500 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
+              <span className="text-[9px] font-bold text-red-500 px-1.5 truncate leading-tight">{lb.reason || 'Breakline'}</span>
+              <span className="text-[8px] text-red-400 px-1.5 font-mono">{lb.start_time}–{lb.end_time}</span>
               {lostCarcasses !== null && lostCarcasses > 0 && (
                 <span className="text-[8px] font-semibold text-red-500 px-1.5">-{lostCarcasses} ตัว</span>
               )}
               {groupLoss.slice(0, 3).map(({ grp, kg }) => (
-                <span key={grp} className="text-[7px] text-gray-500 px-1.5 truncate">{grp}: -{kg} กก.</span>
+                <span key={grp} className="text-[7px] text-red-400 px-1.5 truncate">{grp}: -{kg} กก.</span>
               ))}
             </div>,
           ]
