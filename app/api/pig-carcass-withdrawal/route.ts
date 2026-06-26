@@ -10,10 +10,16 @@ export async function GET() {
     .limit(1)
     .single()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('stock_20')
     .select('spec_code, qty_3, weight_3')
     .eq('material_code', '90007')
+
+  if (log?.source_file) {
+    query = query.eq('source_file', log.source_file)
+  }
+
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
