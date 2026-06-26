@@ -249,14 +249,17 @@ export default function CarcassYieldPlanView({
                       {yieldKg > 0 && (
                         <div className="flex items-center gap-2 shrink-0">
                           <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                            <div className="h-full rounded-full bg-emerald-500 transition-all"
+                            <div className={`h-full rounded-full transition-all ${assignedKg > yieldKg ? 'bg-red-500' : 'bg-emerald-500'}`}
                               style={{ width: `${usedPct}%` }} />
                           </div>
-                          <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(usedPct)}%</span>
+                          <span className={`text-[10px] w-8 text-right ${assignedKg > yieldKg ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>
+                            {Math.round(usedPct)}%
+                          </span>
                         </div>
                       )}
-                      <span className="text-xs font-bold text-emerald-700 w-20 text-right shrink-0">
+                      <span className={`text-xs font-bold w-20 text-right shrink-0 ${assignedKg > yieldKg ? 'text-red-600' : 'text-emerald-700'}`}>
                         {assignedKg > 0 ? `${fmt(assignedKg)} กก.` : '—'}
+                        {assignedKg > yieldKg && <span className="block text-[9px] font-normal text-red-400">เกิน Yield</span>}
                       </span>
                     </div>
 
