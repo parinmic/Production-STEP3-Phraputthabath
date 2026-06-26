@@ -305,11 +305,12 @@ function allocateBalanced(params: {
   wpbMap: Map<string, number>
   specialTimeMap: Map<string, { startMins: number | null; stopMins: number | null }>
   skuTotalQtyOverride?: Map<string, number>
+  skuRateOverrideMap?: Map<string, number>
 }): Record<string, unknown>[] {
   const {
     productionDate, tableName, targets, workers, skuMap, jobAssignMap,
     workerHours, workerFreeAtMins, workerBusySegments, phaseEndMins,
-    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride,
+    period, phaseRoundMins, wpbMap, specialTimeMap, skuTotalQtyOverride, skuRateOverrideMap,
   } = params
 
   if (!targets.length || !workers.length) return []
@@ -339,7 +340,7 @@ function allocateBalanced(params: {
         normSku: cleanSku, rawSku: t.sku,
         skuName: prod.sku_name || t.skuName || null,
         totalQty: t.targetQty, isDeficit: t.isDeficit || false,
-        productGroup: prod.product_group, rate: prod.rate, wpb,
+        productGroup: prod.product_group, rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate, wpb,
         channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
       })
     }
@@ -990,6 +991,56 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (sap && (type === 'main' || type === 'หลัก')) mainSkuSet.add(sap)
   }
 
+  // Carcass-yield-derived rate per product_group — replaces Mas Productivity rate as the
+  // time driver for groups gated by carcass cutting throughput (yield kg ÷ carving minutes).
+  let groupYieldCap: Record<string, number> = {}
+  const skuEffectiveRateMap = new Map<string, number>()
+  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
+    const capLots    = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
+    const capRate    = params.carcassRate
+    const capYield   = masYieldRaw as { carcass_weight: number; product_group: string; yield_pct: number }[]
+    const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
+
+    let capPoolIdx = 0
+    for (const seg of CARCASS_ACTIVE_SEGS) {
+      const pigs = Math.floor((seg.mins * 60) / capRate)
+      let need   = pigs
+      const usages: { qty: number; avg: number }[] = []
+      while (need > 0 && capPoolIdx < capLots.length) {
+        const lot  = capLots[capPoolIdx]
+        const take = Math.min(need, lot.remaining)
+        if (take > 0) { usages.push({ qty: take, avg: lot.avg_weight }); lot.remaining -= take; need -= take }
+        if (lot.remaining === 0) capPoolIdx++
+      }
+      if (seg.phase !== selectedPhase) continue
+      for (const u of usages) {
+        const wt = capUniqWts.reduce((b, w) => Math.abs(w - u.avg) < Math.abs(b - u.avg) ? w : b, capUniqWts[0] ?? 0)
+        for (const my of capYield) {
+          if (my.carcass_weight !== wt) continue
+          const kg = (my.yield_pct / 100) * u.avg * u.qty
+          groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
+        }
+      }
+    }
+
+    // Throughput (กก./ชม.) per group = yield kg available this phase ÷ carcass-cutting minutes
+    // for this phase — used in place of Mas Productivity rate for SKUs in capped groups.
+    const phaseNetMins = CARCASS_ACTIVE_SEGS
+      .filter(s => s.phase === selectedPhase)
+      .reduce((s, seg) => s + seg.mins, 0)
+
+    if (phaseNetMins > 0) {
+      for (const [grp, kg] of Object.entries(groupYieldCap)) {
+        const rateKgPerHr = kg / (phaseNetMins / 60)
+        for (const p of productivity) {
+          if (p.product_group !== grp) continue
+          skuEffectiveRateMap.set(p.sku, rateKgPerHr)
+          skuEffectiveRateMap.set(p.sku.replace(/^0+/, ''), rateKgPerHr)
+        }
+      }
+    }
+  }
+
   // Parse variance masters
   const lotusVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
@@ -1062,7 +1113,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           if (startMins < checkpointMins) {
             const cleanSku = (a.sku as string).replace(/^0+/, '')
             const prod = skuMap.get(cleanSku) ?? skuMap.get(a.sku as string)
-            const rate = prod?.rate ?? 27.0
+            const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
             const duration = rate > 0 ? Math.round((Number(a.target_quantity) / rate) * 60) : 0
             const endMins = wallClockFinish(startMins, duration)
             workerKeptMaxEndMins.set(wName, Math.max(workerKeptMaxEndMins.get(wName) ?? 0, endMins))
@@ -1346,39 +1397,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     })
   assignList = [...specialList, ...assignList.filter(i => !hasSpecialTimes(i.sku))]
 
-  // groupYieldCap: yield (กก.) per product_group for selectedPhase — shared by cap + raw remainder
-  let groupYieldCap: Record<string, number> = {}
-
   // Cap assignList to carcass yield per product group (assignList is already priority-ordered)
-  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
-    const capLots    = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
-    const capRate    = params.carcassRate
-    const capYield   = masYieldRaw as { carcass_weight: number; product_group: string; yield_pct: number }[]
-    const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
-
-    let capPoolIdx = 0
-
-    for (const seg of CARCASS_ACTIVE_SEGS) {
-      const pigs = Math.floor((seg.mins * 60) / capRate)
-      let need   = pigs
-      const usages: { qty: number; avg: number }[] = []
-      while (need > 0 && capPoolIdx < capLots.length) {
-        const lot  = capLots[capPoolIdx]
-        const take = Math.min(need, lot.remaining)
-        if (take > 0) { usages.push({ qty: take, avg: lot.avg_weight }); lot.remaining -= take; need -= take }
-        if (lot.remaining === 0) capPoolIdx++
-      }
-      if (seg.phase !== selectedPhase) continue
-      for (const u of usages) {
-        const wt = capUniqWts.reduce((b, w) => Math.abs(w - u.avg) < Math.abs(b - u.avg) ? w : b, capUniqWts[0] ?? 0)
-        for (const my of capYield) {
-          if (my.carcass_weight !== wt) continue
-          const kg = (my.yield_pct / 100) * u.avg * u.qty
-          groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
-        }
-      }
-    }
-
+  // groupYieldCap was already computed above alongside skuEffectiveRateMap.
+  if (Object.keys(groupYieldCap).length > 0) {
     // Deduct per item in priority order; items exceeding the remaining cap are trimmed
     const groupRemaining = { ...groupYieldCap }
     for (const item of assignList) {
@@ -1476,6 +1497,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           wpbMap,
           specialTimeMap,
           skuTotalQtyOverride: globalSkuTotalQty,
+          skuRateOverrideMap: skuEffectiveRateMap,
         }))
       }
     }
@@ -1541,7 +1563,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     for (const task of workerTasks) {
       const cleanSku = (task.sku as string).replace(/^0+/, '')
       const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
-      const rate = prod?.rate ?? 27.0
+      const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
       const duration = rate > 0 ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
 
       if (task.isKept) {
