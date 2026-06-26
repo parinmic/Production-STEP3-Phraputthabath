@@ -133,8 +133,14 @@ export default function PigCarcassWithdrawalPage() {
   const trimmingNum = parseInt(trimmingQty) || 0
   const diff        = trimmingNum > 0 ? trimmingNum - selQty : null
 
-  // Numbers already assigned to other lots
-  const usedOrders = new Set(Object.values(lotOrder).filter(v => v !== ''))
+  // Numbers already assigned to other lots (only active rows — exclude stale localStorage entries)
+  const activeSpecs = new Set(rows.map(r => r.spec_code))
+  const usedOrders  = new Set(
+    Object.entries(lotOrder)
+      .filter(([spec]) => activeSpecs.has(spec))
+      .map(([, v]) => v)
+      .filter(v => v !== '')
+  )
 
   return (
     <div className="space-y-4 sm:space-y-6">
