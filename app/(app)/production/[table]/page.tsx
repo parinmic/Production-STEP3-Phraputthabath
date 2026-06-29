@@ -1442,29 +1442,43 @@ export default function TablePage() {
     raws: { sap: string; name: string; qty: number }[]
   }[]>([])
 
+  // Load acknowledgments from Supabase (syncs across all devices)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`)
-      setAckedSkus(new Set(JSON.parse(raw ?? '[]') as string[]))
-    } catch { setAckedSkus(new Set()) }
+    let cancelled = false
+    supabase
+      .from('production_ack')
+      .select('sku')
+      .eq('production_date', date)
+      .eq('table_name', tableSlug)
+      .eq('phase', selectedPhase)
+      .then(({ data }) => {
+        if (cancelled) return
+        setAckedSkus(new Set((data ?? []).map((r: { sku: string }) => r.sku)))
+      })
+    return () => { cancelled = true }
   }, [date, tableSlug, selectedPhase])
-
-  useEffect(() => {
-    if (!ackedSkus.size) return
-    localStorage.setItem(
-      `plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`,
-      JSON.stringify(Array.from(ackedSkus))
-    )
-  }, [ackedSkus, date, tableSlug, selectedPhase])
 
   const toggleSkuAck = useCallback((sku: string) => {
     setAckedSkus(prev => {
       const next = new Set(prev)
-      if (next.has(sku)) next.delete(sku)
-      else next.add(sku)
+      const nowAcked = !next.has(sku)
+      if (nowAcked) {
+        next.add(sku)
+        supabase.from('production_ack').upsert(
+          { production_date: date, table_name: tableSlug, phase: selectedPhase, sku },
+          { onConflict: 'production_date,table_name,phase,sku' }
+        )
+      } else {
+        next.delete(sku)
+        supabase.from('production_ack').delete()
+          .eq('production_date', date)
+          .eq('table_name', tableSlug)
+          .eq('phase', selectedPhase)
+          .eq('sku', sku)
+      }
       return next
     })
-  }, [])
+  }, [date, tableSlug, selectedPhase])
 
   const loadWipItems = async (d: string, phase: number | 'all') => {
     let q = supabase
