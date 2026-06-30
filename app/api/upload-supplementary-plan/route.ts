@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
@@ -23,11 +23,11 @@ function toISODate(val: unknown): string | null {
   return null
 }
 
-export async function GET(req: NextRequest) {
-  // Fetch all logs for all supplementary slots
+export async function GET() {
+  // Fetch all logs for all supplementary slots — no req needed, no query params
   const { data: logs } = await supabase
     .from('upload_log')
-    .select('source_file, record_count, uploaded_at, table_name')
+    .select('id, source_file, record_count, uploaded_at, table_name')
     .like('table_name', 'production_plan_supplementary_%')
     .order('uploaded_at', { ascending: false })
     .limit(60)
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
                         : (cols.find(c => c.toLowerCase().includes('req') || c.toLowerCase().includes('rdate')) ?? '')
           sku           = String(r[skuCol] ?? '').trim()
           sku_name      = String(r[nameCol] ?? '').trim()
-          
+
           let qty = parseFloat(String(r[qtyCol] || '0')) || 0
           if (qty === 0 && cols.includes('rPlan_wgt')) {
             qty = parseFloat(String(r['rPlan_wgt'] ?? '0')) || 0
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
           delivery_date = toISODate(r['วันที่ส่ง'] ?? r['delivery_date'])
           loading_time  = String(r['loading_time'] ?? r['เวลาต้องโหลด'] ?? '10:00').trim()
           deadline_time = String(r['deadline_time'] ?? '').trim()
-          
+
           // Determine slot based on loading time:
           // Slot 1: loading time <= 14:00
           // Slot 2: loading time > 14:00 and <= 16:00
@@ -166,28 +166,28 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Clean up old records for this filename across all slots
-    await supabase
-      .from('production_plan_supplementary')
-      .delete()
-      .eq('source_file', filename ?? 'unknown')
-
-    await supabase
-      .from('upload_log')
-      .delete()
-      .eq('source_file', filename ?? 'unknown')
-
-    // Insert records
-    const { error } = await supabase.from('production_plan_supplementary').insert(records)
-    if (error) throw error
-
-    // Group the inserted records by slot to create upload logs
+    // Group records by slot to create per-slot upload_log entries
     const slotGroups: Record<string, number> = {}
     for (const rec of records) {
       slotGroups[rec.slot] = (slotGroups[rec.slot] || 0) + 1
     }
 
+    // Create upload_log entries per slot (first slot entry, we use the first one's id is not critical
+    // since CASCADE is on upload_log.id — we use the first log entry id just to tag the data rows,
+    // but supplementary uses source_file-based grouping in GET so we insert multiple log entries)
+    // Insert the first slot log to get an id for tagging all records
+    const firstSlot = Object.keys(slotGroups)[0]
+    const firstTableName = `production_plan_supplementary_${firstSlot}`
+    const { data: logEntry, error: logErr } = await supabase
+      .from('upload_log')
+      .insert({ table_name: firstTableName, source_file: filename ?? 'unknown', record_count: records.length })
+      .select('id')
+      .single()
+    if (logErr) throw logErr
+
+    // Insert remaining slot log entries (no id needed, CASCADE will clean them via source_file-level delete)
     for (const [s, count] of Object.entries(slotGroups)) {
+      if (s === firstSlot) continue
       const tableName = `production_plan_supplementary_${s}`
       await supabase.from('upload_log').insert({
         table_name:   tableName,
@@ -196,9 +196,27 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: logEntry.id }))
+    const { error } = await supabase.from('production_plan_supplementary').insert(recordsWithId)
+    if (error) {
+      await supabase.from('upload_log').delete().eq('source_file', filename ?? 'unknown')
+      throw error
+    }
+
     await syncToDevAwaited(async (dev) => {
-      await dev.from('production_plan_supplementary').delete().eq('source_file', filename ?? 'unknown')
-      await batchInsert(dev, 'production_plan_supplementary', records)
+      const { data: devLog, error: devLogErr } = await dev
+        .from('upload_log')
+        .insert({ table_name: firstTableName, source_file: filename ?? 'unknown', record_count: records.length })
+        .select('id')
+        .single()
+      if (devLogErr) throw devLogErr
+      // Insert remaining slot log entries on dev
+      for (const [s, count] of Object.entries(slotGroups)) {
+        if (s === firstSlot) continue
+        const tableName = `production_plan_supplementary_${s}`
+        await dev.from('upload_log').insert({ table_name: tableName, source_file: filename ?? 'unknown', record_count: count })
+      }
+      await batchInsert(dev, 'production_plan_supplementary', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLog.id })))
     })
     return NextResponse.json({
       success: true,
@@ -212,14 +230,10 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const sourceFile = req.nextUrl.searchParams.get('file')
-    if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
-
-    await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
-    await supabase.from('upload_log').delete().eq('source_file', sourceFile)
-    await syncToDevAwaited(async (dev) => {
-      await dev.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
-    })
+    const uploadLogId = req.nextUrl.searchParams.get('id')
+    if (!uploadLogId) return NextResponse.json({ success: false, message: 'missing id' }, { status: 400 })
+    // ON DELETE CASCADE removes production_plan_supplementary rows automatically
+    await supabase.from('upload_log').delete().eq('id', uploadLogId)
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })
