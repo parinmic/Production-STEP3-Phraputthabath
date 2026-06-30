@@ -143,8 +143,9 @@ function statusColor(s: string) {
 }
 
 function minsToLabel(mins: number) {
-  const hh = Math.floor(mins / 60) % 24
-  const mm = mins % 60
+  const rounded = Math.round(mins)
+  const hh = Math.floor(rounded / 60) % 24
+  const mm = rounded % 60
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
