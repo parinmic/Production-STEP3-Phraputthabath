@@ -207,23 +207,17 @@ function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): str
 interface WorkerTableProps {
   items: Assignment[]
   phaseStart: number
-  rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerTableProps) {
+function WorkerTable({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerTableProps) {
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
   const workers = Object.keys(byWorker).sort()
   if (!workers.length) return null
-
-  const taskHours = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    return (rate && rate > 0) ? Number(task.target_quantity) / rate : null
-  }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
@@ -246,7 +240,6 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
               curMins = Math.max(curMins, getPhaseStart(t.period))
               lastPeriod = t.period
             }
-            const h = taskHours(t)
             const isConcurrent = String(t.note ?? '').includes('concurrent')
             let startMins: number
             if (t.deadline_time) {
@@ -256,13 +249,10 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
             } else {
               startMins = curMins
             }
-            const durMins = h !== null ? Math.round(h * 60) : 0
-            const endMins = wallClockFinish(startMins, durMins)
-            curMins = Math.max(curMins, endMins)
+            curMins = Math.max(curMins, startMins)
             const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap)
-            return { ...t, startMins, endMins, startLabel: minsToLabel(startMins), finishLabel: minsToLabel(endMins), hours: h, displayQty }
+            return { ...t, startMins, startLabel: minsToLabel(startMins), displayQty }
           })
-          const totalFinish = minsToLabel(curMins)
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
 
           return (
@@ -288,7 +278,7 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
                         {bagLabel(task.sku, task.displayQty, bagMap)}{task.displayQty.toLocaleString()} กก.
                       </span>
                       <span className="text-xs font-mono opacity-80" style={{ color: col.fg }}>
-                        {timeRangeLabel(task.startMins, task.endMins)}
+                        {task.startLabel}
                       </span>
                       {(isDone || isActive) && (
                         <span className="absolute top-1 right-1" style={{ color: statusColor(task.status) }}>
@@ -303,7 +293,6 @@ function WorkerTable({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: 
                 <p className={`text-sm font-bold ${allDone ? 'text-green-600' : anyActive ? 'text-amber-600' : 'text-gray-800'}`}>
                   {workerTotal.toLocaleString()} กก.
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">เสร็จ {totalFinish} น.</p>
               </div>
             </div>
           )
@@ -342,7 +331,6 @@ interface SkuScheduleViewProps {
   items: Assignment[]
   phaseStart: number
   phaseEnd: number
-  rateMap: Record<string, number>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
@@ -354,7 +342,7 @@ interface SkuScheduleViewProps {
   carcassRate?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -374,10 +362,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 
   const phaseStartMins = phaseStart * 60
 
-  const taskDurMins = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-  }
+  const taskDurMins = (_task: Assignment) => 0
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -478,17 +463,27 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
-  // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially
+  // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially.
+  // Throughput is scaled from ACTUAL planned qty so bars always fill the full phase,
+  // regardless of breakline deductions or partial plans.
   if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
     const phaseEndWallSeq = phaseEnd * 60
+    let phaseNetMinsSeq = phaseEndWallSeq - phaseStartMins
+    for (const [bs, be] of BREAKS) {
+      phaseNetMinsSeq -= Math.max(0, Math.min(be, phaseEndWallSeq) - Math.max(bs, phaseStartMins))
+    }
+
     for (const grp of skuGroups) {
-      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
+      if (!(carcassThroughputByGroup[grp.grp] > 0)) continue
+      // Scale throughput to planned qty so total sequential duration = phaseNetMinsSeq
+      const throughput = grp.totalQty > 0
+        ? grp.totalQty / phaseNetMinsSeq
+        : (carcassThroughputByGroup[grp.grp] ?? 0)
       if (throughput <= 0) continue
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
       for (const sku of bySeq) {
         if (cursor >= phaseEndWallSeq) {
-          // No time left in this phase
           skuStats[sku].minStart = phaseEndWallSeq
           skuStats[sku].maxEnd   = phaseEndWallSeq
           skuStats[sku].segments = []
@@ -498,7 +493,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         const durMins = Math.round(skuStats[sku].totalQty / throughput)
         const rawEnd  = wallClockFinish(cursor, durMins)
         const endMins = Math.min(rawEnd, phaseEndWallSeq)
-        // Pro-rate qty if truncated by phase end
         if (rawEnd > phaseEndWallSeq) {
           let netMins = endMins - cursor
           for (const [bs, be] of BREAKS) netMins -= Math.max(0, Math.min(be, endMins) - Math.max(bs, cursor))
@@ -510,57 +504,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
         cursor = endMins
       }
       grp.skus = bySeq
-    }
-  }
-
-  // For "By" groups (no RAW SKUs): cycle through SKUs to fill remaining phase capacity
-  if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
-    const phaseEndWall = phaseEnd * 60
-    // Net working minutes in this phase (subtract static break overlaps)
-    let phaseNetMins = phaseEndWall - phaseStartMins
-    for (const [bs, be] of BREAKS) {
-      phaseNetMins -= Math.max(0, Math.min(be, phaseEndWall) - Math.max(bs, phaseStartMins))
-    }
-
-    for (const grp of skuGroups) {
-      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
-      if (throughput <= 0) continue
-      if (grp.skus.some(sku => skuStats[sku].isRaw)) continue // Main group → skip
-
-      const bySkus = grp.skus.filter(sku => skuStats[sku].totalQty > 0)
-      if (!bySkus.length) continue
-
-      // Snapshot original order qty (fixed cycle batch size)
-      const orderQty: Record<string, number> = {}
-      for (const sku of bySkus) orderQty[sku] = skuStats[sku].totalQty
-
-      const groupCapacity = throughput * phaseNetMins
-      let totalProduced  = bySkus.reduce((s, sku) => s + orderQty[sku], 0)
-      let cursor         = Math.max(...bySkus.map(sku => skuStats[sku].maxEnd))
-      let cycleIdx       = 0
-
-      for (let guard = 0; guard < 10000 && cursor < phaseEndWall && totalProduced < groupCapacity; guard++) {
-        const sku     = bySkus[cycleIdx % bySkus.length]
-        const durMins = Math.max(1, Math.round(orderQty[sku] / throughput))
-        const rawEnd  = wallClockFinish(cursor, durMins)
-        const segEnd  = Math.min(rawEnd, phaseEndWall)
-
-        // Pro-rate kg if cut short by phase end
-        const addKg = rawEnd <= phaseEndWall
-          ? orderQty[sku]
-          : (() => {
-              let net = segEnd - cursor
-              for (const [bs, be] of BREAKS) net -= Math.max(0, Math.min(be, segEnd) - Math.max(bs, cursor))
-              return Math.round(throughput * Math.max(0, net))
-            })()
-
-        skuStats[sku].segments.push(...skuStats[sku].workers.map(w => ({ start: cursor, end: segEnd, worker: w, isDeficit: false })))
-        skuStats[sku].maxEnd    = Math.max(skuStats[sku].maxEnd, segEnd)
-        skuStats[sku].totalQty += addKg
-        totalProduced          += addKg
-        cursor  = segEnd
-        cycleIdx++
-      }
     }
   }
 
@@ -898,7 +841,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
 interface ProductionSummaryViewProps {
   items: Assignment[]
   phaseStart: number
-  rateMap: Record<string, number>
   bagMap: Record<string, number>
   date: string
   tableName: string
@@ -910,7 +852,7 @@ interface ProductionSummaryViewProps {
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, groupMap, productTypeMap, carcassThroughputByGroup, phaseNetMins = 300 }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, groupMap, productTypeMap, carcassThroughputByGroup, phaseNetMins = 300 }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -996,11 +938,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const phaseStartMins = phaseStart * 60
 
-  const taskDurMins = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-  }
-
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
@@ -1011,7 +948,6 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
     const tasks = mergeTasks(rawTasks)
     let cur = phaseStartMins
     for (const task of tasks) {
-      const dur = taskDurMins(task)
       let startMin = cur
       if (task.deadline_time) {
         const [dh, dm] = task.deadline_time.split(':').map(Number)
@@ -1019,7 +955,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           startMin = Math.max(startMin, dh * 60 + dm)
         }
       }
-      cur = wallClockFinish(startMin, dur)
+      cur = startMin
       if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999, isRaw: task.unit === 'RAW' }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
@@ -1307,13 +1243,12 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
 interface WorkerCardViewProps {
   items: Assignment[]
   phaseStart: number
-  rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
+function WorkerCardView({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerCardViewProps) {
   const [nowMins, setNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
@@ -1331,11 +1266,6 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
 
   const phaseStartMins = phaseStart * 60
 
-  const taskDurMins = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-  }
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {workers.map(name => {
@@ -1347,7 +1277,6 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
 
         let curMins = phaseStartMins
         const taskInfo = tasks.map(t => {
-          const dur = taskDurMins(t)
           const isConcurrent = String(t.note ?? '').includes('concurrent')
           let startMin = curMins
           if (t.deadline_time) {
@@ -1357,14 +1286,9 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
               startMin = isConcurrent ? dl : Math.max(startMin, dl)
             }
           }
-          const endMin = wallClockFinish(startMin, dur)
-          curMins = Math.max(curMins, endMin)
-          return { ...t, startMin, endMin, dur, startLabel: minsToLabel(startMin), endLabel: minsToLabel(endMin) }
+          curMins = Math.max(curMins, startMin)
+          return { ...t, startMin, startLabel: minsToLabel(startMin) }
         })
-        const totalDur    = curMins - phaseStartMins
-        const finishLabel = minsToLabel(curMins)
-        const nowInRange  = nowMins >= phaseStartMins && nowMins <= curMins && totalDur > 0
-        const nowPct      = nowInRange ? ((nowMins - phaseStartMins) / totalDur) * 100 : 0
 
         return (
           <div key={name} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
@@ -1374,24 +1298,17 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
                 {workerTotal.toLocaleString()} กก.
               </p>
             </div>
-            <div className="flex items-center justify-between mt-0.5 mb-3">
+            <div className="mt-0.5 mb-3">
               <p className="text-xs font-mono text-gray-400">{tasks[0].worker_code}</p>
-              <p className="text-xs text-gray-400">{minsToLabel(phaseStartMins)} → {finishLabel}</p>
             </div>
-            <div className="relative mb-3">
-              <div className="flex rounded-full overflow-hidden" style={{ height: 6 }}>
-                {taskInfo.map(t => (
-                  <div key={t.id} style={{
-                    width: totalDur > 0 ? `${(t.dur / totalDur) * 100}%` : '0%',
-                    backgroundColor: skuColor[t.sku].bg,
-                    opacity: t.status === 'เสร็จแล้ว' ? 0.5 : 1,
-                  }} />
-                ))}
-              </div>
-              {nowInRange && (
-                <div className="absolute -top-1 -bottom-1 w-0.5 bg-red-400 rounded-full pointer-events-none z-10"
-                  style={{ left: `${nowPct}%`, transform: 'translateX(-50%)' }} />
-              )}
+            <div className="flex rounded-full overflow-hidden mb-3" style={{ height: 6 }}>
+              {taskInfo.map(t => (
+                <div key={t.id} style={{
+                  flex: 1,
+                  backgroundColor: skuColor[t.sku].bg,
+                  opacity: t.status === 'เสร็จแล้ว' ? 0.5 : 1,
+                }} />
+              ))}
             </div>
             <div className="space-y-1.5">
               {taskInfo.map(t => {
@@ -1409,7 +1326,7 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
                         {isRaw && <span className="ml-1 px-1 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>}
                       </p>
                       <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-xs font-mono text-gray-400">{timeRangeLabel(t.startMin, t.endMin)}</span>
+                        <span className="text-xs font-mono text-gray-400">{t.startLabel}</span>
                         <span className="text-xs font-bold ml-2" style={{ color: isDeficit ? '#dc2626' : isRaw ? '#92400e' : col.fg }}>
                           {isRaw
                             ? `${Number(t.target_quantity).toLocaleString()} กก.`
@@ -1435,13 +1352,12 @@ function WorkerCardView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor 
 interface CurrentTimeViewProps {
   items: Assignment[]
   phaseStart: number
-  rateMap: Record<string, number>
   nameMap: Record<string, string>
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
 }
 
-function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor }: CurrentTimeViewProps) {
+function CurrentTimeView({ items, phaseStart, nameMap, bagMap, skuColor }: CurrentTimeViewProps) {
   const [realNowMins, setRealNowMins] = useState(() => {
     const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
   })
@@ -1461,11 +1377,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor
 
   const phaseStartMins = phaseStart * 60
 
-  const taskDurMins = (task: Assignment) => {
-    const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-    return (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
-  }
-
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {workers.map(name => {
@@ -1474,7 +1385,6 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor
 
         let curMins2 = phaseStartMins
         const taskInfo = tasks.map(t => {
-          const dur = taskDurMins(t)
           const isConcurrent = String(t.note ?? '').includes('concurrent')
           let startMin = curMins2
           if (t.deadline_time) {
@@ -1484,27 +1394,17 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor
               startMin = isConcurrent ? dl : Math.max(startMin, dl)
             }
           }
-          const endMin = wallClockFinish(startMin, dur)
-          curMins2 = Math.max(curMins2, endMin)
-          return { ...t, startMin, endMin, dur, startLabel: minsToLabel(startMin), endLabel: minsToLabel(endMin) }
+          curMins2 = Math.max(curMins2, startMin)
+          return { ...t, startMin, startLabel: minsToLabel(startMin) }
         })
 
-        const currentTask = taskInfo.find(t => nowMins >= t.startMin && nowMins < t.endMin)
-        const allDone     = nowMins >= curMins2
-        const notStarted  = nowMins < phaseStartMins
+        const startedTasks = taskInfo.filter(t => nowMins >= t.startMin)
+        const currentTask  = startedTasks.length > 0 ? startedTasks[startedTasks.length - 1] : null
+        const allDone      = tasks.every(t => t.status === 'เสร็จแล้ว')
+        const notStarted   = nowMins < phaseStartMins
 
         const card = currentTask ?? (notStarted ? taskInfo[0] : null)
         const col  = card ? skuColor[card.sku] : { bg: '#e5e7eb', fg: '#6b7280' }
-
-        const elapsedPct = currentTask
-          ? Math.min(100, ((nowMins - currentTask.startMin) / Math.max(currentTask.dur, 1)) * 100)
-          : allDone ? 100 : 0
-        const taskProgress = 100 - elapsedPct
-
-        const remainSecs = currentTask ? Math.max(0, (currentTask.endMin - nowMins) * 60) : 0
-        const rh = Math.floor(remainSecs / 3600)
-        const rm = Math.floor((remainSecs % 3600) / 60)
-        const remainLabel = rh > 0 ? `เหลืออีก ${rh}ชม. ${rm}น.` : rm > 0 ? `เหลืออีก ${rm}น.` : currentTask ? 'กำลังเสร็จ' : ''
 
         return (
           <div key={name}
@@ -1521,26 +1421,17 @@ function CurrentTimeView({ items, phaseStart, rateMap, nameMap, bagMap, skuColor
             <p className="text-xs font-mono text-gray-400 mb-3">{tasks[0].worker_code}</p>
 
             {card ? (
-              <>
-                <div className="rounded-full overflow-hidden mb-3" style={{ height: 6, backgroundColor: col.bg + '30' }}>
-                  <div className="h-full rounded-full transition-all duration-1000"
-                    style={{ width: `${taskProgress}%`, backgroundColor: col.bg }} />
+              <div className="rounded-xl px-3 py-2.5" style={{ backgroundColor: col.bg + '25' }}>
+                <p className="text-sm font-semibold leading-tight mb-1" style={{ color: col.fg }}>
+                  {card.sku_name ?? card.sku}
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-gray-500">{card.startLabel}</span>
+                  <span className="text-xs font-bold" style={{ color: col.fg }}>
+                    {bagLabel(card.sku, roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap), bagMap)}{roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap).toLocaleString()} กก.
+                  </span>
                 </div>
-                <div className="rounded-xl px-3 py-2.5" style={{ backgroundColor: col.bg + '25' }}>
-                  <p className="text-sm font-semibold leading-tight mb-1" style={{ color: col.fg }}>
-                    {card.sku_name ?? card.sku}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-gray-500">{timeRangeLabel(card.startMin, card.endMin)}</span>
-                    <span className="text-xs font-bold" style={{ color: col.fg }}>
-                      {bagLabel(card.sku, roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap), bagMap)}{roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap).toLocaleString()} กก.
-                    </span>
-                  </div>
-                  {currentTask && (
-                    <p className="text-xs text-gray-400 mt-1">{remainLabel}</p>
-                  )}
-                </div>
-              </>
+              </div>
             ) : (
               <div className="rounded-xl px-3 py-4 bg-gray-50 text-center">
                 <p className="text-xs text-gray-400">เสร็จสิ้นทุก SKU แล้ว</p>
@@ -1559,12 +1450,11 @@ function exportExcel(
   stationLabel: string,
   date: string,
   allItems: Assignment[],
-  rateMap: Record<string, number>,
   nameMap: Record<string, string>,
 ) {
   const wb = XLSX.utils.book_new()
-  const colWidths = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 36 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }]
-  const header = ['ลำดับ', 'รหัสพนักงาน', 'ชื่อพนักงาน', 'รหัสสินค้า', 'ชื่อสินค้า', 'ปริมาณ (กก.)', 'เวลาเริ่ม', 'เวลาเสร็จ', 'Phase']
+  const colWidths = [{ wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 36 }, { wch: 14 }, { wch: 10 }, { wch: 10 }]
+  const header = ['ลำดับ', 'รหัสพนักงาน', 'ชื่อพนักงาน', 'รหัสสินค้า', 'ชื่อสินค้า', 'ปริมาณ (กก.)', 'เวลาเริ่ม', 'Phase']
 
   const buildRows = (items: Assignment[], phaseStartMins: number, phaseLabel?: string) => {
     const byWorker: Record<string, Assignment[]> = {}
@@ -1576,8 +1466,6 @@ function exportExcel(
       const displayName = nameMap[workerName.replace(/\s+/g, ' ').trim()] ?? shortName(workerName)
       let curMins = phaseStartMins
       for (const task of tasks) {
-        const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
-        const dur  = (rate && rate > 0) ? Math.round((Number(task.target_quantity) / rate) * 60) : 0
         const isConcurrent = String(task.note ?? '').includes('concurrent')
         let startMin = curMins
         if (task.deadline_time) {
@@ -1587,9 +1475,8 @@ function exportExcel(
             startMin = isConcurrent ? dl : Math.max(startMin, dl)
           }
         }
-        const endMin = wallClockFinish(startMin, dur)
-        curMins = Math.max(curMins, endMin)
-        rows.push([seq++, task.worker_code, displayName, task.sku, task.sku_name ?? '', Number(task.target_quantity), minsToLabel(startMin), minsToLabel(endMin), phaseLabel ?? task.period])
+        curMins = Math.max(curMins, startMin)
+        rows.push([seq++, task.worker_code, displayName, task.sku, task.sku_name ?? '', Number(task.target_quantity), minsToLabel(startMin), phaseLabel ?? task.period])
       }
     }
     return rows
@@ -1632,7 +1519,6 @@ export default function BasicTablePage() {
   const [date, setDate]           = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
   const [selectedPhase, setPhase] = useState<number | 'all'>(1)
   const [items, setItems]         = useState<Assignment[]>([])
-  const [rateMap, setRateMap]     = useState<Record<string, number>>({})
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})
   const [bagMap, setBagMap]       = useState<Record<string, number>>({})
   const [groupMap, setGroupMap]         = useState<Record<string, string>>({})
@@ -1690,9 +1576,6 @@ export default function BasicTablePage() {
   }, [loadPigLots])
 
   useEffect(() => {
-    fetch('/api/master/productivity')
-      .then(r => r.json())
-      .then(data => setRateMap(data.rateMap ?? {}))
     Promise.all([
       fetch('/api/master/picking-unit').then(r => r.json()),
       fetch('/api/basic/picking-unit').then(r => r.json()),
@@ -1927,7 +1810,7 @@ export default function BasicTablePage() {
               </button>
             ))}
             <button
-              onClick={() => exportExcel(cfg.label, date, items, rateMap, nameMap)}
+              onClick={() => exportExcel(cfg.label, date, items, nameMap)}
               className="ml-auto hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors whitespace-nowrap">
               <Download size={14} />Export Excel
             </button>
@@ -1940,19 +1823,19 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} rateMap={rateMap} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
-            <WorkerCardView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
+            <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'worker' && filtered.length > 0 && (
-            <WorkerTable items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
+            <WorkerTable items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'time' && filtered.length > 0 && (
-            <CurrentTimeView items={filtered} phaseStart={viewStartH} rateMap={rateMap} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
+            <CurrentTimeView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'summary' && filtered.length > 0 && (
-            <ProductionSummaryView items={filtered} phaseStart={viewStartH} rateMap={rateMap} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} phaseNetMins={PHASE_NET_MINS[String(selectedPhase)] ?? 300} />
+            <ProductionSummaryView items={filtered} phaseStart={viewStartH} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} phaseNetMins={PHASE_NET_MINS[String(selectedPhase)] ?? 300} />
           )}
         </div>
       )}

@@ -39,7 +39,7 @@ export default function CarcassCyclePage() {
   const [master,     setMaster]     = useState<MasYieldRow[]>([])
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
-  const [rate,       setRate]       = useState('90')
+  const [rate,       setRate]       = useState('80')
 
   const loadMaster = useCallback(async () => {
     setLoading(true)
@@ -81,7 +81,7 @@ export default function CarcassCyclePage() {
     localStorage.setItem('pig_carcass_rate', rate)
   }, [rate])
 
-  const rateNum        = parseFloat(rate) || 90
+  const rateNum        = parseFloat(rate) || 80
   const uniqueWeights  = [...new Set(master.map(r => r.carcass_weight))].sort((a, b) => a - b)
 
   // Build results per lot
@@ -142,7 +142,6 @@ export default function CarcassCyclePage() {
           className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
         />
         <span className="text-sm text-gray-500">วิ/ตัว</span>
-        <span className="text-xs text-gray-400">(มาตรฐาน 90 วิ/ตัว)</span>
       </div>
 
       {error && (

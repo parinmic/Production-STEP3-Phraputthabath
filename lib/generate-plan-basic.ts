@@ -46,6 +46,7 @@ export interface GenerateBasicPlanParams {
   deductMode?: 'plan' | 'actual' | 'yield'
   carcassLots?: CarcassLot[]
   carcassRate?: number
+  trimmingQty?: number
 }
 
 export interface GenerateBasicPlanResult {
@@ -126,6 +127,49 @@ function wallClockFinish(fromMins: number, workMins: number): number {
     pos = be
   }
   return pos + remaining
+}
+
+// Approach B: find which carcass lot is active at a given wall-clock time.
+// Pig position = floor(active_work_minutes_from_08:30 × 60 / carcassRate)
+function computeTaskDuration(params: {
+  qty: number
+  productGroup: string | undefined
+  startMins: number
+  sortedLots: { qty: number; avg_weight: number }[]
+  carcassRateSec: number
+  masYield: { carcass_weight: number; product_group: string; yield_pct: number }[]
+  capUniqWts: number[]
+  fallbackRate: number
+}): number {
+  const { qty, productGroup, startMins, sortedLots, carcassRateSec, masYield, capUniqWts, fallbackRate } = params
+  const fallback = fallbackRate > 0 ? Math.round((qty / fallbackRate) * 60) : 0
+
+  if (!sortedLots.length || !carcassRateSec || !masYield.length || !productGroup || !capUniqWts.length) {
+    return fallback
+  }
+
+  const carcassStartMins = 510 // 08:30
+  const activeMins = availableWorkMins(carcassStartMins, startMins)
+  const pigIndex = Math.floor(activeMins * 60 / carcassRateSec)
+
+  let consumed = 0
+  let activeLot: { qty: number; avg_weight: number } | null = null
+  for (const lot of sortedLots) {
+    if (pigIndex < consumed + lot.qty) { activeLot = lot; break }
+    consumed += lot.qty
+  }
+  if (!activeLot) activeLot = sortedLots[sortedLots.length - 1]
+  if (!activeLot) return fallback
+
+  const nearestWt = capUniqWts.reduce((b, w) =>
+    Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
+  const yieldRow = masYield.find(r => r.carcass_weight === nearestWt && r.product_group === productGroup)
+  if (!yieldRow || yieldRow.yield_pct <= 0) return fallback
+
+  const yieldPerPig = (yieldRow.yield_pct / 100) * activeLot.avg_weight
+  if (yieldPerPig <= 0) return fallback
+
+  return Math.round((qty / yieldPerPig) * carcassRateSec / 60)
 }
 
 function normalizeRow(r: Record<string, unknown>): Record<string, unknown> {
@@ -1423,19 +1467,22 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   // Cap assignList to carcass yield per product group (assignList is already priority-ordered)
   // groupYieldCap was already computed above alongside skuEffectiveRateMap.
   if (Object.keys(groupYieldCap).length > 0) {
-    // Deduct per item in priority order; items exceeding the remaining cap are trimmed
-    const groupRemaining = { ...groupYieldCap }
-    for (const item of assignList) {
-      const normSku = item.sku.replace(/^0+/, '')
-      const prod    = skuMap.get(normSku) ?? skuMap.get(item.sku)
-      if (!prod?.product_group) continue
-      const grp       = prod.product_group
-      const remaining = groupRemaining[grp] ?? 0
-      if (remaining <= 0) { item.targetQty = 0; continue }
-      if (item.targetQty > remaining) item.targetQty = roundDownToBag(normSku, remaining)
-      groupRemaining[grp] = Math.max(0, remaining - item.targetQty)
+    // Skip cap entirely if this phase has no carcass yield (e.g. all lots consumed by earlier phases).
+    const hasYieldCap = Object.values(groupYieldCap).some(v => v > 0)
+    if (hasYieldCap) {
+      const groupRemaining = { ...groupYieldCap }
+      for (const item of assignList) {
+        const normSku = item.sku.replace(/^0+/, '')
+        const prod    = skuMap.get(normSku) ?? skuMap.get(item.sku)
+        if (!prod?.product_group) continue
+        const grp       = prod.product_group
+        const remaining = groupRemaining[grp] ?? 0
+        if (remaining <= 0) { item.targetQty = 0; continue }
+        if (item.targetQty > remaining) item.targetQty = roundDownToBag(normSku, remaining)
+        groupRemaining[grp] = Math.max(0, remaining - item.targetQty)
+      }
+      assignList = assignList.filter(item => item.targetQty > 0)
     }
-    assignList = assignList.filter(item => item.targetQty > 0)
   }
 
   // Assign workers per channel pass
