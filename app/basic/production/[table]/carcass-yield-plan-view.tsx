@@ -312,7 +312,7 @@ export default function CarcassYieldPlanView({
                     {/* Remainder row: when plan exists but assigned < yield */}
                     {yieldKg > 0 && items.length > 0 && Math.round(yieldKg - assignedKg) > 0 && (() => {
                       const remainKg = Math.round(yieldKg - assignedKg)
-                      const hasRaw   = (skuByGroup[grp] ?? []).some(s => s.unit === 'RAW')
+                      const hasRaw   = !!(rawByGroup[grp]) || (skuByGroup[grp] ?? []).some(s => s.unit === 'RAW')
                       return (
                         <div className={`flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-dashed ${hasRaw ? 'border-amber-200 bg-amber-50/40' : 'border-blue-100 bg-blue-50/30'}`}>
                           <div className="flex-1 min-w-0 flex items-center gap-1.5">

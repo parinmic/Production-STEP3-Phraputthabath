@@ -1829,8 +1829,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const allGrpProds = productivity.filter(p => p.product_group === grp)
 
         // Main Product: group has a RAW-type SKU → raw remainder (prefer current station)
-        const rawProd = stationProds.find(p => p.product_group === grp && p.product.toUpperCase() === 'RAW')
-          ?? allGrpProds.find(p => p.product.toUpperCase() === 'RAW')
+        const isRawProd = (p: ProductivityRow) =>
+          p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')
+        const rawProd = stationProds.find(p => p.product_group === grp && isRawProd(p))
+          ?? allGrpProds.find(p => isRawProd(p))
         if (rawProd) {
           resequenced.push({
             production_date: productionDate,
