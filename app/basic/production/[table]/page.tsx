@@ -549,6 +549,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       let accKg = 0
 
       for (const sku of bySeq) {
+        if (skuStats[sku]?.isRaw) continue  // RAW SKUs get timing from remainder section below
         const skuQty   = skuStats[sku].totalQty
         const startPig = pigForYield(prePhaseYield + accKg, group)
         const endPig   = pigForYield(prePhaseYield + accKg + skuQty, group)
@@ -623,21 +624,13 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
             }
             if (!remSegs.length) remSegs.push({ start: rawStartT, end: rawEndT })
 
-            const hasRawSku = bySeq.some(s => skuStats[s]?.isRaw)
-            if (hasRawSku) {
-              const rawKey = `__raw__${group}`
-              skuStats[rawKey] = {
-                name: `RAW · ${group}`,
-                totalQty: remainYield,
-                qtyByPeriod: {},
-                minStart: remSegs[0].start,
-                maxEnd: remSegs[remSegs.length - 1].end,
-                workers: [],
-                segments: remSegs.map(s => ({ start: s.start, end: s.end, worker: '__raw__', isDeficit: false })),
-                minSeq: 999998,
-                isRaw: true,
-              }
-              bySeq.push(rawKey)
+            const rawSkuKey = bySeq.find(s => skuStats[s]?.isRaw)
+            if (rawSkuKey) {
+              skuStats[rawSkuKey].totalQty = remainYield
+              skuStats[rawSkuKey].minStart = remSegs[0].start
+              skuStats[rawSkuKey].maxEnd   = remSegs[remSegs.length - 1].end
+              skuStats[rawSkuKey].workers  = []
+              skuStats[rawSkuKey].segments = remSegs.map(s => ({ start: s.start, end: s.end, worker: '__raw__', isDeficit: false }))
             } else {
               // Extend last real SKU's bar
               const lastSku = bySeq[bySeq.length - 1]
@@ -815,7 +808,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 
       <div className="divide-y divide-gray-50 relative">
         {skuGroups.map(({ grp, skus }) => {
-          const visibleSkus = skus.filter(sku => !skuStats[sku].isRaw || sku.startsWith('__raw__'))
+          const visibleSkus = skus.filter(sku => !sku.startsWith('__raw__'))
           if (!visibleSkus.length) return null
           return (
           <div key={grp || '__other__'}>
@@ -830,7 +823,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
             )}
             {visibleSkus.map(sku => {
               const stat      = skuStats[sku]
-              const col       = sku.startsWith('__raw__') ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
+              const col       = skuStats[sku]?.isRaw ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
               const diffSecs  = Math.round(stat.maxEnd * 60 - nowSecs)
               const isDone    = diffSecs <= 0
               let cdText = ''
