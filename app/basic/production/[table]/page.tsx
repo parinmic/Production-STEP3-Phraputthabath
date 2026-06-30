@@ -594,6 +594,67 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         )
         accKg += skuQty
       }
+
+      // After all orders: remaining carcass capacity for this phase
+      if (group) {
+        const totalGroupPhaseYield = yieldUpToPig(totalPigsGantt, group) - prePhaseYield
+        const remainYield = Math.round(totalGroupPhaseYield - accKg)
+        if (remainYield > 0) {
+          const rawStartPig = pigForYield(prePhaseYield + accKg, group)
+          const rawStartT = Math.max(phaseStartMins, pigToWC(rawStartPig))
+          const rawEndT   = Math.min(phaseEndWall, pigToWC(totalPigsGantt))
+          if (rawEndT > rawStartT) {
+            // Build segments splitting around breaklines
+            const remSegs: { start: number; end: number }[] = []
+            let remPig = rawStartPig, remTime = rawStartT
+            while (remPig < totalPigsGantt - 0.001 && remTime < phaseEndWall) {
+              const inPause = allPauses.find(p => p.start <= remTime && p.end > remTime)
+              if (inPause) { remTime = Math.min(inPause.end, phaseEndWall); remPig = pigsAt(remTime); continue }
+              const nextBL = sortedBL.find(b => b.start > remTime)
+              const windowEnd = nextBL ? Math.min(nextBL.start, phaseEndWall) : phaseEndWall
+              if (pigsAt(windowEnd) >= totalPigsGantt) {
+                const segEnd = Math.min(pigToWC(totalPigsGantt), phaseEndWall)
+                if (segEnd > remTime) remSegs.push({ start: remTime, end: segEnd })
+                break
+              } else {
+                if (windowEnd > remTime) remSegs.push({ start: remTime, end: windowEnd })
+                if (nextBL) { remTime = nextBL.end; remPig = pigsAt(nextBL.end) } else break
+              }
+            }
+            if (!remSegs.length) remSegs.push({ start: rawStartT, end: rawEndT })
+
+            const hasRawSku = bySeq.some(s => skuStats[s]?.isRaw)
+            if (hasRawSku) {
+              const rawKey = `__raw__${group}`
+              skuStats[rawKey] = {
+                name: `RAW · ${group}`,
+                totalQty: remainYield,
+                qtyByPeriod: {},
+                minStart: remSegs[0].start,
+                maxEnd: remSegs[remSegs.length - 1].end,
+                workers: [],
+                segments: remSegs.map(s => ({ start: s.start, end: s.end, worker: '__raw__', isDeficit: false })),
+                minSeq: 999998,
+                isRaw: true,
+              }
+              bySeq.push(rawKey)
+            } else {
+              // Extend last real SKU's bar
+              const lastSku = bySeq[bySeq.length - 1]
+              if (lastSku && skuStats[lastSku]) {
+                skuStats[lastSku].totalQty += remainYield
+                skuStats[lastSku].maxEnd    = remSegs[remSegs.length - 1].end
+                skuStats[lastSku].segments  = [
+                  ...skuStats[lastSku].segments,
+                  ...skuStats[lastSku].workers.flatMap(w =>
+                    remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+                  ),
+                ]
+              }
+            }
+          }
+        }
+      }
       grp.skus = bySeq
     }
   } else if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
@@ -754,7 +815,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 
       <div className="divide-y divide-gray-50 relative">
         {skuGroups.map(({ grp, skus }) => {
-          const visibleSkus = skus.filter(sku => !skuStats[sku].isRaw)
+          const visibleSkus = skus.filter(sku => !skuStats[sku].isRaw || sku.startsWith('__raw__'))
           if (!visibleSkus.length) return null
           return (
           <div key={grp || '__other__'}>
