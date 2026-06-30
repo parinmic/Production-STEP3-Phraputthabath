@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 const VALID_TYPES = [
   'sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special',
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('master_logic_manpower').delete().eq('product_type', productType)
       await batchInsert(dev, 'master_logic_manpower', records)
     })
@@ -89,7 +89,7 @@ export async function DELETE(req: NextRequest) {
     const tableName = type ? `master_logic_manpower_${type.replace(/-/g, '_')}` : ''
     await supabase.from('master_logic_manpower').delete().eq('source_file', sourceFile)
     if (tableName) await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('master_logic_manpower').delete().eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })

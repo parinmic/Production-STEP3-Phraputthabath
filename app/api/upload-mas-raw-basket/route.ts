@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('mas_raw_basket').delete().eq('source_file', filename ?? 'unknown')
       await batchInsert(dev, 'mas_raw_basket', records)
     })
@@ -59,7 +59,7 @@ export async function DELETE(req: NextRequest) {
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
     await supabase.from('mas_raw_basket').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('table_name', 'mas_raw_basket').eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('mas_raw_basket').delete().eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })

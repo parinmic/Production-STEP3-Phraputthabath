@@ -8,16 +8,14 @@ export async function GET() {
     .eq('table_name', 'stock_20')
     .order('uploaded_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   let query = supabase
     .from('stock_20')
     .select('spec_code, qty_total, weight_total')
     .eq('material_code', '90007')
 
-  if (log?.source_file) {
-    query = query.eq('source_file', log.source_file)
-  }
+  if (log?.source_file) query = query.eq('source_file', log.source_file)
 
   const { data, error } = await query
 

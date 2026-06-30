@@ -10,12 +10,23 @@ function getDevClient(): SupabaseClient | null {
   return _client
 }
 
-// Fire-and-forget: mirrors an upload operation to the dev DB.
-// Call after a successful production write — never awaited, never throws.
+// Fire-and-forget (used by most upload routes).
 export function syncToDev(fn: (db: SupabaseClient) => Promise<void>): void {
   const client = getDevClient()
   if (!client) return
   fn(client).catch(e => console.error('[sync-to-dev]', e?.message ?? e))
+}
+
+// Awaited version — use when you need the sync to complete before returning the
+// response.  Errors are caught and logged; the caller is never rejected.
+export async function syncToDevAwaited(fn: (db: SupabaseClient) => Promise<void>): Promise<void> {
+  const client = getDevClient()
+  if (!client) return
+  try {
+    await fn(client)
+  } catch (e: unknown) {
+    console.error('[sync-to-dev]', e instanceof Error ? e.message : e)
+  }
 }
 
 // Batch-insert helper (Supabase caps at 1000 rows per request)

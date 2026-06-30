@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       source_file: filename ?? 'unknown',
       record_count: records.length,
     })
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('bom_items').delete().gte('id', 1)
       await batchInsert(dev, 'bom_items', records)
     })
@@ -63,7 +63,7 @@ export async function DELETE(req: NextRequest) {
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
     await supabase.from('bom_items').delete().gte('id', 1)
     await supabase.from('upload_log').delete().eq('table_name', 'bom_items').eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('bom_items').delete().gte('id', 1)
     })
     return NextResponse.json({ success: true })

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET(req: NextRequest) {
   const round = req.nextUrl.searchParams.get('round')
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('daily_workforce').delete().eq('work_date', workDate).eq('upload_round', round ?? '0800')
       await batchInsert(dev, 'daily_workforce', records)
     })
@@ -73,7 +73,7 @@ export async function DELETE(req: NextRequest) {
     const tableName = round ? `daily_workforce_${round}` : 'daily_workforce'
     await supabase.from('daily_workforce').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('daily_workforce').delete().eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })

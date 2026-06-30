@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('production_plan_supplementary').delete().eq('source_file', filename ?? 'unknown')
       await batchInsert(dev, 'production_plan_supplementary', records)
     })
@@ -217,7 +217,7 @@ export async function DELETE(req: NextRequest) {
 
     await supabase.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('production_plan_supplementary').delete().eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -48,8 +48,8 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
-      await dev.from('stock_20').delete().neq('spec_code', '')
+    await syncToDevAwaited(async (dev) => {
+      await dev.from('stock_20').delete().eq('source_file', filename ?? 'unknown')
       await batchInsert(dev, 'stock_20', records)
       await dev.from('upload_log').insert({
         table_name: 'stock_20',
@@ -69,8 +69,9 @@ export async function DELETE(req: NextRequest) {
     if (!sourceFile) return NextResponse.json({ success: false, message: 'missing file' }, { status: 400 })
     await supabase.from('stock_20').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('table_name', 'stock_20').eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('stock_20').delete().eq('source_file', sourceFile)
+      await dev.from('upload_log').delete().eq('table_name', 'stock_20').eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })
   } catch (e: unknown) {

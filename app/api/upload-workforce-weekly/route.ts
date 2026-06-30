@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 const VALID_TYPES = [
   'sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special',
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('workforce_weekly').delete().eq('weekly_type', type).eq('source_file', filename ?? 'unknown')
       await batchInsert(dev, 'workforce_weekly', records)
     })
@@ -130,7 +130,7 @@ export async function DELETE(req: NextRequest) {
       .eq('table_name', logTableName)
       .eq('source_file', sourceFile)
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('workforce_weekly').delete().eq('weekly_type', type).eq('source_file', sourceFile)
     })
 

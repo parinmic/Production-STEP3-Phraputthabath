@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDev, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       record_count: records.length,
     })
 
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       if (!append) {
         const dDates = Array.from(new Set(records.map((r: { delivery_date: string }) => r.delivery_date).filter(Boolean)))
         if (dDates.length) {
@@ -169,7 +169,7 @@ export async function DELETE(req: NextRequest) {
     const tableName = round ? `wet_market_orders_${round}` : 'wet_market_orders'
     await supabase.from('wet_market_orders').delete().eq('source_file', sourceFile)
     await supabase.from('upload_log').delete().eq('table_name', tableName).eq('source_file', sourceFile)
-    syncToDev(async (dev) => {
+    await syncToDevAwaited(async (dev) => {
       await dev.from('wet_market_orders').delete().eq('source_file', sourceFile)
     })
     return NextResponse.json({ success: true })
