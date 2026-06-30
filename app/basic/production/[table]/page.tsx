@@ -594,6 +594,31 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         )
         accKg += skuQty
       }
+      // Remaining pig yield after all orders → synthetic RAW bar to phase end
+      if (group) {
+        const totalGroupPhaseYield = yieldUpToPig(totalPigsGantt, group) - prePhaseYield
+        const remainYield = Math.round(totalGroupPhaseYield - accKg)
+        if (remainYield > 0) {
+          const rawStartPig = pigForYield(prePhaseYield + accKg, group)
+          const rawStartT = Math.max(phaseStartMins, pigToWC(rawStartPig))
+          const rawEndT = Math.min(phaseEndWall, pigToWC(totalPigsGantt))
+          if (rawEndT > rawStartT) {
+            const rawKey = `__raw__${group}`
+            skuStats[rawKey] = {
+              name: `RAW · ${group}`,
+              totalQty: remainYield,
+              qtyByPeriod: {},
+              minStart: rawStartT,
+              maxEnd: rawEndT,
+              workers: [],
+              segments: [{ start: rawStartT, end: rawEndT, worker: '__raw__', isDeficit: false }],
+              minSeq: 999998,
+              isRaw: true,
+            }
+            bySeq.push(rawKey)
+          }
+        }
+      }
       grp.skus = bySeq
     }
   } else if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
@@ -787,7 +812,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
             )}
             {skus.map(sku => {
               const stat      = skuStats[sku]
-              const col       = skuColor[sku]
+              const col       = sku.startsWith('__raw__') ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
               const diffSecs  = stat.maxEnd * 60 - nowSecs
               const isDone    = diffSecs <= 0
               let cdText = ''
@@ -1186,7 +1211,7 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">แผน<br className="sm:hidden" />(กก.)</span>
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />(กก.)</span>
         <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">รับผล<br className="sm:hidden" />ได้(กก.)</span>
-        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />ได้(ถุง)</span>
+        <span className="text-[10px] sm:text-xs font-semibold text-gray-500 text-right leading-tight">ผลิต<br className="sm:hidden" />ได้(กก.)</span>
       </div>
 
       <div className="divide-y divide-gray-50">
