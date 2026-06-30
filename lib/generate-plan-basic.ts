@@ -82,8 +82,9 @@ const BREAKS: [number, number][] = [
 const CARCASS_ACTIVE_SEGS = [
   { phase: 1, mins: 210 },  // 08:30–12:00
   { phase: 1, mins: 90  },  // 13:00–14:30  (break excluded)
-  { phase: 2, mins: 90  },  // 14:30–16:00
-  { phase: 3, mins: 60  },  // 16:00–17:00
+  { phase: 2, mins: 120 },  // 14:30–16:30
+  { phase: 3, mins: 30  },  // 16:30–17:00  (before break)
+  { phase: 3, mins: 720 },  // 18:00–06:00  (post-break, stops when lots exhausted)
 ]
 
 // Basic master calculation_type strings
