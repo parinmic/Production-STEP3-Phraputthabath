@@ -1046,11 +1046,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   // time driver for groups gated by carcass cutting throughput (yield kg ÷ carving minutes).
   let groupYieldCap: Record<string, number> = {}
   const skuEffectiveRateMap = new Map<string, number>()
-  if (params.carcassLots?.length && params.carcassRate && (masYieldRaw ?? []).length > 0) {
-    const capLots    = [...params.carcassLots].sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
+  // Hoisted for use in both groupYieldCap computation and resequenced-pass approach B duration.
+  const capYield = (masYieldRaw ?? []) as { carcass_weight: number; product_group: string; yield_pct: number }[]
+  const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
+  const sortedLotsForDuration: { spec_code: string; qty: number; avg_weight: number; order: number }[] =
+    params.carcassLots?.length ? [...params.carcassLots].sort((a, b) => a.order - b.order) : []
+
+  if (params.carcassLots?.length && params.carcassRate && capYield.length > 0) {
+    const capLots    = sortedLotsForDuration.map(l => ({ ...l, remaining: l.qty }))
     const capRate    = params.carcassRate
-    const capYield   = masYieldRaw as { carcass_weight: number; product_group: string; yield_pct: number }[]
-    const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
 
     let capPoolIdx = 0
     for (const seg of CARCASS_ACTIVE_SEGS) {
@@ -1089,6 +1093,20 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           skuEffectiveRateMap.set(p.sku.replace(/^0+/, ''), rateKgPerHr)
         }
       }
+    }
+  }
+
+  // Fallback groupYieldCap: no lots selected → use shortage pigs × 90 kg default weight
+  // shortage = trimmingQty − sum(selected lots) = trimmingQty (since no lots → sum = 0)
+  if (!params.carcassLots?.length && params.trimmingQty && params.trimmingQty > 0 && capYield.length > 0) {
+    const shortage = params.trimmingQty
+    const defaultWeight = 90
+    const nearestWt = capUniqWts.reduce((b, w) =>
+      Math.abs(w - defaultWeight) < Math.abs(b - defaultWeight) ? w : b, capUniqWts[0] ?? 0)
+    for (const my of capYield) {
+      if (my.carcass_weight !== nearestWt) continue
+      const kg = (my.yield_pct / 100) * defaultWeight * shortage
+      groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
     }
   }
 
@@ -1179,9 +1197,11 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
             const cleanSku = (a.sku as string).replace(/^0+/, '')
             const prod = skuMap.get(cleanSku) ?? skuMap.get(a.sku as string)
             const isYieldCapped = skuEffectiveRateMap.has(cleanSku)
-            const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
+            const fallbackRate = prod?.rate ?? 27.0
             const qtyForDuration = isYieldCapped ? (keptSkuTotalQty.get(cleanSku) ?? Number(a.target_quantity)) : Number(a.target_quantity)
-            const duration = rate > 0 ? Math.round((qtyForDuration / rate) * 60) : 0
+            const duration = isYieldCapped
+              ? computeTaskDuration({ qty: qtyForDuration, productGroup: prod?.product_group, startMins, sortedLots: sortedLotsForDuration, carcassRateSec: params.carcassRate ?? 0, masYield: capYield, capUniqWts, fallbackRate })
+              : (fallbackRate > 0 ? Math.round((qtyForDuration / fallbackRate) * 60) : 0)
             const endMins = wallClockFinish(startMins, duration)
             workerKeptMaxEndMins.set(wName, Math.max(workerKeptMaxEndMins.get(wName) ?? 0, endMins))
             const { id, created_at, updated_at, ...rest } = a
@@ -1639,32 +1659,24 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const cleanSku = (task.sku as string).replace(/^0+/, '')
       const prod = skuMap.get(cleanSku) ?? skuMap.get(task.sku as string)
       const isYieldCapped = skuEffectiveRateMap.has(cleanSku)
-      const rate = skuEffectiveRateMap.get(cleanSku) ?? prod?.rate ?? 27.0
-      const qtyForDuration = isYieldCapped ? (skuTotalQtyAcrossWorkers.get(cleanSku) ?? Number(task.target_quantity)) : Number(task.target_quantity)
-      const duration = rate > 0 ? Math.round((qtyForDuration / rate) * 60) : 0
+      const fallbackRate = prod?.rate ?? 27.0
+
+      // Step 1: determine startMins before computing duration (required for approach B)
+      let startMins: number
+      let isSpecialTask = false
 
       if (task.isKept) {
         const [h, m] = (task.deadline_time as string).split(':').map(Number)
-        const startMins = h * 60 + m
-        const endMins = wallClockFinish(startMins, duration)
-        busySegs.push({ start: startMins, end: endMins })
-        curMins = Math.max(curMins, endMins)
-        delete task.isKept
-        keptTasks.push(task)
+        startMins = h * 60 + m
       } else {
         if (curMins < checkpointMins) curMins = checkpointMins
-
         const specialStart = specialTimeMap.get(cleanSku)?.startMins ?? specialTimeMap.get(task.sku as string)?.startMins ?? null
-
         if (specialStart !== null) {
-          const startMins = Math.max(curMins, specialStart)
+          isSpecialTask = true
+          startMins = Math.max(curMins, specialStart)
           if (!isPhase3 && startMins >= phaseEndMins) continue
-          const endMins = wallClockFinish(startMins, duration)
-          task.deadline_time = minsToTimeStr(startMins)
-          busySegs.push({ start: startMins, end: endMins })
-          keptTasks.push(task)
         } else {
-          let startMins = curMins
+          startMins = curMins
           let advanced = true
           while (advanced) {
             advanced = false
@@ -1675,32 +1687,80 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
               if (startMins >= bs && startMins < be) { startMins = be; advanced = true }
             }
           }
-
           if (!isPhase3 && startMins >= phaseEndMins) continue
-
-          task.deadline_time = minsToTimeStr(startMins)
-          let endMins = wallClockFinish(startMins, duration)
-
-          if (!isPhase3 && endMins > phaseEndMins) {
-            const availMins = availableWorkMins(startMins, phaseEndMins)
-            const truncQty = (availMins / 60) * rate
-            const skuForWpb = cleanSku || (task.sku as string)
-            const wpb = wpbMap.get(skuForWpb) ?? wpbMap.get(task.sku as string) ?? 1
-            let finalQty: number
-            if (wpb > 1 && (task.channel as string) !== 'Makro') {
-              finalQty = Math.floor(truncQty / wpb) * wpb
-            } else {
-              finalQty = Math.round(truncQty)
-            }
-            if (finalQty <= 0) continue
-            task.target_quantity = Math.round(finalQty * 100) / 100
-            endMins = wallClockFinish(startMins, (finalQty / rate) * 60)
-          }
-
-          busySegs.push({ start: startMins, end: endMins })
-          curMins = endMins
-          keptTasks.push(task)
         }
+      }
+
+      // Step 2: compute duration — approach B (per-pig) if yield-capped, else fallback rate
+      const qty = isYieldCapped
+        ? (skuTotalQtyAcrossWorkers.get(cleanSku) ?? Number(task.target_quantity))
+        : Number(task.target_quantity)
+      const duration = computeTaskDuration({
+        qty,
+        productGroup: prod?.product_group,
+        startMins,
+        sortedLots: isYieldCapped ? sortedLotsForDuration : [],
+        carcassRateSec: params.carcassRate ?? 0,
+        masYield: capYield,
+        capUniqWts,
+        fallbackRate,
+      })
+
+      // Step 3: compute endMins and finalize task
+      if (task.isKept) {
+        const endMins = wallClockFinish(startMins, duration)
+        busySegs.push({ start: startMins, end: endMins })
+        curMins = Math.max(curMins, endMins)
+        delete task.isKept
+        keptTasks.push(task)
+      } else if (isSpecialTask) {
+        task.deadline_time = minsToTimeStr(startMins)
+        const endMins = wallClockFinish(startMins, duration)
+        busySegs.push({ start: startMins, end: endMins })
+        keptTasks.push(task)
+      } else {
+        task.deadline_time = minsToTimeStr(startMins)
+        let endMins = wallClockFinish(startMins, duration)
+
+        if (!isPhase3 && endMins > phaseEndMins) {
+          const availMins = availableWorkMins(startMins, phaseEndMins)
+          let truncQty: number
+          if (isYieldCapped && sortedLotsForDuration.length && params.carcassRate) {
+            const pigsAvail = Math.floor(availMins * 60 / params.carcassRate)
+            const activeMinsAtStart = availableWorkMins(510, startMins)
+            const pigIdx = Math.floor(activeMinsAtStart * 60 / params.carcassRate)
+            let consumed2 = 0; let activeLot: typeof sortedLotsForDuration[0] | null = null
+            for (const l of sortedLotsForDuration) { if (pigIdx < consumed2 + l.qty) { activeLot = l; break }; consumed2 += l.qty }
+            if (!activeLot) activeLot = sortedLotsForDuration[sortedLotsForDuration.length - 1]
+            if (activeLot && capUniqWts.length) {
+              const nearWt = capUniqWts.reduce((b, w) => Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
+              const yRow = capYield.find(r => r.carcass_weight === nearWt && r.product_group === prod?.product_group)
+              const ypig = yRow ? (yRow.yield_pct / 100) * activeLot.avg_weight : 0
+              truncQty = ypig > 0 ? pigsAvail * ypig : 0
+            } else { truncQty = 0 }
+          } else {
+            truncQty = (availMins / 60) * fallbackRate
+          }
+          const skuForWpb = cleanSku || (task.sku as string)
+          const wpb = wpbMap.get(skuForWpb) ?? wpbMap.get(task.sku as string) ?? 1
+          let finalQty: number
+          if (wpb > 1 && (task.channel as string) !== 'Makro') {
+            finalQty = Math.floor(truncQty / wpb) * wpb
+          } else {
+            finalQty = Math.round(truncQty)
+          }
+          if (finalQty <= 0) continue
+          task.target_quantity = Math.round(finalQty * 100) / 100
+          endMins = wallClockFinish(startMins, computeTaskDuration({
+            qty: finalQty, productGroup: prod?.product_group, startMins,
+            sortedLots: isYieldCapped ? sortedLotsForDuration : [],
+            carcassRateSec: params.carcassRate ?? 0, masYield: capYield, capUniqWts, fallbackRate,
+          }))
+        }
+
+        busySegs.push({ start: startMins, end: endMins })
+        curMins = endMins
+        keptTasks.push(task)
       }
     }
     resequenced.push(...keptTasks)

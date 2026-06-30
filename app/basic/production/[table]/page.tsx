@@ -1656,9 +1656,11 @@ export default function BasicTablePage() {
         const rateRaw = localStorage.getItem('pig_carcass_rate')
         if (rateRaw) carcassRate = parseFloat(rateRaw) || undefined
       } catch { /* ignore */ }
+      const trimmingRaw = localStorage.getItem('pig_carcass_trimming')
+      const trimmingQty = trimmingRaw ? (parseInt(trimmingRaw) || 0) : 0
       const res = await fetch('/api/production/generate-basic', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: selectedPhase, deductMode, carcassLots, carcassRate }),
+        body: JSON.stringify({ date, phase: selectedPhase, deductMode, carcassLots, carcassRate, trimmingQty }),
       })
       const result = await res.json()
       setGenResult(result)
