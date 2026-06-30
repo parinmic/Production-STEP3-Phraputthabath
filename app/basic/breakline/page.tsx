@@ -5,6 +5,19 @@ import * as XLSX from 'xlsx'
 
 const STATIONS = ['ทั้งหมด', 'สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
+const BREAK_REASONS = [
+  'จุดงานเปิดหมูซีกติดขัด',
+  'จุดงานสะโพกติดขัด',
+  'จุดงานสามชั้นติดขัด',
+  'จุดงานไหล่ติดขัด',
+  'จำนวนหมูซีกไม่เพียงพอ',
+  'หมูซีกอุณหภูมิสูงเกินไป',
+  'หมูซีกอุณหภูมิต่ำเกินไป',
+  'รางไม่สะอาด',
+  'ตรวจพบโลหะ',
+  'อื่นๆ',
+]
+
 const STATION_COLOR: Record<string, { border: string; bg: string; text: string; dot: string }> = {
   'ทั้งหมด':      { border: 'border-gray-400',   bg: 'bg-gray-50',   text: 'text-gray-700',   dot: 'bg-gray-400' },
   'สะโพกเบสิค':  { border: 'border-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
@@ -98,10 +111,11 @@ export default function BreaklinePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Form state
-  const [station,   setStation]   = useState('ทั้งหมด')
-  const [startTime, setStartTime] = useState('')
-  const [endTime,   setEndTime]   = useState('')
-  const [reason,    setReason]    = useState('')
+  const [station,      setStation]      = useState('ทั้งหมด')
+  const [startTime,    setStartTime]    = useState('')
+  const [endTime,      setEndTime]      = useState('')
+  const [reasonChoice, setReasonChoice] = useState('')
+  const [reasonCustom, setReasonCustom] = useState('')
 
   const fetchBreaks = useCallback(async () => {
     setLoading(true)
@@ -122,6 +136,7 @@ export default function BreaklinePage() {
     if (startTime >= endTime)   { setError('เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด'); return }
     setError(null)
     setSubmitting(true)
+    const reason = reasonChoice === 'อื่นๆ' ? reasonCustom.trim() : reasonChoice
     try {
       const res  = await fetch('/api/basic/line-break', {
         method: 'POST',
@@ -130,7 +145,7 @@ export default function BreaklinePage() {
       })
       const data = await res.json()
       if (!data.success) { setError(data.message); return }
-      setStartTime(''); setEndTime(''); setReason('')
+      setStartTime(''); setEndTime(''); setReasonChoice(''); setReasonCustom('')
       fetchBreaks()
     } catch { setError('เกิดข้อผิดพลาด') }
     finally { setSubmitting(false) }
@@ -218,11 +233,25 @@ export default function BreaklinePage() {
         )}
 
         {/* Reason */}
-        <div>
+        <div className="space-y-2">
           <label className="text-xs font-medium text-gray-500 mb-1.5 block">สาเหตุ</label>
-          <input type="text" value={reason} onChange={e => setReason(e.target.value)}
-            placeholder="เช่น รอวัตถุดิบ, เครื่องจักรขัดข้อง, ประชุม..."
-            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          <select
+            value={reasonChoice}
+            onChange={e => { setReasonChoice(e.target.value); setReasonCustom('') }}
+            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+          >
+            <option value="">— เลือกสาเหตุ —</option>
+            {BREAK_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+          {reasonChoice === 'อื่นๆ' && (
+            <input
+              type="text"
+              value={reasonCustom}
+              onChange={e => setReasonCustom(e.target.value)}
+              placeholder="ระบุสาเหตุ..."
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+          )}
         </div>
 
         {error && (
