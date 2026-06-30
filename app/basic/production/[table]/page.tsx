@@ -594,31 +594,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         )
         accKg += skuQty
       }
-      // Remaining pig yield after all orders → synthetic RAW bar to phase end
-      if (group) {
-        const totalGroupPhaseYield = yieldUpToPig(totalPigsGantt, group) - prePhaseYield
-        const remainYield = Math.round(totalGroupPhaseYield - accKg)
-        if (remainYield > 0) {
-          const rawStartPig = pigForYield(prePhaseYield + accKg, group)
-          const rawStartT = Math.max(phaseStartMins, pigToWC(rawStartPig))
-          const rawEndT = Math.min(phaseEndWall, pigToWC(totalPigsGantt))
-          if (rawEndT > rawStartT) {
-            const rawKey = `__raw__${group}`
-            skuStats[rawKey] = {
-              name: `RAW · ${group}`,
-              totalQty: remainYield,
-              qtyByPeriod: {},
-              minStart: rawStartT,
-              maxEnd: rawEndT,
-              workers: [],
-              segments: [{ start: rawStartT, end: rawEndT, worker: '__raw__', isDeficit: false }],
-              minSeq: 999998,
-              isRaw: true,
-            }
-            bySeq.push(rawKey)
-          }
-        }
-      }
       grp.skus = bySeq
     }
   } else if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
@@ -728,37 +703,16 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
     return { lb, dur, lostCarcasses: Math.round(totalLostCarcasses), groupLoss }
   })
 
-  // Breakline loss: reduce RAW first (SKUs have priority), overflow to non-RAW only if loss > RAW qty
+  // Breakline loss: distribute proportionally to all real SKUs in the affected group
   const skuLostKgMap = new Map<string, number>()
   for (const { groupLoss } of lbImpact) {
     for (const { grp, kg } of groupLoss) {
-      const rawSku = sortedSkus.find(s => (groupMap[s] ?? '') === grp && skuStats[s].isRaw)
-      const rawQty = rawSku ? skuStats[rawSku].totalQty : 0
-      if (rawSku && rawQty > 0) {
-        // Loss comes from RAW first
-        const rawLoss = Math.min(kg, rawQty)
-        skuLostKgMap.set(rawSku, (skuLostKgMap.get(rawSku) ?? 0) + rawLoss)
-        const overflow = kg - rawLoss
-        if (overflow > 0) {
-          // Only overflow (loss exceeding RAW) hits the regular SKUs
-          const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
-          const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
-          if (grpTotal > 0) {
-            for (const s of grpSkus) {
-              const share = skuStats[s].totalQty / grpTotal
-              skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(overflow * share))
-            }
-          }
-        }
-      } else {
-        // By-group (no RAW) — distribute proportionally to all SKUs in group
-        const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
-        const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
-        if (grpTotal <= 0) continue
-        for (const s of grpSkus) {
-          const share = skuStats[s].totalQty / grpTotal
-          skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(kg * share))
-        }
+      const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
+      const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
+      if (grpTotal <= 0) continue
+      for (const s of grpSkus) {
+        const share = skuStats[s].totalQty / grpTotal
+        skuLostKgMap.set(s, (skuLostKgMap.get(s) ?? 0) + Math.round(kg * share))
       }
     }
   }
@@ -799,7 +753,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       </div>
 
       <div className="divide-y divide-gray-50 relative">
-        {skuGroups.map(({ grp, skus }) => (
+        {skuGroups.map(({ grp, skus }) => {
+          const visibleSkus = skus.filter(sku => !skuStats[sku].isRaw)
+          if (!visibleSkus.length) return null
+          return (
           <div key={grp || '__other__'}>
             {grp && (
               <div className="flex items-center border-y border-gray-200 bg-gray-100/80 sticky top-8 sm:top-10 z-10">
@@ -810,10 +767,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                 <div className="w-24 sm:w-32 shrink-0" />
               </div>
             )}
-            {skus.map(sku => {
+            {visibleSkus.map(sku => {
               const stat      = skuStats[sku]
               const col       = sku.startsWith('__raw__') ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
-              const diffSecs  = stat.maxEnd * 60 - nowSecs
+              const diffSecs  = Math.round(stat.maxEnd * 60 - nowSecs)
               const isDone    = diffSecs <= 0
               let cdText = ''
               if (!isDone) {
@@ -911,7 +868,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
               )
             })}
           </div>
-        ))}
+          )
+        })}
 
         {BREAKS.flatMap(([bs, be]) => {
           if (bs >= chartEnd || be <= chartStart) return []
