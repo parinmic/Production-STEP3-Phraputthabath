@@ -463,10 +463,80 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
-  // Carcass-based sequential timing: each group starts at phaseStart, SKUs stack sequentially.
-  // Throughput is scaled from ACTUAL planned qty so bars always fill the full phase,
-  // regardless of breakline deductions or partial plans.
-  if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
+  // Approach B: pig-based cumulative yield — all groups produce simultaneously, end at same time
+  if (pigLots.length > 0 && masYieldRows.length > 0 && carcassRate > 0) {
+    const CARCASS_START = 510 // 08:30
+    const sLots = [...pigLots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    const uWts  = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+    const totalPigsGantt = sLots.reduce((s, l) => s + l.qty, 0)
+
+    // Active minutes between two wall-clock times (excluding breaks)
+    const activeMinsRange = (from: number, to: number): number => {
+      let net = Math.max(0, to - from)
+      for (const [bs, be] of BREAKS) {
+        const oS = Math.max(bs, from), oE = Math.min(be, to)
+        if (oE > oS) net -= oE - oS
+      }
+      return Math.max(0, net)
+    }
+
+    // Pig index → wall-clock time (carcass started at 08:30)
+    const pigToWallClock = (pigIdx: number): number =>
+      wallClockFinish(CARCASS_START, (pigIdx * carcassRate) / 60)
+
+    // Cumulative yield for a group up to pig index P (fractional OK)
+    const yieldUpToPig = (P: number, group: string): number => {
+      let consumed = 0, total = 0
+      for (const lot of sLots) {
+        const pigs = Math.min(lot.qty, Math.max(0, P - consumed))
+        if (pigs <= 0) break
+        const closestW = uWts.length
+          ? uWts.reduce((b, w) => Math.abs(w - lot.avg_weight) < Math.abs(b - lot.avg_weight) ? w : b, uWts[0])
+          : 0
+        const yRow = masYieldRows.find(r => r.carcass_weight === closestW && r.product_group === group)
+        total += pigs * (yRow ? (yRow.yield_pct / 100) * lot.avg_weight : 0)
+        consumed += lot.qty
+      }
+      return total
+    }
+
+    // Find pig index where cumulative yield for group reaches targetKg (binary search)
+    const pigForYield = (targetKg: number, group: string): number => {
+      if (targetKg <= 0) return 0
+      let lo = 0, hi = totalPigsGantt
+      for (let i = 0; i < 50; i++) {
+        const mid = (lo + hi) / 2
+        if (yieldUpToPig(mid, group) < targetKg) lo = mid
+        else hi = mid
+      }
+      return hi
+    }
+
+    // Pigs consumed before this phase starts (offset from carcass start 08:30)
+    const pigOffset = activeMinsRange(CARCASS_START, phaseStartMins) * 60 / carcassRate
+    const phaseEndWall = phaseEnd * 60
+
+    for (const grp of skuGroups) {
+      const group = grp.grp
+      const prePhaseYield = yieldUpToPig(pigOffset, group)
+      const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
+      let accKg = 0
+      for (const sku of bySeq) {
+        const skuQty = skuStats[sku].totalQty
+        const startPig = pigForYield(prePhaseYield + accKg, group)
+        const endPig   = pigForYield(prePhaseYield + accKg + skuQty, group)
+        const startT   = Math.max(phaseStartMins, pigToWallClock(startPig))
+        const endT     = Math.max(startT, Math.min(phaseEndWall, pigToWallClock(endPig)))
+        skuStats[sku].minStart = startT
+        skuStats[sku].maxEnd   = endT
+        skuStats[sku].segments = skuStats[sku].workers.map(w => ({
+          start: startT, end: endT, worker: w, isDeficit: false
+        }))
+        accKg += skuQty
+      }
+      grp.skus = bySeq
+    }
+  } else if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
     const phaseEndWallSeq = phaseEnd * 60
     let phaseNetMinsSeq = phaseEndWallSeq - phaseStartMins
     for (const [bs, be] of BREAKS) {
@@ -475,7 +545,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 
     for (const grp of skuGroups) {
       if (!(carcassThroughputByGroup[grp.grp] > 0)) continue
-      // Scale throughput to planned qty so total sequential duration = phaseNetMinsSeq
       const throughput = grp.totalQty > 0
         ? grp.totalQty / phaseNetMinsSeq
         : (carcassThroughputByGroup[grp.grp] ?? 0)
