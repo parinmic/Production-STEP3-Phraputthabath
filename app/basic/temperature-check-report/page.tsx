@@ -292,7 +292,6 @@ export default function TemperatureCheckReportPage() {
           <Thermometer size={22} className="text-amber-500 shrink-0" />
           <div>
             <h1 className="text-xl font-bold text-gray-900">รายงานการตรวจอุณหภูมิ</h1>
-            <p className="text-xs text-gray-400">Temperature Check Report · ทุกรอบ</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
