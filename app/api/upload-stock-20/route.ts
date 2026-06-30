@@ -51,6 +51,11 @@ export async function POST(req: NextRequest) {
     syncToDev(async (dev) => {
       await dev.from('stock_20').delete().neq('spec_code', '')
       await batchInsert(dev, 'stock_20', records)
+      await dev.from('upload_log').insert({
+        table_name: 'stock_20',
+        source_file: filename ?? 'unknown',
+        record_count: records.length,
+      })
     })
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {
