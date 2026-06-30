@@ -1855,30 +1855,17 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           continue
         }
 
-        // By Product: find TT SKU (cross-station), fallback to any By Product SKU
-        const byProds = allGrpProds.filter(p => p.product.toLowerCase().includes('by'))
-        const ttProd = byProds.find(p => p.sku_name.toLowerCase().includes('tt'))
-        const targetProd = ttProd ?? byProds[0]
-        if (!targetProd) continue
-
-        resequenced.push({
-          production_date: productionDate,
-          table_name:      station,
-          worker_code:     'RAW',
-          worker_name:     'สต๊อก Raw',
-          sku:             targetProd.sku,
-          sku_name:        targetProd.sku_name,
-          target_quantity: remainKg,
-          unit:            'กก.',
-          period:          phaseCfg.period,
-          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
-          status:          'รอผลิต',
-          seq:             rawSeq++,
-          channel:         'By Product',
-          note:            'by_product_remainder',
-          is_deficit:      false,
-          effective_from:  effectiveFromISO,
+        // No RAW SKU → add remaining yield to the last SKU already planned for this group
+        const lastGrpRow = [...resequenced].reverse().find(a => {
+          if (String(a['table_name'] ?? '') !== station) return false
+          if (String(a['note'] ?? '').includes('remainder')) return false
+          const norm = String(a['sku'] ?? '').replace(/^0+/, '')
+          const prod = skuMap.get(norm) ?? skuMap.get(String(a['sku'] ?? ''))
+          return prod?.product_group === grp
         })
+        if (lastGrpRow) {
+          lastGrpRow['target_quantity'] = Number(lastGrpRow['target_quantity'] ?? 0) + remainKg
+        }
       }
     }
   }
