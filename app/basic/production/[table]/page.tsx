@@ -1716,30 +1716,18 @@ export default function BasicTablePage() {
   const loadPigLots = useCallback(() => {
     fetch('/api/pig-carcass-lot-selection')
       .then(r => r.json())
-      .then(json => { if (json.selected) setPigLots(json.selected as PigLot[]) })
+      .then(json => {
+        if (json.selected) setPigLots(json.selected as PigLot[])
+        if (json.rate != null) setCarcassRate(parseFloat(json.rate) || 90)
+      })
       .catch(() => {})
   }, [])
 
   useEffect(() => {
-    try {
-      const l = localStorage.getItem('pig_carcass_selected')
-      if (l) setPigLots(JSON.parse(l))
-      const r = localStorage.getItem('pig_carcass_rate')
-      if (r) setCarcassRate(parseFloat(r) || 90)
-    } catch { /* ignore */ }
     loadPigLots()
-    const onStorage = () => {
-      try {
-        const l = localStorage.getItem('pig_carcass_selected')
-        if (l) setPigLots(JSON.parse(l))
-        const r = localStorage.getItem('pig_carcass_rate')
-        if (r) setCarcassRate(parseFloat(r) || 90)
-      } catch { /* ignore */ }
-    }
-    window.addEventListener('storage', onStorage)
     // Other machines can change the selected lots — poll so this view stays in sync.
     const id = setInterval(loadPigLots, 20_000)
-    return () => { window.removeEventListener('storage', onStorage); clearInterval(id) }
+    return () => clearInterval(id)
   }, [loadPigLots])
 
   useEffect(() => {
@@ -1815,16 +1803,15 @@ export default function BasicTablePage() {
     try {
       let carcassLots: unknown = undefined
       let carcassRate: number | undefined = undefined
+      let trimmingQty = 0
       try {
         // Pull the shared selection from the server — it may have been set on a different machine.
         const selRes  = await fetch('/api/pig-carcass-lot-selection')
         const selJson = await selRes.json()
         if (selJson.selected?.length) carcassLots = selJson.selected
-        const rateRaw = localStorage.getItem('pig_carcass_rate')
-        if (rateRaw) carcassRate = parseFloat(rateRaw) || undefined
+        if (selJson.rate != null) carcassRate = parseFloat(selJson.rate) || undefined
+        if (selJson.trimmingQty) trimmingQty = parseInt(selJson.trimmingQty) || 0
       } catch { /* ignore */ }
-      const trimmingRaw = localStorage.getItem('pig_carcass_trimming')
-      const trimmingQty = trimmingRaw ? (parseInt(trimmingRaw) || 0) : 0
       const res = await fetch('/api/production/generate-basic', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, phase: selectedPhase, deductMode, carcassLots, carcassRate, trimmingQty }),

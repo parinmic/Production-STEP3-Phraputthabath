@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Timer } from 'lucide-react'
 import Link from 'next/link'
 
@@ -40,6 +40,7 @@ export default function CarcassCyclePage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [rate,       setRate]       = useState('80')
+  const rateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadMaster = useCallback(async () => {
     setLoading(true)
@@ -59,16 +60,28 @@ export default function CarcassCyclePage() {
   const loadSelectedLots = useCallback(() => {
     fetch('/api/pig-carcass-lot-selection')
       .then(r => r.json())
-      .then(json => { if (json.selected) setLots(json.selected as SelectedLot[]) })
+      .then(json => {
+        if (json.selected) setLots(json.selected as SelectedLot[])
+        if (json.rate != null) setRate(String(json.rate))
+      })
       .catch(() => {})
+  }, [])
+
+  const persistRate = useCallback((val: string) => {
+    if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current)
+    rateDebounceRef.current = setTimeout(() => {
+      fetch('/api/pig-carcass-lot-selection', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ rate: parseFloat(val) || 80 }),
+      }).catch(() => {})
+    }, 600)
   }, [])
 
   useEffect(() => {
     try {
       const savedLots = localStorage.getItem('pig_carcass_selected')
-      const savedRate = localStorage.getItem('pig_carcass_rate')
       if (savedLots) setLots(JSON.parse(savedLots))
-      if (savedRate) setRate(savedRate)
     } catch { /* ignore */ }
     loadSelectedLots()
     loadMaster()
@@ -76,10 +89,6 @@ export default function CarcassCyclePage() {
     const id = setInterval(loadSelectedLots, 20_000)
     return () => clearInterval(id)
   }, [loadMaster, loadSelectedLots])
-
-  useEffect(() => {
-    localStorage.setItem('pig_carcass_rate', rate)
-  }, [rate])
 
   const rateNum        = parseFloat(rate) || 80
   const uniqueWeights  = [...new Set(master.map(r => r.carcass_weight))].sort((a, b) => a - b)
@@ -138,7 +147,7 @@ export default function CarcassCyclePage() {
           type="text"
           inputMode="decimal"
           value={rate}
-          onChange={e => setRate(e.target.value.replace(/[^0-9.]/g, ''))}
+          onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setRate(v); persistRate(v) }}
           className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
         />
         <span className="text-sm text-gray-500">วิ/ตัว</span>

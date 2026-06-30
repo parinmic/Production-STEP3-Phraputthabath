@@ -13,6 +13,7 @@ export async function GET() {
   return NextResponse.json({
     selected:    data?.selected ?? [],
     trimmingQty: data?.trimming_qty ?? '',
+    rate:        data?.rate ?? 90,
     updatedAt:   data?.updated_at ?? null,
   })
 }
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     id:           1,
     selected:     body.selected ?? [],
     trimming_qty: body.trimmingQty ?? null,
+    rate:         body.rate != null ? Number(body.rate) : undefined,
     updated_at:   new Date().toISOString(),
   }
 
