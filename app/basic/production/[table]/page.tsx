@@ -464,28 +464,54 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
-  // Approach B: pig-based cumulative yield — all groups produce simultaneously, end at same time
-  if (pigLots.length > 0 && masYieldRows.length > 0 && carcassRate > 0) {
+  const usesApproachB = pigLots.length > 0 && masYieldRows.length > 0 && carcassRate > 0
+
+  // Approach B: pig-based cumulative yield — segments split around breaklines
+  if (usesApproachB) {
     const CARCASS_START = 510 // 08:30
     const sLots = [...pigLots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     const uWts  = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
     const totalPigsGantt = sLots.reduce((s, l) => s + l.qty, 0)
 
-    // Active minutes between two wall-clock times (excluding breaks)
-    const activeMinsRange = (from: number, to: number): number => {
-      let net = Math.max(0, to - from)
-      for (const [bs, be] of BREAKS) {
-        const oS = Math.max(bs, from), oE = Math.min(be, to)
+    // Sorted breaklines from lineBreaks prop
+    const sortedBL = lineBreaks
+      .map(lb => ({ start: timeToMins(lb.start_time), end: timeToMins(lb.end_time) }))
+      .filter(b => b.end > b.start)
+      .sort((a, b) => a.start - b.start)
+
+    // All pauses: static BREAKS + breaklines, sorted
+    const allPauses = [
+      ...BREAKS.map(([bs, be]) => ({ start: bs, end: be })),
+      ...sortedBL,
+    ].sort((a, b) => a.start - b.start)
+
+    // Active minutes from CARCASS_START to T, excluding all pauses
+    const activeMinsAll = (T: number): number => {
+      let net = Math.max(0, T - CARCASS_START)
+      for (const { start, end } of allPauses) {
+        const oS = Math.max(start, CARCASS_START), oE = Math.min(end, T)
         if (oE > oS) net -= oE - oS
       }
       return Math.max(0, net)
     }
 
-    // Pig index → wall-clock time (carcass started at 08:30)
-    const pigToWallClock = (pigIdx: number): number =>
-      wallClockFinish(CARCASS_START, (pigIdx * carcassRate) / 60)
+    // Pig index → wall-clock time (skips all pauses including breaklines)
+    const pigToWC = (pigIdx: number): number => {
+      let pos = CARCASS_START, rem = (pigIdx * carcassRate) / 60
+      for (const { start, end } of allPauses) {
+        if (pos >= end) continue
+        const active = Math.max(0, start - pos)
+        if (rem <= active) return pos + rem
+        rem -= active
+        pos = end
+      }
+      return pos + rem
+    }
 
-    // Cumulative yield for a group up to pig index P (fractional OK)
+    // Pigs processed up to wall-clock T (accounts for all pauses)
+    const pigsAt = (T: number): number => activeMinsAll(T) * 60 / carcassRate
+
+    // Cumulative yield for a group up to pig index P
     const yieldUpToPig = (P: number, group: string): number => {
       let consumed = 0, total = 0
       for (const lot of sLots) {
@@ -513,8 +539,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       return hi
     }
 
-    // Pigs consumed before this phase starts (offset from carcass start 08:30)
-    const pigOffset = activeMinsRange(CARCASS_START, phaseStartMins) * 60 / carcassRate
+    const pigOffset   = pigsAt(phaseStartMins)
     const phaseEndWall = phaseEnd * 60
 
     for (const grp of skuGroups) {
@@ -522,17 +547,51 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       const prePhaseYield = yieldUpToPig(pigOffset, group)
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
       let accKg = 0
+
       for (const sku of bySeq) {
-        const skuQty = skuStats[sku].totalQty
+        const skuQty   = skuStats[sku].totalQty
         const startPig = pigForYield(prePhaseYield + accKg, group)
         const endPig   = pigForYield(prePhaseYield + accKg + skuQty, group)
-        const startT   = Math.max(phaseStartMins, pigToWallClock(startPig))
-        const endT     = Math.max(startT, Math.min(phaseEndWall, pigToWallClock(endPig)))
-        skuStats[sku].minStart = startT
-        skuStats[sku].maxEnd   = endT
-        skuStats[sku].segments = skuStats[sku].workers.map(w => ({
-          start: startT, end: endT, worker: w, isDeficit: false
-        }))
+
+        // Build segments, splitting bar at each breakline that interrupts production
+        const segs: { start: number; end: number }[] = []
+        let curPig  = startPig
+        let curTime = Math.max(phaseStartMins, pigToWC(startPig))
+
+        while (curPig < endPig - 0.001 && curTime < phaseEndWall) {
+          // Skip if inside any pause (static or breakline)
+          const inPause = allPauses.find(p => p.start <= curTime && p.end > curTime)
+          if (inPause) { curTime = Math.min(inPause.end, phaseEndWall); curPig = pigsAt(curTime); continue }
+
+          // Next breakline after curTime (static breaks already skipped by pigToWC)
+          const nextBL = sortedBL.find(b => b.start > curTime)
+          const windowEnd = nextBL ? Math.min(nextBL.start, phaseEndWall) : phaseEndWall
+          const pigAtWindow = pigsAt(windowEnd)
+
+          if (pigAtWindow >= endPig) {
+            // SKU finishes before the next breakline
+            const segEnd = Math.min(pigToWC(endPig), phaseEndWall)
+            if (segEnd > curTime) segs.push({ start: curTime, end: segEnd })
+            curPig = endPig
+            break
+          } else {
+            // Breakline interrupts production — close segment at break start
+            if (windowEnd > curTime) segs.push({ start: curTime, end: windowEnd })
+            if (nextBL) { curTime = nextBL.end; curPig = pigsAt(nextBL.end) }
+            else break
+          }
+        }
+
+        if (!segs.length) {
+          const st = Math.max(phaseStartMins, pigToWC(startPig))
+          segs.push({ start: st, end: Math.max(st, Math.min(phaseEndWall, pigToWC(endPig))) })
+        }
+
+        skuStats[sku].minStart = segs[0].start
+        skuStats[sku].maxEnd   = segs[segs.length - 1].end
+        skuStats[sku].segments = skuStats[sku].workers.flatMap(w =>
+          segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+        )
         accKg += skuQty
       }
       grp.skus = bySeq
@@ -767,7 +826,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                               </>
                             )
                           })() : (() => {
-                            const lostKg = skuLostKgMap.get(sku) ?? 0
+                            // Approach B: production is shifted (not reduced) so show full planned qty
+                            const lostKg = usesApproachB ? 0 : (skuLostKgMap.get(sku) ?? 0)
                             const effectiveQty = Math.max(0, stat.totalQty - lostKg)
                             const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
                             const bags = wpb && wpb > 0 ? Math.floor(effectiveQty / wpb) : 0
