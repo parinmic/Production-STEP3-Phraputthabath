@@ -6,8 +6,9 @@ import { supabase } from '@/lib/supabase'
 const CARCASS_ACTIVE_SEGS = [
   { phase: 1, mins: 210 },
   { phase: 1, mins: 90  },
-  { phase: 2, mins: 90  },
-  { phase: 3, mins: 60  },
+  { phase: 2, mins: 120 },
+  { phase: 3, mins: 30  },
+  { phase: 3, mins: 720 },
 ]
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค'] as const
