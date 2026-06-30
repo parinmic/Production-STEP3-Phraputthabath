@@ -1442,29 +1442,68 @@ export default function TablePage() {
     raws: { sap: string; name: string; qty: number }[]
   }[]>([])
 
+  // Load acknowledgments from Supabase on mount / date+phase change
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`)
-      setAckedSkus(new Set(JSON.parse(raw ?? '[]') as string[]))
-    } catch { setAckedSkus(new Set()) }
+    let cancelled = false
+    supabase
+      .from('production_ack')
+      .select('sku')
+      .eq('production_date', date)
+      .eq('table_name', tableSlug)
+      .eq('phase', selectedPhase)
+      .then(({ data }) => {
+        if (cancelled) return
+        setAckedSkus(new Set((data ?? []).map((r: { sku: string }) => r.sku)))
+      })
+    return () => { cancelled = true }
   }, [date, tableSlug, selectedPhase])
 
+  // Realtime subscription — sync รับทราบ ระหว่าง PC และมือถือ
   useEffect(() => {
-    if (!ackedSkus.size) return
-    localStorage.setItem(
-      `plan_ack_sku_${date}_${tableSlug}_${selectedPhase}`,
-      JSON.stringify(Array.from(ackedSkus))
-    )
-  }, [ackedSkus, date, tableSlug, selectedPhase])
+    const channel = supabase
+      .channel(`production_ack:${date}:${tableSlug}:${selectedPhase}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'production_ack' },
+        (payload) => {
+          const row = payload.new as { production_date: string; table_name: string; phase: number; sku: string }
+          if (row.production_date !== date || row.table_name !== tableSlug || row.phase !== selectedPhase) return
+          setAckedSkus(prev => new Set([...Array.from(prev), row.sku]))
+        }
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'production_ack' },
+        (payload) => {
+          const row = payload.old as { production_date: string; table_name: string; phase: number; sku: string }
+          if (row.production_date !== date || row.table_name !== tableSlug || row.phase !== selectedPhase) return
+          setAckedSkus(prev => { const next = new Set(prev); next.delete(row.sku); return next })
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [date, tableSlug, selectedPhase])
 
   const toggleSkuAck = useCallback((sku: string) => {
+    const nowAcked = !ackedSkus.has(sku)
     setAckedSkus(prev => {
       const next = new Set(prev)
-      if (next.has(sku)) next.delete(sku)
-      else next.add(sku)
+      if (nowAcked) next.add(sku)
+      else next.delete(sku)
       return next
     })
-  }, [])
+    if (nowAcked) {
+      supabase.from('production_ack').upsert(
+        { production_date: date, table_name: tableSlug, phase: selectedPhase, sku },
+        { onConflict: 'production_date,table_name,phase,sku' }
+      ).then()
+    } else {
+      supabase.from('production_ack').delete()
+        .eq('production_date', date)
+        .eq('table_name', tableSlug)
+        .eq('phase', selectedPhase)
+        .eq('sku', sku)
+        .then()
+    }
+  }, [date, tableSlug, selectedPhase, ackedSkus])
 
   const loadWipItems = async (d: string, phase: number | 'all') => {
     let q = supabase

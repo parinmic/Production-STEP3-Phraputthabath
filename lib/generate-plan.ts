@@ -2864,11 +2864,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   runChannelPass(primaryDeficitList)
 
 
-  // WIP Plan production: allocate กลุ่ม WIP workers on สไลด์ after order-driven work finishes
+  // WIP Plan production: allocate กลุ่ม WIP workers on their respective stations (from mas_productivity)
   // Phase 2 produces no WIP at all (no raw was allocated to WIP this phase — see above).
   if (ENABLE_WIP) {
-    const slideWorkers = workersByStation['สไลด์'] ?? []
-    if (slideWorkers.length && selectedPhase !== 2) {
+    if (selectedPhase !== 2) {
       const { data: wipPlanRows } = await supabase
         .from('wip_plan')
         .select('sap_code, quantity, is_manual, wip_initial')
@@ -2996,15 +2995,29 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
         }
 
-        // Multi-phase: sum WIP already assigned in OTHER periods for this date
+        // Determine station per WIP SAP (from mas_productivity จุดงาน) for per-station allocation
+        const wipSapToStation = new Map<string, string>()
+        for (const row of effectiveWipPlan) {
+          const sapRaw = String(row.sap_code).trim()
+          const sap    = sapRaw.replace(/^0+/, '')
+          const prod   = skuMap.get(sap) ?? skuMap.get(sapRaw)
+          if (!prod || prod.product_group !== 'กลุ่ม WIP') continue
+          const st = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+          if (!st) continue
+          wipSapToStation.set(sapRaw, st)
+          wipSapToStation.set(sap, st)
+        }
+        const wipStationsList = Array.from(new Set(wipSapToStation.values()))
         const wipSapList = effectiveWipPlan.map(r => String(r.sap_code).trim())
+
+        // Multi-phase: sum WIP already assigned in OTHER periods for this date
         const alreadyAssignedByWip = new Map<string, number>()
-        if (wipSapList.length) {
+        if (wipSapList.length && wipStationsList.length) {
           const { data: prevAssn } = await supabase
             .from('production_assignments')
             .select('sku, target_quantity')
             .eq('production_date', productionDate)
-            .eq('table_name', 'สไลด์')
+            .in('table_name', wipStationsList)
             .in('sku', wipSapList)
             .neq('period', phaseCfg.period)
           for (const a of prevAssn ?? []) {
@@ -3014,11 +3027,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         }
 
         type WipPlanTarget = { sku: string; skuName: string | null; targetQty: number; channel: string; deficit: number; isDeficit?: boolean }
-        const wipTargets: WipPlanTarget[] = []
+
+        // Group WIP targets by station (from mas_productivity จุดงาน)
+        const wipTargetsByStation = new Map<string, WipPlanTarget[]>()
         for (const row of effectiveWipPlan) {
-          const sapRaw      = String(row.sap_code).trim()
-          const sap         = sapRaw.replace(/^0+/, '')
-          const qty         = Number(row.quantity)
+          const sapRaw = String(row.sap_code).trim()
+          const sap    = sapRaw.replace(/^0+/, '')
+          const qty    = Number(row.quantity)
           if (qty <= 0) continue
           const prod = skuMap.get(sap) ?? skuMap.get(sapRaw)
           if (!prod || prod.product_group !== 'กลุ่ม WIP') continue
@@ -3042,65 +3057,68 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           if (remainingQty < 1) continue
 
           // Split into stock-supported vs deficit based on raw material allocation
-          const cap       = wipFullCapBySap.get(sapRaw) ?? wipFullCapBySap.get(sap) ?? remainingQty
-          const wpbLocal  = bagSizeMap.get(sap) ?? bagSizeMap.get(sapRaw) ?? 1
-          const stockQty  = wpbLocal > 0 ? Math.floor(Math.min(remainingQty, cap) / wpbLocal) * wpbLocal : Math.min(remainingQty, cap)
-          const defQty    = remainingQty - stockQty
+          const cap      = wipFullCapBySap.get(sapRaw) ?? wipFullCapBySap.get(sap) ?? remainingQty
+          const wpbLocal = bagSizeMap.get(sap) ?? bagSizeMap.get(sapRaw) ?? 1
+          const stockQty = wpbLocal > 0 ? Math.floor(Math.min(remainingQty, cap) / wpbLocal) * wpbLocal : Math.min(remainingQty, cap)
+          const defQty   = remainingQty - stockQty
 
-          if (stockQty >= 1) wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: stockQty,  channel: 'wip_plan', deficit: stockQty,  isDeficit: false })
-          if (defQty   >= 1) wipTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: defQty,    channel: 'wip_plan', deficit: defQty,    isDeficit: true  })
+          const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+          if (!station) continue
+          if (!wipTargetsByStation.has(station)) wipTargetsByStation.set(station, [])
+          const stTargets = wipTargetsByStation.get(station)!
+          if (stockQty >= 1) stTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: stockQty, channel: 'wip_plan', deficit: stockQty, isDeficit: false })
+          if (defQty   >= 1) stTargets.push({ sku: sapRaw, skuName: prod.sku_name, targetQty: defQty,   channel: 'wip_plan', deficit: defQty,   isDeficit: true  })
         }
 
-        wipTargets.sort((a, b) => b.deficit - a.deficit)
-
-        // WIP items often aren't in picking_unit_master (wpb defaults to 1), meaning
-        // targetQty kg becomes numBags = targetQty which takes far more than one shift.
-        // Cap each target proportionally so per-worker work fits within available phase time.
-        const wipOnlyCount = slideWorkers.filter(w => {
-          const ji = jobAssignMap.get(normName(w.name))
-          return ji && ji.groups.size > 0 && Array.from(ji.groups.keys()).every(k => k === 'กลุ่ม WIP')
-        }).length
-        const nWipWorkers = Math.max(1, wipOnlyCount > 0 ? wipOnlyCount : slideWorkers.length)
         const phaseWorkMins = availableWorkMins(phaseCfg.startH * 60, phaseEndMins)
 
-        // Demand in work-minutes per target (proportional weight for capacity split)
-        const demandWorkMins = wipTargets.map(t => {
-          const p = skuMap.get(t.sku.replace(/^0+/, '')) ?? skuMap.get(t.sku)
-          return (p && p.rate > 0) ? (t.deficit / p.rate) * 60 : 0
-        })
-        const totalDemandWorkMins = demandWorkMins.reduce((s, v) => s + v, 0)
+        for (const [station, stWipTargets] of Array.from(wipTargetsByStation.entries())) {
+          const stationWorkers = workersByStation[station] ?? []
+          if (!stationWorkers.length) continue
 
-        for (let idx = 0; idx < wipTargets.length; idx++) {
-          const target = wipTargets[idx]
-          const normSku = target.sku.replace(/^0+/, '')
-          const prod = skuMap.get(normSku) ?? skuMap.get(target.sku)
-          if (!prod || prod.rate <= 0) continue
+          stWipTargets.sort((a, b) => b.deficit - a.deficit)
 
-          const fraction = totalDemandWorkMins > 0
-            ? demandWorkMins[idx] / totalDemandWorkMins
-            : 1 / wipTargets.length
-          const perWorkerMins = phaseWorkMins * fraction
-          const kgPerWorker = Math.floor(prod.rate * perWorkerMins / 60)
-          const cappedQty = Math.min(target.targetQty, kgPerWorker * nWipWorkers)
-          if (cappedQty < 1) continue
+          const nWipWorkers = Math.max(1, stationWorkers.length)
 
-          assignments.push(...allocateBalanced({
-            productionDate,
-            tableName: 'สไลด์',
-            targets: [{ sku: target.sku, skuName: target.skuName, targetQty: cappedQty, channel: target.channel, isDeficit: target.isDeficit }],
-            workers: slideWorkers,
-            skuMap,
-            jobAssignMap,
-            workerHours,
-            workerFreeAtMins,
-            workerBusySegments,
-            phaseEndMins,
-            period: phaseCfg.period,
-            phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
-            wpbMap,
-            specialTimeMap,
-            debugSkips,
-          }))
+          // Demand in work-minutes per target (proportional weight for capacity split)
+          const demandWorkMins = stWipTargets.map(t => {
+            const p = skuMap.get(t.sku.replace(/^0+/, '')) ?? skuMap.get(t.sku)
+            return (p && p.rate > 0) ? (t.deficit / p.rate) * 60 : 0
+          })
+          const totalDemandWorkMins = demandWorkMins.reduce((s, v) => s + v, 0)
+
+          for (let idx = 0; idx < stWipTargets.length; idx++) {
+            const target  = stWipTargets[idx]
+            const normSku = target.sku.replace(/^0+/, '')
+            const prod    = skuMap.get(normSku) ?? skuMap.get(target.sku)
+            if (!prod || prod.rate <= 0) continue
+
+            const fraction = totalDemandWorkMins > 0
+              ? demandWorkMins[idx] / totalDemandWorkMins
+              : 1 / stWipTargets.length
+            const perWorkerMins = phaseWorkMins * fraction
+            const kgPerWorker   = Math.floor(prod.rate * perWorkerMins / 60)
+            const cappedQty     = Math.min(target.targetQty, kgPerWorker * nWipWorkers)
+            if (cappedQty < 1) continue
+
+            assignments.push(...allocateBalanced({
+              productionDate,
+              tableName: station,
+              targets: [{ sku: target.sku, skuName: target.skuName, targetQty: cappedQty, channel: target.channel, isDeficit: target.isDeficit }],
+              workers: stationWorkers,
+              skuMap,
+              jobAssignMap,
+              workerHours,
+              workerFreeAtMins,
+              workerBusySegments,
+              phaseEndMins,
+              period: phaseCfg.period,
+              phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+              wpbMap,
+              specialTimeMap,
+              debugSkips,
+            }))
+          }
         }
       }
     }
