@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { parseFile, ParsedRow } from '@/lib/parser'
 
 interface UploadRecord {
+  id?: string
   source_file: string
   record_count: number
   uploaded_at: string
@@ -75,12 +76,13 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  const handleDelete = async (sourceFile: string) => {
-    if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
-    setDeleting(sourceFile)
+  const handleDelete = async (h: UploadRecord) => {
+    if (!confirm(`ลบ "${h.source_file}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
+    setDeleting(h.source_file)
     try {
       const sep = historyEndpoint.includes('?') ? '&' : '?'
-      const res = await fetch(`${historyEndpoint}${sep}file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
+      const param = h.id ? `id=${encodeURIComponent(h.id)}` : `file=${encodeURIComponent(h.source_file)}`
+      const res = await fetch(`${historyEndpoint}${sep}${param}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.success) fetchHistory()
       else alert(data.message ?? 'ลบไม่สำเร็จ')
@@ -163,7 +165,7 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
                   </button>
                 )}
                 <button
-                  onClick={() => handleDelete(h.source_file)}
+                  onClick={() => handleDelete(h)}
                   disabled={deleting === h.source_file}
                   className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
                   title="ลบ"
