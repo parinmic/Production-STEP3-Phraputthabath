@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
+import { syncUploadToDev } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -38,31 +38,22 @@ export async function POST(req: NextRequest) {
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง' }, { status: 400 })
 
     // Insert upload_log first to get the batch id
-    const { data: logEntry, error: logErr } = await supabase
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ table_name: 'stock_20', source_file: filename ?? 'unknown', record_count: records.length })
-      .select('id')
-      .single()
+      .insert({ id: uploadLogId, table_name: 'stock_20', source_file: filename ?? 'unknown', record_count: records.length })
     if (logErr) throw logErr
 
     // Insert records tagged with upload_log_id — no delete before insert
-    const recordsWithId = records.map(r => ({ ...r, upload_log_id: logEntry.id }))
+    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
     const { error } = await supabase.from('stock_20').insert(recordsWithId)
     if (error) {
-      await supabase.from('upload_log').delete().eq('id', logEntry.id)
+      await supabase.from('upload_log').delete().eq('id', uploadLogId)
       throw error
     }
 
     // Sync to dev: create its own upload_log entry (separate id) then insert
-    await syncToDevAwaited(async (dev) => {
-      const { data: devLog, error: devLogErr } = await dev
-        .from('upload_log')
-        .insert({ table_name: 'stock_20', source_file: filename ?? 'unknown', record_count: records.length })
-        .select('id')
-        .single()
-      if (devLogErr) throw devLogErr
-      await batchInsert(dev, 'stock_20', records.map(r => ({ ...r, upload_log_id: devLog.id })))
-    })
+    await syncUploadToDev('stock_20', filename ?? 'unknown', records)
 
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {

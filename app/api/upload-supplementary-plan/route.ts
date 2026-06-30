@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
+import { syncToDevAwaited, syncUploadToDev } from '@/lib/sync-to-dev'
 
 function toISODate(val: unknown): string | null {
   if (!val) return null
@@ -172,51 +172,47 @@ export async function POST(req: NextRequest) {
       slotGroups[rec.slot] = (slotGroups[rec.slot] || 0) + 1
     }
 
-    // Create upload_log entries per slot (first slot entry, we use the first one's id is not critical
-    // since CASCADE is on upload_log.id — we use the first log entry id just to tag the data rows,
-    // but supplementary uses source_file-based grouping in GET so we insert multiple log entries)
-    // Insert the first slot log to get an id for tagging all records
+    // Create upload_log entries per slot (first slot entry's id tags all data rows,
+    // supplementary uses source_file-based grouping in GET so we insert multiple log entries)
     const firstSlot = Object.keys(slotGroups)[0]
     const firstTableName = `production_plan_supplementary_${firstSlot}`
-    const { data: logEntry, error: logErr } = await supabase
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ table_name: firstTableName, source_file: filename ?? 'unknown', record_count: records.length })
-      .select('id')
-      .single()
+      .insert({ id: uploadLogId, table_name: firstTableName, source_file: filename ?? 'unknown', record_count: records.length })
     if (logErr) throw logErr
 
-    // Insert remaining slot log entries (no id needed, CASCADE will clean them via source_file-level delete)
+    // Insert remaining slot log entries (CASCADE will clean them via source_file-level delete)
     for (const [s, count] of Object.entries(slotGroups)) {
       if (s === firstSlot) continue
       const tableName = `production_plan_supplementary_${s}`
       await supabase.from('upload_log').insert({
+        id:           crypto.randomUUID(),
         table_name:   tableName,
         source_file:  filename ?? 'unknown',
         record_count: count,
       })
     }
 
-    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: logEntry.id }))
+    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
     const { error } = await supabase.from('production_plan_supplementary').insert(recordsWithId)
     if (error) {
       await supabase.from('upload_log').delete().eq('source_file', filename ?? 'unknown')
       throw error
     }
 
+    await syncUploadToDev(firstTableName, filename ?? 'unknown', records)
+    // For remaining slots, insert their upload_log entries on dev (data rows all tagged with firstSlot's id)
     await syncToDevAwaited(async (dev) => {
-      const { data: devLog, error: devLogErr } = await dev
-        .from('upload_log')
-        .insert({ table_name: firstTableName, source_file: filename ?? 'unknown', record_count: records.length })
-        .select('id')
-        .single()
-      if (devLogErr) throw devLogErr
-      // Insert remaining slot log entries on dev
       for (const [s, count] of Object.entries(slotGroups)) {
         if (s === firstSlot) continue
-        const tableName = `production_plan_supplementary_${s}`
-        await dev.from('upload_log').insert({ table_name: tableName, source_file: filename ?? 'unknown', record_count: count })
+        await dev.from('upload_log').insert({
+          id:           crypto.randomUUID(),
+          table_name:   `production_plan_supplementary_${s}`,
+          source_file:  filename ?? 'unknown',
+          record_count: count,
+        })
       }
-      await batchInsert(dev, 'production_plan_supplementary', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLog.id })))
     })
     return NextResponse.json({
       success: true,

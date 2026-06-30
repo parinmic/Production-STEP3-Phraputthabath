@@ -120,28 +120,26 @@ export async function POST(req: NextRequest) {
     }
 
     const tableName = round ? `lotus_orders_${round}` : 'lotus_orders'
-    const { data: logEntry, error: logErr } = await supabase
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
-      .select('id')
-      .single()
+      .insert({ id: uploadLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
     if (logErr) throw logErr
 
-    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: logEntry.id }))
+    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
     const { error } = await supabase.from('lotus_orders').insert(recordsWithId)
     if (error) {
-      await supabase.from('upload_log').delete().eq('id', logEntry.id)
+      await supabase.from('upload_log').delete().eq('id', uploadLogId)
       throw error
     }
 
     await syncToDevAwaited(async (dev) => {
-      const { data: devLog, error: devLogErr } = await dev
+      const devLogId = crypto.randomUUID()
+      const { error: devLogErr } = await dev
         .from('upload_log')
-        .insert({ table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
-        .select('id')
-        .single()
+        .insert({ id: devLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
       if (devLogErr) throw devLogErr
-      await batchInsert(dev, 'lotus_orders', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLog.id })))
+      await batchInsert(dev, 'lotus_orders', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLogId })))
     })
 
     // Fire-and-forget Phase 2 auto-gen (runs in its own serverless function to avoid timeout)

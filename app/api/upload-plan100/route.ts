@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
+import { syncUploadToDev } from '@/lib/sync-to-dev'
 
 export async function GET() {
   const { data } = await supabase
@@ -43,29 +43,20 @@ export async function POST(req: NextRequest) {
 
     const planDate = records[0].plan_date
 
-    const { data: logEntry, error: logErr } = await supabase
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ table_name: 'production_plan_100', source_file: filename ?? 'unknown', record_count: records.length })
-      .select('id')
-      .single()
+      .insert({ id: uploadLogId, table_name: 'production_plan_100', source_file: filename ?? 'unknown', record_count: records.length })
     if (logErr) throw logErr
 
-    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: logEntry.id }))
+    const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
     const { error } = await supabase.from('production_plan_100').insert(recordsWithId)
     if (error) {
-      await supabase.from('upload_log').delete().eq('id', logEntry.id)
+      await supabase.from('upload_log').delete().eq('id', uploadLogId)
       throw error
     }
 
-    await syncToDevAwaited(async (dev) => {
-      const { data: devLog, error: devLogErr } = await dev
-        .from('upload_log')
-        .insert({ table_name: 'production_plan_100', source_file: filename ?? 'unknown', record_count: records.length })
-        .select('id')
-        .single()
-      if (devLogErr) throw devLogErr
-      await batchInsert(dev, 'production_plan_100', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLog.id })))
-    })
+    await syncUploadToDev('production_plan_100', filename ?? 'unknown', records)
 
     // Fire-and-forget Phase 3 auto-gen (runs in its own serverless function to avoid timeout)
     if (planDate) {

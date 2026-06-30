@@ -10,15 +10,6 @@ function getDevClient(): SupabaseClient | null {
   return _client
 }
 
-// Fire-and-forget (used by most upload routes).
-export function syncToDev(fn: (db: SupabaseClient) => Promise<void>): void {
-  const client = getDevClient()
-  if (!client) return
-  fn(client).catch(e => console.error('[sync-to-dev]', e?.message ?? e))
-}
-
-// Awaited version — use when you need the sync to complete before returning the
-// response.  Errors are caught and logged; the caller is never rejected.
 export async function syncToDevAwaited(fn: (db: SupabaseClient) => Promise<void>): Promise<void> {
   const client = getDevClient()
   if (!client) return
@@ -27,6 +18,26 @@ export async function syncToDevAwaited(fn: (db: SupabaseClient) => Promise<void>
   } catch (e: unknown) {
     console.error('[sync-to-dev]', e instanceof Error ? e.message : e)
   }
+}
+
+// Syncs one upload batch to dev. Generates UUID client-side so no SELECT
+// permission on upload_log is needed (avoids RLS issues on dev Supabase).
+export async function syncUploadToDev(
+  tableName: string,
+  sourceFile: string,
+  records: Record<string, unknown>[],
+): Promise<void> {
+  await syncToDevAwaited(async (dev) => {
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await dev.from('upload_log').insert({
+      id: uploadLogId,
+      table_name: tableName,
+      source_file: sourceFile,
+      record_count: records.length,
+    })
+    if (logErr) throw logErr
+    await batchInsert(dev, tableName, records.map(r => ({ ...r, upload_log_id: uploadLogId })))
+  })
 }
 
 // Batch-insert helper (Supabase caps at 1000 rows per request)

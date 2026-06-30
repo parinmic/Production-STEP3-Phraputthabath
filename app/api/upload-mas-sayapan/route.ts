@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
+import { syncUploadToDev } from '@/lib/sync-to-dev'
 
 export async function GET(req: NextRequest) {
   const file = req.nextUrl.searchParams.get('file')
@@ -62,29 +62,20 @@ export async function POST(req: NextRequest) {
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลที่ใช้งานได้' }, { status: 400 })
 
-    const { data: logEntry, error: logErr } = await supabase
+    const uploadLogId = crypto.randomUUID()
+    const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ table_name: 'mas_sayapan', source_file: filename ?? 'unknown', record_count: records.length })
-      .select('id')
-      .single()
+      .insert({ id: uploadLogId, table_name: 'mas_sayapan', source_file: filename ?? 'unknown', record_count: records.length })
     if (logErr) throw logErr
 
-    const recordsWithId = records.map(r => ({ ...r, upload_log_id: logEntry.id }))
+    const recordsWithId = records.map(r => ({ ...r, upload_log_id: uploadLogId }))
     const { error } = await supabase.from('mas_sayapan').insert(recordsWithId)
     if (error) {
-      await supabase.from('upload_log').delete().eq('id', logEntry.id)
+      await supabase.from('upload_log').delete().eq('id', uploadLogId)
       throw error
     }
 
-    await syncToDevAwaited(async (dev) => {
-      const { data: devLog, error: devLogErr } = await dev
-        .from('upload_log')
-        .insert({ table_name: 'mas_sayapan', source_file: filename ?? 'unknown', record_count: records.length })
-        .select('id')
-        .single()
-      if (devLogErr) throw devLogErr
-      await batchInsert(dev, 'mas_sayapan', records.map(r => ({ ...r, upload_log_id: devLog.id })))
-    })
+    await syncUploadToDev('mas_sayapan', filename ?? 'unknown', records)
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message
