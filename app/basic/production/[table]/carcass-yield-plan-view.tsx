@@ -121,6 +121,7 @@ export default function CarcassYieldPlanView({
   const pool = lots.slice().sort((a, b) => a.order - b.order).map(l => ({ ...l, remaining: l.qty }))
   let poolIdx = 0
   const phaseGroupKg: Record<string, number> = {}
+  const pigsPerPhase: Record<number, number> = {}
 
   for (const seg of CARCASS_ACTIVE_SEGS) {
     const pigs = Math.floor((seg.mins * 60) / rate)
@@ -132,6 +133,9 @@ export default function CarcassYieldPlanView({
       if (take > 0) { usages.push({ qty: take, avg: lot.avg_weight }); lot.remaining -= take; need -= take }
       if (lot.remaining === 0) poolIdx++
     }
+    const actualPigs = pigs - need
+    pigsPerPhase[seg.phase] = (pigsPerPhase[seg.phase] ?? 0) + actualPigs
+
     if (seg.phase !== selectedPhase) continue
     for (const u of usages) {
       const wt = closestWt(u.avg, uniqueWts)
@@ -142,6 +146,8 @@ export default function CarcassYieldPlanView({
       }
     }
   }
+
+  const phasePigs = pigsPerPhase[selectedPhase as number] ?? 0
 
   // ── Build per-station group list (sorted by yield desc within each station) ──
   const seenGrps = new Set<string>()
@@ -198,7 +204,9 @@ export default function CarcassYieldPlanView({
           <span className="text-white font-bold text-sm">แผนตาม Yield — Phase {selectedPhase}</span>
           {totalLots > 0 && (
             <span className="text-slate-300 text-xs ml-3">
-              {totalLots.toLocaleString('th-TH')} ตัว · อัตรา {rate} วิ/ตัว
+              <span className="text-white font-semibold">{phasePigs.toLocaleString('th-TH')} ตัว</span>
+              <span className="opacity-60"> / {totalLots.toLocaleString('th-TH')} ตัว รวม 3 Phase</span>
+              {` · อัตรา ${rate} วิ/ตัว`}
               {grandYield > 0 && ` · Yield รวม ${fmt(grandYield)} กก.`}
             </span>
           )}
@@ -301,13 +309,34 @@ export default function CarcassYieldPlanView({
                       </div>
                     )}
 
-                    {/* No plan yet / byproduct with no assigned items */}
-                    {skus.length === 0 && !rawRow && yieldKg > 0 && (
+                    {/* Remainder row: when plan exists but assigned < yield */}
+                    {yieldKg > 0 && items.length > 0 && Math.round(yieldKg - assignedKg) > 0 && (() => {
+                      const remainKg = Math.round(yieldKg - assignedKg)
+                      const hasRaw   = (skuByGroup[grp] ?? []).some(s => s.unit === 'RAW')
+                      return (
+                        <div className={`flex items-center gap-3 px-4 py-1.5 pl-8 border-t border-dashed ${hasRaw ? 'border-amber-200 bg-amber-50/40' : 'border-blue-100 bg-blue-50/30'}`}>
+                          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                            {hasRaw ? (
+                              <>
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">RAW</span>
+                                <span className="text-xs text-amber-600">ผลิต RAW เพิ่ม</span>
+                              </>
+                            ) : (
+                              <span className="text-xs text-blue-600">ผลิตสินค้าเพิ่ม</span>
+                            )}
+                          </div>
+                          <span className={`text-xs font-semibold shrink-0 ${hasRaw ? 'text-amber-600' : 'text-blue-600'}`}>
+                            +{fmt(remainKg)} กก.
+                          </span>
+                        </div>
+                      )
+                    })()}
+
+                    {/* No plan generated yet */}
+                    {skus.length === 0 && !rawRow && yieldKg > 0 && items.length === 0 && (
                       <div className="flex items-center gap-3 px-4 py-2 pl-8 border-t border-gray-50">
                         <span className="text-[11px] text-gray-400 flex-1">
-                          {items.length === 0
-                            ? `ยังไม่มีแผนผลิต — กด "สร้าง Phase ${selectedPhase}"`
-                            : 'ยังไม่มีสินค้าในกลุ่มนี้'}
+                          ยังไม่มีแผนผลิต — กด &quot;สร้าง Phase {selectedPhase}&quot;
                         </span>
                         <span className="text-[11px] text-slate-400 shrink-0">คาด {fmt(yieldKg)} กก. ตาม Yield</span>
                       </div>
