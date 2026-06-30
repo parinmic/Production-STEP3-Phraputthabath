@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "supabase-dev": {
+    "supabase-production": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp"
     },
-    "supabase-production": {
+    "supabase-dev": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp"
     }

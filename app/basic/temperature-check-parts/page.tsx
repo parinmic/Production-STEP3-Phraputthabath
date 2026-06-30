@@ -5,13 +5,14 @@ import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown,
 interface LotRow {
   spec_code: string
   qty_3:     number
-  weight_3:  number
 }
 
 interface PointTemps {
-  hip:       string // สะโพก
+  hip:      string // สะโพก
   outerLoin: string // สันนอก
-  neckLoin:  string // สันคอ
+  belly:    string // สามชั้น
+  shoulder: string // ไหล่
+  neckLoin: string // สันคอ
 }
 
 interface AnimalSet {
@@ -26,9 +27,11 @@ interface TempRecord {
 }
 
 const POINTS: { key: keyof PointTemps; label: string }[] = [
-  { key: 'hip',       label: 'สะโพก' },
+  { key: 'hip',      label: 'สะโพก' },
   { key: 'outerLoin', label: 'สันนอก' },
-  { key: 'neckLoin',  label: 'สันคอ' },
+  { key: 'belly',    label: 'สามชั้น' },
+  { key: 'shoulder', label: 'ไหล่' },
+  { key: 'neckLoin', label: 'สันคอ' },
 ]
 const ANIMALS: { key: keyof AnimalSet; label: string }[] = [
   { key: 'a1', label: 'ตัวที่ 1' },
@@ -40,9 +43,9 @@ const SETS: { key: keyof TempRecord; label: string }[] = [
   { key: 'end',   label: 'ชุดท้าย Lot' },
 ]
 
-const EMPTY_POINT: PointTemps = { hip: '', outerLoin: '', neckLoin: '' }
+const EMPTY_POINT: PointTemps  = { hip: '', outerLoin: '', belly: '', shoulder: '', neckLoin: '' }
 const EMPTY_ANIMAL_SET: AnimalSet = { a1: EMPTY_POINT, a2: EMPTY_POINT, a3: EMPTY_POINT }
-const EMPTY_TEMP: TempRecord = { start: EMPTY_ANIMAL_SET, end: EMPTY_ANIMAL_SET }
+const EMPTY_TEMP: TempRecord   = { start: EMPTY_ANIMAL_SET, end: EMPTY_ANIMAL_SET }
 
 function parseNum(v: string): number | null {
   const n = parseFloat(v)
@@ -64,12 +67,12 @@ function hasAnyValue(t: TempRecord | undefined): boolean {
   return allValues(t).some(v => v !== '')
 }
 
+// Standard for parts: ≤ 10 °C
 function tempStatus(avg: number | null): 'green' | 'red' | 'none' {
   if (avg === null) return 'none'
-  return avg >= 4 && avg <= 7 ? 'green' : 'red'
+  return avg <= 10 ? 'green' : 'red'
 }
 
-// Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
   return isNaN(day) ? Infinity : day
@@ -84,7 +87,7 @@ function PointInput({ value, onChange, disabled }: { value: string; onChange: (v
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
       placeholder="—"
-      className="w-16 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+      className="w-14 text-right text-sm border border-gray-300 rounded px-1.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
     />
   )
 }
@@ -103,7 +106,7 @@ function AnimalSetGrid({ title, value, onChange, disabled }: {
           <tr>
             <th className="text-left text-gray-400 font-normal pb-1.5 w-16"></th>
             {POINTS.map(p => (
-              <th key={p.key} className="text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
+              <th key={p.key} className="text-center text-blue-600 font-semibold pb-1.5">{p.label}</th>
             ))}
           </tr>
         </thead>
@@ -124,16 +127,14 @@ function AnimalSetGrid({ title, value, onChange, disabled }: {
   )
 }
 
-export default function BasicTemperatureCheckPage() {
+export default function TemperatureCheckPartsPage() {
   const [rows,       setRows]       = useState<LotRow[]>([])
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
-  const [sourceFile, setSourceFile] = useState('')
   const [generated,  setGenerated]  = useState(false)
   const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
   const [draftTemps, setDraftTemps] = useState<Record<string, TempRecord>>({})
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
-  const [chillRoom,  setChillRoom]  = useState<Record<string, string>>({})
   const [savedAt,    setSavedAt]    = useState<Record<string, string>>({})
   const [recordedBy, setRecordedBy] = useState<Record<string, string>>({})
   const [rounds,     setRounds]     = useState<{ round_number: number; started_at: string; day_round_number?: number }[]>([])
@@ -141,28 +142,21 @@ export default function BasicTemperatureCheckPage() {
   const [isCurrent,  setIsCurrent]  = useState(true)
   const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
   const [recorderName,  setRecorderName]  = useState('')
-  const liveRoundRef   = useRef<number | null>(null)
-  const followLiveRef  = useRef(true)
+  const liveRoundRef  = useRef<number | null>(null)
+  const followLiveRef = useRef(true)
 
-  // Pull data for a round. With no argument, follows whatever the backend says is the
-  // *current* (live) round. A round isn't tied to the wall clock — it lasts 1 hr from
-  // whenever the first save in that round happened. Once it expires, the API naturally
-  // returns empty data for the next live round; we poll periodically while following
-  // live so the form clears itself without the user needing to reload.
   function fetchRound(explicitRound?: number) {
     const qs = explicitRound != null ? `?round=${explicitRound}` : ''
-    fetch(`/api/qc-lot-checks${qs}`)
+    fetch(`/api/qc-parts-checks${qs}`)
       .then(res => res.json())
       .then(json => {
         setTemps(json.temps ?? {})
-        setChillRoom(json.chillRoom ?? {})
         setSavedAt(json.savedAt ?? {})
         setRecordedBy(json.recordedBy ?? {})
         setRounds(json.rounds ?? [])
         setIsCurrent(!!json.isCurrent)
         setViewRound(json.round ?? null)
         if (json.liveRound != null && json.liveRound !== liveRoundRef.current) {
-          // Live round advanced — drop any in-progress edits from the old round.
           if (followLiveRef.current) {
             setDraftTemps({})
             setExpanded({})
@@ -170,7 +164,7 @@ export default function BasicTemperatureCheckPage() {
           liveRoundRef.current = json.liveRound
         }
       })
-      .catch(() => { /* ignore */ })
+      .catch(() => {})
   }
 
   function selectRound(n: number) {
@@ -179,15 +173,11 @@ export default function BasicTemperatureCheckPage() {
     fetchRound(goingLive ? undefined : n)
   }
 
-  // Restore the generated row list from localStorage (just a UI convenience), and load
-  // saved temperatures/chill rooms from the backend.
   useEffect(() => {
     try {
-      const savedRows = localStorage.getItem('qc_rows')
-      const savedFile = localStorage.getItem('qc_source_file')
+      const savedRows = localStorage.getItem('qc_parts_rows')
       const savedName = localStorage.getItem('qc_recorder_name')
       if (savedRows) { setRows(JSON.parse(savedRows)); setGenerated(true) }
-      if (savedFile) setSourceFile(savedFile)
       if (savedName) setRecorderName(savedName)
     } catch { /* ignore */ }
 
@@ -196,16 +186,15 @@ export default function BasicTemperatureCheckPage() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => { localStorage.setItem('qc_rows', JSON.stringify(rows)) }, [rows])
-  useEffect(() => { localStorage.setItem('qc_source_file', sourceFile) }, [sourceFile])
+  useEffect(() => { localStorage.setItem('qc_parts_rows', JSON.stringify(rows)) }, [rows])
 
-  async function persistLot(spec: string, chill: string, t: TempRecord, recordedByName?: string) {
+  async function persistLot(spec: string, t: TempRecord, recordedByName?: string) {
     if (!isCurrent) return
     try {
-      const res  = await fetch('/api/qc-lot-checks', {
+      const res  = await fetch('/api/qc-parts-checks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spec_code: spec, chill_room: chill || null, temps: t, recorded_by: recordedByName || null }),
+        body: JSON.stringify({ spec_code: spec, temps: t, recorded_by: recordedByName || null }),
       })
       const json = await res.json()
       if (json.updated_at) setSavedAt(prev => ({ ...prev, [spec]: json.updated_at }))
@@ -234,7 +223,6 @@ export default function BasicTemperatureCheckPage() {
         .filter(r => r.qty_3 > 0)
         .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
       setRows(sorted)
-      setSourceFile(json.source_file ?? '')
       setGenerated(true)
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
@@ -259,9 +247,7 @@ export default function BasicTemperatureCheckPage() {
 
   function toggleExpanded(spec: string) {
     const opening = !expanded[spec]
-    if (opening) {
-      setDraftTemps(prev => ({ ...prev, [spec]: temps[spec] ?? EMPTY_TEMP }))
-    }
+    if (opening) setDraftTemps(prev => ({ ...prev, [spec]: temps[spec] ?? EMPTY_TEMP }))
     setExpanded(prev => ({ ...prev, [spec]: opening }))
   }
 
@@ -280,20 +266,13 @@ export default function BasicTemperatureCheckPage() {
     setExpanded(prev => ({ ...prev, [spec]: false }))
     setRecordedBy(prev => ({ ...prev, [spec]: name }))
     setConfirmFor(null)
-    persistLot(spec, chillRoom[spec] ?? '', newTemp, name)
+    persistLot(spec, newTemp, name)
   }
 
   function clearTemps(spec: string) {
     if (!isCurrent) return
     if (!confirm(`ยืนยันล้างค่าอุณหภูมิที่กรอกของ Lot ${spec} ทั้งหมด?`)) return
     setDraftTemps(prev => ({ ...prev, [spec]: EMPTY_TEMP }))
-  }
-
-  function saveChillRoom(spec: string, value: string) {
-    if (!isCurrent) return
-    setChillRoom(prev => ({ ...prev, [spec]: value }))
-    // No new name here — the server keeps whatever names were already recorded for this lot.
-    persistLot(spec, value, temps[spec] ?? EMPTY_TEMP)
   }
 
   const filledRows = rows.filter(r => hasAnyValue(temps[r.spec_code]))
@@ -306,16 +285,17 @@ export default function BasicTemperatureCheckPage() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Thermometer size={24} className="text-cyan-500" />
-            ตรวจอุณหภูมิ (QC)
+            <Thermometer size={24} className="text-blue-500" />
+            อุณหภูมิชิ้นส่วน (QC)
           </h1>
+          <p className="text-xs text-gray-400 mt-0.5">มาตรฐาน ≤ 10 °C</p>
         </div>
         <div className="flex flex-col items-stretch sm:items-end gap-2 sm:shrink-0">
           {rounds.length > 0 && (
             <select
               value={viewRound ?? ''}
               onChange={e => selectRound(Number(e.target.value))}
-              className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500 self-end"
+              className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 self-end"
             >
               {rounds.map(r => (
                 <option key={r.round_number} value={r.round_number}>
@@ -327,20 +307,14 @@ export default function BasicTemperatureCheckPage() {
           )}
           <div className="flex items-center gap-2">
             {generated && (
-              <button
-                onClick={generate}
-                disabled={loading}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
-              >
+              <button onClick={generate} disabled={loading}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50">
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 รีโหลด
               </button>
             )}
-            <button
-              onClick={generate}
-              disabled={loading}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50"
-            >
+            <button onClick={generate} disabled={loading}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50">
               <PlayCircle size={16} />
               Generate
             </button>
@@ -348,55 +322,26 @@ export default function BasicTemperatureCheckPage() {
         </div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md px-5 py-4 text-red-700 text-sm">{error}</div>
-      )}
-
-      {/* Loading */}
+      {error && <div className="bg-red-50 border border-red-200 rounded-md px-5 py-4 text-red-700 text-sm">{error}</div>}
       {loading && (
         <div className="text-center py-14 text-gray-400">
           <RefreshCw size={28} className="animate-spin mx-auto mb-2" />
           <p>กำลังดึงข้อมูล Lot...</p>
         </div>
       )}
-
-      {/* Initial state — not yet generated */}
       {!loading && !generated && (
         <div className="text-center py-20 text-gray-400">
           <Thermometer size={40} className="mx-auto mb-3 opacity-20" />
-          <p className="text-sm">กด <span className="font-semibold text-cyan-600">Generate</span> เพื่อดึงข้อมูล Lot หมูซีก</p>
+          <p className="text-sm">กด <span className="font-semibold text-blue-600">Generate</span> เพื่อดึงข้อมูล Lot</p>
         </div>
       )}
-
-      {/* No lots */}
       {!loading && generated && rows.length === 0 && !error && (
         <div className="text-center py-14 text-gray-400">
           <p>ไม่พบข้อมูล — กรุณาอัพโหลดไฟล์ Stock คลัง 20 ก่อน</p>
         </div>
       )}
 
-      {/* Summary — mobile compact bar */}
-      {!loading && rows.length > 0 && (
-        <div className="sm:hidden rounded-md border bg-gray-50 border-gray-200 px-3 py-1.5 flex items-center gap-2.5 text-xs overflow-x-auto whitespace-nowrap">
-          <span className="text-gray-500">Lot <b className="text-gray-800">{rows.length}</b></span>
-          <span className="text-gray-300">|</span>
-          <span className="text-gray-500">กรอกแล้ว <b className={filledRows.length > 0 ? 'text-blue-700' : 'text-gray-400'}>{filledRows.length}</b></span>
-          <span className="text-gray-300">|</span>
-          <span className="flex items-center gap-1 text-gray-500">
-            <CheckCircle2 size={13} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
-            อุณหภูมิเหมาะสม (4–7 °C) <b className={goodCount > 0 ? 'text-green-600' : 'text-gray-400'}>{goodCount}</b>
-          </span>
-          {badCount > 0 && (
-            <span className="flex items-center gap-1 text-gray-500">
-              <XCircle size={13} className="text-red-400" />
-              ไม่เหมาะสม <b className="text-red-500">{badCount}</b>
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Summary — desktop */}
+      {/* Summary */}
       {!loading && rows.length > 0 && (
         <div className="hidden sm:flex rounded-md border bg-gray-50 border-gray-200 px-5 py-4 flex-wrap gap-6 items-center">
           <div>
@@ -414,7 +359,7 @@ export default function BasicTemperatureCheckPage() {
           <div className="flex items-center gap-1.5">
             <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
             <div>
-              <p className="text-xs text-gray-500">เหมาะสม (4–7 °C)</p>
+              <p className="text-xs text-gray-500">เหมาะสม (≤ 10 °C)</p>
               <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
                 {goodCount} <span className="text-sm font-normal">ล็อต</span>
               </p>
@@ -444,23 +389,13 @@ export default function BasicTemperatureCheckPage() {
             const status = tempStatus(tAvg)
             const isOpen = !!expanded[r.spec_code]
             const cardBorder = status === 'green' ? 'border-green-300' : status === 'red' ? 'border-red-300' : 'border-gray-200'
-            const cardBg     = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'bg-white'
+            const cardBg     = status === 'green' ? 'bg-green-50'  : status === 'red' ? 'bg-red-50'  : 'bg-white'
             return (
               <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cardBorder} ${cardBg}`}>
-                <div
-                  onClick={() => toggleExpanded(r.spec_code)}
-                  aria-label="กรอกอุณหภูมิ"
-                  role="button"
-                  tabIndex={0}
+                <div onClick={() => toggleExpanded(r.spec_code)} role="button" tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(r.spec_code) }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer active:bg-gray-100 transition-colors"
-                >
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer active:bg-gray-100 transition-colors">
                   <span className="font-mono font-semibold text-gray-800 text-xs shrink-0">{r.spec_code}</span>
-                  {chillRoom[r.spec_code] && (
-                    <span className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5 shrink-0">
-                      Chill {chillRoom[r.spec_code]}
-                    </span>
-                  )}
                   <span className="text-blue-700 font-semibold text-xs shrink-0">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
@@ -479,11 +414,7 @@ export default function BasicTemperatureCheckPage() {
                       </>
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </span>
-                  <span
-                    className={`shrink-0 flex items-center justify-center w-6 h-6 rounded transition-colors ${
-                      isOpen ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
+                  <span className={`shrink-0 flex items-center justify-center w-6 h-6 rounded transition-colors ${isOpen ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                     <ChevronDown size={14} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                   </span>
                 </div>
@@ -494,45 +425,23 @@ export default function BasicTemperatureCheckPage() {
                         ข้อมูลย้อนหลัง — ดูได้อย่างเดียว แก้ไขไม่ได้
                       </div>
                     )}
-                    <div className="flex items-center gap-2 px-2.5 py-2 border-t border-gray-200 bg-white">
-                      <label className="text-xs font-medium text-gray-600 shrink-0">ห้อง Chill</label>
-                      <select
-                        value={chillRoom[r.spec_code] ?? ''}
-                        onChange={e => saveChillRoom(r.spec_code, e.target.value)}
-                        disabled={!isCurrent}
-                        className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white disabled:bg-gray-100"
-                      >
-                        <option value="">—</option>
-                        {[1, 2, 3, 4].map(n => (
-                          <option key={n} value={String(n)}>{n}</option>
-                        ))}
-                      </select>
-                    </div>
                     {isCurrent && (
                       <div className="flex border-t border-gray-200">
-                        <button
-                          onClick={() => clearTemps(r.spec_code)}
-                          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 text-red-600 bg-red-50 active:bg-red-100 transition-colors"
-                        >
+                        <button onClick={() => clearTemps(r.spec_code)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 text-red-600 bg-red-50 active:bg-red-100 transition-colors">
                           ล้างค่า
                         </button>
-                        <button
-                          onClick={() => requestSave(r.spec_code)}
-                          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 text-white bg-cyan-600 active:bg-cyan-700 transition-colors"
-                        >
+                        <button onClick={() => requestSave(r.spec_code)}
+                          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 text-white bg-blue-600 active:bg-blue-700 transition-colors">
                           บันทึก
                         </button>
                       </div>
                     )}
                     <div className="p-2.5 space-y-2.5 bg-gray-50 border-t border-gray-200">
                       {SETS.map(s => (
-                        <AnimalSetGrid
-                          key={s.key}
-                          title={s.label}
-                          value={draftT[s.key]}
+                        <AnimalSetGrid key={s.key} title={s.label} value={draftT[s.key]}
                           onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
-                          disabled={!isCurrent}
-                        />
+                          disabled={!isCurrent} />
                       ))}
                     </div>
                   </>
@@ -543,7 +452,7 @@ export default function BasicTemperatureCheckPage() {
         </div>
       )}
 
-      {/* Table (desktop) */}
+      {/* Table desktop */}
       {!loading && rows.length > 0 && (
         <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
@@ -561,7 +470,7 @@ export default function BasicTemperatureCheckPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => {
+                {rows.map(r => {
                   const t       = temps[r.spec_code] ?? EMPTY_TEMP
                   const draftT  = draftTemps[r.spec_code] ?? t
                   const tAvg    = calcAvg(t)
@@ -571,50 +480,32 @@ export default function BasicTemperatureCheckPage() {
                   return (
                     <Fragment key={r.spec_code}>
                       <tr className={`transition-colors ${rowBg}`}>
-                        <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">
-                          <span className="flex items-center gap-2">
-                            {r.spec_code}
-                            {chillRoom[r.spec_code] && (
-                              <span className="text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded px-1.5 py-0.5">
-                                Chill {chillRoom[r.spec_code]}
-                              </span>
-                            )}
-                          </span>
-                        </td>
+                        <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
                         <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
                         <td className="px-4 py-2.5 text-center">
                           {isOpen && isCurrent && (
                             <div className="inline-flex gap-1.5">
-                              <button
-                                onClick={() => clearTemps(r.spec_code)}
-                                className="text-xs font-medium px-3 py-1.5 rounded border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
-                              >
+                              <button onClick={() => clearTemps(r.spec_code)}
+                                className="text-xs font-medium px-3 py-1.5 rounded border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition-colors">
                                 ล้างค่า
                               </button>
-                              <button
-                                onClick={() => requestSave(r.spec_code)}
-                                className="text-xs font-semibold px-3 py-1.5 rounded border border-cyan-600 text-white bg-cyan-600 hover:bg-cyan-700 transition-colors"
-                              >
+                              <button onClick={() => requestSave(r.spec_code)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded border border-blue-600 text-white bg-blue-600 hover:bg-blue-700 transition-colors">
                                 บันทึก
                               </button>
                             </div>
                           )}
                           {!isOpen && (
-                            <button
-                              onClick={() => toggleExpanded(r.spec_code)}
-                              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
-                            >
+                            <button onClick={() => toggleExpanded(r.spec_code)}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors">
                               <ChevronDown size={14} />
                               {isCurrent ? (hasAnyValue(t) ? 'แก้ไขอุณหภูมิ' : 'กรอกอุณหภูมิ') : 'ดูอุณหภูมิ'}
                             </button>
                           )}
                           {isOpen && !isCurrent && (
-                            <button
-                              onClick={() => toggleExpanded(r.spec_code)}
-                              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
-                            >
-                              <ChevronDown size={14} className="rotate-180" />
-                              ปิด
+                            <button onClick={() => toggleExpanded(r.spec_code)}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors">
+                              <ChevronDown size={14} className="rotate-180" />ปิด
                             </button>
                           )}
                         </td>
@@ -644,29 +535,11 @@ export default function BasicTemperatureCheckPage() {
                                 ข้อมูลย้อนหลัง — ดูได้อย่างเดียว แก้ไขไม่ได้
                               </div>
                             )}
-                            <div className="flex items-center gap-2 mb-3">
-                              <label className="text-xs font-medium text-gray-600">ห้อง Chill</label>
-                              <select
-                                value={chillRoom[r.spec_code] ?? ''}
-                                onChange={e => saveChillRoom(r.spec_code, e.target.value)}
-                                disabled={!isCurrent}
-                                className="text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white disabled:bg-gray-100"
-                              >
-                                <option value="">—</option>
-                                {[1, 2, 3, 4].map(n => (
-                                  <option key={n} value={String(n)}>{n}</option>
-                                ))}
-                              </select>
-                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {SETS.map(s => (
-                                <AnimalSetGrid
-                                  key={s.key}
-                                  title={s.label}
-                                  value={draftT[s.key]}
+                                <AnimalSetGrid key={s.key} title={s.label} value={draftT[s.key]}
                                   onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
-                                  disabled={!isCurrent}
-                                />
+                                  disabled={!isCurrent} />
                               ))}
                             </div>
                           </td>
@@ -681,7 +554,7 @@ export default function BasicTemperatureCheckPage() {
         </div>
       )}
 
-      {/* Confirm save — requires recorder name */}
+      {/* Confirm save */}
       {confirmFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmFor(null)} />
@@ -692,27 +565,17 @@ export default function BasicTemperatureCheckPage() {
             </div>
             <p className="text-xs text-gray-400 mb-4 font-mono">Lot {confirmFor}</p>
             <label className="text-xs font-medium text-gray-600 block mb-1">ชื่อผู้บันทึก</label>
-            <input
-              type="text"
-              autoFocus
-              value={recorderName}
-              onChange={e => setRecorderName(e.target.value)}
+            <input type="text" autoFocus value={recorderName} onChange={e => setRecorderName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && recorderName.trim()) confirmSave() }}
               placeholder="พิมพ์ชื่อผู้บันทึก"
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
-            />
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
             <div className="flex gap-2">
-              <button
-                onClick={() => setConfirmFor(null)}
-                className="flex-1 text-sm font-medium px-3 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => setConfirmFor(null)}
+                className="flex-1 text-sm font-medium px-3 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
                 ยกเลิก
               </button>
-              <button
-                onClick={confirmSave}
-                disabled={!recorderName.trim()}
-                className="flex-1 text-sm font-semibold px-3 py-2 rounded bg-cyan-600 text-white hover:bg-cyan-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <button onClick={confirmSave} disabled={!recorderName.trim()}
+                className="flex-1 text-sm font-semibold px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 ยืนยันบันทึก
               </button>
             </div>

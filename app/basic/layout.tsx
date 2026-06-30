@@ -116,6 +116,10 @@ function BasicSidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/temperature-check-parts' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อุณหภูมิชิ้นส่วน
               </Link>
+              <Link href="/basic/temperature-check-report"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/temperature-check-report' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-amber-500" />รายงานการตรวจอุณหภูมิ
+              </Link>
             </div>
           )}
           {openQc && collapsed && (
@@ -129,6 +133,11 @@ function BasicSidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/temperature-check-parts' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="อุณหภูมิชิ้นส่วน">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
+              </Link>
+              <Link href="/basic/temperature-check-report"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/temperature-check-report' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="รายงานการตรวจอุณหภูมิ">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
               </Link>
             </div>
           )}
