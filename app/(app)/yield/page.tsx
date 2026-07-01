@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { Upload, AlertCircle, CheckCircle2, X, Calendar, Download } from 'lucide-react'
 
-interface SapResult { sapCode: string; bags: number }
+interface SapResult { sapCode: string; bags: number; weight: number }
 
 interface UploadRecord {
   source_file: string
@@ -20,19 +20,23 @@ function parseYieldFile(file: File): Promise<SapResult[]> {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
 
-        const agg: Record<string, number> = {}
+        const aggBags:   Record<string, number> = {}
+        const aggWeight: Record<string, number> = {}
         for (const row of rows as unknown[][]) {
-          const colC = String(row[2] ?? '').trim()   // column C = index 2
+          const colC = String(row[2] ?? '').trim()    // column C = index 2
           if (colC !== '168' && colC !== '169M' && colC !== '224M') continue
-          const sapCode = String(row[6] ?? '').trim() // column G = index 6
-          const bagsRaw = row[9]                      // column J = index 9
+          const sapCode   = String(row[6] ?? '').trim() // column G = index 6
+          const bagsRaw   = row[9]                      // column J = index 9
+          const weightRaw = row[10]                     // column K = index 10
           if (!sapCode) continue
-          const bags = typeof bagsRaw === 'number' ? bagsRaw : parseInt(String(bagsRaw ?? '0'), 10)
+          const bags   = typeof bagsRaw   === 'number' ? bagsRaw   : parseInt(String(bagsRaw   ?? '0'), 10)
+          const weight = typeof weightRaw === 'number' ? weightRaw : parseFloat(String(weightRaw ?? '0'))
           if (isNaN(bags) || bags <= 0) continue
-          agg[sapCode] = (agg[sapCode] ?? 0) + bags
+          aggBags[sapCode]   = (aggBags[sapCode]   ?? 0) + bags
+          aggWeight[sapCode] = (aggWeight[sapCode] ?? 0) + (isNaN(weight) ? 0 : weight)
         }
 
-        const results = Object.entries(agg).map(([sapCode, bags]) => ({ sapCode, bags }))
+        const results = Object.entries(aggBags).map(([sapCode, bags]) => ({ sapCode, bags, weight: aggWeight[sapCode] ?? 0 }))
         if (!results.length) throw new Error('ไม่พบข้อมูลรหัส 168, 169M หรือ 224M ในไฟล์')
         resolve(results)
       } catch (err) {

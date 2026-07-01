@@ -15,17 +15,18 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const { sapResults, workDate, filename } = await req.json() as {
-      sapResults: { sapCode: string; bags: number }[]
+      sapResults: { sapCode: string; bags: number; weight?: number }[]
       workDate: string
       filename: string
     }
     if (!sapResults?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
     if (!workDate) return NextResponse.json({ success: false, message: 'กรุณาระบุวันที่' }, { status: 400 })
 
-    const records = sapResults.map(({ sapCode, bags }) => ({
+    const records = sapResults.map(({ sapCode, bags, weight }) => ({
       work_date:   workDate,
       sap_code:    sapCode,
       bags,
+      weight:      weight ?? null,
       source_file: filename ?? 'unknown',
     }))
 
