@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS stock_20 (
   weight_total   numeric DEFAULT 0,
   unit           text,
   source_file    text,
+  upload_log_id  uuid REFERENCES upload_log(id) ON DELETE CASCADE,
   uploaded_at    timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_stock_20_material ON stock_20(material_code);
