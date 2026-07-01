@@ -1267,6 +1267,43 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     row['note'] = note.replace(/round:(\d+):[0-9.]+/, `round:$1:${qty}`)
   }
 
+  const productGroupForAssignment = (row: Record<string, unknown>): string | null => {
+    const normSku = String(row['sku'] ?? '').replace(/^0+/, '')
+    const prod = skuMap.get(normSku) ?? skuMap.get(String(row['sku'] ?? ''))
+    return prod?.product_group ?? null
+  }
+
+  const capResequencedToGroupYield = (rows: Record<string, unknown>[]): Record<string, unknown>[] => {
+    if (!Object.keys(groupYieldCap).length) return rows
+    const remainingByGroup = new Map<string, number>()
+    for (const [grp, qty] of Object.entries(groupYieldCap)) {
+      remainingByGroup.set(grp, Math.round(qty * 100) / 100)
+    }
+
+    const kept: Record<string, unknown>[] = []
+    for (const row of rows) {
+      if (String(row['note'] ?? '').includes('remainder')) {
+        kept.push(row)
+        continue
+      }
+      const grp = productGroupForAssignment(row)
+      if (!grp || !remainingByGroup.has(grp)) {
+        kept.push(row)
+        continue
+      }
+      const remaining = remainingByGroup.get(grp) ?? 0
+      if (remaining <= 0) continue
+      const qty = Number(row['target_quantity'] ?? 0)
+      const finalQty = Math.round(Math.min(qty, remaining) * 100) / 100
+      if (finalQty <= 0) continue
+      row['target_quantity'] = finalQty
+      syncRoundNoteQty(row)
+      remainingByGroup.set(grp, Math.round((remaining - finalQty) * 100) / 100)
+      kept.push(row)
+    }
+    return kept
+  }
+
   // Build main SKU set: Product='RAW' from productivity master (fallback: sku_name ending '-Raw')
   const mainSkuSet = new Set<string>()
   for (const p of productivity) {
@@ -1961,9 +1998,14 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           } else {
             truncQty = (availMins / 60) * fallbackRate
           }
-          const finalQty = Math.round(truncQty * 100) / 100
+          const originalQty = Number(task.target_quantity ?? 0)
+          const originalSkuTotal = skuTotalQtyAcrossWorkers.get(cleanSku) ?? originalQty
+          const rowShare = isYieldCapped && originalSkuTotal > 0 ? originalQty / originalSkuTotal : 1
+          const cappedTruncQty = isYieldCapped ? Math.min(originalQty, truncQty * rowShare) : truncQty
+          const finalQty = Math.round(cappedTruncQty * 100) / 100
           if (finalQty <= 0) continue
-          task.target_quantity = Math.round(finalQty * 100) / 100
+          task.target_quantity = finalQty
+          syncRoundNoteQty(task)
           endMins = wallClockFinish(startMins, computeTaskDuration({
             qty: finalQty, productGroup: prod?.product_group, startMins,
             sortedLots: isYieldCapped ? sortedLotsForDuration : [],
@@ -1999,6 +2041,11 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const normSku = (a['sku'] as string ?? '').replace(/^0+/, '')
     if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
+
+  const cappedResequenced = capResequencedToGroupYield(resequenced)
+  resequenced.length = 0
+  resequenced.push(...cappedResequenced)
+  resequenced.forEach((a, i) => { a['seq'] = i })
 
   // Append remainder assignments (Raw or By Product) once per product group.
   if (Object.keys(groupYieldCap).length > 0) {
