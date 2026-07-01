@@ -364,7 +364,7 @@ function allocateBalanced(params: {
   interface SkuBlock {
     normSku: string; rawSku: string; skuName: string | null
     totalQty: number; isDeficit: boolean; productGroup: string
-    rate: number; wpb: number; channels: ChEntry[]
+    rate: number; personRate: number; channels: ChEntry[]
     isYieldCapped: boolean
   }
 
@@ -374,8 +374,6 @@ function allocateBalanced(params: {
     const cleanSku = t.sku.replace(/^0+/, '')
     const prod = skuMap.get(cleanSku) ?? skuMap.get(t.sku)
     if (!prod || prod.rate <= 0) continue
-    const rawWpb = wpbMap.get(cleanSku) ?? wpbMap.get(t.sku) ?? 1
-    const wpb = rawWpb > 0 ? rawWpb : 1
     const existing = skuBlockMap.get(cleanSku)
     if (existing) {
       existing.totalQty += t.targetQty
@@ -386,7 +384,9 @@ function allocateBalanced(params: {
         normSku: cleanSku, rawSku: t.sku,
         skuName: prod.sku_name || t.skuName || null,
         totalQty: t.targetQty, isDeficit: t.isDeficit || false,
-        productGroup: prod.product_group, rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate, wpb,
+        productGroup: prod.product_group,
+        rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate,
+        personRate: prod.rate,
         channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
         isYieldCapped: skuRateOverrideMap?.has(cleanSku) ?? false,
       })
@@ -425,36 +425,17 @@ function allocateBalanced(params: {
 
   const phaseStartMins = phaseRoundMins[0] ?? 510
 
-  const skuTotalQty: Map<string, number> = skuTotalQtyOverride ?? (() => {
-    const m = new Map<string, number>()
-    for (const t of targets) {
-      if (!t.sku) continue
-      const k = t.sku.replace(/^0+/, '')
-      m.set(k, (m.get(k) ?? 0) + t.targetQty)
-    }
-    return m
-  })()
-  const getMaxWorkers = (normSku: string): number => {
-    const qty = skuTotalQty.get(normSku) ?? 0
-    if (qty <= 15) return 1
-    if (qty <= 30) return 2
-    if (qty <= 45) return 3
-    return Infinity
-  }
   const skuAssignedWorkers = new Map<string, Set<string>>()
 
   const assignments: Record<string, unknown>[] = []
 
   for (const block of skuBlocks) {
-    const { normSku, rawSku, skuName, totalQty, productGroup, rate, wpb, channels, isYieldCapped } = block
+    const { normSku, rawSku, skuName, totalQty, productGroup, rate, personRate, channels, isYieldCapped } = block
 
     let eligibleWorkers = workers.filter(w => isWorkerEligible(w, productGroup))
     if (!eligibleWorkers.length) eligibleWorkers = workers
     if (!eligibleWorkers.length) continue
 
-    const maxW = getMaxWorkers(normSku)
-
-    let remaining = totalQty
     const workersForSku: WorkforceRow[] = []
     const forcedDeficitWorkers = new Set<string>()
 
@@ -469,25 +450,39 @@ function allocateBalanced(params: {
       return freeA - freeB
     })
 
+    const specialEntryForBlock = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
+    const specialStartForBlock = specialEntryForBlock?.startMins ?? null
+    const specialStopForBlock  = specialEntryForBlock?.stopMins  ?? null
+    const flowDur = rate > 0 ? (totalQty / rate) * 60 : 0
+
+    const canScheduleWith = (candidateWorkers: WorkforceRow[]): boolean => {
+      if (!candidateWorkers.length || personRate <= 0) return false
+      const perWorkerWorkDur = (totalQty / candidateWorkers.length / personRate) * 60
+      const scheduledDur = isYieldCapped ? Math.max(flowDur, perWorkerWorkDur) : perWorkerWorkDur
+      if (isYieldCapped && perWorkerWorkDur > flowDur + 0.01) return false
+      return candidateWorkers.every(worker => {
+        const nameKey = normName(worker.name)
+        const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+        const busySegs = workerBusySegments.get(nameKey) ?? []
+        return estimateWorkerFinish(
+          freeAt, scheduledDur, busySegs, phaseEndMins, specialStartForBlock, specialStopForBlock,
+        ) !== null
+      })
+    }
+
     for (const worker of sortedWorkers) {
-      if (workersForSku.length >= maxW) break
       const nameKey = normName(worker.name)
       if (assignedSet.has(nameKey)) {
         workersForSku.push(worker)
+        if (canScheduleWith(workersForSku)) break
         continue
       }
-      const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
-      const busySegs = workerBusySegments.get(nameKey) ?? []
-      const specialEntry = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
-      const specialStart = specialEntry?.startMins ?? null
-      const specialStop  = specialEntry?.stopMins  ?? null
-      // Yield-capped SKUs: rate is the group's shared raw-material throughput, not a per-worker
-      // rate — duration stays anchored to totalQty/rate no matter how many workers join.
-      const estimatedDur = remaining / rate * 60
-      const perWorkerDur = isYieldCapped ? estimatedDur : estimatedDur / Math.max(workersForSku.length + 1, 1)
-      const finish = estimateWorkerFinish(freeAt, perWorkerDur, busySegs, phaseEndMins, specialStart, specialStop)
-      if (finish === null) continue
       workersForSku.push(worker)
+      if (canScheduleWith(workersForSku)) break
+    }
+
+    if (workersForSku.length && !canScheduleWith(workersForSku) && !block.isDeficit) {
+      continue
     }
 
     if (!workersForSku.length) {
@@ -505,9 +500,9 @@ function allocateBalanced(params: {
 
     skuAssignedWorkers.set(normSku, new Set([...assignedSet, ...workersForSku.map(w => normName(w.name))]))
 
-    // Distribute quantity evenly and track per-round
-    const perWorker = remaining / workersForSku.length
-    for (const worker of workersForSku) {
+    // Distribute kg directly for Basic; do not convert to picking-unit bags.
+    for (let workerIdx = 0; workerIdx < workersForSku.length; workerIdx++) {
+      const worker = workersForSku[workerIdx]
       const nameKey = normName(worker.name)
       const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
       const specialEntry = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
@@ -516,8 +511,12 @@ function allocateBalanced(params: {
         ? phaseEndMins
         : (specialStart !== null ? Math.max(freeAt, specialStart) : freeAt)
       const roundMins = getRoundMinsLocal(startMins, phaseRoundMins)
-      const bagQty = wpb > 0 ? Math.floor(perWorker / wpb) * wpb : perWorker
-      const finalQty = Math.max(bagQty, wpb > 0 ? wpb : bagQty)
+      const baseQty = Math.floor((totalQty / workersForSku.length) * 100) / 100
+      const assignedBefore = baseQty * workerIdx
+      const finalQty = workerIdx === workersForSku.length - 1
+        ? Math.round((totalQty - assignedBefore) * 100) / 100
+        : baseQty
+      if (finalQty <= 0) continue
 
       if (!workerSkuRoundQty.has(nameKey)) workerSkuRoundQty.set(nameKey, new Map())
       if (!workerSkuQty.has(nameKey))      workerSkuQty.set(nameKey, new Map())
@@ -541,9 +540,8 @@ function allocateBalanced(params: {
 
       // Advance worker free time — skip for forced deficit backlog (not a real timeslot)
       if (!forcedDeficitWorkers.has(nameKey)) {
-        // Yield-capped SKUs: every worker on the batch is occupied for the full batch
-        // duration (gated by raw-material supply), not just their split share of the qty.
-        const dur = isYieldCapped ? (totalQty / rate * 60) : (finalQty / rate * 60)
+        const workDur = personRate > 0 ? (finalQty / personRate * 60) : 0
+        const dur = isYieldCapped ? Math.max(flowDur, workDur) : workDur
         const endMins = wallClockFinish(startMins, dur)
         const busySegs = workerBusySegments.get(nameKey) ?? []
         if (specialStart === null) {
@@ -570,12 +568,12 @@ function allocateBalanced(params: {
       for (const ch of channels) {
         if (remainingForWorker <= 0) break
         const chQty = Math.min(remainingForWorker, ch.qty / workersForSku.length)
-        const bagQty = wpb > 0 ? Math.floor(chQty / wpb) * wpb : chQty
-        if (bagQty <= 0) continue
-        remainingForWorker -= bagQty
+        const finalChQty = Math.round(chQty * 100) / 100
+        if (finalChQty <= 0) continue
+        remainingForWorker -= finalChQty
 
         const roundMinsLocal = getRoundMinsLocal(effectiveStart, phaseRoundMins)
-        const noteRoundStr = `round:${roundMinsLocal}:${bagQty}`
+        const noteRoundStr = `round:${roundMinsLocal}:${finalChQty}`
 
         assignments.push({
           production_date: productionDate,
@@ -584,7 +582,7 @@ function allocateBalanced(params: {
           worker_name:     worker.name,
           sku:             rawSku,
           sku_name:        skuName,
-          target_quantity: bagQty,
+          target_quantity: finalChQty,
           unit:            'กก.',
           period,
           deadline_time:   deadline,
@@ -973,9 +971,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (sap && wpb > 0) { bagSizeMap.set(sap, wpb); bagSizeMap.set(sap.replace(/^0+/, ''), wpb) }
   }
   const roundDownToBag = (sku: string, qty: number): number => {
-    const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
-    if (!wpb || wpb <= 0) return qty
-    return Math.floor(qty / wpb) * wpb
+    return Math.round(qty * 100) / 100
   }
 
   // Parse special time windows
@@ -1283,10 +1279,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const p1Total = phase1Assigned.get(sku) ?? 0
       if (p1Total === 0) continue
       const rawTotal = rawOrderBySku.get(sku) ?? 0
-      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
-      const budget = wpb > 0
-        ? Math.floor(Math.max(0, rawTotal - p1Total) / wpb) * wpb
-        : Math.max(0, rawTotal - p1Total)
+      const budget = Math.max(0, rawTotal - p1Total)
       let currentTotal = 0
       for (const arr of Object.values(targetsMap))
         for (const t of arr) if (t.sku === sku) currentTotal += t.targetQty
@@ -1299,7 +1292,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         if (idx === -1) continue
         const cut = Math.min(excess, arr[idx].targetQty)
         arr[idx].targetQty -= cut
-        if (wpb > 0) arr[idx].targetQty = Math.floor(arr[idx].targetQty / wpb) * wpb
         excess -= cut
         if (arr[idx].targetQty <= 0) arr.splice(idx, 1)
       }
@@ -1325,11 +1317,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(wmMap).map(([sku, { qty: orderQty, name }]) => {
-        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         const p1Actual = p1.get(sku) ?? 0
-        const targetQty = wpb > 0
-          ? Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
-          : Math.max(0, orderQty - p1Actual)
+        const targetQty = Math.max(0, orderQty - p1Actual)
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
     }
@@ -1349,11 +1338,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
-        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         const p1Actual = p1.get(sku) ?? 0
-        const targetQty = wpb > 0
-          ? Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
-          : Math.max(0, orderQty - p1Actual)
+        const targetQty = Math.max(0, orderQty - p1Actual)
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
     }
@@ -1385,11 +1371,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (isPhase2) {
       const p1 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
       return Object.entries(lotusMap).map(([sku, { qty: orderQty, name }]) => {
-        const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
         const p1Actual = p1.get(sku) ?? 0
-        const targetQty = wpb > 0
-          ? Math.floor(Math.max(0, orderQty - p1Actual) / wpb) * wpb
-          : Math.max(0, orderQty - p1Actual)
+        const targetQty = Math.max(0, orderQty - p1Actual)
         return { sku, skuName: name, targetQty, channel: ch }
       }).filter(s => s.targetQty > 0)
     }
@@ -1434,11 +1417,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       for (const [ch, m] of Array.from(phase1ByChannel.entries())) {
         if (m.has(sku)) { channel = ch; break }
       }
-      const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
       const p12Actual = phase1Assigned.get(sku) ?? 0
-      const targetQty = wpb > 0
-        ? Math.floor(Math.max(0, qty - p12Actual) / wpb) * wpb
-        : Math.max(0, qty - p12Actual)
+      const targetQty = Math.max(0, qty - p12Actual)
       return { sku, skuName: name, targetQty, channel }
     }).filter(t => t.targetQty > 0)
 
@@ -1448,11 +1428,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         for (const [sku, { qty: orderQty, name }] of Object.entries(orderMap)) {
           if (phase3SkuSet.has(sku)) continue
           const p12 = useChannelDeduct ? (phase1ByChannel.get(ch) ?? new Map()) : phase1Assigned
-          const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, '')) ?? 0
           const p12Actual = p12.get(sku) ?? 0
-          const targetQty = wpb > 0
-            ? Math.floor(Math.max(0, orderQty - p12Actual) / wpb) * wpb
-            : Math.max(0, orderQty - p12Actual)
+          const targetQty = Math.max(0, orderQty - p12Actual)
           if (targetQty > 0) allPhase3Targets.push({ sku, skuName: name, targetQty, channel: ch })
         }
       }
@@ -1742,14 +1719,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           } else {
             truncQty = (availMins / 60) * fallbackRate
           }
-          const skuForWpb = cleanSku || (task.sku as string)
-          const wpb = wpbMap.get(skuForWpb) ?? wpbMap.get(task.sku as string) ?? 1
-          let finalQty: number
-          if (wpb > 1 && (task.channel as string) !== 'Makro') {
-            finalQty = Math.floor(truncQty / wpb) * wpb
-          } else {
-            finalQty = Math.round(truncQty)
-          }
+          const finalQty = Math.round(truncQty * 100) / 100
           if (finalQty <= 0) continue
           task.target_quantity = Math.round(finalQty * 100) / 100
           endMins = wallClockFinish(startMins, computeTaskDuration({
