@@ -45,7 +45,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
     dot: 'border-yellow-500',
   },
   'mas-group-station-rule': {
-    label: 'Mas Group Station Rule',
+    label: 'Mas กลุ่มสินค้าผลิตมากกว่า 1 สายพาน',
     desc: 'route กลุ่มสินค้าไปสายพาน พร้อม split mode, priority และสัดส่วนการแบ่งงาน',
     dot: 'border-emerald-500',
   },
