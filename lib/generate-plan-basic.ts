@@ -1810,19 +1810,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const station = resolveStationForProduct(prod)
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
-
-        // Batch same SKU from subsequent channels
-        for (let nextIdx = chIdx + 1; nextIdx < chsInPass.length; nextIdx++) {
-          const nextCh = chsInPass[nextIdx]
-          const nextKey = `${nextCh}|||${normSku}`
-          if (handled.has(nextKey)) continue
-          const nextItem = passList.find(i => i.channel === nextCh && i.sku.replace(/^0+/, '') === normSku)
-          if (!nextItem) continue
-          handled.add(nextKey)
-          const nextQty = roundDownToBag(nextItem.sku, nextItem.targetQty)
-          if (nextQty <= 0) continue
-          targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
-        }
       }
 
       for (const [station, stationTargets] of Object.entries(targetsByStation)) {
