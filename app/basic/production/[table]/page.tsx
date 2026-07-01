@@ -464,7 +464,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   }
   skuGroups.sort((a, b) => b.totalQty - a.totalQty)
 
-  const usesApproachB = pigLots.length > 0 && masYieldRows.length > 0 && carcassRate > 0
+  const usesApproachB = pigLots.some(l => Number(l.qty) > 0) && masYieldRows.length > 0 && carcassRate > 0
 
   // Approach B: pig-based cumulative yield — segments split around breaklines
   if (usesApproachB) {
@@ -650,7 +650,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       }
       grp.skus = bySeq
     }
-  } else if (carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) {
+  } else if ((carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) || skuGroups.some(grp => grp.skus.some(sku => skuStats[sku]?.isRaw))) {
     const phaseEndWallSeq = phaseEnd * 60
     let phaseNetMinsSeq = phaseEndWallSeq - phaseStartMins
     for (const [bs, be] of BREAKS) {
@@ -658,8 +658,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
     }
 
     for (const grp of skuGroups) {
-      if (!(carcassThroughputByGroup[grp.grp] > 0)) continue
-      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
+      const hasRawRemainder = grp.skus.some(sku => skuStats[sku]?.isRaw)
+      const yieldThroughputFromPlan = hasRawRemainder && grp.totalQty > 0 && phaseNetMinsSeq > 0
+        ? grp.totalQty / phaseNetMinsSeq
+        : 0
+      const throughput = (carcassThroughputByGroup?.[grp.grp] ?? 0) || yieldThroughputFromPlan
       if (throughput <= 0) continue
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
