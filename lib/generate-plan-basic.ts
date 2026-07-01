@@ -1777,6 +1777,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       if (!chsInPass.includes(item.channel)) chsInPass.push(item.channel)
     }
     const handled = new Set<string>()
+    const channelSeqPriority = (channel: string) => channelPriority[channel] ?? 99
 
     for (let chIdx = 0; chIdx < chsInPass.length; chIdx++) {
       const ch = chsInPass[chIdx]
@@ -1810,6 +1811,24 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const station = resolveStationForProduct(prod)
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
+
+        let prevCh = ch
+        for (let nextIdx = chIdx + 1; nextIdx < chsInPass.length; nextIdx++) {
+          const nextCh = chsInPass[nextIdx]
+          if (channelSeqPriority(nextCh) !== channelSeqPriority(prevCh) + 1) break
+
+          const nextKey = `${nextCh}|||${normSku}`
+          if (handled.has(nextKey)) break
+
+          const nextItem = passList.find(i => i.channel === nextCh && i.sku.replace(/^0+/, '') === normSku)
+          if (!nextItem) break
+
+          handled.add(nextKey)
+          const nextQty = roundDownToBag(nextItem.sku, nextItem.targetQty)
+          if (nextQty <= 0) break
+          targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
+          prevCh = nextCh
+        }
       }
 
       for (const [station, stationTargets] of Object.entries(targetsByStation)) {
