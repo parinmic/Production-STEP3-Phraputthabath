@@ -420,6 +420,95 @@ export function toDateString(val: unknown): string {
   return String(val).trim()
 }
 
+const THAI_MONTHS_ABBR = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+
+function parseSupplLoadingTime(raw: unknown): string {
+  if (raw instanceof Date) {
+    return `${String(raw.getHours()).padStart(2,'0')}:${String(raw.getMinutes()).padStart(2,'0')}`
+  }
+  const num = Number(raw)
+  if (!isNaN(num) && num > 0 && num < 1) {
+    const totalMins = Math.round(num * 24 * 60)
+    return `${String(Math.floor(totalMins/60)).padStart(2,'0')}:${String(totalMins%60).padStart(2,'0')}`
+  }
+  const s = String(raw ?? '').trim()
+  const mc = s.match(/(\d{1,2}):(\d{2})/); if (mc) return `${mc[1].padStart(2,'0')}:${mc[2]}`
+  const md = s.match(/(\d{1,2})\.(\d{2})/); if (md) return `${md[1].padStart(2,'0')}:${md[2]}`
+  return '10:00'
+}
+
+function parseSupplProductionDate(raw: unknown): string {
+  if (raw instanceof Date) {
+    const y = raw.getFullYear() > 2400 ? raw.getFullYear() - 543 : raw.getFullYear()
+    return `${y}-${String(raw.getMonth()+1).padStart(2,'0')}-${String(raw.getDate()).padStart(2,'0')}`
+  }
+  const num = Number(raw)
+  if (!isNaN(num) && num > 40000) {
+    const d = new Date(Math.round((num - 25569) * 86400000))
+    const y = d.getUTCFullYear() > 2400 ? d.getUTCFullYear() - 543 : d.getUTCFullYear()
+    return `${y}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
+  }
+  const s = String(raw ?? '').trim()
+  for (let i = 0; i < THAI_MONTHS_ABBR.length; i++) {
+    if (s.includes(THAI_MONTHS_ABBR[i])) {
+      const cleaned = s.replace(THAI_MONTHS_ABBR[i], '').trim()
+      const nums = cleaned.split(/[\s/]+/).map(p => parseInt(p)).filter(n => !isNaN(n))
+      const day = nums[0] ?? 1
+      const yearRaw = nums[1] ?? new Date().getFullYear() + 543
+      const year = yearRaw > 2400 ? yearRaw - 543 : yearRaw < 100 ? yearRaw + 2000 : yearRaw
+      return `${year}-${String(i+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { const y = parseInt(s); return y > 2400 ? `${y-543}${s.slice(4)}` : s }
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+}
+
+/**
+ * Parser สำหรับไฟล์แผนรอบเสริม — sheet "แผนรอบเสริม"
+ * D1 = เวลาโหลดจ่าย, H2 = วันที่ผลิต
+ * Column D (row 4+) = SAP, Column H (row 4+) = น้ำหนักสั่ง (กก.)
+ */
+export function parseSupplementaryPlanFile(file: File): Promise<ParsedRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array', cellDates: true })
+        const sheetName = wb.SheetNames.find(n => n.trim() === 'แผนรอบเสริม')
+          ?? wb.SheetNames.find(n => n.includes('เสริม'))
+          ?? wb.SheetNames[0]
+        const sheet = wb.Sheets[sheetName]
+        if (!sheet) throw new Error('ไม่พบ sheet "แผนรอบเสริม" ในไฟล์ที่เลือก')
+
+        const loadingTime = parseSupplLoadingTime(sheet['D1']?.v ?? sheet['D1']?.w ?? '')
+        const orderDate   = parseSupplProductionDate(sheet['H2']?.v ?? sheet['H2']?.w ?? '')
+
+        const ref = sheet['!ref']
+        if (!ref) { resolve([]); return }
+        const range = XLSX.utils.decode_range(ref)
+
+        const rows: ParsedRow[] = []
+        for (let r = 3; r <= range.e.r; r++) {
+          const skuCell = sheet[XLSX.utils.encode_cell({ r, c: 3 })] // Column D
+          const qtyCell = sheet[XLSX.utils.encode_cell({ r, c: 7 })] // Column H
+          const sku = String(skuCell?.v ?? '').trim()
+          const qty = Number(qtyCell?.v ?? 0)
+          if (!sku || isNaN(qty) || qty <= 0) continue
+          rows.push({ sku, quantity: qty, loading_time: loadingTime, order_date: orderDate })
+        }
+
+        if (!rows.length) throw new Error('ไม่พบรายการในแผนรอบเสริม — ตรวจสอบว่าน้ำหนัก (คอลัมน์ H) มีค่า > 0')
+        resolve(rows)
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('ไม่สามารถอ่านไฟล์ได้'))
+      }
+    }
+    reader.onerror = () => reject(new Error('เกิดข้อผิดพลาดในการอ่านไฟล์'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 /**
  * Parser สำหรับไฟล์ Template แผนผลิต — ชีท "แผน 100%"
  * โครงสร้าง: หลายเซคชัน แต่ละเซคชันขึ้นต้นด้วยแถว "แพลนผลิต"
