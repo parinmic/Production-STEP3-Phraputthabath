@@ -25,6 +25,19 @@ interface ProductivityRow {
   product: string
 }
 
+interface GroupStationRule {
+  product_group: string
+  station: string
+  is_enabled: boolean
+  split_mode: string | null
+  priority: number | null
+  share_pct: number | null
+  allow_same_sku: boolean | null
+  sku_route_mode: string | null
+  raw_remainder_mode: string | null
+  overflow_station: string | null
+}
+
 interface SkuTarget {
   sku: string
   skuName: string | null
@@ -1006,6 +1019,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: quotasRaw },
     { data: masYieldRaw },
     { data: masSayapanRaw },
+    { data: masGroupStationRuleRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
@@ -1061,6 +1075,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
     supabase.from('mas_yield').select('carcass_weight, product_group, yield_pct'),
     supabase.from('mas_sayapan').select('product_group, station'),
+    supabase.from('mas_group_station_rule')
+      .select('product_group, station, is_enabled, split_mode, priority, share_pct, allow_same_sku, sku_route_mode, raw_remainder_mode, overflow_station'),
   ])
 
   // Merge daily workforce: manual > 1530 > 0930 → fallback weekly
@@ -1176,6 +1192,79 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   for (const p of productivity) {
     if (!skuMap.has(p.sku))                    skuMap.set(p.sku, p)
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
+  }
+
+  const groupRulesByGroup = new Map<string, GroupStationRule[]>()
+  for (const rawRule of (masGroupStationRuleRaw ?? []) as GroupStationRule[]) {
+    if (!rawRule?.product_group || !rawRule.station || rawRule.is_enabled === false) continue
+    const rule: GroupStationRule = {
+      ...rawRule,
+      station: toBasicStation(String(rawRule.station)),
+      split_mode: String(rawRule.split_mode ?? 'primary'),
+      sku_route_mode: String(rawRule.sku_route_mode ?? 'master_productivity'),
+      raw_remainder_mode: String(rawRule.raw_remainder_mode ?? 'raw_sku_station'),
+      priority: Number(rawRule.priority ?? 999),
+      share_pct: rawRule.share_pct === null || rawRule.share_pct === undefined ? null : Number(rawRule.share_pct),
+      allow_same_sku: rawRule.allow_same_sku !== false,
+    }
+    const list = groupRulesByGroup.get(rule.product_group) ?? []
+    list.push(rule)
+    groupRulesByGroup.set(rule.product_group, list)
+  }
+  groupRulesByGroup.forEach((list: GroupStationRule[], grp: string) => {
+    groupRulesByGroup.set(grp, list.sort((a, b) => Number(a.priority ?? 999) - Number(b.priority ?? 999)))
+  })
+
+  const sayapanStationsByGroup = new Map<string, string[]>()
+  for (const row of (masSayapanRaw ?? []) as { product_group: string; station: string }[]) {
+    if (!row.product_group || !row.station) continue
+    const station = toBasicStation(String(row.station))
+    const list = sayapanStationsByGroup.get(row.product_group) ?? []
+    if (!list.includes(station)) list.push(station)
+    sayapanStationsByGroup.set(row.product_group, list)
+  }
+
+  const allowedStationsForGroup = (group: string): string[] => {
+    const rules = groupRulesByGroup.get(group) ?? []
+    if (rules.length) return rules.map(r => r.station).filter(Boolean)
+    return sayapanStationsByGroup.get(group) ?? []
+  }
+
+  const resolveStationForProduct = (prod: ProductivityRow): string => {
+    const masterStation = toBasicStation(prod.station)
+    const rules = groupRulesByGroup.get(prod.product_group) ?? []
+    if (!rules.length) {
+      const sayapanStations = sayapanStationsByGroup.get(prod.product_group) ?? []
+      if (!sayapanStations.length) return masterStation
+      if (sayapanStations.includes(masterStation)) return masterStation
+      return sayapanStations[0]
+    }
+    const sorted = [...rules].sort((a, b) => Number(a.priority ?? 999) - Number(b.priority ?? 999))
+    const primary = sorted[0]?.station ?? masterStation
+    const mode = String(sorted[0]?.split_mode ?? 'primary')
+    const routeMode = String(sorted[0]?.sku_route_mode ?? 'master_productivity')
+    if (mode === 'primary' || routeMode === 'station_only') return primary
+    const allowed = new Set(sorted.map(r => r.station))
+    if (allowed.has(masterStation)) return masterStation
+    return primary
+  }
+
+  const resolveRemainderStation = (group: string, rawProd: ProductivityRow | undefined, usedStations: string[]): string | null => {
+    const rules = groupRulesByGroup.get(group) ?? []
+    const mode = String(rules[0]?.raw_remainder_mode ?? 'raw_sku_station')
+    const allowed = allowedStationsForGroup(group)
+    const rawStation = rawProd ? resolveStationForProduct(rawProd) : ''
+    if (mode === 'primary_station') return rules[0]?.station || usedStations[0] || rawStation || null
+    if (rawStation && (!allowed.length || allowed.includes(rawStation))) return rawStation
+    for (const station of usedStations) if (!allowed.length || allowed.includes(station)) return station
+    return rules[0]?.station || rawStation || usedStations[0] || null
+  }
+
+  const syncRoundNoteQty = (row: Record<string, unknown>) => {
+    const note = String(row['note'] ?? '')
+    if (!note.includes('round:')) return
+    const qty = Math.round(Number(row['target_quantity'] ?? 0) * 100) / 100
+    row['note'] = note.replace(/round:(\d+):[0-9.]+/, `round:$1:${qty}`)
   }
 
   // Build main SKU set: Product='RAW' from productivity master (fallback: sku_name ending '-Raw')
@@ -1681,7 +1770,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
         const prod = skuMap.get(normSku) ?? skuMap.get(item.sku)
         if (!prod) continue
-        const station = toBasicStation(prod.station)
+        const station = resolveStationForProduct(prod)
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
 
@@ -1911,84 +2000,62 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (mainSkuSet.has(normSku)) a['unit'] = 'RAW'
   })
 
-  // Append remainder assignments (Raw or By Product) per group based on Product type
+  // Append remainder assignments (Raw or By Product) once per product group.
   if (Object.keys(groupYieldCap).length > 0) {
     let rawSeq = resequenced.length
+    const isRawProd = (p: ProductivityRow) =>
+      p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')
 
-    // Build sayapan group map: station → groups (covers groups missing from productivity)
-    const sayapanGrpsByStation: Record<string, string[]> = {}
-    for (const r of (masSayapanRaw ?? []) as { product_group: string; station: string }[]) {
-      if (!r.station || !r.product_group) continue
-      if (!sayapanGrpsByStation[r.station]) sayapanGrpsByStation[r.station] = []
-      if (!sayapanGrpsByStation[r.station].includes(r.product_group))
-        sayapanGrpsByStation[r.station].push(r.product_group)
-    }
+    for (const [grp, yieldKg] of Object.entries(groupYieldCap)) {
+      if (yieldKg <= 0) continue
 
-    for (const station of BASIC_TABLE_NAMES) {
-      const stationProds = productivity.filter(p => toBasicStation(p.station) === station)
+      const groupRows = resequenced.filter(a => {
+        if (String(a['note'] ?? '').includes('remainder')) return false
+        const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+        const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+        return prod?.product_group === grp
+      })
 
-      // Use sayapan to get ALL groups for this station; fallback to productivity groups
-      const sayapanGrps = sayapanGrpsByStation[station] ?? []
-      const prodGrps = Array.from(new Set(stationProds.map(p => p.product_group).filter(Boolean)))
-      const stationGroups = sayapanGrps.length > 0 ? sayapanGrps : prodGrps
+      const assignedForGrp = groupRows.reduce((s, a) => s + Number(a['target_quantity'] ?? 0), 0)
+      const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
+      if (remainKg <= 0) continue
 
-      for (const grp of stationGroups) {
-        const yieldKg = groupYieldCap[grp] ?? 0
-        if (yieldKg <= 0) continue
+      const allGrpProds = productivity.filter(p => p.product_group === grp)
+      const rawProd = allGrpProds.find(p => isRawProd(p))
+      const usedStations = Array.from(new Set(groupRows.map(a => String(a['table_name'] ?? '')).filter(Boolean)))
 
-        // Sum non-remainder assignments already planned for this group at this station
-        const assignedForGrp = resequenced
-          .filter(a => String(a['table_name'] ?? '') === station && !String(a['note'] ?? '').includes('remainder'))
-          .reduce((s, a) => {
-            const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
-            const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
-            return prod?.product_group === grp ? s + Number(a['target_quantity'] ?? 0) : s
-          }, 0)
-
-        const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
-        if (remainKg <= 0) continue
-
-        // Search ALL productivity (cross-station) for this group's SKUs
-        const allGrpProds = productivity.filter(p => p.product_group === grp)
-
-        // Main Product: group has a RAW-type SKU → raw remainder (prefer current station)
-        const isRawProd = (p: ProductivityRow) =>
-          p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')
-        const rawProd = stationProds.find(p => p.product_group === grp && isRawProd(p))
-          ?? allGrpProds.find(p => isRawProd(p))
-        if (rawProd) {
-          resequenced.push({
-            production_date: productionDate,
-            table_name:      station,
-            worker_code:     'RAW',
-            worker_name:     'สต๊อก Raw',
-            sku:             rawProd.sku,
-            sku_name:        rawProd.sku_name,
-            target_quantity: remainKg,
-            unit:            'RAW',
-            period:          phaseCfg.period,
-            deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
-            status:          'รอผลิต',
-            seq:             rawSeq++,
-            channel:         'RAW',
-            note:            'raw_remainder',
-            is_deficit:      false,
-            effective_from:  effectiveFromISO,
-          })
-          continue
-        }
-
-        // No RAW SKU → add remaining yield to the last SKU already planned for this group
-        const lastGrpRow = [...resequenced].reverse().find(a => {
-          if (String(a['table_name'] ?? '') !== station) return false
-          if (String(a['note'] ?? '').includes('remainder')) return false
-          const norm = String(a['sku'] ?? '').replace(/^0+/, '')
-          const prod = skuMap.get(norm) ?? skuMap.get(String(a['sku'] ?? ''))
-          return prod?.product_group === grp
+      if (rawProd) {
+        const station = resolveRemainderStation(grp, rawProd, usedStations)
+        if (!station) continue
+        resequenced.push({
+          production_date: productionDate,
+          table_name:      station,
+          worker_code:     'RAW',
+          worker_name:     'สต๊อก Raw',
+          sku:             rawProd.sku,
+          sku_name:        rawProd.sku_name,
+          target_quantity: remainKg,
+          unit:            'RAW',
+          period:          phaseCfg.period,
+          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
+          status:          'รอผลิต',
+          seq:             rawSeq++,
+          channel:         'RAW',
+          note:            'raw_remainder',
+          is_deficit:      false,
+          effective_from:  effectiveFromISO,
         })
-        if (lastGrpRow) {
-          lastGrpRow['target_quantity'] = Number(lastGrpRow['target_quantity'] ?? 0) + remainKg
-        }
+        continue
+      }
+
+      const allowed = allowedStationsForGroup(grp)
+      const lastGrpRow = [...groupRows].reverse().find(a => {
+        const station = String(a['table_name'] ?? '')
+        return !allowed.length || allowed.includes(station)
+      }) ?? groupRows[groupRows.length - 1]
+      if (lastGrpRow) {
+        lastGrpRow['target_quantity'] = Math.round((Number(lastGrpRow['target_quantity'] ?? 0) + remainKg) * 100) / 100
+        syncRoundNoteQty(lastGrpRow)
       }
     }
   }
