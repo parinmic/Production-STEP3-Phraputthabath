@@ -227,6 +227,34 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       station:       'สายพาน/สถานี',
     },
   },
+  mas_group_station_rule: {
+    cols: [
+      'product_group',
+      'station',
+      'is_enabled',
+      'split_mode',
+      'priority',
+      'share_pct',
+      'allow_same_sku',
+      'sku_route_mode',
+      'raw_remainder_mode',
+      'overflow_station',
+      'notes',
+    ],
+    headers: {
+      product_group:      'product_group',
+      station:            'station',
+      is_enabled:         'is_enabled',
+      split_mode:         'split_mode',
+      priority:           'priority',
+      share_pct:          'share_pct',
+      allow_same_sku:     'allow_same_sku',
+      sku_route_mode:     'sku_route_mode',
+      raw_remainder_mode: 'raw_remainder_mode',
+      overflow_station:   'overflow_station',
+      notes:              'notes',
+    },
+  },
 }
 
 // Tables that wipe-and-replace on every upload — only latest data is kept in the table

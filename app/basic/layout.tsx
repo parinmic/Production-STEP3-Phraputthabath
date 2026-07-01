@@ -24,6 +24,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance Wet Market Basic', slug: 'mas-variance-wet-market-basic', dot: 'bg-cyan-500' },
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
   { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
+  { label: 'Mas Group Station Rule',         slug: 'mas-group-station-rule',        dot: 'bg-emerald-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
 ]
 
