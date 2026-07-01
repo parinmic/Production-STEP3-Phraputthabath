@@ -367,6 +367,14 @@ function allocateBalanced(params: {
     rate: number; personRate: number; channels: ChEntry[]
     isYieldCapped: boolean
   }
+  interface GroupBlock {
+    productGroup: string
+    blocks: SkuBlock[]
+    totalQty: number
+    manMins: number
+    flowMins: number
+    isYieldCapped: boolean
+  }
 
   const skuBlockMap = new Map<string, SkuBlock>()
   for (const t of targets) {
@@ -424,6 +432,150 @@ function allocateBalanced(params: {
   }
 
   const phaseStartMins = phaseRoundMins[0] ?? 510
+
+  const groupedAssignments: Record<string, unknown>[] = []
+  const groupMap = new Map<string, GroupBlock>()
+
+  for (const block of skuBlocks) {
+    const key = block.productGroup || '__ungrouped__'
+    const manMins = block.personRate > 0 ? (block.totalQty / block.personRate) * 60 : 0
+    const flowMins = block.rate > 0 ? (block.totalQty / block.rate) * 60 : 0
+    const existing = groupMap.get(key)
+    if (existing) {
+      existing.blocks.push(block)
+      existing.totalQty += block.totalQty
+      existing.manMins += manMins
+      existing.flowMins += flowMins
+      existing.isYieldCapped = existing.isYieldCapped || block.isYieldCapped
+    } else {
+      groupMap.set(key, {
+        productGroup: key,
+        blocks: [block],
+        totalQty: block.totalQty,
+        manMins,
+        flowMins,
+        isYieldCapped: block.isYieldCapped,
+      })
+    }
+  }
+
+  const groupedBlocks = Array.from(groupMap.values()).sort((a, b) => b.manMins - a.manMins)
+
+  const groupStartFor = (worker: WorkforceRow, group: GroupBlock): number => {
+    const nameKey = normName(worker.name)
+    let start = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+    for (const block of group.blocks) {
+      const specialEntry = specialTimeMap.get(block.normSku) ?? specialTimeMap.get(block.rawSku)
+      if (specialEntry?.startMins !== null && specialEntry?.startMins !== undefined) {
+        start = Math.max(start, specialEntry.startMins)
+      }
+    }
+    return start
+  }
+
+  const groupDurationFor = (group: GroupBlock, workerCount: number): number => {
+    if (workerCount <= 0) return 0
+    return group.isYieldCapped
+      ? Math.max(group.flowMins, group.manMins / workerCount)
+      : group.manMins / workerCount
+  }
+
+  const canScheduleGroupWith = (group: GroupBlock, groupWorkers: WorkforceRow[]): boolean => {
+    if (!groupWorkers.length) return false
+    const duration = groupDurationFor(group, groupWorkers.length)
+    return groupWorkers.every(worker => {
+      const nameKey = normName(worker.name)
+      const startAt = groupStartFor(worker, group)
+      const busySegs = workerBusySegments.get(nameKey) ?? []
+      return estimateWorkerFinish(startAt, duration, busySegs, phaseEndMins, null, null) !== null
+    })
+  }
+
+  for (const group of groupedBlocks) {
+    let eligibleWorkers = workers.filter(w => isWorkerEligible(w, group.productGroup))
+    if (!eligibleWorkers.length) eligibleWorkers = workers
+    if (!eligibleWorkers.length) continue
+
+    const sortedWorkers = [...eligibleWorkers].sort((a, b) => {
+      const skillA = getWorkerSkillLevel(a, group.productGroup)
+      const skillB = getWorkerSkillLevel(b, group.productGroup)
+      if (skillA !== skillB) return skillA - skillB
+      const freeA = getWorkerFreeAt(normName(a.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+      const freeB = getWorkerFreeAt(normName(b.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+      return freeA - freeB
+    })
+
+    const groupWorkers: WorkforceRow[] = []
+    for (const worker of sortedWorkers) {
+      groupWorkers.push(worker)
+      if (canScheduleGroupWith(group, groupWorkers)) break
+    }
+    if (!groupWorkers.length || !canScheduleGroupWith(group, groupWorkers)) continue
+
+    const groupStart = Math.max(...groupWorkers.map(w => groupStartFor(w, group)))
+    let cursor = groupStart
+
+    for (const block of group.blocks) {
+      const specialEntry = specialTimeMap.get(block.normSku) ?? specialTimeMap.get(block.rawSku)
+      const specialStart = specialEntry?.startMins ?? null
+      if (specialStart !== null) cursor = Math.max(cursor, specialStart)
+
+      const baseQty = Math.floor((block.totalQty / groupWorkers.length) * 100) / 100
+      const perWorkerWorkDur = block.personRate > 0 ? (baseQty / block.personRate) * 60 : 0
+      const blockFlowDur = block.rate > 0 ? (block.totalQty / block.rate) * 60 : 0
+      const blockDur = block.isYieldCapped ? Math.max(blockFlowDur, perWorkerWorkDur) : perWorkerWorkDur
+      const roundMins = getRoundMinsLocal(cursor, phaseRoundMins)
+
+      for (let workerIdx = 0; workerIdx < groupWorkers.length; workerIdx++) {
+        const worker = groupWorkers[workerIdx]
+        const finalQty = workerIdx === groupWorkers.length - 1
+          ? Math.round((block.totalQty - baseQty * workerIdx) * 100) / 100
+          : baseQty
+        if (finalQty <= 0) continue
+
+        let remainingForWorker = finalQty
+        for (const ch of block.channels) {
+          if (remainingForWorker <= 0) break
+          const chQty = Math.min(remainingForWorker, ch.qty / groupWorkers.length)
+          const finalChQty = Math.round(chQty * 100) / 100
+          if (finalChQty <= 0) continue
+          remainingForWorker -= finalChQty
+
+          const noteRoundStr = `round:${roundMins}:${finalChQty}`
+          groupedAssignments.push({
+            production_date: productionDate,
+            table_name:      tableName,
+            worker_code:     worker.emp_id,
+            worker_name:     worker.name,
+            sku:             block.rawSku,
+            sku_name:        block.skuName,
+            target_quantity: finalChQty,
+            unit:            'กก.',
+            period,
+            deadline_time:   minsToTimeStr(cursor),
+            status:          'รอผลิต',
+            seq:             null,
+            channel:         ch.channel,
+            note:            block.isDeficit ? `${noteRoundStr}|deficit` : noteRoundStr,
+            is_deficit:      block.isDeficit,
+          })
+        }
+      }
+
+      cursor = wallClockFinish(cursor, blockDur)
+    }
+
+    for (const worker of groupWorkers) {
+      const nameKey = normName(worker.name)
+      workerFreeAtMins.set(nameKey, cursor)
+      const busySegs = workerBusySegments.get(nameKey) ?? []
+      busySegs.push({ start: groupStart, end: cursor })
+      workerBusySegments.set(nameKey, busySegs)
+    }
+  }
+
+  return groupedAssignments
+  /*
 
   const skuAssignedWorkers = new Map<string, Set<string>>()
 
@@ -498,7 +650,7 @@ function allocateBalanced(params: {
       }
     }
 
-    skuAssignedWorkers.set(normSku, new Set([...assignedSet, ...workersForSku.map(w => normName(w.name))]))
+    skuAssignedWorkers.set(normSku, new Set([...Array.from(assignedSet), ...workersForSku.map(w => normName(w.name))]))
 
     // Distribute kg directly for Basic; do not convert to picking-unit bags.
     for (let workerIdx = 0; workerIdx < workersForSku.length; workerIdx++) {
@@ -509,7 +661,7 @@ function allocateBalanced(params: {
       const specialStart = specialEntry?.startMins ?? null
       const startMins = forcedDeficitWorkers.has(nameKey)
         ? phaseEndMins
-        : (specialStart !== null ? Math.max(freeAt, specialStart) : freeAt)
+        : (specialStart !== null ? Math.max(freeAt, specialStart ?? freeAt) : freeAt)
       const roundMins = getRoundMinsLocal(startMins, phaseRoundMins)
       const baseQty = Math.floor((totalQty / workersForSku.length) * 100) / 100
       const assignedBefore = baseQty * workerIdx
@@ -536,7 +688,7 @@ function allocateBalanced(params: {
 
       const startMap = workerSkuEarliestStart.get(nameKey)!
       const cur = startMap.get(normSku)
-      if (cur === undefined || startMins < cur) startMap.set(normSku, startMins)
+      if (cur === undefined || startMins < (cur ?? startMins)) startMap.set(normSku, startMins)
 
       // Advance worker free time — skip for forced deficit backlog (not a real timeslot)
       if (!forcedDeficitWorkers.has(nameKey)) {
@@ -560,7 +712,7 @@ function allocateBalanced(params: {
       const startMins = startMap?.get(normSku) ?? phaseStartMins
       const specialEntry = specialTimeMap.get(normSku) ?? specialTimeMap.get(rawSku)
       const specialStart = specialEntry?.startMins ?? null
-      const effectiveStart = specialStart !== null ? Math.max(startMins, specialStart) : startMins
+      const effectiveStart = specialStart !== null ? Math.max(startMins, specialStart ?? startMins) : startMins
       const deadline = minsToTimeStr(effectiveStart)
       const isDeficit = workerSkuDeficit.get(nameKey)?.get(normSku) ?? false
 
@@ -597,6 +749,7 @@ function allocateBalanced(params: {
   }
 
   return assignments
+  */
 }
 
 // ========== Helpers ==========
@@ -1045,7 +1198,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const skuEffectiveRateMap = new Map<string, number>()
   // Hoisted for use in both groupYieldCap computation and resequenced-pass approach B duration.
   const capYield = (masYieldRaw ?? []) as { carcass_weight: number; product_group: string; yield_pct: number }[]
-  const capUniqWts = [...new Set(capYield.map(r => r.carcass_weight))].sort((a, b) => a - b)
+  const capUniqWts = Array.from(new Set(capYield.map(r => r.carcass_weight))).sort((a, b) => a - b)
   const sortedLotsForDuration: { spec_code: string; qty: number; avg_weight: number; order: number }[] =
     params.carcassLots?.length ? [...params.carcassLots].sort((a, b) => a.order - b.order) : []
 
@@ -1275,7 +1428,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     priorityChannels: string[],
   ): void => {
     const allSkus = new Set(Object.values(targetsMap).flatMap(arr => arr.map(t => t.sku)))
-    for (const sku of allSkus) {
+    for (const sku of Array.from(allSkus)) {
       const p1Total = phase1Assigned.get(sku) ?? 0
       if (p1Total === 0) continue
       const rawTotal = rawOrderBySku.get(sku) ?? 0
@@ -1776,7 +1929,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
       // Use sayapan to get ALL groups for this station; fallback to productivity groups
       const sayapanGrps = sayapanGrpsByStation[station] ?? []
-      const prodGrps = [...new Set(stationProds.map(p => p.product_group).filter(Boolean))]
+      const prodGrps = Array.from(new Set(stationProds.map(p => p.product_group).filter(Boolean)))
       const stationGroups = sayapanGrps.length > 0 ? sayapanGrps : prodGrps
 
       for (const grp of stationGroups) {
