@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { generatePlan } from '@/lib/generate-plan'
+import { runSawMachineOptimize } from '@/lib/saw-machine-optimize'
 
 const PHASE2_UPLOAD_TABLES = ['makro_orders_1400', 'lotus_orders_1400', 'wet_market_orders_1400']
 
@@ -29,6 +30,7 @@ export async function checkAndAutoGeneratePhase2(date?: string): Promise<string 
   if (!PHASE2_UPLOAD_TABLES.every(t => uploaded.has(t))) return null
 
   const result = await generatePlan({ date: workDate, phase: 2 })
+  if (result.success) runSawMachineOptimize({ date: workDate, phase: 2, dryRun: false }).catch(() => {})
   return result.message
 }
 
@@ -37,5 +39,6 @@ export async function checkAndAutoGeneratePhase2(date?: string): Promise<string 
  */
 export async function autoGeneratePhase3(date: string): Promise<string> {
   const result = await generatePlan({ date, phase: 3 })
+  if (result.success) runSawMachineOptimize({ date, phase: 3, dryRun: false }).catch(() => {})
   return result.message
 }
