@@ -1181,13 +1181,7 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
 
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
   const totalBags   = sortedSkus.reduce((s, sku) => s + skuStats[sku].totalQty, 0)
-  const totalProduced = sortedSkus.reduce((s, sku) => {
-    const t = skuTotal(sku)
-    if (!t) return s
-    const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-    if (!skuStats[sku].isRaw && wpb && wpb > 0) return s + Math.round(t * wpb)
-    return s + t
-  }, 0)
+  const totalProduced = sortedSkus.reduce((s, sku) => s + skuTotal(sku), 0)
 
   const confirm = async (sku: string, rawValue: string) => {
     const val = parseInt(rawValue.replace(/[^0-9]/g, ''), 10)
@@ -1263,7 +1257,7 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
                         )}
                         {hasData && (
                           <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
-                            style={{ width: `${Math.min(100, (total * wpb / stat.totalQty) * 100)}%`, backgroundColor: '#3b82f6' }} />
+                            style={{ width: `${Math.min(100, (total / stat.totalQty) * 100)}%`, backgroundColor: '#3b82f6' }} />
                         )}
                       </div>
                     )}
@@ -1274,9 +1268,7 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
                   <button
                     onClick={() => { if (hasData) { setPopupSku(sku); setEditMode(false) } }}
                     className={`text-xs sm:text-sm font-bold text-right w-full ${hasData ? 'text-blue-600 underline underline-offset-2 cursor-pointer' : 'text-gray-300 cursor-default'}`}>
-                    {hasData
-                      ? (!stat.isRaw && wpb && wpb > 0 ? Math.round(total * wpb).toLocaleString() : total.toLocaleString())
-                      : '—'}
+                    {hasData ? total.toLocaleString() : '—'}
                   </button>
                   <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
                     {yieldBags !== null
