@@ -41,13 +41,17 @@ function workDayBounds(dateStr: string) {
   return { start: new Date(startMs), end: new Date(startMs + 24 * 60 * 60 * 1000) }
 }
 
-function buildGroups<T>(records: LotRecord<T>[], dateStr: string): LotGroup<T>[] {
+function filterByDate<T>(records: LotRecord<T>[], dateStr: string): LotRecord<T>[] {
   const { start, end } = workDayBounds(dateStr)
-  const filtered = records.filter(r => {
+  return records.filter(r => {
     if (!r.updated_at) return false
     const t = new Date(r.updated_at)
     return t >= start && t < end
   })
+}
+
+function buildGroups<T>(records: LotRecord<T>[], dateStr: string): LotGroup<T>[] {
+  const filtered = filterByDate(records, dateStr)
   const map = new Map<string, LotRecord<T>[]>()
   for (const rec of filtered) {
     const list = map.get(rec.spec_code) ?? []
