@@ -1025,7 +1025,8 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
   const [popupSku, setPopupSku]     = useState<string | null>(null)
   const [editMode, setEditMode]     = useState(false)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
-  const [yieldMap, setYieldMap]     = useState<Record<string, number>>({})
+  const [yieldMap,       setYieldMap]       = useState<Record<string, number>>({})
+  const [yieldWeightMap, setYieldWeightMap] = useState<Record<string, number|null>>({})
 
   const fetchActual = useCallback(async () => {
     const { data, error } = await supabase
@@ -1048,6 +1049,7 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
       const res  = await fetch(`/api/yield-actual?date=${date}`)
       const data = await res.json()
       setYieldMap(data.yieldMap ?? {})
+      setYieldWeightMap(data.yieldWeightMap ?? {})
     } catch { /* silent */ }
   }, [date])
 
@@ -1187,8 +1189,9 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
     const val = parseInt(rawValue.replace(/[^0-9]/g, ''), 10)
     if (isNaN(val) || val <= 0) return
     const tempId = `temp_${Date.now()}`
-    setHistory(prev => ({ ...prev, [sku]: [...(prev[sku] ?? []), { id: tempId, quantity: val, created_at: new Date().toISOString(), updated_at: null }] }))
+    setHistory(prev => ({ ...prev, [sku]: [{ id: tempId, quantity: val, created_at: new Date().toISOString(), updated_at: null }] }))
     setInputVals(prev => ({ ...prev, [sku]: '' }))
+    await supabase.from('production_actual').delete().eq('production_date', date).eq('table_name', tableName).eq('sku', sku)
     await supabase.from('production_actual').insert({ production_date: date, table_name: tableName, sku, quantity: val })
     fetchActual()
   }
@@ -1231,7 +1234,8 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
             const wpb       = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
             const total     = skuTotal(sku)
             const hasData   = total > 0
-            const yieldBags = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? null
+            const yieldBags   = yieldMap[sku]       ?? yieldMap[sku.replace(/^0+/, '')]       ?? null
+            const yieldWeight = yieldWeightMap[sku] ?? yieldWeightMap[sku.replace(/^0+/, '')] ?? null
             const isFirstRaw = globalIdx === rawStartIdx && rawStartIdx > 0
 
             return (
@@ -1251,9 +1255,9 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
                     {!stat.isRaw && wpb && wpb > 0 && stat.totalQty > 0 && (
                       <div className="hidden sm:block flex-1 h-4 relative rounded min-w-[50px]">
                         <div className="absolute inset-0 bg-gray-150 rounded" style={{ backgroundColor: '#e5e7eb' }} />
-                        {yieldBags !== null && yieldBags > 0 && (
+                        {yieldWeight !== null && yieldWeight > 0 && (
                           <div className="absolute top-0.5 bottom-0.5 left-0 rounded transition-all duration-500"
-                            style={{ width: `${Math.min(100, (yieldBags * wpb / stat.totalQty) * 100)}%`, backgroundColor: '#4ade80' }} />
+                            style={{ width: `${Math.min(100, (yieldWeight / stat.totalQty) * 100)}%`, backgroundColor: '#4ade80' }} />
                         )}
                         {hasData && (
                           <div className="absolute top-1 bottom-1 left-0 rounded transition-all duration-500"
@@ -1271,9 +1275,11 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
                     {hasData ? total.toLocaleString() : '—'}
                   </button>
                   <p className="text-xs sm:text-sm font-semibold text-right text-green-600">
-                    {yieldBags !== null
-                      ? (!stat.isRaw && wpb && wpb > 0 ? Math.round(yieldBags * wpb).toLocaleString() : yieldBags.toLocaleString())
-                      : '—'}
+                    {yieldWeight !== null
+                      ? Math.round(yieldWeight).toLocaleString()
+                      : yieldBags !== null
+                        ? (!stat.isRaw && wpb && wpb > 0 ? Math.round(yieldBags * wpb).toLocaleString() : yieldBags.toLocaleString())
+                        : '—'}
                   </p>
                   <div className="flex justify-end">
                     <input
@@ -1305,7 +1311,9 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
         <span className="text-xs sm:text-sm font-bold text-right text-green-600">
           {(() => {
             const t = sortedSkus.reduce((s, sku) => {
-              const y = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0
+              const w   = yieldWeightMap[sku] ?? yieldWeightMap[sku.replace(/^0+/, '')]
+              if (w != null) return s + Math.round(Number(w))
+              const y   = yieldMap[sku] ?? yieldMap[sku.replace(/^0+/, '')] ?? 0
               const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
               if (!skuStats[sku].isRaw && wpb && wpb > 0) return s + Math.round(y * wpb)
               return s + y
