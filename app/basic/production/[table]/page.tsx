@@ -470,7 +470,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   if (usesApproachB) {
     const CARCASS_START = 510 // 08:30
     const sLots = [...pigLots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    const uWts  = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+    const uWts  = Array.from(new Set(masYieldRows.map(r => r.carcass_weight))).sort((a, b) => a - b)
     const totalPigsGantt = sLots.reduce((s, l) => s + l.qty, 0)
 
     // Sorted breaklines from lineBreaks prop
@@ -659,9 +659,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 
     for (const grp of skuGroups) {
       if (!(carcassThroughputByGroup[grp.grp] > 0)) continue
-      const throughput = grp.totalQty > 0
-        ? grp.totalQty / phaseNetMinsSeq
-        : (carcassThroughputByGroup[grp.grp] ?? 0)
+      const throughput = carcassThroughputByGroup[grp.grp] ?? 0
       if (throughput <= 0) continue
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
@@ -710,7 +708,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   // Pre-calculate lineBreak impact using lot-by-lot carcass timeline
   const rateMin = carcassRate / 60  // sec/carcass → min/carcass
   const sortedLots = [...pigLots].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  const uniqueWeights = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+  const uniqueWeights = Array.from(new Set(masYieldRows.map(r => r.carcass_weight))).sort((a, b) => a - b)
 
   // Build cumulative net-work-minute boundaries for each lot
   let cumNet = 0
@@ -761,7 +759,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const skuLostKgMap = new Map<string, number>()
   for (const { groupLoss } of lbImpact) {
     for (const { grp, kg } of groupLoss) {
-      const grpSkus  = sortedSkus.filter(s => (groupMap[s] ?? '') === grp && !skuStats[s].isRaw)
+      const grpSkus  = sortedSkus.filter(s => getGrp(s) === grp && !skuStats[s].isRaw)
       const grpTotal = grpSkus.reduce((s, s2) => s + skuStats[s2].totalQty, 0)
       if (grpTotal <= 0) continue
       for (const s of grpSkus) {
@@ -1848,7 +1846,7 @@ export default function BasicTablePage() {
     if (!pigLots.length || !masYieldRows.length) return {}
     const netMins = PHASE_NET_MINS[String(selectedPhase)] ?? 300
     if (netMins <= 0) return {}
-    const uniqueWeights = [...new Set(masYieldRows.map(r => r.carcass_weight))].sort((a, b) => a - b)
+    const uniqueWeights = Array.from(new Set(masYieldRows.map(r => r.carcass_weight))).sort((a, b) => a - b)
     const groupKg: Record<string, number> = {}
     for (const lot of pigLots) {
       const w = uniqueWeights.reduce((best, ww) => Math.abs(ww - lot.avg_weight) < Math.abs(best - lot.avg_weight) ? ww : best, uniqueWeights[0])
