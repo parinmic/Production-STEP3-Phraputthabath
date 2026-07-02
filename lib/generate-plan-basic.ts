@@ -54,6 +54,12 @@ interface CarcassLot {
   order:      number
 }
 
+interface LineBreakRow {
+  station: string
+  start_time: string
+  end_time: string
+}
+
 export interface GenerateBasicPlanParams {
   date?: string
   phase?: number
@@ -128,6 +134,66 @@ function availableWorkMins(fromMins: number, toMins: number): number {
   const overlap = BREAKS.reduce((sum, [bs, be]) =>
     sum + Math.max(0, Math.min(be, toMins) - Math.max(bs, fromMins)), 0)
   return Math.max(0, total - overlap)
+}
+
+function timeStrToMins(t: string): number {
+  const [h, m] = String(t).split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0
+  return h * 60 + m
+}
+
+function lineBreakActiveMins(
+  breaks: { start_time: string; end_time: string }[],
+  phaseStartMins: number,
+  phaseEndMins: number,
+): number {
+  const intervals = breaks
+    .map(b => ({
+      start: Math.max(timeStrToMins(b.start_time), phaseStartMins),
+      end:   Math.min(timeStrToMins(b.end_time), phaseEndMins),
+    }))
+    .filter(b => b.end > b.start)
+    .sort((a, b) => a.start - b.start)
+
+  let total = 0
+  let cur: { start: number; end: number } | null = null
+  for (const interval of intervals) {
+    if (!cur) {
+      cur = { ...interval }
+      continue
+    }
+    if (interval.start <= cur.end) {
+      cur.end = Math.max(cur.end, interval.end)
+    } else {
+      total += availableWorkMins(cur.start, cur.end)
+      cur = { ...interval }
+    }
+  }
+  if (cur) total += availableWorkMins(cur.start, cur.end)
+  return total
+}
+
+function lineBreakSegments(
+  breaks: LineBreakRow[],
+  station: string,
+  phaseStartMins: number,
+  phaseEndMins: number,
+): { start: number; end: number }[] {
+  return breaks
+    .filter(b => b.station === station || b.station === 'ทั้งหมด')
+    .map(b => ({
+      start: Math.max(timeStrToMins(b.start_time), phaseStartMins),
+      end:   Math.min(timeStrToMins(b.end_time), phaseEndMins),
+    }))
+    .filter(b => b.end > b.start)
+}
+
+function segmentActiveMins(segments: { start: number; end: number }[], fromMins: number, toMins: number): number {
+  return segments.reduce((sum, seg) => {
+    const start = Math.max(seg.start, fromMins)
+    const end = Math.min(seg.end, toMins)
+    return end > start ? sum + availableWorkMins(start, end) : sum
+  }, 0)
 }
 
 function wallClockFinish(fromMins: number, workMins: number): number {
@@ -946,7 +1012,14 @@ async function fetchLatestBatchAssignmentsBasic(
   periods: string[],
   deductMode: 'plan' | 'actual' | 'yield',
 ): Promise<{ sku: string; target_quantity: number; channel: string | null }[]> {
-  const all: { sku: string; target_quantity: number; channel: string | null }[] = []
+  type PrevAssignment = {
+    sku: string
+    target_quantity: number
+    channel: string | null
+    table_name: string
+    period: string
+  }
+  const all: PrevAssignment[] = []
   for (const period of periods) {
     const { data: latest } = await supabase
       .from('production_assignments')
@@ -965,12 +1038,34 @@ async function fetchLatestBatchAssignmentsBasic(
       { col: 'table_name',      op: 'in', val: BASIC_TABLE_NAMES as unknown as string[] },
     ]
     if (deductMode === 'actual') filters.push({ col: 'status', op: 'eq', val: 'เสร็จแล้ว' })
-    const rows = await fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
-      'production_assignments', 'sku, target_quantity, channel', filters,
+    const rows = await fetchAll<PrevAssignment>(
+      'production_assignments', 'sku, target_quantity, channel, table_name, period', filters,
     )
     all.push(...rows)
   }
-  return all
+  if (deductMode !== 'plan' || all.length === 0) return all
+
+  const { data: lineBreaks } = await supabase
+    .from('basic_line_breaks')
+    .select('station, start_time, end_time')
+    .eq('production_date', productionDate)
+
+  return all.map(row => {
+    const cfg = PHASE_CONFIG.find(p => p.period === row.period)
+    if (!cfg) return row
+    const phaseStartMins = cfg.startH * 60
+    const phaseEndMins = cfg.endH * 60
+    const phaseNetMins = availableWorkMins(phaseStartMins, phaseEndMins)
+    if (phaseNetMins <= 0) return row
+
+    const stationBreaks = ((lineBreaks ?? []) as { station: string; start_time: string; end_time: string }[])
+      .filter(b => b.station === row.table_name || b.station === 'ทั้งหมด')
+    const lostMins = lineBreakActiveMins(stationBreaks, phaseStartMins, phaseEndMins)
+    if (lostMins <= 0) return row
+
+    const factor = Math.max(0, (phaseNetMins - lostMins) / phaseNetMins)
+    return { ...row, target_quantity: Math.round(Number(row.target_quantity) * factor * 100) / 100 }
+  })
 }
 
 // ========== Main: generateBasicPlan ==========
@@ -1042,6 +1137,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: masYieldRaw },
     { data: masSayapanRaw },
     { data: masGroupStationRuleRaw },
+    { data: lineBreakRaw },
   ] = await Promise.all([
     supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
       .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
@@ -1099,6 +1195,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     supabase.from('mas_sayapan').select('product_group, station'),
     supabase.from('mas_group_station_rule')
       .select('product_group, station, is_enabled, split_mode, priority, share_pct, allow_same_sku, sku_route_mode, raw_remainder_mode, overflow_station'),
+    supabase.from('basic_line_breaks')
+      .select('station, start_time, end_time')
+      .eq('production_date', productionDate),
   ])
 
   // Merge daily workforce: manual > 1530 > 0930 → fallback weekly
@@ -1501,6 +1600,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   const phaseStartMins = phaseCfg.startH * 60
   const phaseEndMins   = phaseCfg.endH   * 60
+  const lineBreakRows = (lineBreakRaw ?? []) as LineBreakRow[]
+  const stationLineBreaks = (station: string) =>
+    lineBreakSegments(lineBreakRows, station, phaseStartMins, phaseEndMins)
 
   const currentWorkforceNames = new Set(workforce.map((w: WorkforceRow) => normName(w.name)))
 
@@ -1567,7 +1669,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const startFreeMins = Math.max(checkpointMins, shiftStartMins, keptMaxEnd)
     workerHours.set(nameKey, Math.max(0, actualEndMins - startFreeMins) / 60)
     workerFreeAtMins.set(nameKey, startFreeMins)
-    workerBusySegments.set(nameKey, [])
+    workerBusySegments.set(nameKey, stationLineBreaks(normalizeStation(w.work_station ?? '')))
   }
 
   // Picking unit map
@@ -1979,7 +2081,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       return ((a.deadline_time as string) || '').localeCompare((b.deadline_time as string) || '')
     })
 
-    const busySegs: { start: number; end: number }[] = []
+    const taskStation = normalizeStation(String(workerTasks[0]?.table_name ?? ''))
+    const busySegs: { start: number; end: number }[] = stationLineBreaks(taskStation)
     let curMins = phaseCfg.startH * 60
     const keptTasks: typeof workerTasks = []
 
@@ -2051,7 +2154,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         let endMins = wallClockFinish(startMins, duration)
 
         if (!isPhase3 && endMins > phaseEndMins) {
-          const availMins = availableWorkMins(startMins, phaseEndMins)
+          const taskStationName = normalizeStation(String(task.table_name ?? taskStation))
+          const stationBreakMins = segmentActiveMins(stationLineBreaks(taskStationName), startMins, phaseEndMins)
+          const availMins = Math.max(0, availableWorkMins(startMins, phaseEndMins) - stationBreakMins)
           let truncQty: number
           if (isYieldCapped && sortedLotsForDuration.length && params.carcassRate) {
             const pigsAvail = Math.floor(availMins * 60 / params.carcassRate)

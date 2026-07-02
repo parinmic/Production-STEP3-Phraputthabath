@@ -159,6 +159,43 @@ const BREAKS: [number, number][] = [
   [1020, 1080],
 ]
 
+function activeMinsExcludingStaticBreaks(startMins: number, endMins: number): number {
+  let net = Math.max(0, endMins - startMins)
+  for (const [bs, be] of BREAKS) {
+    const oStart = Math.max(bs, startMins)
+    const oEnd   = Math.min(be, endMins)
+    if (oEnd > oStart) net -= oEnd - oStart
+  }
+  return Math.max(0, net)
+}
+
+function lineBreakActiveMins(lineBreaks: LineBreak[], phaseStartMins: number, phaseEndMins: number): number {
+  const intervals = lineBreaks
+    .map(lb => ({
+      start: Math.max(timeToMins(lb.start_time), phaseStartMins),
+      end:   Math.min(timeToMins(lb.end_time), phaseEndMins),
+    }))
+    .filter(({ start, end }) => end > start)
+    .sort((a, b) => a.start - b.start)
+
+  let total = 0
+  let cur: { start: number; end: number } | null = null
+  for (const interval of intervals) {
+    if (!cur) {
+      cur = { ...interval }
+      continue
+    }
+    if (interval.start <= cur.end) {
+      cur.end = Math.max(cur.end, interval.end)
+    } else {
+      total += activeMinsExcludingStaticBreaks(cur.start, cur.end)
+      cur = { ...interval }
+    }
+  }
+  if (cur) total += activeMinsExcludingStaticBreaks(cur.start, cur.end)
+  return total
+}
+
 function getPhaseStart(period: string) {
   if (period === 'เช้า') return 8 * 60 + 30
   if (period === 'บ่าย') return 14 * 60
@@ -474,6 +511,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   skuGroups.sort((a, b) => a.minSeq - b.minSeq)
 
   const usesApproachB = pigLots.some(l => Number(l.qty) > 0) && masYieldRows.length > 0 && carcassRate > 0
+  const skuEffectiveQtyMap = new Map<string, number>()
 
   // Approach B: pig-based cumulative yield — segments split around breaklines
   if (usesApproachB) {
@@ -562,6 +600,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         const skuQty   = skuStats[sku].totalQty
         const startPig = pigForYield(prePhaseYield + accKg, group)
         const endPig   = pigForYield(prePhaseYield + accKg + skuQty, group)
+        const phaseEndPig = pigsAt(phaseEndWall)
+        const effectiveEndPig = Math.min(endPig, Math.max(startPig, phaseEndPig))
+        const effectiveQty = Math.max(0, yieldUpToPig(effectiveEndPig, group) - yieldUpToPig(startPig, group))
+        skuEffectiveQtyMap.set(sku, Math.min(skuQty, Math.round(effectiveQty)))
 
         // Build segments, splitting bar at each breakline that interrupts production
         const segs: { start: number; end: number }[] = []
@@ -865,9 +907,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                               </>
                             )
                           })() : (() => {
-                            // Approach B: production is shifted (not reduced) so show full planned qty
-                            const lostKg = usesApproachB ? 0 : (skuLostKgMap.get(sku) ?? 0)
-                            const effectiveQty = Math.max(0, stat.totalQty - lostKg)
+                            const effectiveQty = usesApproachB
+                              ? (skuEffectiveQtyMap.get(sku) ?? stat.totalQty)
+                              : Math.max(0, stat.totalQty - (skuLostKgMap.get(sku) ?? 0))
                             const period = Object.keys(stat.qtyByPeriod)[0]
                             const displayQty = roundedDisplayQty(sku, effectiveQty, bagMap, period)
                             return (
@@ -1009,18 +1051,20 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 interface ProductionSummaryViewProps {
   items: Assignment[]
   phaseStart: number
+  phaseEnd: number
   bagMap: Record<string, number>
   date: string
   tableName: string
   groupMap?: Record<string, string>
   productTypeMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
+  lineBreaks?: LineBreak[]
   phaseNetMins?: number
 }
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, groupMap, productTypeMap, carcassThroughputByGroup, phaseNetMins = 300 }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, phaseEnd, bagMap, date, tableName, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], phaseNetMins = 300 }: ProductionSummaryViewProps) {
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -1107,6 +1151,8 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
 
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
   const phaseStartMins = phaseStart * 60
+  const phaseEndMins = phaseEnd * 60
+  const effectivePhaseNetMins = Math.max(0, phaseNetMins - lineBreakActiveMins(lineBreaks, phaseStartMins, phaseEndMins))
 
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
@@ -1178,13 +1224,13 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
     if (!grp || !carcassThroughputByGroup![grp] || !grpTotalQty[grp]) return null
     const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
     if (!wpb || wpb <= 0) return null
-    const groupKg  = carcassThroughputByGroup![grp] * phaseNetMins
+    const groupKg  = carcassThroughputByGroup![grp] * effectivePhaseNetMins
     const fraction = skuStats[sku].totalQty / grpTotalQty[grp]
     return Math.round((groupKg * fraction) / wpb)
   }
   // Group-level summary for the header card
   const carcassGroupSummary = hasCarcass
-    ? Object.entries(carcassThroughputByGroup!).map(([grp, rate]) => ({ grp, kg: Math.round(rate * phaseNetMins) })).filter(e => e.kg > 0)
+    ? Object.entries(carcassThroughputByGroup!).map(([grp, rate]) => ({ grp, kg: Math.round(rate * effectivePhaseNetMins) })).filter(e => e.kg > 0)
     : []
 
   const skuTotal    = (sku: string) => (history[sku] ?? []).reduce((s, e) => s + e.quantity, 0)
@@ -1999,7 +2045,7 @@ export default function BasicTablePage() {
             <CurrentTimeView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
           )}
           {viewMode === 'summary' && filtered.length > 0 && (
-            <ProductionSummaryView items={filtered} phaseStart={viewStartH} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} phaseNetMins={PHASE_NET_MINS[String(selectedPhase)] ?? 300} />
+            <ProductionSummaryView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} date={date} tableName={cfg.label} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} phaseNetMins={PHASE_NET_MINS[String(selectedPhase)] ?? 300} />
           )}
         </div>
       )}
