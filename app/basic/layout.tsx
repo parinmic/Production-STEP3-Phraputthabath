@@ -393,7 +393,7 @@ function BasicSidebar() {
           {/* Master Calculation */}
           <button
             onClick={() => setOpenCalculation(!openCalculation)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/basic/master-logic/calculation') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${(p.startsWith('/basic/master-logic/calculation') || p === '/basic/master-logic/temp-qc') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
             title="Master Calculation"
           >
             <Calculator size={18} className="shrink-0" />
@@ -421,6 +421,10 @@ function BasicSidebar() {
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/mas-yield' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />Mas Yield
               </Link>
+              <Link href="/basic/master-logic/temp-qc"
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/master-logic/temp-qc' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                <span className="w-2 h-2 rounded-full shrink-0 bg-cyan-500" />Mas Temp QC
+              </Link>
             </div>
           )}
           {openCalculation && collapsed && (
@@ -436,6 +440,11 @@ function BasicSidebar() {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/mas-yield' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas Yield">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              </Link>
+              <Link href="/basic/master-logic/temp-qc"
+                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/master-logic/temp-qc' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                title="Mas Temp QC">
+                <span className="w-2 h-2 rounded-full bg-cyan-500" />
               </Link>
               <Link href="/basic/bom"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
