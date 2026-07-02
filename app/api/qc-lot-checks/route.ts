@@ -11,11 +11,12 @@ interface LotRow {
   original_qty_3?: number
 }
 
-interface LotSnapshotRow extends LotRow {
+interface LotSnapshotRow extends Omit<LotRow, 'original_qty_3'> {
   round_number: number
   source_file: string | null
   sort_order: number
   updated_at: string
+  original_qty_3: number | null
 }
 
 function num(v: unknown): number {
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
 
   const { data: itemRows, error: itemErr } = await supabase
     .from('qc_lot_round_items')
-    .select('spec_code, qty_3, weight_3, source_file, sort_order')
+    .select('spec_code, qty_3, weight_3, source_file, sort_order, original_qty_3')
     .eq('round_number', viewRound)
     .order('sort_order', { ascending: true })
     .order('spec_code', { ascending: true })
@@ -207,14 +208,19 @@ export async function GET(req: NextRequest) {
   }
 
   const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
-  const originalQty = await getOriginalQtyMap(sourceFile)
+  // original_qty_3 is snapshotted once at generate-time (see POST below). Older rows saved
+  // before that column existed have it as null — fall back to resolving it live from the
+  // source stock upload for those only, so we don't re-derive (and risk drift from a
+  // same-named re-upload) for rows that already have a trustworthy snapshot.
+  const needsFallback = (itemRows ?? []).some(r => r.original_qty_3 == null)
+  const originalQty = needsFallback ? await getOriginalQtyMap(sourceFile) : new Map<string, number>()
   const lotRows: LotRow[] = (itemRows ?? []).map(r => {
     const spec = String(r.spec_code ?? '').trim()
     return {
       spec_code:      r.spec_code,
       qty_3:          num(r.qty_3),
       weight_3:       num(r.weight_3),
-      original_qty_3: originalQty.get(spec) ?? num(r.qty_3),
+      original_qty_3: r.original_qty_3 != null ? num(r.original_qty_3) : (originalQty.get(spec) ?? num(r.qty_3)),
     }
   })
   const fallbackLotRows: LotRow[] = lotRows.length
@@ -250,15 +256,19 @@ export async function POST(req: NextRequest) {
       if (spec && r.original_qty_3 !== undefined) originalQty.set(spec, num(r.original_qty_3))
     }
     const rows: LotSnapshotRow[] = lotRowsInput
-      .map((r: Record<string, unknown>, i: number) => ({
-        round_number: round.round_number,
-        spec_code:    String(r.spec_code ?? '').trim(),
-        qty_3:        num(r.qty_3),
-        weight_3:     num(r.weight_3),
-        source_file:  sourceFile,
-        sort_order:   i,
-        updated_at:   updatedAt,
-      }))
+      .map((r: Record<string, unknown>, i: number) => {
+        const spec = String(r.spec_code ?? '').trim()
+        return {
+          round_number:   round.round_number,
+          spec_code:      spec,
+          qty_3:          num(r.qty_3),
+          weight_3:       num(r.weight_3),
+          source_file:    sourceFile,
+          sort_order:     i,
+          updated_at:     updatedAt,
+          original_qty_3: originalQty.has(spec) ? originalQty.get(spec)! : null,
+        }
+      })
       .filter((r: { spec_code: string }) => r.spec_code)
 
     const { error: delErr } = await supabase
@@ -275,7 +285,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       round: round.round_number,
-      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3, original_qty_3: originalQty.get(r.spec_code) ?? r.qty_3 })),
+      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3, original_qty_3: r.original_qty_3 ?? r.qty_3 })),
       sourceFile: sourceFile ?? '',
     })
   }
