@@ -17,17 +17,25 @@ export async function POST(req: NextRequest) {
     const { rows, filename } = await req.json()
     if (!rows?.length) return NextResponse.json({ success: false, message: 'ไม่มีข้อมูล' }, { status: 400 })
 
-    type YieldRecord = { carcass_weight: number; product_group: string; yield_pct: number; source_file: string }
+    type YieldRecord = { carcass_weight: number; product_group: string; yield_pct: number; notes: string | null; source_file: string }
 
-    const records: YieldRecord[] = rows
-      .map((r: Record<string, unknown>) => {
+    const records: YieldRecord[] = []
+    for (const r of rows as Record<string, unknown>[]) {
         const weight = Number(r['น้ำหนักซาก RM'] ?? r['carcass_weight'] ?? 0)
         const group  = String(r['กลุ่มสินค้า'] ?? r['product_group'] ?? '').trim()
-        const yld    = Number(r['Yield'] ?? r['yield_pct'] ?? 0)
-        if (!weight || !group || !yld) return null
-        return { carcass_weight: weight, product_group: group, yield_pct: yld, source_file: filename ?? 'unknown' }
-      })
-      .filter(Boolean) as YieldRecord[]
+        const rawYield = r['Yield'] ?? r['yield_pct']
+        const yld = Number(rawYield ?? 0)
+        if (weight && group && yld) {
+          records.push({ carcass_weight: weight, product_group: group, yield_pct: yld, notes: null, source_file: filename ?? 'unknown' })
+          continue
+        }
+
+        const note = String(rawYield ?? r['notes'] ?? r['note'] ?? '').trim()
+        if (note && records.length > 0) {
+          const prev = records[records.length - 1]
+          prev.notes = prev.notes ? `${prev.notes}\n${note}` : note
+        }
+    }
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลที่ใช้งานได้' }, { status: 400 })
 

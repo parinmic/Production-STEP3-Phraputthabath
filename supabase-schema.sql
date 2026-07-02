@@ -483,6 +483,24 @@ CREATE INDEX IF NOT EXISTS idx_qc_lot_round_items_round ON qc_lot_round_items(ro
 ALTER TABLE qc_lot_round_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_qc_lot_round_items" ON qc_lot_round_items FOR ALL USING (true) WITH CHECK (true);
 
+-- 23. Mas Yield สำหรับ Basic carcass yield ตามน้ำหนักซาก
+CREATE TABLE IF NOT EXISTS mas_yield (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  carcass_weight  numeric     NOT NULL,
+  product_group   text        NOT NULL,
+  yield_pct       numeric     NOT NULL,
+  notes           text,
+  source_file     text,
+  upload_log_id   uuid REFERENCES upload_log(id) ON DELETE CASCADE,
+  uploaded_at     timestamptz DEFAULT now()
+);
+ALTER TABLE mas_yield ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE mas_yield ADD COLUMN IF NOT EXISTS upload_log_id uuid REFERENCES upload_log(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_mas_yield_weight_group ON mas_yield(carcass_weight, product_group);
+ALTER TABLE mas_yield ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_mas_yield" ON mas_yield;
+CREATE POLICY "allow_all_mas_yield" ON mas_yield FOR ALL USING (true) WITH CHECK (true);
+
 -- 23. Basic Line Breaks — บันทึกการหยุดสาย (Breakline) พร้อมสาเหตุและช่วงเวลา
 CREATE TABLE IF NOT EXISTS basic_line_breaks (
   id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,

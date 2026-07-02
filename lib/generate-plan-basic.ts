@@ -26,6 +26,13 @@ interface ProductivityRow {
   product: string
 }
 
+interface MasYieldRow {
+  carcass_weight: number
+  product_group: string
+  yield_pct: number
+  notes?: string | null
+}
+
 interface GroupStationRule {
   product_group: string
   station: string
@@ -237,7 +244,7 @@ function computeTaskDuration(params: {
   startMins: number
   sortedLots: { qty: number; avg_weight: number }[]
   carcassRateSec: number
-  masYield: { carcass_weight: number; product_group: string; yield_pct: number }[]
+  masYield: MasYieldRow[]
   capUniqWts: number[]
   fallbackRate: number
 }): number {
@@ -263,10 +270,12 @@ function computeTaskDuration(params: {
 
   const nearestWt = capUniqWts.reduce((b, w) =>
     Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
-  const yieldRow = masYield.find(r => r.carcass_weight === nearestWt && r.product_group === productGroup)
-  if (!yieldRow || yieldRow.yield_pct <= 0) return fallback
+  const yieldPct = masYield
+    .filter(r => r.carcass_weight === nearestWt && r.product_group === productGroup)
+    .reduce((sum, r) => sum + Number(r.yield_pct ?? 0), 0)
+  if (yieldPct <= 0) return fallback
 
-  const yieldPerPig = (yieldRow.yield_pct / 100) * activeLot.avg_weight
+  const yieldPerPig = (yieldPct / 100) * activeLot.avg_weight
   if (yieldPerPig <= 0) return fallback
 
   return Math.round((qty / yieldPerPig) * carcassRateSec / 60)
@@ -308,6 +317,39 @@ function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
     .filter(r => r.station && r.sku && r.rate > 0)
 }
 
+function percentValue(v: unknown): number {
+  if (v === null || v === undefined || v === '') return 0
+  const n = typeof v === 'number' ? v : Number(String(v).replace('%', '').trim())
+  if (!isFinite(n) || n <= 0) return 0
+  return n > 1 ? n / 100 : n
+}
+
+function parseYieldNoteSplits(note: string | null | undefined): { product_group: string; share: number }[] {
+  if (!note) return []
+  const splits: { product_group: string; share: number }[] = []
+  for (const line of note.split(/\r?\n/)) {
+    const m = line.trim().match(/^(.+?)\s*([0-9]+(?:\.[0-9]+)?)\s*%$/)
+    if (!m) continue
+    const share = Number(m[2]) / 100
+    if (!m[1].trim() || !isFinite(share) || share <= 0) continue
+    splits.push({ product_group: m[1].trim(), share })
+  }
+  return splits
+}
+
+function isMainProduct(p: ProductivityRow): boolean {
+  const product = p.product.trim().toUpperCase()
+  return product === 'RAW' || product === 'MAIN PRODUCT' || product === 'MAIN'
+    || p.sku_name.trim().toLowerCase().endsWith('-raw')
+}
+
+function isJobAssignGroupColumn(key: string): boolean {
+  const clean = key.replace(/_\d+$/, '').trim()
+  if (!clean || clean.startsWith('__EMPTY')) return false
+  if (['จุดงาน', 'รายชื่อพนักงาน', 'ชื่อเล่น', 'ชั่งน้ำหนัก', 'ผลได้'].includes(clean)) return false
+  return true
+}
+
 function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
   const map = new Map<string, { isWeigher: boolean; groups: Map<string, number> }>()
   for (const row of rows) {
@@ -317,9 +359,10 @@ function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
     const isWeigher = Number(r['ชั่งน้ำหนัก'] ?? 0) === 1
     const groups = new Map<string, number>()
     for (const [key, val] of Object.entries(r)) {
-      if (!key.startsWith('กลุ่ม')) continue
+      if (!isJobAssignGroupColumn(key)) continue
       if (val === null || val === undefined) continue
       const level = Number(val)
+      if (!isFinite(level) || level <= 0) continue
       const cleanKey = key.replace(/_\d+$/, '').trim()
       if (!groups.has(cleanKey) || level < (groups.get(cleanKey) ?? 99))
         groups.set(cleanKey, level)
@@ -352,23 +395,6 @@ function getWetMarketVariance(
   if (!isShared) return Math.min(quotaToday, avgBL3) > 100 ? nsHigh : nsLow
   const ratio = lotusBL3 > 0 ? Math.min(quotaToday, avgBL3) / lotusBL3 : 999
   return ratio > 0.5 ? sHigh : sLow
-}
-
-function getMakroVariance(
-  proportionAbove10pct: boolean, orderQty: number, avgBL3: number,
-  params: [number, number, number, number, number, number] = [0.9, 0.8, 0.6, 0.8, 0.6, 0.4],
-): number {
-  const [phTL, phTM, phTH, plTL, plTM, plTH] = params
-  const trend = avgBL3 > 0 ? orderQty / avgBL3 : 2
-  if (proportionAbove10pct) {
-    if (trend > 1.0) return phTH
-    if (trend > 0.8) return phTM
-    return phTL
-  } else {
-    if (trend > 1.0) return plTH
-    if (trend > 0.8) return plTM
-    return plTL
-  }
 }
 
 // ========== Worker Scheduling Helpers ==========
@@ -1152,6 +1178,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
+  const makroTrendDates = [7, 14].map(n => {
+    const h = new Date(d); h.setDate(d.getDate() - n)
+    return h.toISOString().split('T')[0]
+  })
 
   const orderRound = (isPhase2 || isPhase3) ? '1400' : '0800'
 
@@ -1162,7 +1192,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: workforceRaw1530 },
     wmTodayRaw, wmHistRaw,
     lotusTodayRaw, lotusHistRaw,
-    makroTodayRaw, makroHistRaw,
+    makroTodayRaw, makroTrend0800Raw, makroTrend1400Raw,
     { data: masterProdRaw },
     { data: masterChannelRaw },
     { data: jobAssignRaw },
@@ -1198,7 +1228,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: orderRound }]),
     fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
+      [{ col: 'delivery_date', op: 'in', val: makroTrendDates }, { col: 'upload_round', op: 'eq', val: '0800' }]),
+    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
+      [{ col: 'delivery_date', op: 'in', val: makroTrendDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', CALC.productivity).order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
@@ -1233,7 +1265,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
-    supabase.from('mas_yield').select('carcass_weight, product_group, yield_pct'),
+    supabase.from('mas_yield').select('carcass_weight, product_group, yield_pct, notes'),
     supabase.from('mas_sayapan').select('product_group, station'),
     supabase.from('mas_group_station_rule')
       .select('product_group, station, is_enabled, split_mode, priority, share_pct, allow_same_sku, sku_route_mode, raw_remainder_mode, overflow_station'),
@@ -1280,7 +1312,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const lotusToday = (lotusTodayRaw ?? []) as OrderRow[]
   const lotusHist  = (lotusHistRaw  ?? []) as OrderRow[]
   const makroToday = (makroTodayRaw ?? []) as OrderRow[]
-  const makroHist  = (makroHistRaw  ?? []) as OrderRow[]
+  const makroTrend0800 = (makroTrend0800Raw ?? []) as OrderRow[]
+  const makroTrend1400 = (makroTrend1400Raw ?? []) as OrderRow[]
 
   if (isPhase3) {
     if (!(plan100Raw ?? []).length)
@@ -1492,6 +1525,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     return prod?.product_group ?? null
   }
 
+  const yieldConsumptionByGroup = new Map<string, { product_group: string; share: number }[]>()
+  for (const row of (masYieldRaw ?? []) as MasYieldRow[]) {
+    const splits = parseYieldNoteSplits(row.notes)
+    if (row.product_group && splits.length) yieldConsumptionByGroup.set(row.product_group, splits)
+  }
+
+  const yieldConsumptionForGroup = (group: string): { product_group: string; share: number }[] =>
+    yieldConsumptionByGroup.get(group) ?? [{ product_group: group, share: 1 }]
+
   const capResequencedToGroupYield = (rows: Record<string, unknown>[]): Record<string, unknown>[] => {
     if (!Object.keys(groupYieldCap).length) return [...rows]
     const remainingByGroup = new Map<string, number>()
@@ -1506,20 +1548,33 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         continue
       }
       const grp = productGroupForAssignment(row)
-      if (!grp || !remainingByGroup.has(grp)) {
+      if (!grp) {
         kept.push(row)
         continue
       }
-      const remaining = remainingByGroup.get(grp) ?? 0
-      if (remaining <= 0) continue
       const qty = Number(row['target_quantity'] ?? 0)
+      const consumption = yieldConsumptionForGroup(grp)
+      let maxQty = qty
+      let hasCap = false
+      for (const c of consumption) {
+        const remaining = remainingByGroup.get(c.product_group)
+        if (remaining === undefined) continue
+        hasCap = true
+        maxQty = Math.min(maxQty, remaining / c.share)
+      }
+      if (hasCap && maxQty <= 0) continue
+      const cappedQty = hasCap ? Math.min(qty, maxQty) : qty
       const finalQty = selectedPhase === 1
-        ? floorToBag(String(row['sku'] ?? ''), Math.min(qty, remaining))
-        : Math.round(Math.min(qty, remaining) * 100) / 100
+        ? floorToBag(String(row['sku'] ?? ''), cappedQty)
+        : Math.round(cappedQty * 100) / 100
       if (finalQty <= 0) continue
       row['target_quantity'] = finalQty
       syncRoundNoteQty(row)
-      remainingByGroup.set(grp, Math.round((remaining - finalQty) * 100) / 100)
+      for (const c of consumption) {
+        if (!remainingByGroup.has(c.product_group)) continue
+        const remaining = remainingByGroup.get(c.product_group) ?? 0
+        remainingByGroup.set(c.product_group, Math.round((remaining - finalQty * c.share) * 100) / 100)
+      }
       kept.push(row)
     }
     return kept
@@ -1528,7 +1583,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   // Build main SKU set: Product='RAW' from productivity master (fallback: sku_name ending '-Raw')
   const mainSkuSet = new Set<string>()
   for (const p of productivity) {
-    if (p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')) {
+    if (isMainProduct(p)) {
       mainSkuSet.add(p.sku.replace(/^0+/, ''))
     }
   }
@@ -1544,7 +1599,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   let groupYieldCap: Record<string, number> = {}
   const skuEffectiveRateMap = new Map<string, number>()
   // Hoisted for use in both groupYieldCap computation and resequenced-pass approach B duration.
-  const capYield = (masYieldRaw ?? []) as { carcass_weight: number; product_group: string; yield_pct: number }[]
+  const capYield = (masYieldRaw ?? []) as MasYieldRow[]
   const capUniqWts = Array.from(new Set(capYield.map(r => r.carcass_weight))).sort((a, b) => a - b)
   const sortedLotsForDuration: { spec_code: string; qty: number; avg_weight: number; order: number }[] =
     params.carcassLots?.length ? [...params.carcassLots].sort((a, b) => a.order - b.order) : []
@@ -1569,6 +1624,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const wt = capUniqWts.reduce((b, w) => Math.abs(w - u.avg) < Math.abs(b - u.avg) ? w : b, capUniqWts[0] ?? 0)
         for (const my of capYield) {
           if (my.carcass_weight !== wt) continue
+          if (parseYieldNoteSplits(my.notes).length) continue
           const kg = (my.yield_pct / 100) * u.avg * u.qty
           groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
         }
@@ -1602,6 +1658,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       Math.abs(w - defaultWeight) < Math.abs(b - defaultWeight) ? w : b, capUniqWts[0] ?? 0)
     for (const my of capYield) {
       if (my.carcass_weight !== nearestWt) continue
+      if (parseYieldNoteSplits(my.notes).length) continue
       const kg = (my.yield_pct / 100) * defaultWeight * shortage
       groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
     }
@@ -1609,29 +1666,42 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   // Parse variance masters
   const lotusVarianceMap = new Map<string, number>()
+  const lotusSkuVarianceMap = new Map<string, number>()
   for (const row of masterVarLotusRaw ?? []) {
     const r = normalizeRow(row.row_data as Record<string, unknown>)
-    const station = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? '').trim())
-    let pct = Number(r['%Variance'] ?? 0)
-    if (pct > 1) pct = pct / 100
+    const sku = String(r['SAP'] ?? '').trim().replace(/^0+/, '')
+    const station = normalizeStation(String(r['จุดงาน'] ?? r['Station'] ?? r['PFP10'] ?? '').trim())
+    const pct = percentValue(r['%Var'] ?? r['%Variance'])
+    if (sku && pct > 0) lotusSkuVarianceMap.set(sku, pct)
     if (station && pct > 0) lotusVarianceMap.set(station, pct)
   }
 
+  const wmSkuVarianceMap = new Map<string, number>()
   let wmVarParams: [number, number, number, number] | undefined
   for (const row of masterVarWMRaw ?? []) {
-    const vals = Object.values(row.row_data as Record<string, unknown>)
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
+    const sku = String(r['SAP'] ?? '').trim().replace(/^0+/, '')
+    const pct = percentValue(r['%Var'] ?? r['%Variance'])
+    if (sku && pct > 0) wmSkuVarianceMap.set(sku, pct)
+
+    const vals = Object.values(r)
     if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
       const nums = vals.filter(v => typeof v === 'number').map(v => v > 1 ? v / 100 : v) as number[]
       if (nums.length >= 4) { wmVarParams = [nums[0], nums[1], nums[2], nums[3]]; break }
     }
   }
 
-  let makroVarParams: [number, number, number, number, number, number] | undefined
+  const makroGroupVarianceMap = new Map<string, { ltOne?: number; gteOne?: number }>()
   for (const row of masterVarMakroRaw ?? []) {
-    const vals = Object.values(row.row_data as Record<string, unknown>)
-    if (vals.some(v => String(v ?? '').trim() === '%Variance')) {
-      const nums = vals.filter(v => typeof v === 'number').map(v => v > 1 ? v / 100 : v) as number[]
-      if (nums.length >= 6) { makroVarParams = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]]; break }
+    const r = normalizeRow(row.row_data as Record<string, unknown>)
+    const group = String(r['กลุ่มสินค้า'] ?? r['PFP10'] ?? r['product_group'] ?? '').trim()
+    const trend = String(r['แนวโน้ม <1 = เพิ่ม, >1 = ลด'] ?? r['แนวโน้ม'] ?? r['trend'] ?? '').trim()
+    const pct = percentValue(r['%Variance'] ?? r['%Var'])
+    if (group && trend && pct > 0) {
+      const entry = makroGroupVarianceMap.get(group) ?? {}
+      if (/^</.test(trend)) entry.ltOne = pct
+      else entry.gteOne = pct
+      makroGroupVarianceMap.set(group, entry)
     }
   }
 
@@ -1742,7 +1812,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   // Historical averages
   const avgWM    = buildAvgMap(wmHist)
   const avgLotus = buildAvgMap(lotusHist)
-  const avgMakro = buildAvgMap(makroHist)
 
   const quotaMap = new Map<string, number>()
   for (const q of (quotasRaw ?? []) as { sku: string; quantity: number }[]) {
@@ -1812,9 +1881,19 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
     return m
   }
+  const aggregateQty = (rows: OrderRow[]): Map<string, number> => {
+    const m = new Map<string, number>()
+    for (const r of rows) {
+      const sku = r.sku.replace(/^0+/, '')
+      m.set(sku, (m.get(sku) ?? 0) + Number(r.quantity ?? 0))
+    }
+    return m
+  }
   const wmMap    = aggregateToday(wmToday)
   const lotusMap = aggregateToday(lotusToday)
   const makroMap = aggregateToday(makroToday)
+  const makroTrend0800BySku = aggregateQty(makroTrend0800)
+  const makroTrend1400BySku = aggregateQty(makroTrend1400)
 
   // Build targets per channel
   const buildWetMarketTargets = (): SkuTarget[] => {
@@ -1833,7 +1912,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       .map(([sku, avg]) => {
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
-        const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
+        const variance = wmSkuVarianceMap.get(sku)
+          ?? getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
         return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundPhaseTarget(sku, avg * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
@@ -1853,21 +1933,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const prod = skuMap.get(clean) ?? skuMap.get(sku)
       return prod ? prod.product_group : ''
     }
-    const makroTotal = Object.values(makroMap).reduce((s, v) => s + v.qty, 0)
-    const groupQtyMap = new Map<string, number>()
-    for (const [sku, { qty }] of Object.entries(makroMap)) {
-      const grp = getSkuGroup(sku)
-      groupQtyMap.set(grp, (groupQtyMap.get(grp) ?? 0) + qty)
-    }
     return Object.entries(makroMap).map(([sku, { qty: orderQty, name }]) => {
       const grp = getSkuGroup(sku)
-      const groupQty = groupQtyMap.get(grp) ?? 0
-      const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
-      const avgBL3 = avgMakro.get(sku) ?? 0
-      const baggedOrderQty = roundPhaseTarget(sku, orderQty)
-      if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
-      const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
-      return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
+      const groupVariance = makroGroupVarianceMap.get(grp)
+      const hist0800 = makroTrend0800BySku.get(sku) ?? 0
+      const hist1400 = makroTrend1400BySku.get(sku) ?? 0
+      const trend = hist1400 > 0 ? hist0800 / hist1400 : null
+      const variance = trend !== null && trend < 1 ? (groupVariance?.ltOne ?? 1)
+        : (groupVariance?.gteOne ?? 1)
+      return { sku, skuName: name, targetQty: roundPhaseTarget(sku, orderQty * variance), channel: ch }
     }).filter(s => s.targetQty > 0)
   }
 
@@ -1886,7 +1960,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       .map(([sku, avg]) => {
         const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
         const station = prod ? normalizeStation(prod.station) : ''
-        const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
+        const variance = lotusSkuVarianceMap.get(sku)
+          ?? (lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0)
         return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundPhaseTarget(sku, avg * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
@@ -2005,10 +2080,21 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const prod    = skuMap.get(normSku) ?? skuMap.get(item.sku)
         if (!prod?.product_group) continue
         const grp       = prod.product_group
-        const remaining = groupRemaining[grp] ?? 0
-        if (remaining <= 0) { item.targetQty = 0; continue }
-        if (item.targetQty > remaining) item.targetQty = capPhaseTarget(normSku, remaining)
-        groupRemaining[grp] = Math.max(0, remaining - item.targetQty)
+        const consumption = yieldConsumptionForGroup(grp)
+        let maxQty = item.targetQty
+        let hasGroupCap = false
+        for (const c of consumption) {
+          const remaining = groupRemaining[c.product_group]
+          if (remaining === undefined) continue
+          hasGroupCap = true
+          maxQty = Math.min(maxQty, remaining / c.share)
+        }
+        if (hasGroupCap && maxQty <= 0) { item.targetQty = 0; continue }
+        if (hasGroupCap && item.targetQty > maxQty) item.targetQty = capPhaseTarget(normSku, maxQty)
+        for (const c of consumption) {
+          if (groupRemaining[c.product_group] === undefined) continue
+          groupRemaining[c.product_group] = Math.max(0, groupRemaining[c.product_group] - item.targetQty * c.share)
+        }
       }
       assignList = assignList.filter(item => item.targetQty > 0)
     }
@@ -2257,8 +2343,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
             if (!activeLot) activeLot = sortedLotsForDuration[sortedLotsForDuration.length - 1]
             if (activeLot && capUniqWts.length) {
               const nearWt = capUniqWts.reduce((b, w) => Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
-              const yRow = capYield.find(r => r.carcass_weight === nearWt && r.product_group === prod?.product_group)
-              const ypig = yRow ? (yRow.yield_pct / 100) * activeLot.avg_weight : 0
+              const yieldPct = capYield
+                .filter(r => r.carcass_weight === nearWt && r.product_group === prod?.product_group)
+                .reduce((sum, r) => sum + Number(r.yield_pct ?? 0), 0)
+              const ypig = yieldPct > 0 ? (yieldPct / 100) * activeLot.avg_weight : 0
               truncQty = ypig > 0 ? pigsAvail * ypig : 0
             } else { truncQty = 0 }
           } else {
@@ -2650,13 +2738,69 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   resequenced.forEach((a, i) => { a['seq'] = i })
   resetWorkerTimelineFromRows(resequenced)
 
-  // Append remainder assignments once per product group.
+  // Append remainder assignments once per product group. Groups with Mas Yield notes are
+  // made from the remaining component yields first, then any unbalanced component yield
+  // can fall back to the normal per-group remainder flow.
   if (Object.keys(groupYieldCap).length > 0) {
     let rawSeq = resequenced.length
-    const isRawProd = (p: ProductivityRow) =>
-      p.product.toUpperCase() === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')
+    const isRawProd = (p: ProductivityRow) => isMainProduct(p)
 
-    for (const [grp, yieldKg] of Object.entries(groupYieldCap)) {
+    const remainingYield = { ...groupYieldCap }
+    const consumeRemainingYield = (grp: string, qty: number) => {
+      for (const c of yieldConsumptionForGroup(grp)) {
+        if (remainingYield[c.product_group] === undefined) continue
+        remainingYield[c.product_group] = Math.max(0, remainingYield[c.product_group] - qty * c.share)
+      }
+    }
+
+    for (const a of resequenced) {
+      if (String(a['note'] ?? '').includes('remainder')) continue
+      const grp = productGroupForAssignment(a)
+      if (!grp) continue
+      consumeRemainingYield(grp, Number(a['target_quantity'] ?? 0))
+    }
+
+    for (const [sourceGrp, splits] of Array.from(yieldConsumptionByGroup.entries())) {
+      const remainKg = Math.round(splits.reduce((minQty: number, c: { product_group: string; share: number }) => {
+        const remaining = remainingYield[c.product_group]
+        if (remaining === undefined) return minQty
+        return Math.min(minQty, remaining / c.share)
+      }, Number.POSITIVE_INFINITY) * 10) / 10
+      if (!Number.isFinite(remainKg) || remainKg <= 0) continue
+
+      const groupRows = resequenced.filter(a => {
+        if (String(a['note'] ?? '').includes('remainder')) return false
+        const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
+        const prod = skuMap.get(normSku) ?? skuMap.get(String(a['sku'] ?? ''))
+        return prod?.product_group === sourceGrp
+          || splits.some((c: { product_group: string; share: number }) => c.product_group === prod?.product_group)
+      })
+      const usedStations = Array.from(new Set(groupRows.map(a => String(a['table_name'] ?? '')).filter(Boolean)))
+      const allSourceProds = productivity.filter(p => p.product_group === sourceGrp)
+      const rawProd = allSourceProds.find(p => isRawProd(p))
+
+      if (rawProd) {
+        if (remainKg < RAW_REMAINDER_MIN_KG) continue
+        const station = resolveRemainderStation(sourceGrp, rawProd, usedStations)
+        if (!station) continue
+        const rawRows = makeSmartRemainderRows(rawProd, station, remainKg, rawSeq, 'RAW', 'raw_remainder')
+        rawSeq += rawRows.length
+        resequenced.push(...rawRows)
+        consumeRemainingYield(sourceGrp, remainKg)
+        continue
+      }
+
+      const bestWetMarketProd = bestWetMarketSkuByGroup.get(sourceGrp)
+      if (!bestWetMarketProd) continue
+      const station = resolveRemainderStation(sourceGrp, bestWetMarketProd, usedStations)
+      if (!station) continue
+      const remainderRows = makeSmartRemainderRows(bestWetMarketProd, station, remainKg, rawSeq, 'Wet Market', 'yield_remainder')
+      rawSeq += remainderRows.length
+      resequenced.push(...remainderRows)
+      consumeRemainingYield(sourceGrp, remainKg)
+    }
+
+    for (const [grp, yieldKg] of Object.entries(remainingYield)) {
       if (yieldKg <= 0) continue
 
       const groupRows = resequenced.filter(a => {
@@ -2666,8 +2810,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         return prod?.product_group === grp
       })
 
-      const assignedForGrp = groupRows.reduce((s, a) => s + Number(a['target_quantity'] ?? 0), 0)
-      const remainKg = Math.round((yieldKg - assignedForGrp) * 10) / 10
+      const remainKg = Math.round(yieldKg * 10) / 10
       if (remainKg <= 0) continue
 
       const allGrpProds = productivity.filter(p => p.product_group === grp)
