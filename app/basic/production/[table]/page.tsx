@@ -635,9 +635,14 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
 
             const rawSkuKey = bySeq.find(s => skuStats[s]?.isRaw)
             if (rawSkuKey) {
-              // RAW remainder is already generated as real assignments. Keep its
-              // planned qty/worker/timing instead of replacing it with display-only
-              // carcass remainder yield.
+              // RAW remainder is already generated as a real assignment, so keep
+              // its planned quantity/workers but draw the bar across the remaining
+              // carcass-yield window.
+              skuStats[rawSkuKey].minStart = remSegs[0].start
+              skuStats[rawSkuKey].maxEnd   = remSegs[remSegs.length - 1].end
+              skuStats[rawSkuKey].segments = skuStats[rawSkuKey].workers.flatMap(w =>
+                remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+              )
             } else {
               // No RAW assignment was generated, so keep this yield remainder out
               // of the production plan display.
