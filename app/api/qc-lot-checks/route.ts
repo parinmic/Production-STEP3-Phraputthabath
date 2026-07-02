@@ -74,14 +74,7 @@ async function getCurrentRound(): Promise<RoundRow & { isNew: boolean }> {
   return { ...latest, isNew: false }
 }
 
-async function getOriginalQtyMap(): Promise<Map<string, number>> {
-  const { data: logs } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'stock_20')
-    .order('uploaded_at', { ascending: false })
-    .limit(5)
-
+async function stockQtyMapFromLogs(logs: { id: number }[] | null | undefined): Promise<Map<string, number>> {
   for (const log of logs ?? []) {
     const { data, error } = await supabase
       .from('stock_20')
@@ -94,6 +87,30 @@ async function getOriginalQtyMap(): Promise<Map<string, number>> {
   }
 
   return new Map()
+}
+
+async function getOriginalQtyMap(sourceFile?: string | null): Promise<Map<string, number>> {
+  if (sourceFile) {
+    const { data: sourceLogs } = await supabase
+      .from('upload_log')
+      .select('id')
+      .eq('table_name', 'stock_20')
+      .eq('source_file', sourceFile)
+      .order('uploaded_at', { ascending: false })
+      .limit(5)
+
+    const sourceQty = await stockQtyMapFromLogs(sourceLogs)
+    if (sourceQty.size) return sourceQty
+  }
+
+  const { data: latestLogs } = await supabase
+    .from('upload_log')
+    .select('id')
+    .eq('table_name', 'stock_20')
+    .order('uploaded_at', { ascending: false })
+    .limit(5)
+
+  return stockQtyMapFromLogs(latestLogs)
 }
 
 export async function GET(req: NextRequest) {
@@ -189,7 +206,8 @@ export async function GET(req: NextRequest) {
     if (row.recorded_by) recordedBy[row.spec_code] = row.recorded_by
   }
 
-  const originalQty = await getOriginalQtyMap()
+  const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
+  const originalQty = await getOriginalQtyMap(sourceFile)
   const lotRows: LotRow[] = (itemRows ?? []).map(r => {
     const spec = String(r.spec_code ?? '').trim()
     return {
@@ -202,8 +220,6 @@ export async function GET(req: NextRequest) {
   const fallbackLotRows: LotRow[] = lotRows.length
     ? lotRows
     : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0, original_qty_3: 0 }))
-  const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
-
   return NextResponse.json({
     temps, chillRoom, savedAt, recordedBy,
     lotRows:        fallbackLotRows,
