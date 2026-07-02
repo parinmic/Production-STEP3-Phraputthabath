@@ -246,7 +246,7 @@ function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, numb
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
-  const bags = Math.floor(qty / wpb)
+  const bags = Math.ceil(qty / wpb)
   return bags > 0 ? `${bags} ถุง · ` : ''
 }
 
@@ -350,6 +350,27 @@ function WorkerTable({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerTab
   )
 }
 
+// Reconstruction paths (approach B, throughput fallback) compute one time window per SKU
+// without preserving which portion came from a target note vs. a remainder note. Split that
+// window proportionally by quantity — target first, remainder after — so a SKU that mixes
+// both still renders with two distinctly colored segments instead of collapsing to one origin.
+function splitSegmentsByOrigin<T extends { start: number; end: number }>(
+  segs: T[],
+  targetQty: number,
+  remainderQty: number,
+): (T & { origin: 'target' | 'remainder' })[] {
+  if (remainderQty <= 0) return segs.map(s => ({ ...s, origin: 'target' as const }))
+  if (targetQty <= 0) return segs.map(s => ({ ...s, origin: 'remainder' as const }))
+  const targetFrac = targetQty / (targetQty + remainderQty)
+  const out: (T & { origin: 'target' | 'remainder' })[] = []
+  for (const s of segs) {
+    const mid = s.start + (s.end - s.start) * targetFrac
+    if (mid > s.start) out.push({ ...s, end: mid, origin: 'target' })
+    if (s.end > mid) out.push({ ...s, start: mid, origin: 'remainder' })
+  }
+  return out
+}
+
 function mergeSegmentsWithWorkers(segs: { start: number; end: number; worker: string }[]) {
   if (!segs.length) return [] as { start: number; end: number; workers: string[] }[]
   const sorted = [...segs].sort((a, b) => a.start - b.start)
@@ -377,6 +398,7 @@ interface MasYieldRow { carcass_weight: number; product_group: string; yield_pct
 
 interface SkuScheduleViewProps {
   items: Assignment[]
+  allPhaseItems?: Assignment[]
   phaseStart: number
   phaseEnd: number
   bagMap: Record<string, number>
@@ -391,7 +413,33 @@ interface SkuScheduleViewProps {
   carcassRate?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+const PERIOD_SEQUENCE = ['เช้า', 'บ่าย', 'ค่ำ']
+
+// Bag rounding must round up in every phase, but a Target-only SKU's per-phase amounts
+// still have to add up to no more than its true total across all 3 phases — otherwise
+// each phase rounding up independently would overstate the day's total. Round the
+// running cross-phase cumulative total once per phase and show only the new delta
+// (always itself a whole-bag multiple, since it's the difference of two bag multiples).
+function phaseCappedBagQty(sku: string, period: string, allPhaseItems: Assignment[], bagMap: Record<string, number>): number | null {
+  const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+  if (!wpb || wpb <= 0) return null
+  const skuItems = allPhaseItems.filter(a => a.sku === sku)
+  if (skuItems.some(isRemainderTask)) return null // remainder-mixed SKUs use simple per-instance rounding
+  const rawByPeriod: Record<string, number> = {}
+  for (const a of skuItems) rawByPeriod[a.period] = (rawByPeriod[a.period] ?? 0) + Number(a.target_quantity)
+  let cum = 0, prevRounded = 0, result = 0
+  for (const p of PERIOD_SEQUENCE) {
+    if (!(p in rawByPeriod)) continue
+    cum += rawByPeriod[p]
+    const roundedCum = Math.ceil(cum / wpb) * wpb
+    const delta = roundedCum - prevRounded
+    prevRounded = roundedCum
+    if (p === period) result = delta
+  }
+  return result
+}
+
+function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -415,7 +463,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean; origin: 'target' | 'remainder' }[], minSeq: number; isRaw: boolean }
+  type SkuStat = { name: string | null; totalQty: number; targetQty: number; remainderQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean; origin: 'target' | 'remainder' }[], minSeq: number; isRaw: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
@@ -443,10 +491,12 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       cur = Math.max(cur, endMin)
       const isRaw = isRawTask(task)
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, targetQty: 0, remainderQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
+      if (isRemainderTask(task)) s.remainderQty += Number(task.target_quantity)
+      else s.targetQty += Number(task.target_quantity)
       s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
       s.minStart = Math.min(s.minStart, startMin)
       s.maxEnd   = Math.max(s.maxEnd, endMin)
@@ -683,7 +733,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         skuStats[sku].minStart = segs[0].start
         skuStats[sku].maxEnd   = segs[segs.length - 1].end
         skuStats[sku].segments = skuStats[sku].workers.flatMap(w =>
-          segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false, origin: 'target' as const }))
+          splitSegmentsByOrigin(segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false })),
+            skuStats[sku].targetQty, skuStats[sku].remainderQty)
         )
         accKg += skuQty
       }
@@ -769,10 +820,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         }
         skuStats[sku].minStart = cursor
         skuStats[sku].maxEnd   = endMins
-        skuStats[sku].segments = skuStats[sku].workers.map(w => ({
-          start: cursor, end: endMins, worker: w, isDeficit: false,
-          origin: skuStats[sku].isRaw ? 'remainder' as const : 'target' as const,
-        }))
+        skuStats[sku].segments = splitSegmentsByOrigin(
+          skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false })),
+          skuStats[sku].targetQty, skuStats[sku].remainderQty,
+        )
         cursor = endMins
       }
       grp.skus = bySeq
@@ -955,7 +1006,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                               ? (skuEffectiveQtyMap.get(sku) ?? stat.totalQty)
                               : Math.max(0, stat.totalQty - (skuLostKgMap.get(sku) ?? 0))
                             const period = Object.keys(stat.qtyByPeriod)[0]
-                            const displayQty = roundedDisplayQty(sku, effectiveQty, bagMap, period)
+                            const capped = phaseCappedBagQty(sku, period, allPhaseItems ?? items, bagMap)
+                            const displayQty = capped ?? roundedDisplayQty(sku, effectiveQty, bagMap, period)
                             return (
                               <>
                                 {bagLabel(sku, displayQty, bagMap)}{displayQty.toLocaleString()} กก.
@@ -2089,7 +2141,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+            <SkuScheduleView items={filtered} allPhaseItems={items} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
