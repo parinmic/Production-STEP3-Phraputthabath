@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { computeRawShortageRows } from '@/lib/compute-raw-shortage'
 
 // ========== Types ==========
 
@@ -45,6 +46,8 @@ interface SkuTarget {
   channel: string
   isDeficit?: boolean
   planOrder?: number
+  rawNeedTime?: string | null
+  rawFinishByMins?: number | null
 }
 
 interface CarcassLot {
@@ -127,6 +130,20 @@ function minsToTimeStr(mins: number): string {
   const h = Math.floor(wrapped / 60)
   const m = Math.floor(wrapped % 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`
+}
+
+function minsToHHMM(mins: number): string {
+  const wrapped = ((Math.round(mins) % 1440) + 1440) % 1440
+  const h = Math.floor(wrapped / 60)
+  const m = wrapped % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function hhmmToMins(t: string | null | undefined): number | null {
+  if (!t) return null
+  const [h, m] = String(t).slice(0, 5).split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
 }
 
 function availableWorkMins(fromMins: number, toMins: number): number {
@@ -442,7 +459,14 @@ function allocateBalanced(params: {
 
   if (!targets.length || !workers.length) return []
 
-  interface ChEntry { channel: string; qty: number; isDeficit: boolean; planOrder: number }
+  interface ChEntry {
+    channel: string
+    qty: number
+    isDeficit: boolean
+    planOrder: number
+    rawNeedTime?: string | null
+    rawFinishByMins?: number | null
+  }
   interface SkuBlock {
     normSku: string; rawSku: string; skuName: string | null
     totalQty: number; isDeficit: boolean; productGroup: string
@@ -467,7 +491,14 @@ function allocateBalanced(params: {
     const existing = skuBlockMap.get(cleanSku)
     if (existing) {
       existing.totalQty += t.targetQty
-      existing.channels.push({ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false, planOrder: t.planOrder ?? 999999 })
+      existing.channels.push({
+        channel: t.channel,
+        qty: t.targetQty,
+        isDeficit: t.isDeficit || false,
+        planOrder: t.planOrder ?? 999999,
+        rawNeedTime: t.rawNeedTime ?? null,
+        rawFinishByMins: t.rawFinishByMins ?? null,
+      })
       if (t.isDeficit) existing.isDeficit = true
       existing.planOrder = Math.min(existing.planOrder, t.planOrder ?? 999999)
     } else {
@@ -478,7 +509,14 @@ function allocateBalanced(params: {
         productGroup: prod.product_group,
         rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate,
         personRate: prod.rate,
-        channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false, planOrder: t.planOrder ?? 999999 }],
+        channels: [{
+          channel: t.channel,
+          qty: t.targetQty,
+          isDeficit: t.isDeficit || false,
+          planOrder: t.planOrder ?? 999999,
+          rawNeedTime: t.rawNeedTime ?? null,
+          rawFinishByMins: t.rawFinishByMins ?? null,
+        }],
         isYieldCapped: skuRateOverrideMap?.has(cleanSku) ?? false,
         planOrder: t.planOrder ?? 999999,
       })
@@ -643,6 +681,9 @@ function allocateBalanced(params: {
           remainingForWorker -= finalChQty
 
           const noteRoundStr = `round:${roundMins}:${finalChQty}`
+          const rawQueueNote = ch.channel === 'RAW_QUEUE' && ch.rawNeedTime && ch.rawFinishByMins !== null && ch.rawFinishByMins !== undefined
+            ? `${noteRoundStr}|raw-queue|need=${ch.rawNeedTime}|target=${minsToHHMM(ch.rawFinishByMins)}`
+            : noteRoundStr
           groupedAssignments.push({
             production_date: productionDate,
             table_name:      tableName,
@@ -657,7 +698,7 @@ function allocateBalanced(params: {
             status:          'รอผลิต',
             seq:             ch.planOrder,
             channel:         ch.channel,
-            note:            block.isDeficit ? `${noteRoundStr}|deficit` : noteRoundStr,
+            note:            block.isDeficit ? `${rawQueueNote}|deficit` : rawQueueNote,
             is_deficit:      block.isDeficit,
           })
         }
@@ -861,7 +902,8 @@ function mergeAssignList(list: SkuTarget[]): SkuTarget[] {
   for (const item of list) {
     if (!item.sku) continue
     const skuClean = item.sku.replace(/^0+/, '')
-    const key = item.isDeficit ? `${item.channel}_${skuClean}_deficit` : `${item.channel}_${skuClean}`
+    const rawDeadlineKey = item.channel === 'RAW_QUEUE' ? `_${item.rawNeedTime ?? ''}` : ''
+    const key = item.isDeficit ? `${item.channel}_${skuClean}${rawDeadlineKey}_deficit` : `${item.channel}_${skuClean}${rawDeadlineKey}`
     if (merged.has(key)) {
       merged.get(key)!.targetQty += item.targetQty
     } else {
@@ -1426,6 +1468,24 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     row['note'] = note.replace(/round:(\d+):[0-9.]+/, `round:$1:${qty}`)
   }
 
+  const annotateRawQueueFinish = (row: Record<string, unknown>, finishMins: number) => {
+    const note = String(row['note'] ?? '')
+    if (!note.includes('raw-queue')) return
+    const needMatch = note.match(/(?:^|\|)need=([0-9]{2}:[0-9]{2})/)
+    const targetMatch = note.match(/(?:^|\|)target=([0-9]{2}:[0-9]{2})/)
+    const needMins = hhmmToMins(needMatch?.[1])
+    const targetMins = hhmmToMins(targetMatch?.[1])
+    const status = targetMins !== null && finishMins <= targetMins
+      ? 'on_time'
+      : needMins !== null && finishMins <= needMins
+        ? 'buffer_missed'
+        : 'late'
+    const clean = note
+      .replace(/\|finish=[^|]*/g, '')
+      .replace(/\|status=[^|]*/g, '')
+    row['note'] = `${clean}|finish=${minsToHHMM(finishMins)}|status=${status}`
+  }
+
   const productGroupForAssignment = (row: Record<string, unknown>): string | null => {
     const normSku = String(row['sku'] ?? '').replace(/^0+/, '')
     const prod = skuMap.get(normSku) ?? skuMap.get(String(row['sku'] ?? ''))
@@ -1588,6 +1648,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   }
   const channelOrder = Object.entries(channelPriority).sort((a, b) => a[1] - b[1]).map(([ch]) => ch)
   const activeChannels = channelOrder.length ? channelOrder : ['Makro', 'Wet Market', 'LOTUS']
+  channelPriority['RAW_QUEUE'] = -1
+  if (!activeChannels.includes('RAW_QUEUE')) activeChannels.unshift('RAW_QUEUE')
 
   // Workers by station (direct: work_station = productivity station name)
   const workersByStation: Record<string, WorkforceRow[]> = {}
@@ -1835,12 +1897,38 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     'LOTUS':      buildLotusTargets(),
   }
 
+  const rawShortageRows = await computeRawShortageRows(productionDate, selectedPhase)
+  const rawQueueTargets: SkuTarget[] = []
+  for (const row of rawShortageRows) {
+      const sku = String(row.sku ?? '').replace(/^0+/, '')
+      const prod = skuMap.get(sku) ?? skuMap.get(String(row.sku ?? ''))
+      const needMins = hhmmToMins(row.productionTime)
+      const qty = Number(row.deficit ?? row.quantity ?? 0)
+      if (!prod || needMins === null || qty <= 0) continue
+      rawQueueTargets.push({
+        sku,
+        skuName: prod.sku_name || row.sku_name,
+        targetQty: qty,
+        channel: 'RAW_QUEUE',
+        rawNeedTime: row.productionTime,
+        rawFinishByMins: needMins - 5,
+      })
+  }
+  rawQueueTargets.sort((a, b) => {
+    const at = a.rawFinishByMins ?? 999999
+    const bt = b.rawFinishByMins ?? 999999
+    if (at !== bt) return at - bt
+    return a.sku.localeCompare(b.sku)
+  })
+
+  channelTargets['RAW_QUEUE'] = rawQueueTargets
+
   if (isPhase2) {
     const p2RawBySku = new Map<string, number>()
     for (const [sku, { qty }] of Object.entries(wmMap))    p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
     for (const [sku, { qty }] of Object.entries(makroMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
     for (const [sku, { qty }] of Object.entries(lotusMap)) p2RawBySku.set(sku, (p2RawBySku.get(sku) ?? 0) + qty)
-    crossChannelCap(channelTargets, p2RawBySku, activeChannels)
+    crossChannelCap(channelTargets, p2RawBySku, activeChannels.filter(ch => ch !== 'RAW_QUEUE'))
   }
 
   // Build assign list
@@ -1880,7 +1968,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       appendRemaining(lotusMap, 'LOTUS')
       appendRemaining(makroMap, 'Makro')
     }
-    assignList = mergeAssignList(allPhase3Targets)
+    assignList = mergeAssignList([...rawQueueTargets, ...allPhase3Targets])
   } else {
     const raw: SkuTarget[] = []
     for (const ch of activeChannels) {
@@ -2143,11 +2231,13 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         busySegs.push({ start: startMins, end: endMins })
         curMins = Math.max(curMins, endMins)
         delete task.isKept
+        annotateRawQueueFinish(task, endMins)
         keptTasks.push(task)
       } else if (isSpecialTask) {
         task.deadline_time = minsToTimeStr(startMins)
         const endMins = wallClockFinish(startMins, duration)
         busySegs.push({ start: startMins, end: endMins })
+        annotateRawQueueFinish(task, endMins)
         keptTasks.push(task)
       } else {
         task.deadline_time = minsToTimeStr(startMins)
@@ -2193,6 +2283,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
         busySegs.push({ start: startMins, end: endMins })
         curMins = endMins
+        annotateRawQueueFinish(task, endMins)
         keptTasks.push(task)
       }
     }

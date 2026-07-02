@@ -12,6 +12,13 @@ interface ShortageRow {
   deficit: number | null
   productionTime: string | null
   work_station: string | null
+  basicFinishTime?: string | null
+  basicStatus?: 'on_time' | 'buffer_missed' | 'late' | null
+}
+
+interface BasicRawPlanRow {
+  sku: string
+  note: string | null
 }
 
 const PHASE_CONFIG = {
@@ -187,7 +194,33 @@ export default function ShortagePage() {
           return (a.sku_name ?? a.sku).localeCompare(b.sku_name ?? b.sku)
         })
 
-      setRows(merged)
+      const { data: basicRawRows } = await supabase
+        .from('production_assignments')
+        .select('sku, note')
+        .eq('production_date', date)
+        .eq('period', period)
+        .like('note', '%raw-queue%')
+        .in('table_name', ['สามชั้นเบสิค', 'สะโพกเบสิค', 'ไหล่เบสิค'])
+
+      const planBySkuNeed = new Map<string, { finish: string; status: ShortageRow['basicStatus']; need: string | null }>()
+      for (const row of (basicRawRows ?? []) as BasicRawPlanRow[]) {
+        const info = rawPlanInfoFromNote(row.note)
+        if (!info) continue
+        const sku = String(row.sku ?? '').replace(/^0+/, '')
+        const key = `${sku}|||${info.need ?? ''}`
+        const cur = planBySkuNeed.get(key)
+        if (!cur || info.finish > cur.finish) {
+          planBySkuNeed.set(key, info)
+        }
+      }
+
+      setRows(merged.map(r => {
+        const sku = String(r.sku ?? '').replace(/^0+/, '')
+        const plan = planBySkuNeed.get(`${sku}|||${r.productionTime ?? ''}`) ?? planBySkuNeed.get(`${sku}|||`)
+        return plan
+          ? { ...r, basicFinishTime: plan.finish, basicStatus: plan.status }
+          : r
+      }))
     } finally {
       setLoad(false)
     }
@@ -209,6 +242,30 @@ export default function ShortagePage() {
     const baskets = wpb > 0 ? Math.ceil(deficitKg / wpb) : null
     const mins    = baskets != null && mpb > 0 ? baskets * mpb : null
     return { baskets, mins }
+  }
+
+  const rawPlanInfoFromNote = (note: string | null) => {
+    if (!note?.includes('raw-queue')) return null
+    const get = (key: string) => note.match(new RegExp(`(?:^|\\|)${key}=([^|]+)`))?.[1] ?? null
+    const finish = get('finish')
+    const status = get('status') as ShortageRow['basicStatus']
+    const need = get('need')
+    if (!finish || !status) return null
+    return { finish, status, need }
+  }
+
+  const statusLabel = (status: ShortageRow['basicStatus']) => {
+    if (status === 'on_time') return 'ทัน'
+    if (status === 'buffer_missed') return 'ช้า buffer'
+    if (status === 'late') return 'ช้า'
+    return ''
+  }
+
+  const statusClass = (status: ShortageRow['basicStatus']) => {
+    if (status === 'on_time') return 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    if (status === 'buffer_missed') return 'text-amber-700 bg-amber-50 border-amber-200'
+    if (status === 'late') return 'text-red-700 bg-red-50 border-red-200'
+    return 'text-gray-500 bg-gray-50 border-gray-200'
   }
 
   const insertQueue = async () => {
@@ -479,7 +536,14 @@ export default function ShortagePage() {
                         ) : <span className="text-gray-300 text-xs">—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                        {mins != null ? (
+                        {r.basicFinishTime ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="font-semibold text-gray-800">{r.basicFinishTime} <span className="text-gray-400 text-xs">น.</span></span>
+                            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-semibold ${statusClass(r.basicStatus)}`}>
+                              {statusLabel(r.basicStatus)}
+                            </span>
+                          </div>
+                        ) : mins != null ? (
                           <span className="text-gray-700">{mins} <span className="text-gray-400 text-xs">นาที</span></span>
                         ) : <span className="text-gray-300 text-xs">—</span>}
                       </td>

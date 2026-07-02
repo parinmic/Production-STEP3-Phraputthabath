@@ -396,7 +396,6 @@ export default function TemperatureCheckPartsPage() {
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(r.spec_code) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer active:bg-gray-100 transition-colors">
                   <span className="font-mono font-semibold text-gray-800 text-xs shrink-0">{r.spec_code}</span>
-                  <span className="text-blue-700 font-semibold text-xs shrink-0">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
                       <>
@@ -460,9 +459,6 @@ export default function TemperatureCheckPartsPage() {
               <thead className="bg-gray-50 border-b border-gray-200 text-xs">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Lot</th>
-                  <th className="px-4 py-3 text-right font-semibold text-blue-700">
-                    <div>จำนวน</div><div className="font-normal text-blue-400">(ตัว)</div>
-                  </th>
                   <th className="px-4 py-3 text-center font-semibold text-gray-600">การตรวจอุณหภูมิ</th>
                   <th className="px-4 py-3 text-center font-semibold text-indigo-700">
                     <div>เฉลี่ย</div><div className="font-normal text-indigo-400">(°C)</div>
@@ -481,7 +477,6 @@ export default function TemperatureCheckPartsPage() {
                     <Fragment key={r.spec_code}>
                       <tr className={`transition-colors ${rowBg}`}>
                         <td className="px-4 py-2.5 font-mono font-semibold text-gray-800">{r.spec_code}</td>
-                        <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
                         <td className="px-4 py-2.5 text-center">
                           {isOpen && isCurrent && (
                             <div className="inline-flex gap-1.5">
@@ -529,7 +524,7 @@ export default function TemperatureCheckPartsPage() {
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={4} className="bg-gray-50 px-4 py-4">
+                          <td colSpan={3} className="bg-gray-50 px-4 py-4">
                             {!isCurrent && (
                               <div className="mb-3 px-3 py-2 rounded bg-amber-50 text-amber-700 text-xs font-medium">
                                 ข้อมูลย้อนหลัง — ดูได้อย่างเดียว แก้ไขไม่ได้
