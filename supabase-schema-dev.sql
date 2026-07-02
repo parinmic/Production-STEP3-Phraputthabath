@@ -467,6 +467,23 @@ ALTER TABLE qc_lot_temperature_checks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_qc_lot_temp" ON qc_lot_temperature_checks;
 CREATE POLICY "allow_all_qc_lot_temp" ON qc_lot_temperature_checks FOR ALL USING (true) WITH CHECK (true);
 
+CREATE TABLE IF NOT EXISTS qc_lot_round_items (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  round_number int         NOT NULL,
+  spec_code    text        NOT NULL,
+  qty_3        numeric     DEFAULT 0,
+  weight_3     numeric     DEFAULT 0,
+  source_file  text,
+  sort_order   int         DEFAULT 0,
+  created_at   timestamptz DEFAULT now(),
+  updated_at   timestamptz DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_qc_lot_round_items_round_spec_dev ON qc_lot_round_items(round_number, spec_code);
+CREATE INDEX IF NOT EXISTS idx_qc_lot_round_items_round_dev ON qc_lot_round_items(round_number, sort_order);
+ALTER TABLE qc_lot_round_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_qc_lot_round_items" ON qc_lot_round_items;
+CREATE POLICY "allow_all_qc_lot_round_items" ON qc_lot_round_items FOR ALL USING (true) WITH CHECK (true);
+
 CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
   id           smallint    PRIMARY KEY DEFAULT 1,
   selected     jsonb       NOT NULL DEFAULT '[]',
