@@ -65,12 +65,17 @@ const isRawTask = (task: Assignment) =>
   || String(task.note ?? '').includes('raw_remainder')
   || String(task.sku_name ?? '').trim().toLowerCase().endsWith('-raw')
 
+// Broader than isRawTask — covers any non-target output (yield_remainder too),
+// used to color Gantt bar segments that didn't come from a demand target.
+const isRemainderTask = (task: Assignment) => String(task.note ?? '').includes('remainder')
+
 function timeToMins(t: string) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
 }
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
+const REMAINDER_COLOR = { bg: '#4b5563', fg: '#ffffff' }
 
 function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
   const suppSkus = new Set(allItems.filter(a => a.channel === 'เสริม').map(a => a.sku))
@@ -241,7 +246,7 @@ function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, numb
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return ''
-  const bags = Math.floor(qty / wpb)
+  const bags = Math.ceil(qty / wpb)
   return bags > 0 ? `${bags} ถุง · ` : ''
 }
 
@@ -345,6 +350,27 @@ function WorkerTable({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerTab
   )
 }
 
+// Reconstruction paths (approach B, throughput fallback) compute one time window per SKU
+// without preserving which portion came from a target note vs. a remainder note. Split that
+// window proportionally by quantity — target first, remainder after — so a SKU that mixes
+// both still renders with two distinctly colored segments instead of collapsing to one origin.
+function splitSegmentsByOrigin<T extends { start: number; end: number }>(
+  segs: T[],
+  targetQty: number,
+  remainderQty: number,
+): (T & { origin: 'target' | 'remainder' })[] {
+  if (remainderQty <= 0) return segs.map(s => ({ ...s, origin: 'target' as const }))
+  if (targetQty <= 0) return segs.map(s => ({ ...s, origin: 'remainder' as const }))
+  const targetFrac = targetQty / (targetQty + remainderQty)
+  const out: (T & { origin: 'target' | 'remainder' })[] = []
+  for (const s of segs) {
+    const mid = s.start + (s.end - s.start) * targetFrac
+    if (mid > s.start) out.push({ ...s, end: mid, origin: 'target' })
+    if (s.end > mid) out.push({ ...s, start: mid, origin: 'remainder' })
+  }
+  return out
+}
+
 function mergeSegmentsWithWorkers(segs: { start: number; end: number; worker: string }[]) {
   if (!segs.length) return [] as { start: number; end: number; workers: string[] }[]
   const sorted = [...segs].sort((a, b) => a.start - b.start)
@@ -372,12 +398,14 @@ interface MasYieldRow { carcass_weight: number; product_group: string; yield_pct
 
 interface SkuScheduleViewProps {
   items: Assignment[]
+  allPhaseItems?: Assignment[]
   phaseStart: number
   phaseEnd: number
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
+  productTypeMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
   lineBreaks?: LineBreak[]
   pigLots?: PigLot[]
@@ -385,7 +413,33 @@ interface SkuScheduleViewProps {
   carcassRate?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+const PERIOD_SEQUENCE = ['เช้า', 'บ่าย', 'ค่ำ']
+
+// Bag rounding must round up in every phase, but a Target-only SKU's per-phase amounts
+// still have to add up to no more than its true total across all 3 phases — otherwise
+// each phase rounding up independently would overstate the day's total. Round the
+// running cross-phase cumulative total once per phase and show only the new delta
+// (always itself a whole-bag multiple, since it's the difference of two bag multiples).
+function phaseCappedBagQty(sku: string, period: string, allPhaseItems: Assignment[], bagMap: Record<string, number>): number | null {
+  const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
+  if (!wpb || wpb <= 0) return null
+  const skuItems = allPhaseItems.filter(a => a.sku === sku)
+  if (skuItems.some(isRemainderTask)) return null // remainder-mixed SKUs use simple per-instance rounding
+  const rawByPeriod: Record<string, number> = {}
+  for (const a of skuItems) rawByPeriod[a.period] = (rawByPeriod[a.period] ?? 0) + Number(a.target_quantity)
+  let cum = 0, prevRounded = 0, result = 0
+  for (const p of PERIOD_SEQUENCE) {
+    if (!(p in rawByPeriod)) continue
+    cum += rawByPeriod[p]
+    const roundedCum = Math.ceil(cum / wpb) * wpb
+    const delta = roundedCum - prevRounded
+    prevRounded = roundedCum
+    if (p === period) result = delta
+  }
+  return result
+}
+
+function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -409,7 +463,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean }[], minSeq: number; isRaw: boolean }
+  type SkuStat = { name: string | null; totalQty: number; targetQty: number; remainderQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean; origin: 'target' | 'remainder' }[], minSeq: number; isRaw: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
@@ -437,10 +491,12 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       cur = Math.max(cur, endMin)
       const isRaw = isRawTask(task)
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, targetQty: 0, remainderQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
+      if (isRemainderTask(task)) s.remainderQty += Number(task.target_quantity)
+      else s.targetQty += Number(task.target_quantity)
       s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
       s.minStart = Math.min(s.minStart, startMin)
       s.maxEnd   = Math.max(s.maxEnd, endMin)
@@ -475,7 +531,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       const endMin = wallClockFinish(startMin, dur)
       curRaw = Math.max(curRaw, endMin)
       if (skuStats[task.sku]) {
-        skuStats[task.sku].segments.push({ start: startMin, end: endMin, worker: task.worker_name, isDeficit: !!task.note?.includes('|deficit') })
+        skuStats[task.sku].segments.push({
+          start: startMin, end: endMin, worker: task.worker_name,
+          isDeficit: !!task.note?.includes('|deficit'),
+          origin: isRemainderTask(task) ? 'remainder' : 'target',
+        })
       }
     }
   }
@@ -508,7 +568,38 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       existing.minSeq = Math.min(existing.minSeq, skuStats[sku].minSeq)
     }
   }
-  skuGroups.sort((a, b) => a.minSeq - b.minSeq)
+
+  // Main Product groups above By Product groups; within each, higher standard
+  // yield (Mas Yield at the 90kg reference carcass weight) sorts to the top.
+  const getProductType = (sku: string) => productTypeMap?.[sku] ?? productTypeMap?.[sku.replace(/^0+/, '')] ?? ''
+  const groupCategoryRank = (grp: { skus: string[] }): number => {
+    for (const sku of grp.skus) {
+      const t = getProductType(sku).trim().toUpperCase()
+      if (t === 'MAIN PRODUCT' || t === 'MAIN') return 0
+      if (t === 'BY PRODUCT') return 1
+    }
+    return 2
+  }
+  const yieldStdCache = new Map<string, number>()
+  const groupYieldStd = (grpName: string): number => {
+    if (yieldStdCache.has(grpName)) return yieldStdCache.get(grpName)!
+    const rows = masYieldRows.filter(r => r.product_group === grpName)
+    let val = -Infinity
+    if (rows.length) {
+      const closest = rows.reduce((best, r) =>
+        Math.abs(r.carcass_weight - 90) < Math.abs(best.carcass_weight - 90) ? r : best, rows[0])
+      val = closest.yield_pct
+    }
+    yieldStdCache.set(grpName, val)
+    return val
+  }
+  skuGroups.sort((a, b) => {
+    const catA = groupCategoryRank(a), catB = groupCategoryRank(b)
+    if (catA !== catB) return catA - catB
+    const ystdA = groupYieldStd(a.grp), ystdB = groupYieldStd(b.grp)
+    if (ystdA !== ystdB) return ystdB - ystdA
+    return a.minSeq - b.minSeq
+  })
 
   const usesApproachB = pigLots.some(l => Number(l.qty) > 0) && masYieldRows.length > 0 && carcassRate > 0
   const skuEffectiveQtyMap = new Map<string, number>()
@@ -642,7 +733,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         skuStats[sku].minStart = segs[0].start
         skuStats[sku].maxEnd   = segs[segs.length - 1].end
         skuStats[sku].segments = skuStats[sku].workers.flatMap(w =>
-          segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+          splitSegmentsByOrigin(segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false })),
+            skuStats[sku].targetQty, skuStats[sku].remainderQty)
         )
         accKg += skuQty
       }
@@ -683,7 +775,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
               skuStats[rawSkuKey].minStart = remSegs[0].start
               skuStats[rawSkuKey].maxEnd   = remSegs[remSegs.length - 1].end
               skuStats[rawSkuKey].segments = skuStats[rawSkuKey].workers.flatMap(w =>
-                remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+                remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false, origin: 'remainder' as const }))
               )
             } else {
               // No RAW assignment was generated, so keep this yield remainder out
@@ -728,7 +820,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         }
         skuStats[sku].minStart = cursor
         skuStats[sku].maxEnd   = endMins
-        skuStats[sku].segments = skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false }))
+        skuStats[sku].segments = splitSegmentsByOrigin(
+          skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false })),
+          skuStats[sku].targetQty, skuStats[sku].remainderQty,
+        )
         cursor = endMins
       }
       grp.skus = bySeq
@@ -868,7 +963,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
             )}
             {visibleSkus.map(sku => {
               const stat      = skuStats[sku]
-              const col       = skuStats[sku]?.isRaw ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
+              const col       = skuStats[sku]?.isRaw ? REMAINDER_COLOR : (skuColor[sku] ?? GOLD_COLOR)
               const diffSecs  = Math.round(stat.maxEnd * 60 - nowSecs)
               const isDone    = diffSecs <= 0
               let cdText = ''
@@ -911,7 +1006,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                               ? (skuEffectiveQtyMap.get(sku) ?? stat.totalQty)
                               : Math.max(0, stat.totalQty - (skuLostKgMap.get(sku) ?? 0))
                             const period = Object.keys(stat.qtyByPeriod)[0]
-                            const displayQty = roundedDisplayQty(sku, effectiveQty, bagMap, period)
+                            const capped = phaseCappedBagQty(sku, period, allPhaseItems ?? items, bagMap)
+                            const displayQty = capped ?? roundedDisplayQty(sku, effectiveQty, bagMap, period)
                             return (
                               <>
                                 {bagLabel(sku, displayQty, bagMap)}{displayQty.toLocaleString()} กก.
@@ -925,7 +1021,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                   </div>
 
                   <div className="flex-1 relative h-10 sm:h-14">
-                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit)).map((seg, idx) => {
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit && s.origin === 'target')).map((seg, idx) => {
                       const barLeft  = Math.max(pct(seg.start), 0)
                       const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                       const segDone  = nowMins >= seg.end
@@ -935,6 +1031,18 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                           style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
                             opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
                           onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      )
+                    })}
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit && s.origin === 'remainder')).map((seg, idx) => {
+                      const barLeft  = Math.max(pct(seg.start), 0)
+                      const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                      const segDone  = nowMins >= seg.end
+                      const segPend  = nowMins < seg.start
+                      return (
+                        <div key={`r-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                          style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: REMAINDER_COLOR.bg,
+                            opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                          onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: REMAINDER_COLOR.bg }) }} />
                       )
                     })}
                     {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
@@ -2033,7 +2141,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+            <SkuScheduleView items={filtered} allPhaseItems={items} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />

@@ -136,18 +136,20 @@ export default function PigCarcassWithdrawalPage() {
     } catch { /* ignore */ }
   }, [])
 
+  // Pin to the day's first QC round — if QC starts a later round during the day
+  // (as pigs get processed), we don't want the withdrawal headcount to shift.
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res  = await fetch('/api/pig-carcass-withdrawal')
+      const res  = await fetch('/api/qc-lot-checks?firstOfDay=1')
       const json = await res.json()
       if (json.error) { setError(json.error); return }
-      const sorted: LotRow[] = (json.rows as LotRow[])
+      const sorted: LotRow[] = (json.lotRows as LotRow[])
         .filter(r => r.qty_3 > 0)
         .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
       setRows(sorted)
-      setSourceFile(json.source_file ?? '')
+      setSourceFile(json.sourceFile ?? '')
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -238,7 +240,7 @@ export default function PigCarcassWithdrawalPage() {
       {!loading && !error && rows.length === 0 && (
         <div className="text-center py-14 text-gray-400">
           <Package size={36} className="mx-auto mb-3 opacity-30" />
-          <p>ไม่พบข้อมูล — กรุณาอัพโหลดไฟล์ Stock คลัง 20 ก่อน</p>
+          <p>ไม่พบข้อมูล — กรุณากด Generate ในหน้าตรวจอุณหภูมิ (QC) ก่อน</p>
         </div>
       )}
 

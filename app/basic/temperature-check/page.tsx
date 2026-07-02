@@ -6,7 +6,6 @@ interface LotRow {
   spec_code: string
   qty_3:     number
   weight_3:  number
-  original_qty_3?: number
 }
 
 interface PointTemps {
@@ -108,20 +107,6 @@ function statusClasses(status: TempStatus) {
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
   return isNaN(day) ? Infinity : day
-}
-
-interface OriginalQtyInfo {
-  label: string
-  increased: boolean
-}
-
-function originalQtyInfo(row: LotRow): OriginalQtyInfo | null {
-  const original = row.original_qty_3
-  if (original === undefined || original === row.qty_3) return null
-  return {
-    label:     `แก้ไขจากเดิม ${original.toLocaleString('th-TH')} ตัว`,
-    increased: row.qty_3 > original,
-  }
 }
 
 function PointInput({ value, onChange, disabled, compact }: { value: string; onChange: (v: string) => void; disabled?: boolean; compact?: boolean }) {
@@ -605,7 +590,6 @@ export default function BasicTemperatureCheckPage() {
             const cls = statusClasses(status)
             const isOpen = !!expanded[r.spec_code]
             const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
-            const originalInfo = originalQtyInfo(r)
             return (
               <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cls.border} ${cls.bg}`}>
                 <div
@@ -635,7 +619,6 @@ export default function BasicTemperatureCheckPage() {
                       className={`w-14 text-right text-xs font-semibold text-blue-700 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
                     />
                     <span className="text-gray-400 text-xs">ตัว</span>
-                    {originalInfo && <span className="text-[10px] text-gray-300 whitespace-nowrap">{originalInfo.label}</span>}
                   </span>
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
@@ -756,7 +739,6 @@ export default function BasicTemperatureCheckPage() {
                   const rowBg   = status === 'none' ? 'hover:bg-gray-50' : cls.bg
                   const isOpen  = !!expanded[r.spec_code]
                   const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
-                  const originalInfo = originalQtyInfo(r)
                   return (
                     <Fragment key={r.spec_code}>
                       <tr className={`transition-colors ${rowBg}`}>
@@ -772,7 +754,6 @@ export default function BasicTemperatureCheckPage() {
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="inline-flex items-center justify-end gap-2">
-                            {originalInfo && <span className="text-xs text-gray-300 whitespace-nowrap">{originalInfo.label}</span>}
                             <input
                               type="text"
                               inputMode="numeric"

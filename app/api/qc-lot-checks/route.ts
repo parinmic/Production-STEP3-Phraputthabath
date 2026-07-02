@@ -8,15 +8,13 @@ interface LotRow {
   spec_code: string
   qty_3: number
   weight_3: number
-  original_qty_3?: number
 }
 
-interface LotSnapshotRow extends Omit<LotRow, 'original_qty_3'> {
+interface LotSnapshotRow extends LotRow {
   round_number: number
   source_file: string | null
   sort_order: number
   updated_at: string
-  original_qty_3: number | null
 }
 
 function num(v: unknown): number {
@@ -75,45 +73,6 @@ async function getCurrentRound(): Promise<RoundRow & { isNew: boolean }> {
   return { ...latest, isNew: false }
 }
 
-async function stockQtyMapFromLogs(logs: { id: number }[] | null | undefined): Promise<Map<string, number>> {
-  for (const log of logs ?? []) {
-    const { data, error } = await supabase
-      .from('stock_20')
-      .select('spec_code, qty_total')
-      .eq('material_code', '90007')
-      .eq('upload_log_id', log.id)
-
-    if (error || !data?.length) continue
-    return new Map(data.map(r => [String(r.spec_code ?? '').trim(), num(r.qty_total)]))
-  }
-
-  return new Map()
-}
-
-async function getOriginalQtyMap(sourceFile?: string | null): Promise<Map<string, number>> {
-  if (sourceFile) {
-    const { data: sourceLogs } = await supabase
-      .from('upload_log')
-      .select('id')
-      .eq('table_name', 'stock_20')
-      .eq('source_file', sourceFile)
-      .order('uploaded_at', { ascending: false })
-      .limit(5)
-
-    const sourceQty = await stockQtyMapFromLogs(sourceLogs)
-    if (sourceQty.size) return sourceQty
-  }
-
-  const { data: latestLogs } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'stock_20')
-    .order('uploaded_at', { ascending: false })
-    .limit(5)
-
-  return stockQtyMapFromLogs(latestLogs)
-}
-
 export async function GET(req: NextRequest) {
   const roundParam = req.nextUrl.searchParams.get('round')
 
@@ -154,6 +113,39 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ temps, chillRoom, savedAt, recordedBy })
   }
 
+  // Lot snapshot from the day's first round only — used by the withdrawal page so
+  // pig headcount stays fixed even if QC starts a new round later in the day.
+  if (req.nextUrl.searchParams.get('firstOfDay')) {
+    const todayStart = getTodayStart()
+    const { data: firstRound } = await supabase
+      .from('qc_check_rounds')
+      .select('round_number, started_at')
+      .gte('started_at', todayStart.toISOString())
+      .order('round_number', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (!firstRound) return NextResponse.json({ lotRows: [], sourceFile: '', round: null })
+
+    const { data: itemRows, error: itemErr } = await supabase
+      .from('qc_lot_round_items')
+      .select('spec_code, qty_3, weight_3, source_file, sort_order')
+      .eq('round_number', firstRound.round_number)
+      .order('sort_order', { ascending: true })
+      .order('spec_code', { ascending: true })
+
+    if (itemErr) return NextResponse.json({ error: itemErr.message }, { status: 500 })
+
+    const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
+    const lotRows: LotRow[] = (itemRows ?? []).map(r => ({
+      spec_code: r.spec_code,
+      qty_3:     num(r.qty_3),
+      weight_3:  num(r.weight_3),
+    }))
+
+    return NextResponse.json({ lotRows, sourceFile, round: firstRound.round_number, roundStartedAt: firstRound.started_at })
+  }
+
   const current    = await getCurrentRound()
   const todayStart = getTodayStart()
 
@@ -189,7 +181,7 @@ export async function GET(req: NextRequest) {
 
   const { data: itemRows, error: itemErr } = await supabase
     .from('qc_lot_round_items')
-    .select('spec_code, qty_3, weight_3, source_file, sort_order, original_qty_3')
+    .select('spec_code, qty_3, weight_3, source_file, sort_order')
     .eq('round_number', viewRound)
     .order('sort_order', { ascending: true })
     .order('spec_code', { ascending: true })
@@ -208,24 +200,14 @@ export async function GET(req: NextRequest) {
   }
 
   const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
-  // original_qty_3 is snapshotted once at generate-time (see POST below). Older rows saved
-  // before that column existed have it as null — fall back to resolving it live from the
-  // source stock upload for those only, so we don't re-derive (and risk drift from a
-  // same-named re-upload) for rows that already have a trustworthy snapshot.
-  const needsFallback = (itemRows ?? []).some(r => r.original_qty_3 == null)
-  const originalQty = needsFallback ? await getOriginalQtyMap(sourceFile) : new Map<string, number>()
-  const lotRows: LotRow[] = (itemRows ?? []).map(r => {
-    const spec = String(r.spec_code ?? '').trim()
-    return {
-      spec_code:      r.spec_code,
-      qty_3:          num(r.qty_3),
-      weight_3:       num(r.weight_3),
-      original_qty_3: r.original_qty_3 != null ? num(r.original_qty_3) : (originalQty.get(spec) ?? num(r.qty_3)),
-    }
-  })
+  const lotRows: LotRow[] = (itemRows ?? []).map(r => ({
+    spec_code: r.spec_code,
+    qty_3:     num(r.qty_3),
+    weight_3:  num(r.weight_3),
+  }))
   const fallbackLotRows: LotRow[] = lotRows.length
     ? lotRows
-    : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0, original_qty_3: 0 }))
+    : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0 }))
   return NextResponse.json({
     temps, chillRoom, savedAt, recordedBy,
     lotRows:        fallbackLotRows,
@@ -250,25 +232,16 @@ export async function POST(req: NextRequest) {
 
     const sourceFile = String(body.source_file ?? body.sourceFile ?? '').trim() || null
     const updatedAt = new Date().toISOString()
-    const originalQty = new Map<string, number>()
-    for (const r of lotRowsInput as Record<string, unknown>[]) {
-      const spec = String(r.spec_code ?? '').trim()
-      if (spec && r.original_qty_3 !== undefined) originalQty.set(spec, num(r.original_qty_3))
-    }
     const rows: LotSnapshotRow[] = lotRowsInput
-      .map((r: Record<string, unknown>, i: number) => {
-        const spec = String(r.spec_code ?? '').trim()
-        return {
-          round_number:   round.round_number,
-          spec_code:      spec,
-          qty_3:          num(r.qty_3),
-          weight_3:       num(r.weight_3),
-          source_file:    sourceFile,
-          sort_order:     i,
-          updated_at:     updatedAt,
-          original_qty_3: originalQty.has(spec) ? originalQty.get(spec)! : null,
-        }
-      })
+      .map((r: Record<string, unknown>, i: number) => ({
+        round_number: round.round_number,
+        spec_code:    String(r.spec_code ?? '').trim(),
+        qty_3:        num(r.qty_3),
+        weight_3:     num(r.weight_3),
+        source_file:  sourceFile,
+        sort_order:   i,
+        updated_at:   updatedAt,
+      }))
       .filter((r: { spec_code: string }) => r.spec_code)
 
     const { error: delErr } = await supabase
@@ -285,7 +258,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       round: round.round_number,
-      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3, original_qty_3: r.original_qty_3 ?? r.qty_3 })),
+      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3 })),
       sourceFile: sourceFile ?? '',
     })
   }

@@ -484,6 +484,23 @@ ALTER TABLE qc_lot_round_items ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_qc_lot_round_items" ON qc_lot_round_items;
 CREATE POLICY "allow_all_qc_lot_round_items" ON qc_lot_round_items FOR ALL USING (true) WITH CHECK (true);
 
+CREATE TABLE IF NOT EXISTS mas_yield (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  carcass_weight  numeric     NOT NULL,
+  product_group   text        NOT NULL,
+  yield_pct       numeric     NOT NULL,
+  notes           text,
+  source_file     text,
+  upload_log_id   uuid REFERENCES upload_log(id) ON DELETE CASCADE,
+  uploaded_at     timestamptz DEFAULT now()
+);
+ALTER TABLE mas_yield ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE mas_yield ADD COLUMN IF NOT EXISTS upload_log_id uuid REFERENCES upload_log(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_mas_yield_weight_group_dev ON mas_yield(carcass_weight, product_group);
+ALTER TABLE mas_yield ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "allow_all_mas_yield" ON mas_yield;
+CREATE POLICY "allow_all_mas_yield" ON mas_yield FOR ALL USING (true) WITH CHECK (true);
+
 CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
   id           smallint    PRIMARY KEY DEFAULT 1,
   selected     jsonb       NOT NULL DEFAULT '[]',

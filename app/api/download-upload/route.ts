@@ -227,6 +227,15 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
       station:       'สายพาน/สถานี',
     },
   },
+  mas_yield: {
+    cols: ['carcass_weight', 'product_group', 'yield_pct', 'notes'],
+    headers: {
+      carcass_weight: 'น้ำหนักซาก RM',
+      product_group:  'กลุ่มสินค้า',
+      yield_pct:      'Yield',
+      notes:          'Note',
+    },
+  },
   mas_group_station_rule: {
     cols: [
       'product_group',
