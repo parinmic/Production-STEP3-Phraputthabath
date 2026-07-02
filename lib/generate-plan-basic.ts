@@ -2414,7 +2414,12 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const firstFree = Math.max(
       ...selectedWorkers.map(w => getWorkerFreeAt(normName(w.name), workerFreeAtMins, workerBusySegments, phaseStartMins)),
     )
-    const duration = prod.rate > 0 ? (remainKg / prod.rate) * 60 : 0
+    // Remainder kg comes out of the same carcass-yield pool as the group's capped SKUs, so its
+    // production time must use the carcass Rate Line throughput (skuEffectiveRateMap), not the
+    // Mas Productivity per-person rate — the latter is far slower and produces multi-day
+    // durations that wrap the displayed clock time into nonsense hours outside the shift.
+    const lineRate = skuEffectiveRateMap.get(prod.sku) ?? skuEffectiveRateMap.get(prod.sku.replace(/^0+/, '')) ?? prod.rate
+    const duration = lineRate > 0 ? (remainKg / lineRate) * 60 : 0
     const endMins = wallClockFinish(firstFree, duration)
 
     const rows: Record<string, unknown>[] = []
