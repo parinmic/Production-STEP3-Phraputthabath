@@ -190,9 +190,9 @@ function wallClockFinish(fromMins: number, workMins: number): number {
   return pos + remaining
 }
 
-function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>): number {
+function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>, period?: string): number {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-  if (!wpb || wpb <= 0) return qty
+  if (period !== 'เช้า' || !wpb || wpb <= 0) return qty
   return Math.ceil(qty / wpb) * wpb
 }
 
@@ -230,7 +230,7 @@ function WorkerTable({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerTab
       <div className="divide-y divide-gray-50">
         {workers.map((name, wi) => {
           const tasks = mergeTasks(byWorker[name])
-          const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), 0)
+          const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap, t.period), 0)
           const allDone   = tasks.every(t => t.status === 'เสร็จแล้ว')
           const anyActive = tasks.some(t => t.status === 'กำลังผลิต')
 
@@ -251,7 +251,7 @@ function WorkerTable({ items, phaseStart, nameMap, bagMap, skuColor }: WorkerTab
               startMins = curMins
             }
             curMins = Math.max(curMins, startMins)
-            const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap)
+            const displayQty = roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap, t.period)
             return { ...t, startMins, startLabel: minsToLabel(startMins), displayQty }
           })
           const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
@@ -1447,7 +1447,7 @@ function WorkerCardView({ items, phaseStart, nameMap, bagMap, skuColor }: Worker
       {workers.map(name => {
         const tasks       = mergeTasks(byWorker[name])
         const displayName = nameMap[name.replace(/\s+/g, ' ').trim()] ?? shortName(name)
-        const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), 0)
+        const workerTotal = tasks.reduce((s, t) => s + roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap, t.period), 0)
         const allDone     = tasks.every(t => t.status === 'เสร็จแล้ว')
         const anyActive   = tasks.some(t => t.status === 'กำลังผลิต')
 
@@ -1506,7 +1506,7 @@ function WorkerCardView({ items, phaseStart, nameMap, bagMap, skuColor }: Worker
                         <span className="text-xs font-bold ml-2" style={{ color: isDeficit ? '#dc2626' : isRaw ? '#92400e' : col.fg }}>
                           {isRaw
                             ? `${Number(t.target_quantity).toLocaleString()} กก.`
-                            : `${bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap), bagMap)}${roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap).toLocaleString()} กก.`}
+                            : `${bagLabel(t.sku, roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap, t.period), bagMap)}${roundedDisplayQty(t.sku, Number(t.target_quantity), bagMap, t.period).toLocaleString()} กก.`}
                         </span>
                       </div>
                     </div>
@@ -1604,7 +1604,7 @@ function CurrentTimeView({ items, phaseStart, nameMap, bagMap, skuColor }: Curre
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-mono text-gray-500">{card.startLabel}</span>
                   <span className="text-xs font-bold" style={{ color: col.fg }}>
-                    {bagLabel(card.sku, roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap), bagMap)}{roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap).toLocaleString()} กก.
+                    {bagLabel(card.sku, roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap, card.period), bagMap)}{roundedDisplayQty(card.sku, Number(card.target_quantity), bagMap, card.period).toLocaleString()} กก.
                   </span>
                 </div>
               </div>
