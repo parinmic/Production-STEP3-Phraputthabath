@@ -46,18 +46,20 @@ export async function GET() {
       latestQcQty.set(spec, num(r.qty_3))
     }
 
-    rows = data.map(r => {
-      const stockQty = num(r.qty_total)
-      const stockWgt = num(r.weight_total)
-      const qcQty    = latestQcQty.get(r.spec_code)
-      const qty      = qcQty ?? stockQty
-      const avgWgt   = stockQty > 0 ? stockWgt / stockQty : 0
-      return {
-        spec_code: r.spec_code,
-        qty_3:     qty,
-        weight_3:  qcQty != null ? avgWgt * qty : stockWgt,
-      }
-    })
+    rows = data
+      .filter(r => num(r.qty_total) > 0) // stock already withdrawn to 0 → drop, even if QC recorded a qty_3 override
+      .map(r => {
+        const stockQty = num(r.qty_total)
+        const stockWgt = num(r.weight_total)
+        const qcQty    = latestQcQty.get(r.spec_code)
+        const qty      = qcQty ?? stockQty
+        const avgWgt   = stockWgt / stockQty
+        return {
+          spec_code: r.spec_code,
+          qty_3:     qty,
+          weight_3:  qcQty != null ? avgWgt * qty : stockWgt,
+        }
+      })
     sourceFile = log.source_file ?? ''
     break
   }

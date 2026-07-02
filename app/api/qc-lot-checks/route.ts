@@ -113,6 +113,39 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ temps, chillRoom, savedAt, recordedBy })
   }
 
+  // Lot snapshot from the day's first round only — used by the withdrawal page so
+  // pig headcount stays fixed even if QC starts a new round later in the day.
+  if (req.nextUrl.searchParams.get('firstOfDay')) {
+    const todayStart = getTodayStart()
+    const { data: firstRound } = await supabase
+      .from('qc_check_rounds')
+      .select('round_number, started_at')
+      .gte('started_at', todayStart.toISOString())
+      .order('round_number', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (!firstRound) return NextResponse.json({ lotRows: [], sourceFile: '', round: null })
+
+    const { data: itemRows, error: itemErr } = await supabase
+      .from('qc_lot_round_items')
+      .select('spec_code, qty_3, weight_3, source_file, sort_order')
+      .eq('round_number', firstRound.round_number)
+      .order('sort_order', { ascending: true })
+      .order('spec_code', { ascending: true })
+
+    if (itemErr) return NextResponse.json({ error: itemErr.message }, { status: 500 })
+
+    const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
+    const lotRows: LotRow[] = (itemRows ?? []).map(r => ({
+      spec_code: r.spec_code,
+      qty_3:     num(r.qty_3),
+      weight_3:  num(r.weight_3),
+    }))
+
+    return NextResponse.json({ lotRows, sourceFile, round: firstRound.round_number, roundStartedAt: firstRound.started_at })
+  }
+
   const current    = await getCurrentRound()
   const todayStart = getTodayStart()
 

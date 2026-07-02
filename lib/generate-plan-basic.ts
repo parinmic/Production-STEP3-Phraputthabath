@@ -1607,6 +1607,16 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     const capLots    = sortedLotsForDuration.map(l => ({ ...l, remaining: l.qty }))
     const capRate    = params.carcassRate
 
+    // Cap total pigs available at the trimming target — once the ordered lots reach
+    // trimmingQty, stop using more even if later lots still have qty left.
+    if (params.trimmingQty && params.trimmingQty > 0) {
+      let budget = params.trimmingQty
+      for (const lot of capLots) {
+        lot.remaining = Math.min(lot.remaining, Math.max(0, budget))
+        budget -= lot.remaining
+      }
+    }
+
     let capPoolIdx = 0
     for (const seg of CARCASS_ACTIVE_SEGS) {
       const pigs = Math.floor((seg.mins * 60) / capRate)
@@ -1648,10 +1658,12 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
   }
 
-  // Fallback groupYieldCap: no lots selected → use shortage pigs × 90 kg default weight
-  // shortage = trimmingQty − sum(selected lots) = trimmingQty (since no lots → sum = 0)
-  if (!params.carcassLots?.length && params.trimmingQty && params.trimmingQty > 0 && capYield.length > 0) {
-    const shortage = params.trimmingQty
+  // Fallback groupYieldCap: selected lots fall short of the trimming target → fill the
+  // gap with shortage pigs × 90 kg default weight, on top of whatever real lots cover.
+  // shortage = trimmingQty − sum(selected lots) (= trimmingQty when no lots selected)
+  const selectedLotQty = sortedLotsForDuration.reduce((s, l) => s + l.qty, 0)
+  const shortage = params.trimmingQty ? params.trimmingQty - selectedLotQty : 0
+  if (shortage > 0 && capYield.length > 0) {
     const defaultWeight = 90
     const nearestWt = capUniqWts.reduce((b, w) =>
       Math.abs(w - defaultWeight) < Math.abs(b - defaultWeight) ? w : b, capUniqWts[0] ?? 0)
