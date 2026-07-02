@@ -175,17 +175,23 @@ export default function BreaklinePage() {
   const now = new Date()
   const todayDate = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const nowMins = now.getHours() * 60 + now.getMinutes()
+  const isToday = date === todayDate
   const currentPhase = date === todayDate
     ? PHASES.find(p => nowMins >= p.startH * 60 && nowMins < p.endH * 60)
     : undefined
-  const hasCurrentPhaseBreakline = !!currentPhase && breaks.some(b => {
+  const breaklinePhases = PHASES.filter(p => breaks.some(b => {
     const bs = timeToMins(b.start_time)
     const be = timeToMins(b.end_time)
-    return be > currentPhase.startH * 60 && bs < currentPhase.endH * 60
-  })
+    return be > p.startH * 60 && bs < p.endH * 60
+  }))
+  const adjustablePhases = isToday
+    ? (currentPhase && breaklinePhases.some(p => p.phase === currentPhase.phase) ? [currentPhase] : [])
+    : breaklinePhases
+  const phaseLabel = adjustablePhases.map(p => p.label).join(', ')
 
-  const handleAdjustPlan = async () => {
-    if (!currentPhase) return
+  const handleAdjustPlan = async (phase: number) => {
+    const phaseCfg = PHASES.find(p => p.phase === phase)
+    if (!phaseCfg) return
     setAdjusting(true)
     setAdjustResult(null)
     try {
@@ -205,7 +211,7 @@ export default function BreaklinePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date,
-          phase: currentPhase.phase,
+          phase,
           deductMode: 'plan',
           carcassLots,
           carcassRate,
@@ -213,9 +219,12 @@ export default function BreaklinePage() {
         }),
       })
       const result = await res.json()
-      setAdjustResult(result)
+      setAdjustResult({
+        ...result,
+        message: result.message ? `${phaseCfg.label}: ${result.message}` : `${phaseCfg.label}: ปรับแผนเรียบร้อย`,
+      })
     } catch {
-      setAdjustResult({ success: false, message: 'เกิดข้อผิดพลาด' })
+      setAdjustResult({ success: false, message: `${phaseCfg.label}: เกิดข้อผิดพลาด` })
     } finally {
       setAdjusting(false)
     }
@@ -329,20 +338,27 @@ export default function BreaklinePage() {
         </button>
       </form>
 
-      {hasCurrentPhaseBreakline && currentPhase && (
+      {adjustablePhases.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
-            <p className="text-sm font-bold text-amber-800">มี Breakline ใน {currentPhase.label} ที่กำลังทำงานอยู่</p>
-            <p className="text-xs text-amber-700 mt-0.5">กดเพื่อคำนวณและเขียนแผน Basic ใหม่ตามเวลาผลิตที่เหลือ</p>
+            <p className="text-sm font-bold text-amber-800">มี Breakline ใน {phaseLabel}</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {isToday ? 'กดเพื่อคำนวณและเขียนแผน Basic ใหม่ตามเวลาผลิตที่เหลือ' : 'วันที่ย้อนหลัง/ล่วงหน้าสามารถเลือก Phase ที่ต้องการปรับแผนได้'}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={handleAdjustPlan}
-            disabled={adjusting}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
-            <RefreshCw size={16} className={adjusting ? 'animate-spin' : ''} />
-            {adjusting ? 'กำลังปรับแผน...' : 'ปรับแผนหลัง Breakline'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {adjustablePhases.map(p => (
+              <button
+                key={p.phase}
+                type="button"
+                onClick={() => handleAdjustPlan(p.phase)}
+                disabled={adjusting}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
+                <RefreshCw size={16} className={adjusting ? 'animate-spin' : ''} />
+                {adjusting ? 'กำลังปรับ...' : `ปรับ ${p.label}`}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
