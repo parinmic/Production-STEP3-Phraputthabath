@@ -536,7 +536,7 @@ export default function BasicTemperatureCheckPage() {
                       Chill {chillRoom[r.spec_code]}
                     </span>
                   )}
-                  <span className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                  <span className="flex items-center gap-1 shrink-0" onClick={e => { if (isOpen) e.stopPropagation() }}>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -544,9 +544,9 @@ export default function BasicTemperatureCheckPage() {
                       onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
                       onBlur={() => saveQty(r.spec_code)}
                       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                      disabled={!isCurrent}
+                      disabled={!isCurrent || !isOpen}
                       aria-label={`จำนวนตัว Lot ${r.spec_code}`}
-                      className="w-14 text-right text-xs font-semibold text-blue-700 border border-blue-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-transparent disabled:border-transparent"
+                      className={`w-14 text-right text-xs font-semibold text-blue-700 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
                     />
                     <span className="text-gray-400 text-xs">ตัว</span>
                   </span>
@@ -678,9 +678,9 @@ export default function BasicTemperatureCheckPage() {
                             onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
                             onBlur={() => saveQty(r.spec_code)}
                             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            disabled={!isCurrent}
+                            disabled={!isCurrent || !isOpen}
                             aria-label={`จำนวนตัว Lot ${r.spec_code}`}
-                            className="w-24 text-right text-blue-700 font-semibold border border-blue-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-transparent disabled:border-transparent"
+                            className={`w-24 text-right text-blue-700 font-semibold rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
                           />
                         </td>
                         <td className="px-4 py-2.5 text-center">
