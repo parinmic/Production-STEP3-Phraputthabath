@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
 import { computeRawShortageRows } from '@/lib/compute-raw-shortage'
 
 // ========== Types ==========
@@ -1196,7 +1196,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: masterChannelRaw },
     { data: jobAssignRaw },
     prevAssignedRaw, yieldBagsRaw,
-    { data: plan100Raw },
+    plan100Raw,
     { data: pickingUnitRaw },
     { data: masterVarLotusRaw },
     { data: masterVarWMRaw },
@@ -1243,8 +1243,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           [{ col: 'work_date', op: 'eq', val: productionDate }])
       : Promise.resolve([] as { sap_code: string; bags: number }[]),
     isPhase3
-      ? supabase.from('production_plan_100').select('sap, product_name, weight_total').eq('plan_date', productionDate)
-      : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
+      ? fetchLatestPlan100([productionDate])
+      : Promise.resolve([] as { sap: string; product_name: string | null; weight_total: number }[]),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', CALC.varLotus).order('uploaded_at', { ascending: false }).limit(5000),

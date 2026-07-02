@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
 
 type ChOrder = { sku?: string | null; sku_name?: string | null; quantity?: number | null; upload_round?: string | number | null }
 
@@ -20,8 +20,8 @@ export async function GET(req: NextRequest) {
     { data: wmOrders },
     { data: lotusOrders },
     { data: makroOrders },
-    { data: plan100Today },
-    { data: histPlan100 },
+    plan100Today,
+    histPlan100,
     { data: histMakro },
     { data: histLotus },
     { data: histWm },
@@ -46,15 +46,9 @@ export async function GET(req: NextRequest) {
       .select('sku, sku_name, quantity, upload_round')
       .eq('delivery_date', date),
     // Plan 100% today — used for Phase 3 Order
-    supabase
-      .from('production_plan_100')
-      .select('sap, product_name, weight_total')
-      .eq('plan_date', date),
+    fetchLatestPlan100([date]),
     // BL3 — plan100 ย้อนหลัง 3 วัน
-    supabase
-      .from('production_plan_100')
-      .select('plan_date, sap, weight_total')
-      .in('plan_date', histDates),
+    fetchLatestPlan100(histDates),
     // BL3 — makro ย้อนหลัง 3 วัน (ทุก round เพื่อ fallback 0800)
     supabase
       .from('makro_orders')

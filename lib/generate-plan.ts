@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 
 // ========== Types ==========
@@ -1559,7 +1559,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     { data: masterChannelRaw },
     { data: jobAssignRaw },
     prevAssignedRaw, yieldBagsRaw,
-    { data: plan100Raw },
+    plan100Raw,
     { data: pickingUnitRaw },
     { data: masterSpecialRaw },
     { data: masterVarLotusRaw },
@@ -1605,8 +1605,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           [{ col: 'work_date', op: 'eq', val: productionDate }])
       : Promise.resolve([] as { sap_code: string; bags: number }[]),
     isPhase3
-      ? supabase.from('production_plan_100').select('sap, product_name, weight_total').eq('plan_date', productionDate)
-      : Promise.resolve({ data: [] as { sap: string; product_name: string | null; weight_total: number }[], error: null }),
+      ? fetchLatestPlan100([productionDate])
+      : Promise.resolve([] as { sap: string; product_name: string | null; weight_total: number }[]),
     supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }).limit(5000),
@@ -2907,11 +2907,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           }
 
           const [
-            { data: wipHistP100 },
+            wipHistP100,
             { data: wipHistLotus },
             { data: wipHistWm },
           ] = await Promise.all([
-            supabase.from('production_plan_100').select('plan_date, sap, weight_total').in('plan_date', histDates),
+            fetchLatestPlan100(histDates),
             supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
             supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
           ])
