@@ -101,6 +101,8 @@ const CARCASS_ACTIVE_SEGS = [
   { phase: 3, mins: 720 },  // 18:00–06:00  (post-break, stops when lots exhausted)
 ]
 
+const RAW_REMAINDER_MIN_KG = 20
+
 // Basic master calculation_type strings
 const CALC = {
   productivity: 'Mas Productivity Basic',
@@ -2234,6 +2236,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const usedStations = Array.from(new Set(groupRows.map(a => String(a['table_name'] ?? '')).filter(Boolean)))
 
       if (rawProd) {
+        if (remainKg < RAW_REMAINDER_MIN_KG) continue
         const station = resolveRemainderStation(grp, rawProd, usedStations)
         if (!station) continue
         const rawRows = makeRawRemainderRows(rawProd, station, remainKg, rawSeq)

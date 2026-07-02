@@ -639,18 +639,8 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
               // planned qty/worker/timing instead of replacing it with display-only
               // carcass remainder yield.
             } else {
-              // Extend last real SKU's bar
-              const lastSku = bySeq[bySeq.length - 1]
-              if (lastSku && skuStats[lastSku]) {
-                skuStats[lastSku].totalQty += remainYield
-                skuStats[lastSku].maxEnd    = remSegs[remSegs.length - 1].end
-                skuStats[lastSku].segments  = [
-                  ...skuStats[lastSku].segments,
-                  ...skuStats[lastSku].workers.flatMap(w =>
-                    remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
-                  ),
-                ]
-              }
+              // No RAW assignment was generated, so keep this yield remainder out
+              // of the production plan display.
             }
           }
         }
