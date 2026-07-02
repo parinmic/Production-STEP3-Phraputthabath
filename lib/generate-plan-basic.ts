@@ -1285,7 +1285,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   }
 
   const capResequencedToGroupYield = (rows: Record<string, unknown>[]): Record<string, unknown>[] => {
-    if (!Object.keys(groupYieldCap).length) return rows
+    if (!Object.keys(groupYieldCap).length) return [...rows]
     const remainingByGroup = new Map<string, number>()
     for (const [grp, qty] of Object.entries(groupYieldCap)) {
       remainingByGroup.set(grp, Math.round(qty * 100) / 100)
