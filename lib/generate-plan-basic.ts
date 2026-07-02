@@ -339,8 +339,7 @@ function parseYieldNoteSplits(note: string | null | undefined): { product_group:
 
 function isMainProduct(p: ProductivityRow): boolean {
   const product = p.product.trim().toUpperCase()
-  return product === 'RAW' || product === 'MAIN PRODUCT' || product === 'MAIN'
-    || p.sku_name.trim().toLowerCase().endsWith('-raw')
+  return product === 'RAW' || p.sku_name.trim().toLowerCase().endsWith('-raw')
 }
 
 function isJobAssignGroupColumn(key: string): boolean {
