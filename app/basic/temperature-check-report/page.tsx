@@ -7,7 +7,7 @@ interface CarcassPoint {
   hip: string; outerLoin: string; neckLoin: string
 }
 interface CarcassSet { a1: CarcassPoint; a2: CarcassPoint; a3: CarcassPoint }
-interface CarcassTemps { start: CarcassSet; end: CarcassSet }
+interface CarcassTemps { start: CarcassSet; end: CarcassSet; chillAirTemp?: string }
 
 /* ── Parts (ชิ้นส่วน) types ── */
 interface PartsPoint {
@@ -33,7 +33,7 @@ const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000
 
 const EMPTY_CARCASS_POINT: CarcassPoint = { hip: '', outerLoin: '', neckLoin: '' }
 const EMPTY_CARCASS_SET: CarcassSet = { a1: EMPTY_CARCASS_POINT, a2: EMPTY_CARCASS_POINT, a3: EMPTY_CARCASS_POINT }
-const EMPTY_CARCASS: CarcassTemps = { start: EMPTY_CARCASS_SET, end: EMPTY_CARCASS_SET }
+const EMPTY_CARCASS: CarcassTemps = { start: EMPTY_CARCASS_SET, end: EMPTY_CARCASS_SET, chillAirTemp: '' }
 
 const EMPTY_PARTS_POINT: PartsPoint = { hip: '', outerLoin: '', belly: '', shoulder: '', neckLoin: '' }
 const EMPTY_PARTS_SET: PartsSet = { a1: EMPTY_PARTS_POINT, a2: EMPTY_PARTS_POINT, a3: EMPTY_PARTS_POINT }
@@ -85,6 +85,11 @@ function avg(vals: string[]): number | null {
   return ns.reduce((a, b) => a + b, 0) / ns.length
 }
 
+function parseNum(v: string): number | null {
+  const n = parseFloat(v)
+  return isNaN(n) ? null : n
+}
+
 function fmtVal(v: number | null): string {
   return v === null ? '—' : v.toFixed(1)
 }
@@ -106,7 +111,7 @@ function avgCarcassPoint(set: CarcassSet, key: keyof CarcassPoint): number | nul
 }
 function carcassHasData(set: CarcassSet): boolean {
   return (['a1', 'a2', 'a3'] as const).some(a =>
-    (['hip', 'outerLoin', 'neckLoin'] as const).some(k => set[a][k] !== '')
+    set[a].hip !== ''
   )
 }
 
@@ -131,14 +136,13 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ซีกสุกร</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลา</th>
-            <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={3}>
+            <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={2}>
               อุณหภูมิซีกสุกร (°C)
             </th>
           </tr>
           <tr className="bg-cyan-50 text-gray-600">
+            <th className="border border-gray-400 px-2 py-1 text-center">ห้อง Chill</th>
             <th className="border border-gray-400 px-2 py-1 text-center">สะโพก</th>
-            <th className="border border-gray-400 px-2 py-1 text-center">สันนอก</th>
-            <th className="border border-gray-400 px-2 py-1 text-center">สันคอ</th>
           </tr>
         </thead>
         <tbody>
@@ -146,7 +150,8 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
             const rowBase = gi % 2 === 1 ? 'bg-gray-50' : 'bg-white'
             return group.rounds.map((rec, ri) =>
               CARCASS_SETS.map((s, si) => {
-                const set     = (rec.temps ?? EMPTY_CARCASS)[s.key]
+                const recTemps = rec.temps ?? EMPTY_CARCASS
+                const set     = recTemps[s.key]
                 const hasData = carcassHasData(set)
                 const cls     = `border border-gray-400 px-2 py-1 text-center font-mono ${hasData ? 'text-gray-800' : 'text-gray-300'}`
                 return (
@@ -159,9 +164,8 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
                     )}
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{s.label}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{fmtTime(rec.updated_at)}</td>
+                    <td className={cls}>{fmtVal(parseNum(recTemps.chillAirTemp ?? ''))}</td>
                     <td className={cls}>{fmtVal(avgCarcassPoint(set, 'hip'))}</td>
-                    <td className={cls}>{fmtVal(avgCarcassPoint(set, 'outerLoin'))}</td>
-                    <td className={cls}>{fmtVal(avgCarcassPoint(set, 'neckLoin'))}</td>
                   </tr>
                 )
               })
@@ -355,7 +359,7 @@ export default function TemperatureCheckReportPage() {
           <div className="text-[9px] text-gray-600 border-t border-gray-200 pt-3">
             <p className="leading-relaxed">
               <span className="font-semibold">หมายเหตุ:</span>{' '}
-              ตรวจสอบอุณหภูมิซีกสุกรในห้อง Chill ก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันอก และ สันคอ มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C
+              ตรวจสอบอุณหภูมิห้อง Chill และอุณหภูมิซีกสุกรก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C
             </p>
             <p className="leading-relaxed mt-0.5 whitespace-nowrap">
               <span className="opacity-0 select-none">หมายเหตุ: </span>

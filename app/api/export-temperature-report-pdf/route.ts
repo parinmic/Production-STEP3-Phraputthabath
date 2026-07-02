@@ -7,7 +7,7 @@ const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000
 
 interface CarcassPoint { hip: string; outerLoin: string; neckLoin: string }
 interface CarcassSet   { a1: CarcassPoint; a2: CarcassPoint; a3: CarcassPoint }
-interface CarcassTemps { start: CarcassSet; end: CarcassSet }
+interface CarcassTemps { start: CarcassSet; end: CarcassSet; chillAirTemp?: string }
 
 interface PartsPoint { hip: string; outerLoin: string; belly: string; shoulder: string; neckLoin: string }
 interface PartsSet   { a1: PartsPoint; a2: PartsPoint; a3: PartsPoint }
@@ -18,7 +18,7 @@ interface LotGroup<T>  { spec_code: string; rounds: LotRecord<T>[] }
 
 const EC: CarcassPoint = { hip: '', outerLoin: '', neckLoin: '' }
 const ES: CarcassSet   = { a1: EC, a2: EC, a3: EC }
-const ET: CarcassTemps = { start: ES, end: ES }
+const ET: CarcassTemps = { start: ES, end: ES, chillAirTemp: '' }
 
 const EP: PartsPoint = { hip: '', outerLoin: '', belly: '', shoulder: '', neckLoin: '' }
 const EPS: PartsSet  = { a1: EP, a2: EP, a3: EP }
@@ -108,14 +108,14 @@ function buildHtml(
     const span = g.rounds.length * 2
     g.rounds.forEach((rec, ri) => {
       SETS.forEach((s, si) => {
-        const set = (rec.temps ?? ET)[s.key]
+        const recTemps = rec.temps ?? ET
+        const set = recTemps[s.key]
         cRows += `<tr>
           ${ri === 0 && si === 0 ? `<td class="lot" rowspan="${span}">${g.spec_code}</td>` : ''}
           <td class="sub">${s.label}</td>
           <td class="sub">${t(rec.updated_at)}</td>
+          <td>${n(avg([recTemps.chillAirTemp ?? '']))}</td>
           <td>${n(ac(set, 'hip'))}</td>
-          <td>${n(ac(set, 'outerLoin'))}</td>
-          <td>${n(ac(set, 'neckLoin'))}</td>
         </tr>`
       })
     })
@@ -244,13 +244,13 @@ function buildHtml(
             <th rowspan="2">Lot</th>
             <th rowspan="2">ซีกสุกร</th>
             <th rowspan="2">เวลา</th>
-            <th colspan="3" style="color:#0e7490">อุณหภูมิซีกสุกร (°C)</th>
+            <th colspan="2" style="color:#0e7490">อุณหภูมิซีกสุกร (°C)</th>
           </tr>
           <tr>
-            <th>สะโพก</th><th>สันนอก</th><th>สันคอ</th>
+            <th>ห้อง Chill</th><th>สะโพก</th>
           </tr>
         </thead>
-        <tbody>${cRows || '<tr><td colspan="6" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
+        <tbody>${cRows || '<tr><td colspan="5" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
       </table>
     </div>
 
@@ -275,7 +275,7 @@ function buildHtml(
 
   <div class="notes">
     <b>หมายเหตุ:</b>
-    ตรวจสอบอุณหภูมิซีกสุกรในห้อง Chill ก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันอก และ สันคอ มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C<br>
+    ตรวจสอบอุณหภูมิห้อง Chill และอุณหภูมิซีกสุกรก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C<br>
     ตรวจสอบอุณหภูมิชิ้นส่วนระหว่างผลิตตัดแต่ง โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันนอก สามชั้น สันคอ เนื้อไหล่ (ตัวแทนกลุ่มชิ้นส่วนที่มีความหนามากที่สุด) มาตรฐานอุณหภูมิเนื้อระหว่างผลิต ≤ 10 °C
   </div>
 

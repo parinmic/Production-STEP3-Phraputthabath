@@ -13,7 +13,7 @@ const CARCASS_SETS = [
 /* ── Types ── */
 interface CarcassPoint { hip: string; outerLoin: string; neckLoin: string }
 interface CarcassSet   { a1: CarcassPoint; a2: CarcassPoint; a3: CarcassPoint }
-interface CarcassTemps { start: CarcassSet; end: CarcassSet }
+interface CarcassTemps { start: CarcassSet; end: CarcassSet; chillAirTemp?: string }
 
 interface PartsPoint { hip: string; outerLoin: string; belly: string; shoulder: string; neckLoin: string }
 interface PartsSet   { a1: PartsPoint; a2: PartsPoint; a3: PartsPoint }
@@ -24,7 +24,7 @@ interface LotGroup<T>  { spec_code: string; rounds: LotRecord<T>[] }
 
 const EMPTY_CP: CarcassPoint = { hip: '', outerLoin: '', neckLoin: '' }
 const EMPTY_CS: CarcassSet   = { a1: EMPTY_CP, a2: EMPTY_CP, a3: EMPTY_CP }
-const EMPTY_CT: CarcassTemps = { start: EMPTY_CS, end: EMPTY_CS }
+const EMPTY_CT: CarcassTemps = { start: EMPTY_CS, end: EMPTY_CS, chillAirTemp: '' }
 
 const EMPTY_PP: PartsPoint = { hip: '', outerLoin: '', belly: '', shoulder: '', neckLoin: '' }
 const EMPTY_PS: PartsSet   = { a1: EMPTY_PP, a2: EMPTY_PP, a3: EMPTY_PP }
@@ -134,9 +134,9 @@ export async function GET(req: NextRequest) {
     { width: 16 }, // A  Lot (carcass)
     { width: 11 }, // B  ซีกสุกร
     { width: 7  }, // C  เวลา
-    { width: 9  }, // D  สะโพก
-    { width: 9  }, // E  สันนอก
-    { width: 9  }, // F  สันคอ
+    { width: 9  }, // D  ห้อง Chill
+    { width: 9  }, // E  สะโพก
+    { width: 2  }, // F  gap
     { width: 2  }, // G  gap
     { width: 16 }, // H  Lot (parts)
     { width: 11 }, // I  ชิ้นส่วน
@@ -189,8 +189,8 @@ export async function GET(req: NextRequest) {
   ws.mergeCells('A4:A5'); hdr('A4', 'Lot',                    CYAN_FILL)
   ws.mergeCells('B4:B5'); hdr('B4', 'ซีกสุกร',               CYAN_FILL)
   ws.mergeCells('C4:C5'); hdr('C4', 'เวลา',                  CYAN_FILL)
-  ws.mergeCells('D4:F4'); hdr('D4', 'อุณหภูมิซีกสุกร (°C)', CYAN_FILL)
-  hdr('D5', 'สะโพก', CYAN_FILL); hdr('E5', 'สันนอก', CYAN_FILL); hdr('F5', 'สันคอ', CYAN_FILL)
+  ws.mergeCells('D4:E4'); hdr('D4', 'อุณหภูมิซีกสุกร (°C)', CYAN_FILL)
+  hdr('D5', 'ห้อง Chill', CYAN_FILL); hdr('E5', 'สะโพก', CYAN_FILL)
 
   // Parts header (blue)
   ws.mergeCells('H4:H5'); hdr('H4', 'Lot',                     BLUE_FILL)
@@ -216,12 +216,13 @@ export async function GET(req: NextRequest) {
     const pg = partsGroups.find(g => g.spec_code === spec)
 
     // Flatten carcass sub-rows
-    const cRows: { label: string; time: string; hip: number|null; outerLoin: number|null; neckLoin: number|null }[] = []
+    const cRows: { label: string; time: string; chillAirTemp: number|null; hip: number|null }[] = []
     if (cg) {
       for (const rec of cg.rounds) {
         for (const s of CARCASS_SETS) {
-          const set = (rec.temps ?? EMPTY_CT)[s.key]
-          cRows.push({ label: s.label, time: fmtTime(rec.updated_at), hip: round1(avgCP(set, 'hip')), outerLoin: round1(avgCP(set, 'outerLoin')), neckLoin: round1(avgCP(set, 'neckLoin')) })
+          const recTemps = rec.temps ?? EMPTY_CT
+          const set = recTemps[s.key]
+          cRows.push({ label: s.label, time: fmtTime(rec.updated_at), chillAirTemp: round1(avg([recTemps.chillAirTemp ?? ''])), hip: round1(avgCP(set, 'hip')) })
         }
       }
     }
@@ -263,9 +264,9 @@ export async function GET(req: NextRequest) {
       if (row) {
         setC(2, row.label)
         setC(3, row.time)
-        setC(4, row.hip)
-        setC(5, row.outerLoin)
-        setC(6, row.neckLoin)
+        setC(4, row.chillAirTemp)
+        setC(5, row.hip)
+        setC(6, null)
       } else {
         for (const col of [2, 3, 4, 5, 6]) setC(col, null)
       }
@@ -302,7 +303,7 @@ export async function GET(req: NextRequest) {
   // ── Notes ──
   const noteFont = { size: 9, name: 'FreesiaUPC' }
   ws.mergeCells(ri, 1, ri, 15)
-  ws.getCell(ri, 1).value = 'หมายเหตุ: ตรวจสอบอุณหภูมิซีกสุกรในห้อง Chill ก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันอก และ สันคอ มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C'
+  ws.getCell(ri, 1).value = 'หมายเหตุ: ตรวจสอบอุณหภูมิห้อง Chill และอุณหภูมิซีกสุกรก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C'
   ws.getCell(ri, 1).font  = noteFont
   ws.getCell(ri, 1).alignment = { vertical: 'middle' }
   ri++
