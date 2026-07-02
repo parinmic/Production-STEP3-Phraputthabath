@@ -451,6 +451,19 @@ function allocateBalanced(params: {
   }
 
   const phaseStartMins = phaseRoundMins[0] ?? 510
+  const isPhaseOne = period === 'เช้า'
+  const splitQtyForWorker = (qty: number, workerIdx: number, workerCount: number, wpb: number): number => {
+    if (!isPhaseOne || !wpb || wpb <= 0) {
+      const baseQty = Math.floor((qty / workerCount) * 100) / 100
+      return workerIdx === workerCount - 1
+        ? Math.round((qty - baseQty * workerIdx) * 100) / 100
+        : baseQty
+    }
+    const totalBags = Math.round(qty / wpb)
+    const baseBags = Math.floor(totalBags / workerCount)
+    const extraBags = totalBags % workerCount
+    return (baseBags + (workerIdx < extraBags ? 1 : 0)) * wpb
+  }
 
   const groupedAssignments: Record<string, unknown>[] = []
   const groupMap = new Map<string, GroupBlock>()
@@ -544,23 +557,25 @@ function allocateBalanced(params: {
       const specialStart = specialEntry?.startMins ?? null
       if (specialStart !== null) cursor = Math.max(cursor, specialStart)
 
-      const baseQty = Math.floor((block.totalQty / groupWorkers.length) * 100) / 100
-      const perWorkerWorkDur = block.personRate > 0 ? (baseQty / block.personRate) * 60 : 0
+      const wpb = wpbMap.get(block.normSku) ?? wpbMap.get(block.rawSku.replace(/^0+/, '')) ?? 0
+      const maxWorkerQty = Math.max(...groupWorkers.map((_, idx) =>
+        block.channels.reduce((sum, ch) => sum + splitQtyForWorker(ch.qty, idx, groupWorkers.length, wpb), 0)
+      ))
+      const perWorkerWorkDur = block.personRate > 0 ? (maxWorkerQty / block.personRate) * 60 : 0
       const blockFlowDur = block.rate > 0 ? (block.totalQty / block.rate) * 60 : 0
       const blockDur = block.isYieldCapped ? Math.max(blockFlowDur, perWorkerWorkDur) : perWorkerWorkDur
       const roundMins = getRoundMinsLocal(cursor, phaseRoundMins)
 
       for (let workerIdx = 0; workerIdx < groupWorkers.length; workerIdx++) {
         const worker = groupWorkers[workerIdx]
-        const finalQty = workerIdx === groupWorkers.length - 1
-          ? Math.round((block.totalQty - baseQty * workerIdx) * 100) / 100
-          : baseQty
+        const finalQty = block.channels.reduce((sum, ch) =>
+          sum + splitQtyForWorker(ch.qty, workerIdx, groupWorkers.length, wpb), 0)
         if (finalQty <= 0) continue
 
         let remainingForWorker = finalQty
         for (const ch of block.channels) {
           if (remainingForWorker <= 0) break
-          const chQty = Math.min(remainingForWorker, ch.qty / groupWorkers.length)
+          const chQty = splitQtyForWorker(ch.qty, workerIdx, groupWorkers.length, wpb)
           const finalChQty = Math.round(chQty * 100) / 100
           if (finalChQty <= 0) continue
           remainingForWorker -= finalChQty
@@ -1153,6 +1168,22 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const roundDownToBag = (sku: string, qty: number): number => {
     return Math.round(qty * 100) / 100
   }
+  const roundUpToBag = (sku: string, qty: number): number => {
+    const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
+    if (!wpb || wpb <= 0) return Math.round(qty * 100) / 100
+    return Math.round(Math.ceil(qty / wpb) * wpb * 100) / 100
+  }
+  const floorToBag = (sku: string, qty: number): number => {
+    const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
+    if (!wpb || wpb <= 0) return Math.round(qty * 100) / 100
+    return Math.round(Math.floor(qty / wpb) * wpb * 100) / 100
+  }
+  const roundPhaseTarget = (sku: string, qty: number): number => {
+    return selectedPhase === 1 ? roundUpToBag(sku, qty) : roundDownToBag(sku, qty)
+  }
+  const capPhaseTarget = (sku: string, qty: number): number => {
+    return selectedPhase === 1 ? floorToBag(sku, qty) : roundDownToBag(sku, qty)
+  }
 
   // Parse special time windows
   const parseExcelTime = (val: unknown): number | null => {
@@ -1305,7 +1336,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const remaining = remainingByGroup.get(grp) ?? 0
       if (remaining <= 0) continue
       const qty = Number(row['target_quantity'] ?? 0)
-      const finalQty = Math.round(Math.min(qty, remaining) * 100) / 100
+      const finalQty = selectedPhase === 1
+        ? floorToBag(String(row['sku'] ?? ''), Math.min(qty, remaining))
+        : Math.round(Math.min(qty, remaining) * 100) / 100
       if (finalQty <= 0) continue
       row['target_quantity'] = finalQty
       syncRoundNoteQty(row)
@@ -1619,7 +1652,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const isShared = lotusHistSkus.has(sku)
         const quotaToday = quotaMap.get(sku) ?? avg
         const variance = getWetMarketVariance(isShared, quotaToday, avg, avgLotus.get(sku) ?? 0, wmVarParams)
-        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundDownToBag(sku, roundDownToBag(sku, avg) * variance), channel: ch }
+        return { sku, skuName: wmHistNames.get(sku) ?? null, targetQty: roundPhaseTarget(sku, avg * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
@@ -1649,7 +1682,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const groupQty = groupQtyMap.get(grp) ?? 0
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
       const avgBL3 = avgMakro.get(sku) ?? 0
-      const baggedOrderQty = roundDownToBag(sku, orderQty)
+      const baggedOrderQty = roundPhaseTarget(sku, orderQty)
       if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
       const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
@@ -1672,7 +1705,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const prod = skuMap.get(sku) ?? skuMap.get(sku.replace(/^0+/, ''))
         const station = prod ? normalizeStation(prod.station) : ''
         const variance = lotusVarianceMap.size > 0 ? (lotusVarianceMap.get(station) ?? 1.0) : 1.0
-        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundDownToBag(sku, roundDownToBag(sku, avg) * variance), channel: ch }
+        return { sku, skuName: lotusHistNames.get(sku) ?? null, targetQty: roundPhaseTarget(sku, avg * variance), channel: ch }
       }).filter(s => s.targetQty > 0)
   }
 
@@ -1766,7 +1799,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const grp       = prod.product_group
         const remaining = groupRemaining[grp] ?? 0
         if (remaining <= 0) { item.targetQty = 0; continue }
-        if (item.targetQty > remaining) item.targetQty = roundDownToBag(normSku, remaining)
+        if (item.targetQty > remaining) item.targetQty = capPhaseTarget(normSku, remaining)
         groupRemaining[grp] = Math.max(0, remaining - item.targetQty)
       }
       assignList = assignList.filter(item => item.targetQty > 0)
@@ -1806,7 +1839,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         handled.add(`${item.channel}|||${normSku}`)
 
         const targetQty = (() => {
-          let qty = roundDownToBag(item.sku, item.targetQty)
+          let qty = roundPhaseTarget(item.sku, item.targetQty)
           if (isPhase3) {
             const planItem = planMap.get(normSku)
             if (planItem) {
@@ -1837,7 +1870,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           if (!nextItem) break
 
           handled.add(nextKey)
-          const nextQty = roundDownToBag(nextItem.sku, nextItem.targetQty)
+          const nextQty = roundPhaseTarget(nextItem.sku, nextItem.targetQty)
           if (nextQty <= 0) break
           const adjacentPlanOrder = nextPlanOrder++
           targetsByStation[station].push({ ...nextItem, targetQty: nextQty, planOrder: adjacentPlanOrder })
@@ -2022,7 +2055,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           const originalSkuTotal = skuTotalQtyAcrossWorkers.get(cleanSku) ?? originalQty
           const rowShare = isYieldCapped && originalSkuTotal > 0 ? originalQty / originalSkuTotal : 1
           const cappedTruncQty = isYieldCapped ? Math.min(originalQty, truncQty * rowShare) : truncQty
-          const finalQty = Math.round(cappedTruncQty * 100) / 100
+          const finalQty = selectedPhase === 1
+            ? floorToBag(String(task.sku ?? ''), cappedTruncQty)
+            : Math.round(cappedTruncQty * 100) / 100
           if (finalQty <= 0) continue
           task.target_quantity = finalQty
           syncRoundNoteQty(task)
