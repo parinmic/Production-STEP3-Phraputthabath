@@ -60,6 +60,11 @@ interface LineBreak {
   reason: string | null
 }
 
+const isRawTask = (task: Assignment) =>
+  task.channel === 'RAW'
+  || String(task.note ?? '').includes('raw_remainder')
+  || String(task.sku_name ?? '').trim().toLowerCase().endsWith('-raw')
+
 function timeToMins(t: string) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
@@ -364,7 +369,6 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const phaseStartMins = phaseStart * 60
 
   const taskDurMins = (_task: Assignment) => 0
-
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
@@ -394,8 +398,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       }
       const endMin = wallClockFinish(startMin, dur)
       cur = Math.max(cur, endMin)
+      const isRaw = isRawTask(task)
       if (!skuStats[task.sku]) {
-        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw: task.unit === 'RAW' }
+        skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999, isRaw }
       }
       const s = skuStats[task.sku]
       s.totalQty += Number(task.target_quantity)
@@ -403,7 +408,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       s.minStart = Math.min(s.minStart, startMin)
       s.maxEnd   = Math.max(s.maxEnd, endMin)
       s.minSeq   = Math.min(s.minSeq, task.seq ?? 999999)
-      if (task.unit === 'RAW') s.isRaw = true
+      if (isRaw) s.isRaw = true
       if (!s.workers.includes(task.worker_name)) s.workers.push(task.worker_name)
     }
 
@@ -1128,12 +1133,13 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
         }
       }
       cur = startMin
-      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999, isRaw: task.unit === 'RAW' }
+      const isRaw = isRawTask(task)
+      if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999, isRaw }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
       skuStats[task.sku].minStart = Math.min(skuStats[task.sku].minStart, startMin)
       skuStats[task.sku].minSeq = Math.min(skuStats[task.sku].minSeq, task.seq ?? 999999)
-      if (task.unit === 'RAW') skuStats[task.sku].isRaw = true
+      if (isRaw) skuStats[task.sku].isRaw = true
     }
   }
 
@@ -1489,7 +1495,7 @@ function WorkerCardView({ items, phaseStart, nameMap, bagMap, skuColor }: Worker
                 const col      = skuColor[t.sku]
                 const isDone   = t.status === 'เสร็จแล้ว'
                 const isDeficit = !!t.note?.includes('|deficit')
-                const isRaw    = t.unit === 'RAW'
+                const isRaw    = isRawTask(t)
                 return (
                   <div key={t.id} className="flex items-start gap-2 rounded-lg px-3 py-2"
                     style={{ background: isRaw ? '#fef3c720' : col.bg + '20', border: isDeficit ? '1.5px solid #ef4444' : isRaw ? '1.5px solid #f59e0b' : '1.5px solid transparent' }}>
