@@ -1234,6 +1234,26 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
   }
 
+  const bestWetMarketSkuByGroup = new Map<string, ProductivityRow>()
+  const wetMarketQtyByGroupSku = new Map<string, Map<string, { product: ProductivityRow; qty: number }>>()
+  for (const row of wmHist) {
+    const cleanSku = String(row.sku ?? '').replace(/^0+/, '')
+    const prod = skuMap.get(cleanSku) ?? skuMap.get(String(row.sku ?? ''))
+    if (!prod?.product_group) continue
+    const groupMap = wetMarketQtyByGroupSku.get(prod.product_group) ?? new Map<string, { product: ProductivityRow; qty: number }>()
+    const entry = groupMap.get(prod.sku) ?? { product: prod, qty: 0 }
+    entry.qty += Number(row.quantity ?? 0)
+    groupMap.set(prod.sku, entry)
+    wetMarketQtyByGroupSku.set(prod.product_group, groupMap)
+  }
+  wetMarketQtyByGroupSku.forEach((skuQtyMap, group) => {
+    const best = Array.from(skuQtyMap.values()).sort((a, b) => {
+      if (b.qty !== a.qty) return b.qty - a.qty
+      return a.product.sku.localeCompare(b.product.sku)
+    })[0]
+    if (best?.qty > 0) bestWetMarketSkuByGroup.set(group, best.product)
+  })
+
   const groupRulesByGroup = new Map<string, GroupStationRule[]>()
   for (const rawRule of (masGroupStationRuleRaw ?? []) as GroupStationRule[]) {
     if (!rawRule?.product_group || !rawRule.station || rawRule.is_enabled === false) continue
@@ -2192,6 +2212,83 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }))
   }
 
+  const makeWetMarketRemainderRows = (
+    prod: ProductivityRow,
+    station: string,
+    remainKg: number,
+    seqStart: number,
+  ): Record<string, unknown>[] => {
+    const stationWorkers = workersByStation[station] ?? []
+    if (!stationWorkers.length) return []
+
+    const allocated = allocateBalanced({
+      productionDate,
+      tableName: station,
+      targets: [{
+        sku: prod.sku,
+        skuName: prod.sku_name,
+        targetQty: remainKg,
+        channel: 'Wet Market',
+        planOrder: seqStart,
+      }],
+      workers: stationWorkers,
+      skuMap,
+      jobAssignMap,
+      workerHours,
+      workerFreeAtMins,
+      workerBusySegments,
+      phaseEndMins,
+      period: phaseCfg.period,
+      phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+      wpbMap: new Map<string, number>(),
+      specialTimeMap,
+    })
+
+    const rows = allocated.length ? allocated : (() => {
+      let eligible = stationWorkers.filter(w => rawWorkerEligible(w, prod.product_group))
+      if (!eligible.length) eligible = stationWorkers
+      const worker = [...eligible].sort((a, b) => {
+        const skillA = getRawWorkerSkillLevel(a, prod.product_group)
+        const skillB = getRawWorkerSkillLevel(b, prod.product_group)
+        if (skillA !== skillB) return skillA - skillB
+        const freeA = getWorkerFreeAt(normName(a.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+        const freeB = getWorkerFreeAt(normName(b.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+        return freeA - freeB
+      })[0]
+      if (!worker) return []
+      return [{
+        production_date: productionDate,
+        table_name:      station,
+        worker_code:     worker.emp_id,
+        worker_name:     worker.name,
+        sku:             prod.sku,
+        sku_name:        prod.sku_name,
+        target_quantity: remainKg,
+        unit:            'กก.',
+        period:          phaseCfg.period,
+        deadline_time:   minsToTimeStr(Math.min(phaseEndMins, getWorkerFreeAt(normName(worker.name), workerFreeAtMins, workerBusySegments, phaseStartMins))),
+        status:          'รอผลิต',
+        seq:             seqStart,
+        channel:         'Wet Market',
+        note:            'yield_remainder',
+        is_deficit:      false,
+      }]
+    })()
+
+    return rows.map((row, idx) => {
+      const note = String(row.note ?? '')
+      return {
+        ...row,
+        unit:           'กก.',
+        channel:        'Wet Market',
+        note:           note.includes('yield_remainder') ? note : (note ? `${note}|yield_remainder` : 'yield_remainder'),
+        is_deficit:     false,
+        seq:            seqStart + idx,
+        effective_from: effectiveFromISO,
+      }
+    })
+  }
+
   sortByPlanOrder(resequenced)
 
   resequenced.forEach((a, i) => {
@@ -2211,7 +2308,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   sortByPlanOrder(resequenced)
   resequenced.forEach((a, i) => { a['seq'] = i })
 
-  // Append remainder assignments (Raw or By Product) once per product group.
+  // Append remainder assignments once per product group.
   if (Object.keys(groupYieldCap).length > 0) {
     let rawSeq = resequenced.length
     const isRawProd = (p: ProductivityRow) =>
@@ -2245,15 +2342,13 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         continue
       }
 
-      const allowed = allowedStationsForGroup(grp)
-      const lastGrpRow = [...groupRows].reverse().find(a => {
-        const station = String(a['table_name'] ?? '')
-        return !allowed.length || allowed.includes(station)
-      }) ?? groupRows[groupRows.length - 1]
-      if (lastGrpRow) {
-        lastGrpRow['target_quantity'] = Math.round((Number(lastGrpRow['target_quantity'] ?? 0) + remainKg) * 100) / 100
-        syncRoundNoteQty(lastGrpRow)
-      }
+      const bestWetMarketProd = bestWetMarketSkuByGroup.get(grp)
+      if (!bestWetMarketProd) continue
+      const station = resolveRemainderStation(grp, bestWetMarketProd, usedStations)
+      if (!station) continue
+      const remainderRows = makeWetMarketRemainderRows(bestWetMarketProd, station, remainKg, rawSeq)
+      rawSeq += remainderRows.length
+      resequenced.push(...remainderRows)
     }
   }
 
