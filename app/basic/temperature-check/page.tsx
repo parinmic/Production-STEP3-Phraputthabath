@@ -109,7 +109,7 @@ function lotAgeKey(spec: string): number {
   return isNaN(day) ? Infinity : day
 }
 
-function PointInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+function PointInput({ value, onChange, disabled, compact }: { value: string; onChange: (v: string) => void; disabled?: boolean; compact?: boolean }) {
   return (
     <input
       type="text"
@@ -118,36 +118,39 @@ function PointInput({ value, onChange, disabled }: { value: string; onChange: (v
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
       placeholder="—"
-      className="block mx-auto w-20 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+      className={`block mx-auto text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500 ${
+        compact ? 'w-14 text-xs px-1.5 py-1' : 'w-20 text-sm px-2 py-1.5'
+      }`}
     />
   )
 }
 
-function AnimalSetGrid({ title, value, onChange, disabled }: {
+function AnimalSetGrid({ title, value, onChange, disabled, compact = false }: {
   title: string
   value: AnimalSet
   onChange: (animal: keyof AnimalSet, point: keyof PointTemps, v: string) => void
   disabled?: boolean
+  compact?: boolean
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-md p-2.5">
-      <p className="text-xs font-semibold text-gray-600 mb-1.5">{title}</p>
-      <table className="w-auto text-xs">
+    <div className={`bg-white border border-gray-200 rounded-md min-w-0 ${compact ? 'p-2' : 'p-2.5'}`}>
+      <p className={`font-semibold text-gray-600 ${compact ? 'text-[11px] mb-1' : 'text-xs mb-1.5'}`}>{title}</p>
+      <table className={`${compact ? 'w-full table-fixed text-[11px]' : 'w-auto text-xs'}`}>
         <thead>
           <tr>
-            <th className="text-left text-gray-400 font-normal pb-1.5 w-20"></th>
+            <th className={`text-left text-gray-400 font-normal ${compact ? 'pb-1 w-11' : 'pb-1.5 w-20'}`}></th>
             {POINTS.map(p => (
-              <th key={p.key} className="w-24 text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
+              <th key={p.key} className={`text-center text-cyan-600 font-semibold ${compact ? 'pb-1' : 'w-24 pb-1.5'}`}>{p.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {ANIMALS.map(a => (
             <tr key={a.key}>
-              <td className="w-20 text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+              <td className={`text-gray-500 py-1 whitespace-nowrap ${compact ? 'w-11 pr-1' : 'w-20 pr-2'}`}>{a.label}</td>
               {POINTS.map(p => (
-                <td key={p.key} className="w-24 py-1 px-1 text-center">
-                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} />
+                <td key={p.key} className={`${compact ? 'py-1 px-0' : 'w-24 py-1 px-1'} text-center`}>
+                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} compact={compact} />
                 </td>
               ))}
             </tr>
@@ -689,7 +692,7 @@ export default function BasicTemperatureCheckPage() {
                         </button>
                       </div>
                     )}
-                    <div className="p-2.5 space-y-2.5 bg-gray-50 border-t border-gray-200">
+                    <div className="p-2.5 grid grid-cols-2 gap-2 bg-gray-50 border-t border-gray-200">
                       {SETS.map(s => (
                         <AnimalSetGrid
                           key={s.key}
@@ -697,6 +700,7 @@ export default function BasicTemperatureCheckPage() {
                           value={draftT[s.key]}
                           onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
                           disabled={!isCurrent}
+                          compact
                         />
                       ))}
                     </div>
