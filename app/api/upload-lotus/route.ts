@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
     .select('id, source_file, record_count, uploaded_at')
     .eq('table_name', tableName)
     .order('uploaded_at', { ascending: false })
-    .limit(20)
   return NextResponse.json({ uploads: data ?? [] })
 }
 
@@ -119,7 +118,23 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
+    const uploadRound = round ?? '0800'
     const tableName = round ? `lotus_orders_${round}` : 'lotus_orders'
+    const deliveryDates = Array.from(new Set(records.map((r: Record<string, unknown>) => r.delivery_date).filter(Boolean))) as string[]
+    if (deliveryDates.length) {
+      const { error: delErr } = await supabase
+        .from('lotus_orders')
+        .delete()
+        .in('delivery_date', deliveryDates)
+        .eq('upload_round', uploadRound)
+      if (delErr) throw delErr
+    }
+    await supabase
+      .from('upload_log')
+      .delete()
+      .eq('table_name', tableName)
+      .eq('source_file', filename ?? 'unknown')
+
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await supabase
       .from('upload_log')
@@ -134,6 +149,20 @@ export async function POST(req: NextRequest) {
     }
 
     await syncToDevAwaited(async (dev) => {
+      if (deliveryDates.length) {
+        const { error: devDelErr } = await dev
+          .from('lotus_orders')
+          .delete()
+          .in('delivery_date', deliveryDates)
+          .eq('upload_round', uploadRound)
+        if (devDelErr) throw devDelErr
+      }
+      await dev
+        .from('upload_log')
+        .delete()
+        .eq('table_name', tableName)
+        .eq('source_file', filename ?? 'unknown')
+
       const devLogId = crypto.randomUUID()
       const { error: devLogErr } = await dev
         .from('upload_log')

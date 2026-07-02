@@ -1,10 +1,16 @@
 'use client'
 import FileUpload from '@/components/FileUpload'
 import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
-import { uploadWetMarketOrders } from '@/lib/upload-orders'
 
 function makeUpload(round: string) {
-  return (rows: ParsedRow[], filename: string) => uploadWetMarketOrders(rows, filename, round)
+  return async (rows: ParsedRow[], filename: string) => {
+    const res = await fetch(`/api/upload-wet-market?round=${round}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows, filename, round }),
+    })
+    return res.json()
+  }
 }
 
 export default function WetMarketPage() {
