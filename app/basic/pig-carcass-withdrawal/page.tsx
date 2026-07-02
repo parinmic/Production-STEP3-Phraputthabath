@@ -42,11 +42,14 @@ interface AnimalSet {
 interface TempRecord {
   start: AnimalSet // ชุดต้น Lot
   end:   AnimalSet // ชุดท้าย Lot
+  chillAirTemp?: string
 }
 
-const POINTS: (keyof PointTemps)[] = ['hip', 'outerLoin', 'neckLoin']
+type TempSetKey = 'start' | 'end'
+
+const POINTS: (keyof PointTemps)[] = ['hip']
 const ANIMALS: (keyof AnimalSet)[] = ['a1', 'a2', 'a3']
-const SETS: (keyof TempRecord)[] = ['start', 'end']
+const SETS: TempSetKey[] = ['start', 'end']
 
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })

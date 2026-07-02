@@ -23,26 +23,27 @@ interface AnimalSet {
 interface TempRecord {
   start: AnimalSet // ชุดต้น Lot
   end:   AnimalSet // ชุดท้าย Lot
+  chillAirTemp?: string
 }
+
+type TempSetKey = 'start' | 'end'
 
 const POINTS: { key: keyof PointTemps; label: string }[] = [
   { key: 'hip',       label: 'สะโพก' },
-  { key: 'outerLoin', label: 'สันนอก' },
-  { key: 'neckLoin',  label: 'สันคอ' },
 ]
 const ANIMALS: { key: keyof AnimalSet; label: string }[] = [
   { key: 'a1', label: 'ตัวที่ 1' },
   { key: 'a2', label: 'ตัวที่ 2' },
   { key: 'a3', label: 'ตัวที่ 3' },
 ]
-const SETS: { key: keyof TempRecord; label: string }[] = [
+const SETS: { key: TempSetKey; label: string }[] = [
   { key: 'start', label: 'ชุดต้น Lot' },
   { key: 'end',   label: 'ชุดท้าย Lot' },
 ]
 
 const EMPTY_POINT: PointTemps = { hip: '', outerLoin: '', neckLoin: '' }
 const EMPTY_ANIMAL_SET: AnimalSet = { a1: EMPTY_POINT, a2: EMPTY_POINT, a3: EMPTY_POINT }
-const EMPTY_TEMP: TempRecord = { start: EMPTY_ANIMAL_SET, end: EMPTY_ANIMAL_SET }
+const EMPTY_TEMP: TempRecord = { start: EMPTY_ANIMAL_SET, end: EMPTY_ANIMAL_SET, chillAirTemp: '' }
 
 function parseNum(v: string): number | null {
   const n = parseFloat(v)
@@ -270,7 +271,7 @@ export default function BasicTemperatureCheckPage() {
     }
   }
 
-  function setPoint(spec: string, set: keyof TempRecord, animal: keyof AnimalSet, point: keyof PointTemps, value: string) {
+  function setPoint(spec: string, set: TempSetKey, animal: keyof AnimalSet, point: keyof PointTemps, value: string) {
     if (!isCurrent) return
     setDraftTemps(prev => {
       const cur = prev[spec] ?? temps[spec] ?? EMPTY_TEMP
@@ -281,6 +282,14 @@ export default function BasicTemperatureCheckPage() {
           [set]: { ...cur[set], [animal]: { ...cur[set][animal], [point]: value } },
         },
       }
+    })
+  }
+
+  function setChillAirTemp(spec: string, value: string) {
+    if (!isCurrent) return
+    setDraftTemps(prev => {
+      const cur = prev[spec] ?? temps[spec] ?? EMPTY_TEMP
+      return { ...prev, [spec]: { ...cur, chillAirTemp: value } }
     })
   }
 
@@ -582,7 +591,7 @@ export default function BasicTemperatureCheckPage() {
                         ข้อมูลย้อนหลัง — ดูได้อย่างเดียว แก้ไขไม่ได้
                       </div>
                     )}
-                    <div className="flex items-center gap-2 px-2.5 py-2 border-t border-gray-200 bg-white">
+                    <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 border-t border-gray-200 bg-white">
                       <label className="text-xs font-medium text-gray-600 shrink-0">ห้อง Chill</label>
                       <select
                         value={chillRoom[r.spec_code] ?? ''}
@@ -595,6 +604,18 @@ export default function BasicTemperatureCheckPage() {
                           <option key={n} value={String(n)}>{n}</option>
                         ))}
                       </select>
+                      <label className="text-xs font-medium text-gray-600 shrink-0 ml-2">อุณหภูมิห้อง</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={draftT.chillAirTemp ?? ''}
+                        onChange={e => setChillAirTemp(r.spec_code, e.target.value)}
+                        disabled={!isCurrent}
+                        placeholder="—"
+                        aria-label={`อุณหภูมิห้อง Chill Lot ${r.spec_code}`}
+                        className="w-16 text-right text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white disabled:bg-gray-100"
+                      />
+                      <span className="text-xs text-gray-400">°C</span>
                     </div>
                     {isCurrent && (
                       <div className="flex border-t border-gray-200">
@@ -745,7 +766,7 @@ export default function BasicTemperatureCheckPage() {
                                 ข้อมูลย้อนหลัง — ดูได้อย่างเดียว แก้ไขไม่ได้
                               </div>
                             )}
-                            <div className="flex items-center gap-2 mb-3">
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
                               <label className="text-xs font-medium text-gray-600">ห้อง Chill</label>
                               <select
                                 value={chillRoom[r.spec_code] ?? ''}
@@ -758,6 +779,18 @@ export default function BasicTemperatureCheckPage() {
                                   <option key={n} value={String(n)}>{n}</option>
                                 ))}
                               </select>
+                              <label className="text-xs font-medium text-gray-600 ml-3">อุณหภูมิห้อง Chill</label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={draftT.chillAirTemp ?? ''}
+                                onChange={e => setChillAirTemp(r.spec_code, e.target.value)}
+                                disabled={!isCurrent}
+                                placeholder="—"
+                                aria-label={`อุณหภูมิห้อง Chill Lot ${r.spec_code}`}
+                                className="w-20 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white disabled:bg-gray-100"
+                              />
+                              <span className="text-xs text-gray-400">°C</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {SETS.map(s => (
