@@ -2637,12 +2637,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     for (const [grp, yieldKg] of Object.entries(groupYieldCap)) {
       if (yieldKg <= 0) continue
 
-      // Rebuild worker busy-time from the authoritative row list (including remainder rows
-      // appended by earlier iterations of this loop) so a worker who just absorbed a large
-      // remainder batch for one product group can't be double-booked at the same instant by
-      // the next group's remainder assignment.
-      resetWorkerTimelineFromRows(resequenced)
-
       const groupRows = resequenced.filter(a => {
         if (String(a['note'] ?? '').includes('remainder')) return false
         const normSku = String(a['sku'] ?? '').replace(/^0+/, '')
