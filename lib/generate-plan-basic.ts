@@ -2407,19 +2407,36 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (!eligible.length) eligible = stationWorkers
     if (!eligible.length) return []
 
-    // Split the remainder across every eligible worker for this product group — production
-    // time is already gated by the line rate (not by headcount), so spreading the kg among
-    // the whole eligible team is free and keeps the rest of the group from sitting idle.
-    const selectedWorkers = eligible
-    const firstFree = Math.max(
-      ...selectedWorkers.map(w => getWorkerFreeAt(normName(w.name), workerFreeAtMins, workerBusySegments, phaseStartMins)),
-    )
     // Remainder kg comes out of the same carcass-yield pool as the group's capped SKUs, so its
     // production time must use the carcass Rate Line throughput (skuEffectiveRateMap), not the
     // Mas Productivity per-person rate — the latter is far slower and produces multi-day
     // durations that wrap the displayed clock time into nonsense hours outside the shift.
     const lineRate = skuEffectiveRateMap.get(prod.sku) ?? skuEffectiveRateMap.get(prod.sku.replace(/^0+/, '')) ?? prod.rate
     const duration = lineRate > 0 ? (remainKg / lineRate) * 60 : 0
+
+    const candidateStarts = Array.from(new Set(eligible.map(w =>
+      getWorkerFreeAt(normName(w.name), workerFreeAtMins, workerBusySegments, phaseStartMins),
+    ))).sort((a, b) => a - b)
+
+    let firstFree: number | null = null
+    let selectedWorkers: WorkforceRow[] = []
+    for (const slot of candidateStarts) {
+      if (!isPhase3 && slot >= phaseEndMins) continue
+      const availableAtSlot = eligible.filter(worker => {
+        const nameKey = normName(worker.name)
+        const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
+        if (freeAt > slot + 0.01) return false
+        const busySegs = workerBusySegments.get(nameKey) ?? []
+        return estimateWorkerFinish(slot, duration, busySegs, phaseEndMins, null, null) !== null
+      })
+      if (availableAtSlot.length) {
+        firstFree = slot
+        selectedWorkers = availableAtSlot
+        break
+      }
+    }
+
+    if (firstFree === null || !selectedWorkers.length) return []
     const endMins = wallClockFinish(firstFree, duration)
 
     const rows: Record<string, unknown>[] = []
