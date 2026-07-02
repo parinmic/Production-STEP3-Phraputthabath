@@ -3218,6 +3218,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
     for (const [stationName, stationWorkers] of Object.entries(workersByStation)) {
       if (!stationWorkers.length) continue
+      if (stationName === 'สไลด์') continue // สไลด์ ไม่ cross-station
 
       // 1. When does all own-station work finish and how much time remains?
       const ownEnd = stationWorkers.reduce(
