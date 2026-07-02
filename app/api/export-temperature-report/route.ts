@@ -19,7 +19,7 @@ interface PartsPoint { hip: string; outerLoin: string; belly: string; shoulder: 
 interface PartsSet   { a1: PartsPoint; a2: PartsPoint; a3: PartsPoint }
 interface PartsTemps { start: PartsSet; end: PartsSet }
 
-interface LotRecord<T> { spec_code: string; updated_at: string | null; round_number: number; temps: T }
+interface LotRecord<T> { spec_code: string; chill_room?: string | null; updated_at: string | null; round_number: number; temps: T }
 interface LotGroup<T>  { spec_code: string; rounds: LotRecord<T>[] }
 
 const EMPTY_CP: CarcassPoint = { hip: '', outerLoin: '', neckLoin: '' }
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: carcassData }, { data: partsData }] = await Promise.all([
     supabase.from('qc_lot_temperature_checks')
-      .select('spec_code, temps, updated_at, round_number')
+      .select('spec_code, chill_room, temps, updated_at, round_number')
       .order('spec_code',    { ascending: true })
       .order('round_number', { ascending: true }),
     supabase.from('qc_parts_temperature_checks')
@@ -135,8 +135,8 @@ export async function GET(req: NextRequest) {
     { width: 11 }, // B  ซีกสุกร
     { width: 7  }, // C  เวลา
     { width: 9  }, // D  ห้อง Chill
-    { width: 9  }, // E  สะโพก
-    { width: 2  }, // F  gap
+    { width: 11 }, // E  อุณหภูมิห้อง
+    { width: 9  }, // F  สะโพก
     { width: 2  }, // G  gap
     { width: 16 }, // H  Lot (parts)
     { width: 11 }, // I  ชิ้นส่วน
@@ -189,8 +189,9 @@ export async function GET(req: NextRequest) {
   ws.mergeCells('A4:A5'); hdr('A4', 'Lot',                    CYAN_FILL)
   ws.mergeCells('B4:B5'); hdr('B4', 'ซีกสุกร',               CYAN_FILL)
   ws.mergeCells('C4:C5'); hdr('C4', 'เวลา',                  CYAN_FILL)
-  ws.mergeCells('D4:E4'); hdr('D4', 'อุณหภูมิซีกสุกร (°C)', CYAN_FILL)
-  hdr('D5', 'ห้อง Chill', CYAN_FILL); hdr('E5', 'สะโพก', CYAN_FILL)
+  ws.mergeCells('D4:D5'); hdr('D4', 'ห้อง Chill', CYAN_FILL)
+  ws.mergeCells('E4:F4'); hdr('E4', 'อุณหภูมิซีกสุกร (°C)', CYAN_FILL)
+  hdr('E5', 'อุณหภูมิห้อง', CYAN_FILL); hdr('F5', 'สะโพก', CYAN_FILL)
 
   // Parts header (blue)
   ws.mergeCells('H4:H5'); hdr('H4', 'Lot',                     BLUE_FILL)
@@ -216,13 +217,13 @@ export async function GET(req: NextRequest) {
     const pg = partsGroups.find(g => g.spec_code === spec)
 
     // Flatten carcass sub-rows
-    const cRows: { label: string; time: string; chillAirTemp: number|null; hip: number|null }[] = []
+    const cRows: { label: string; time: string; chillRoom: string | null; chillAirTemp: number|null; hip: number|null }[] = []
     if (cg) {
       for (const rec of cg.rounds) {
         for (const s of CARCASS_SETS) {
           const recTemps = rec.temps ?? EMPTY_CT
           const set = recTemps[s.key]
-          cRows.push({ label: s.label, time: fmtTime(rec.updated_at), chillAirTemp: round1(avg([recTemps.chillAirTemp ?? ''])), hip: round1(avgCP(set, 'hip')) })
+          cRows.push({ label: s.label, time: fmtTime(rec.updated_at), chillRoom: rec.chill_room ?? null, chillAirTemp: round1(avg([recTemps.chillAirTemp ?? ''])), hip: round1(avgCP(set, 'hip')) })
         }
       }
     }
@@ -264,9 +265,9 @@ export async function GET(req: NextRequest) {
       if (row) {
         setC(2, row.label)
         setC(3, row.time)
-        setC(4, row.chillAirTemp)
-        setC(5, row.hip)
-        setC(6, null)
+        setC(4, row.chillRoom ? `Chill ${row.chillRoom}` : null)
+        setC(5, row.chillAirTemp)
+        setC(6, row.hip)
       } else {
         for (const col of [2, 3, 4, 5, 6]) setC(col, null)
       }

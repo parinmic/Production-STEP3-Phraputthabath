@@ -13,7 +13,7 @@ interface PartsPoint { hip: string; outerLoin: string; belly: string; shoulder: 
 interface PartsSet   { a1: PartsPoint; a2: PartsPoint; a3: PartsPoint }
 interface PartsTemps { start: PartsSet; end: PartsSet }
 
-interface LotRecord<T> { spec_code: string; updated_at: string | null; round_number: number; temps: T }
+interface LotRecord<T> { spec_code: string; chill_room?: string | null; updated_at: string | null; round_number: number; temps: T }
 interface LotGroup<T>  { spec_code: string; rounds: LotRecord<T>[] }
 
 const EC: CarcassPoint = { hip: '', outerLoin: '', neckLoin: '' }
@@ -114,6 +114,7 @@ function buildHtml(
           ${ri === 0 && si === 0 ? `<td class="lot" rowspan="${span}">${g.spec_code}</td>` : ''}
           <td class="sub">${s.label}</td>
           <td class="sub">${t(rec.updated_at)}</td>
+          <td>${rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
           <td>${n(avg([recTemps.chillAirTemp ?? '']))}</td>
           <td>${n(ac(set, 'hip'))}</td>
         </tr>`
@@ -244,13 +245,14 @@ function buildHtml(
             <th rowspan="2">Lot</th>
             <th rowspan="2">ซีกสุกร</th>
             <th rowspan="2">เวลา</th>
+            <th rowspan="2">ห้อง Chill</th>
             <th colspan="2" style="color:#0e7490">อุณหภูมิซีกสุกร (°C)</th>
           </tr>
           <tr>
-            <th>ห้อง Chill</th><th>สะโพก</th>
+            <th>อุณหภูมิห้อง</th><th>สะโพก</th>
           </tr>
         </thead>
-        <tbody>${cRows || '<tr><td colspan="5" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
+        <tbody>${cRows || '<tr><td colspan="6" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
       </table>
     </div>
 
@@ -294,7 +296,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: carcassData }, { data: partsData }] = await Promise.all([
     supabase.from('qc_lot_temperature_checks')
-      .select('spec_code, temps, updated_at, round_number')
+      .select('spec_code, chill_room, temps, updated_at, round_number')
       .order('spec_code',    { ascending: true })
       .order('round_number', { ascending: true }),
     supabase.from('qc_parts_temperature_checks')

@@ -19,6 +19,7 @@ interface PartsTemps { start: PartsSet; end: PartsSet }
 /* ── Generic lot record ── */
 interface LotRecord<T> {
   spec_code:    string
+  chill_room?:  string | null
   updated_at:   string | null
   round_number: number
   temps:        T
@@ -136,12 +137,13 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ซีกสุกร</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลา</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ห้อง Chill</th>
             <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={2}>
               อุณหภูมิซีกสุกร (°C)
             </th>
           </tr>
           <tr className="bg-cyan-50 text-gray-600">
-            <th className="border border-gray-400 px-2 py-1 text-center">ห้อง Chill</th>
+            <th className="border border-gray-400 px-2 py-1 text-center">อุณหภูมิห้อง</th>
             <th className="border border-gray-400 px-2 py-1 text-center">สะโพก</th>
           </tr>
         </thead>
@@ -164,6 +166,7 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
                     )}
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{s.label}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{fmtTime(rec.updated_at)}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-700">{rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
                     <td className={cls}>{fmtVal(parseNum(recTemps.chillAirTemp ?? ''))}</td>
                     <td className={cls}>{fmtVal(avgCarcassPoint(set, 'hip'))}</td>
                   </tr>
