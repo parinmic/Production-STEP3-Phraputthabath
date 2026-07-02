@@ -2430,7 +2430,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const remainderTaskLineDurationMins = (row: Record<string, unknown>, qtyOverride?: number): number => {
     const sku = String(row['sku'] ?? '').replace(/^0+/, '')
     const prod = skuMap.get(sku) ?? skuMap.get(String(row['sku'] ?? ''))
-    const rate = prod?.rate ?? 0
+    // Yield-capped groups are paced by the carcass rate line, not by any one worker's
+    // manual speed — use the same line-rate lookup as computeTaskDuration/makeSmartRemainderRows,
+    // falling back to the per-person Mas Productivity rate only for non-capped SKUs.
+    const rate = skuEffectiveRateMap.get(sku) ?? skuEffectiveRateMap.get(String(row['sku'] ?? '')) ?? prod?.rate ?? 0
     const qty = qtyOverride ?? Number(row['target_quantity'] ?? 0)
     return rate > 0 ? (qty / rate) * 60 : 0
   }
@@ -2506,6 +2509,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       getWorkerFreeAt(normName(w.name), workerFreeAtMins, workerBusySegments, phaseStartMins),
     ))).sort((a, b) => a - b)
 
+    // The carcass line keeps running regardless of any one worker's remaining shift time —
+    // duration is already derived from the line rate above, so a worker only needs to be
+    // free (not mid-way through another SKU) and job-assign-eligible for this group, not
+    // have enough slack left to finish before the phase's nominal end.
     let firstFree: number | null = null
     let selectedWorkers: WorkforceRow[] = []
     for (const slot of candidateStarts) {
@@ -2513,9 +2520,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       const availableAtSlot = eligible.filter(worker => {
         const nameKey = normName(worker.name)
         const freeAt = getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins)
-        if (freeAt > slot + 0.01) return false
-        const busySegs = workerBusySegments.get(nameKey) ?? []
-        return estimateWorkerFinish(slot, duration, busySegs, phaseEndMins, null, null) !== null
+        return freeAt <= slot + 0.01
       })
       if (availableAtSlot.length) {
         firstFree = slot
