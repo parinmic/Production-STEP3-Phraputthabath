@@ -622,7 +622,6 @@ export default function BasicTemperatureCheckPage() {
                       <>
                         <span className={`font-bold text-xs ${cls.text}`}>
                           {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
-                          {cls.mark && <span className="ml-0.5">{cls.mark}</span>}
                         </span>
                         {fmtSavedAt(savedAt[r.spec_code]) && (
                           <span className="block text-[10px] text-gray-400 leading-tight">
@@ -803,7 +802,6 @@ export default function BasicTemperatureCheckPage() {
                             <>
                               <span className={`font-bold text-sm ${cls.text}`}>
                                 {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                {cls.mark && <span className="ml-1 text-xs font-normal">{cls.mark}</span>}
                               </span>
                               {fmtSavedAt(savedAt[r.spec_code]) && (
                                 <span className="block text-[11px] text-gray-400">
