@@ -167,7 +167,11 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
                     )}
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{s.label}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-700">{rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
-                    <td className={cls}>{fmtVal(parseNum(recTemps.chillAirTemp ?? ''))}</td>
+                    {ri === 0 && si === 0 && (
+                      <td className={`${cls} align-middle`} rowSpan={group.rounds.length * 2}>
+                        {fmtVal(parseNum(recTemps.chillAirTemp ?? ''))}
+                      </td>
+                    )}
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{fmtTime(rec.updated_at)}</td>
                     <td className={cls}>{fmtVal(avgCarcassPoint(set, 'hip'))}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-400"></td>

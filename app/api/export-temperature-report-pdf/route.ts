@@ -114,7 +114,7 @@ function buildHtml(
           ${ri === 0 && si === 0 ? `<td class="lot" rowspan="${span}">${g.spec_code}</td>` : ''}
           <td class="sub">${s.label}</td>
           <td>${rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
-          <td>${n(avg([recTemps.chillAirTemp ?? '']))}</td>
+          ${ri === 0 && si === 0 ? `<td rowspan="${span}">${n(avg([recTemps.chillAirTemp ?? '']))}</td>` : ''}
           <td class="sub">${t(rec.updated_at)}</td>
           <td>${n(ac(set, 'hip'))}</td>
           <td></td>

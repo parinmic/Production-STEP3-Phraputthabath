@@ -250,6 +250,7 @@ export async function GET(req: NextRequest) {
     // Lot cells (merged + bold)
     if (span > 1) {
       ws.mergeCells(ri, 1, endRow, 1)
+      if (cRows.length) ws.mergeCells(ri, 4, endRow, 4)
       ws.mergeCells(ri, 9, endRow, 9)
     }
     for (const col of [1, 9]) {
@@ -270,12 +271,13 @@ export async function GET(req: NextRequest) {
       if (row) {
         setC(2, row.label)
         setC(3, row.chillRoom ? `Chill ${row.chillRoom}` : null)
-        setC(4, row.chillAirTemp)
+        if (i === 0) setC(4, row.chillAirTemp)
         setC(5, row.time)
         setC(6, row.hip)
         setC(7, null)
       } else {
-        for (const col of [2, 3, 4, 5, 6, 7]) setC(col, null)
+        const blankCols = cRows.length ? [2, 3, 5, 6, 7] : [2, 3, 4, 5, 6, 7]
+        for (const col of blankCols) setC(col, null)
       }
     }
 
