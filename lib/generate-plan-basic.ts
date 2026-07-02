@@ -453,13 +453,13 @@ function allocateBalanced(params: {
   const phaseStartMins = phaseRoundMins[0] ?? 510
   const isPhaseOne = period === 'เช้า'
   const splitQtyForWorker = (qty: number, workerIdx: number, workerCount: number, wpb: number): number => {
-    if (!isPhaseOne || !wpb || wpb <= 0) {
+    if (!wpb || wpb <= 0) {
       const baseQty = Math.floor((qty / workerCount) * 100) / 100
       return workerIdx === workerCount - 1
         ? Math.round((qty - baseQty * workerIdx) * 100) / 100
         : baseQty
     }
-    const totalBags = Math.round(qty / wpb)
+    const totalBags = isPhaseOne ? Math.round(qty / wpb) : Math.floor(qty / wpb)
     const baseBags = Math.floor(totalBags / workerCount)
     const extraBags = totalBags % workerCount
     return (baseBags + (workerIdx < extraBags ? 1 : 0)) * wpb
@@ -510,16 +510,13 @@ function allocateBalanced(params: {
     return start
   }
 
-  const groupDurationFor = (group: GroupBlock, workerCount: number): number => {
-    if (workerCount <= 0) return 0
-    return group.isYieldCapped
-      ? Math.max(group.flowMins, group.manMins / workerCount)
-      : group.manMins / workerCount
+  const groupDurationFor = (group: GroupBlock): number => {
+    return group.flowMins
   }
 
   const canScheduleGroupWith = (group: GroupBlock, groupWorkers: WorkforceRow[]): boolean => {
     if (!groupWorkers.length) return false
-    const duration = groupDurationFor(group, groupWorkers.length)
+    const duration = groupDurationFor(group)
     return groupWorkers.every(worker => {
       const nameKey = normName(worker.name)
       const startAt = groupStartFor(worker, group)
@@ -545,7 +542,8 @@ function allocateBalanced(params: {
     const groupWorkers: WorkforceRow[] = []
     for (const worker of sortedWorkers) {
       groupWorkers.push(worker)
-      if (canScheduleGroupWith(group, groupWorkers)) break
+      const enoughForLine = group.flowMins <= 0 || group.manMins <= 0 || (group.manMins / groupWorkers.length) <= group.flowMins + 0.01
+      if (enoughForLine && canScheduleGroupWith(group, groupWorkers)) break
     }
     if (!groupWorkers.length || !canScheduleGroupWith(group, groupWorkers)) continue
 
@@ -558,12 +556,8 @@ function allocateBalanced(params: {
       if (specialStart !== null) cursor = Math.max(cursor, specialStart)
 
       const wpb = wpbMap.get(block.normSku) ?? wpbMap.get(block.rawSku.replace(/^0+/, '')) ?? 0
-      const maxWorkerQty = Math.max(...groupWorkers.map((_, idx) =>
-        block.channels.reduce((sum, ch) => sum + splitQtyForWorker(ch.qty, idx, groupWorkers.length, wpb), 0)
-      ))
-      const perWorkerWorkDur = block.personRate > 0 ? (maxWorkerQty / block.personRate) * 60 : 0
       const blockFlowDur = block.rate > 0 ? (block.totalQty / block.rate) * 60 : 0
-      const blockDur = block.isYieldCapped ? Math.max(blockFlowDur, perWorkerWorkDur) : perWorkerWorkDur
+      const blockDur = blockFlowDur
       const roundMins = getRoundMinsLocal(cursor, phaseRoundMins)
 
       for (let workerIdx = 0; workerIdx < groupWorkers.length; workerIdx++) {
@@ -1166,7 +1160,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     if (sap && wpb > 0) { bagSizeMap.set(sap, wpb); bagSizeMap.set(sap.replace(/^0+/, ''), wpb) }
   }
   const roundDownToBag = (sku: string, qty: number): number => {
-    return Math.round(qty * 100) / 100
+    const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
+    if (!wpb || wpb <= 0) return Math.round(qty * 100) / 100
+    return Math.round(Math.floor(qty / wpb) * wpb * 100) / 100
   }
   const roundUpToBag = (sku: string, qty: number): number => {
     const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
@@ -1844,7 +1840,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
             const planItem = planMap.get(normSku)
             if (planItem) {
               const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(normSku) ?? 0))
-              if (qty > remaining) qty = remaining
+              if (qty > remaining) qty = capPhaseTarget(normSku, remaining)
             }
           }
           return qty
@@ -2106,6 +2102,94 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     })
   }
 
+  const rawWorkerEligible = (worker: WorkforceRow, productGroup: string): boolean => {
+    if (jobAssignMap.size === 0) return true
+    const jobInfo = jobAssignMap.get(normName(worker.name))
+    if (!jobInfo) return true
+    if (jobInfo.isWeigher && (!productGroup || !jobInfo.groups.has(productGroup))) return false
+    return productGroup ? jobInfo.groups.has(productGroup) : true
+  }
+
+  const getRawWorkerSkillLevel = (worker: WorkforceRow, productGroup: string): number => {
+    if (jobAssignMap.size === 0) return 1
+    const jobInfo = jobAssignMap.get(normName(worker.name))
+    return jobInfo?.groups.get(productGroup) ?? 99
+  }
+
+  const makeRawRemainderRows = (
+    rawProd: ProductivityRow,
+    station: string,
+    remainKg: number,
+    seqStart: number,
+  ): Record<string, unknown>[] => {
+    const stationWorkers = workersByStation[station] ?? []
+    if (!stationWorkers.length) return []
+
+    const allocated = allocateBalanced({
+      productionDate,
+      tableName: station,
+      targets: [{
+        sku: rawProd.sku,
+        skuName: rawProd.sku_name,
+        targetQty: remainKg,
+        channel: 'RAW',
+        planOrder: seqStart,
+      }],
+      workers: stationWorkers,
+      skuMap,
+      jobAssignMap,
+      workerHours,
+      workerFreeAtMins,
+      workerBusySegments,
+      phaseEndMins,
+      period: phaseCfg.period,
+      phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseCfg.startH * 60],
+      wpbMap: new Map<string, number>(),
+      specialTimeMap,
+    })
+
+    const rows = allocated.length ? allocated : (() => {
+      let eligible = stationWorkers.filter(w => rawWorkerEligible(w, rawProd.product_group))
+      if (!eligible.length) eligible = stationWorkers
+      const worker = [...eligible].sort((a, b) => {
+        const skillA = getRawWorkerSkillLevel(a, rawProd.product_group)
+        const skillB = getRawWorkerSkillLevel(b, rawProd.product_group)
+        if (skillA !== skillB) return skillA - skillB
+        const freeA = getWorkerFreeAt(normName(a.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+        const freeB = getWorkerFreeAt(normName(b.name), workerFreeAtMins, workerBusySegments, phaseStartMins)
+        return freeA - freeB
+      })[0]
+      if (!worker) return []
+      return [{
+        production_date: productionDate,
+        table_name:      station,
+        worker_code:     worker.emp_id,
+        worker_name:     worker.name,
+        sku:             rawProd.sku,
+        sku_name:        rawProd.sku_name,
+        target_quantity: remainKg,
+        unit:            'กก.',
+        period:          phaseCfg.period,
+        deadline_time:   minsToTimeStr(Math.min(phaseEndMins, getWorkerFreeAt(normName(worker.name), workerFreeAtMins, workerBusySegments, phaseStartMins))),
+        status:          'รอผลิต',
+        seq:             seqStart,
+        channel:         'RAW',
+        note:            'raw_remainder',
+        is_deficit:      false,
+      }]
+    })()
+
+    return rows.map((row, idx) => ({
+      ...row,
+      unit:           'กก.',
+      channel:        'RAW',
+      note:           'raw_remainder',
+      is_deficit:     false,
+      seq:            seqStart + idx,
+      effective_from: effectiveFromISO,
+    }))
+  }
+
   sortByPlanOrder(resequenced)
 
   resequenced.forEach((a, i) => {
@@ -2152,24 +2236,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       if (rawProd) {
         const station = resolveRemainderStation(grp, rawProd, usedStations)
         if (!station) continue
-        resequenced.push({
-          production_date: productionDate,
-          table_name:      station,
-          worker_code:     'RAW',
-          worker_name:     'สต๊อก Raw',
-          sku:             rawProd.sku,
-          sku_name:        rawProd.sku_name,
-          target_quantity: remainKg,
-          unit:            'RAW',
-          period:          phaseCfg.period,
-          deadline_time:   minsToTimeStr(phaseCfg.endH * 60),
-          status:          'รอผลิต',
-          seq:             rawSeq++,
-          channel:         'RAW',
-          note:            'raw_remainder',
-          is_deficit:      false,
-          effective_from:  effectiveFromISO,
-        })
+        const rawRows = makeRawRemainderRows(rawProd, station, remainKg, rawSeq)
+        rawSeq += rawRows.length
+        resequenced.push(...rawRows)
         continue
       }
 
