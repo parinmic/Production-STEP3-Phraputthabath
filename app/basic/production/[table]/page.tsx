@@ -1716,7 +1716,9 @@ export default function BasicTablePage() {
       .then(r => r.json())
       .then(data => {
         const assignments = (data.assignments ?? []) as Assignment[]
-        const normalized = assignments.map(a => ({ ...a, sku: a.sku.replace(/^0+/, '') }))
+        const normalized = assignments
+          .filter(a => Number(a.target_quantity ?? 0) > 0)
+          .map(a => ({ ...a, sku: a.sku.replace(/^0+/, '') }))
         setItems(normalized)
       })
       .finally(() => { if (!silent) setLoading(false) })

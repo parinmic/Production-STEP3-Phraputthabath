@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       .eq('production_date', date)
       .eq('period', period)
       .eq('effective_from', effectiveFrom)
+      .gt('target_quantity', 0)
       .order('worker_name')
       .order('seq', { nullsFirst: false })
     if (table) q = q.eq('table_name', table)
