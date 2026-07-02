@@ -85,7 +85,7 @@ function PointInput({ value, onChange, disabled }: { value: string; onChange: (v
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
       placeholder="—"
-      className="w-16 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+      className="block mx-auto w-20 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
     />
   )
 }
@@ -99,21 +99,21 @@ function AnimalSetGrid({ title, value, onChange, disabled }: {
   return (
     <div className="bg-white border border-gray-200 rounded-md p-2.5">
       <p className="text-xs font-semibold text-gray-600 mb-1.5">{title}</p>
-      <table className="w-full text-xs">
+      <table className="w-auto text-xs">
         <thead>
           <tr>
-            <th className="text-left text-gray-400 font-normal pb-1.5 w-16"></th>
+            <th className="text-left text-gray-400 font-normal pb-1.5 w-20"></th>
             {POINTS.map(p => (
-              <th key={p.key} className="text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
+              <th key={p.key} className="w-24 text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {ANIMALS.map(a => (
             <tr key={a.key}>
-              <td className="text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+              <td className="w-20 text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
               {POINTS.map(p => (
-                <td key={p.key} className="py-1 px-1">
+                <td key={p.key} className="w-24 py-1 px-1 text-center">
                   <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} />
                 </td>
               ))}
