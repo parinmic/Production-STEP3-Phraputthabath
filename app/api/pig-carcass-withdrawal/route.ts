@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export async function GET() {
   // Get recent upload_log entries and use the latest one that has actual rows
@@ -35,5 +36,8 @@ export async function GET() {
     break
   }
 
-  return NextResponse.json({ rows, source_file: sourceFile })
+  return NextResponse.json(
+    { rows, source_file: sourceFile },
+    { headers: { 'Cache-Control': 'no-store' } },
+  )
 }
