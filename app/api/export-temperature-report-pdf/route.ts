@@ -113,10 +113,11 @@ function buildHtml(
         cRows += `<tr>
           ${ri === 0 && si === 0 ? `<td class="lot" rowspan="${span}">${g.spec_code}</td>` : ''}
           <td class="sub">${s.label}</td>
-          <td class="sub">${t(rec.updated_at)}</td>
           <td>${rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
           <td>${n(avg([recTemps.chillAirTemp ?? '']))}</td>
+          <td class="sub">${t(rec.updated_at)}</td>
           <td>${n(ac(set, 'hip'))}</td>
+          <td></td>
         </tr>`
       })
     })
@@ -138,6 +139,7 @@ function buildHtml(
           <td>${n(ap(set, 'belly'))}</td>
           <td>${n(ap(set, 'shoulder'))}</td>
           <td>${n(ap(set, 'neckLoin'))}</td>
+          <td></td>
         </tr>`
       })
     })
@@ -242,17 +244,19 @@ function buildHtml(
       <table>
         <thead class="cyan-head">
           <tr>
-            <th rowspan="2">Lot</th>
+            <th rowspan="2">Lot.</th>
             <th rowspan="2">ซีกสุกร</th>
-            <th rowspan="2">เวลา</th>
             <th rowspan="2">ห้อง Chill</th>
-            <th colspan="2" style="color:#0e7490">อุณหภูมิซีกสุกร (°C)</th>
+            <th rowspan="2">Room Temp</th>
+            <th rowspan="2">เวลาวัดอุณหภูมิ</th>
+            <th colspan="1" style="color:#0e7490">อุณหภูมิ(oC)</th>
+            <th rowspan="2">หมายเหตุ</th>
           </tr>
           <tr>
-            <th>อุณหภูมิห้อง</th><th>สะโพก</th>
+            <th>สะโพก</th>
           </tr>
         </thead>
-        <tbody>${cRows || '<tr><td colspan="6" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
+        <tbody>${cRows || '<tr><td colspan="7" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
       </table>
     </div>
 
@@ -261,16 +265,17 @@ function buildHtml(
       <table>
         <thead class="blue-head">
           <tr>
-            <th rowspan="2">Lot</th>
+            <th rowspan="2">Lot.</th>
             <th rowspan="2">ชิ้นส่วน</th>
-            <th rowspan="2">เวลา</th>
-            <th colspan="5" style="color:#1d4ed8">อุณหภูมิชิ้นส่วน (°C)</th>
+            <th rowspan="2">เวลาตัดแต่ง</th>
+            <th colspan="5" style="color:#1d4ed8">อุณหภูมิ(oC)</th>
+            <th rowspan="2">หมายเหตุ</th>
           </tr>
           <tr>
             <th>สะโพก</th><th>สันนอก</th><th>สามชั้น</th><th>ไหล่</th><th>สันคอ</th>
           </tr>
         </thead>
-        <tbody>${pRows || '<tr><td colspan="8" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
+        <tbody>${pRows || '<tr><td colspan="9" style="color:#aaa;padding:8px">ไม่มีข้อมูล</td></tr>'}</tbody>
       </table>
     </div>
   </div>

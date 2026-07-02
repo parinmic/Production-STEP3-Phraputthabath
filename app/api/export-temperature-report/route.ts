@@ -129,23 +129,25 @@ export async function GET(req: NextRequest) {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('รายงานอุณหภูมิ')
 
-  // Column widths (A=1 … O=15)
+  // Column widths (A=1 … Q=17)
   ws.columns = [
-    { width: 16 }, // A  Lot (carcass)
+    { width: 16 }, // A  Lot. (carcass)
     { width: 11 }, // B  ซีกสุกร
-    { width: 7  }, // C  เวลา
-    { width: 9  }, // D  ห้อง Chill
-    { width: 11 }, // E  อุณหภูมิห้อง
+    { width: 10 }, // C  ห้อง Chill
+    { width: 10 }, // D  Room Temp
+    { width: 12 }, // E  เวลาวัดอุณหภูมิ
     { width: 9  }, // F  สะโพก
-    { width: 2  }, // G  gap
-    { width: 16 }, // H  Lot (parts)
-    { width: 11 }, // I  ชิ้นส่วน
-    { width: 7  }, // J  เวลา
-    { width: 9  }, // K  สะโพก
-    { width: 9  }, // L  สันนอก
-    { width: 9  }, // M  สามชั้น
-    { width: 9  }, // N  ไหล่
-    { width: 9  }, // O  สันคอ
+    { width: 10 }, // G  หมายเหตุ
+    { width: 2  }, // H  gap
+    { width: 16 }, // I  Lot. (parts)
+    { width: 11 }, // J  ชิ้นส่วน
+    { width: 10 }, // K  เวลาตัดแต่ง
+    { width: 9  }, // L  สะโพก
+    { width: 9  }, // M  สันนอก
+    { width: 9  }, // N  สามชั้น
+    { width: 9  }, // O  ไหล่
+    { width: 9  }, // P  สันคอ
+    { width: 10 }, // Q  หมายเหตุ
   ]
 
   // Helper: apply border + alignment to a cell
@@ -159,14 +161,14 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Row 1: Title ──
-  ws.mergeCells('A1:O1')
+  ws.mergeCells('A1:Q1')
   ws.getCell('A1').value = 'รายงานการตรวจสอบอุณหภูมิซีกและชิ้นส่วนสุกร'
   ws.getCell('A1').font  = { bold: true, size: 13, name: 'FreesiaUPC' }
   ws.getCell('A1').alignment = CENTER
   ws.getRow(1).height = 22
 
   // ── Row 2: Date ──
-  ws.mergeCells('A2:O2')
+  ws.mergeCells('A2:Q2')
   ws.getCell('A2').value = `วันที่ ${fmtDateLong(dateStr)}`
   ws.getCell('A2').font  = { size: 11, name: 'FreesiaUPC' }
   ws.getCell('A2').alignment = CENTER
@@ -186,20 +188,23 @@ export async function GET(req: NextRequest) {
   }
 
   // Carcass header (cyan)
-  ws.mergeCells('A4:A5'); hdr('A4', 'Lot',                    CYAN_FILL)
+  ws.mergeCells('A4:A5'); hdr('A4', 'Lot.',                   CYAN_FILL)
   ws.mergeCells('B4:B5'); hdr('B4', 'ซีกสุกร',               CYAN_FILL)
-  ws.mergeCells('C4:C5'); hdr('C4', 'เวลา',                  CYAN_FILL)
-  ws.mergeCells('D4:D5'); hdr('D4', 'ห้อง Chill', CYAN_FILL)
-  ws.mergeCells('E4:F4'); hdr('E4', 'อุณหภูมิซีกสุกร (°C)', CYAN_FILL)
-  hdr('E5', 'อุณหภูมิห้อง', CYAN_FILL); hdr('F5', 'สะโพก', CYAN_FILL)
+  ws.mergeCells('C4:C5'); hdr('C4', 'ห้อง Chill',             CYAN_FILL)
+  ws.mergeCells('D4:D5'); hdr('D4', 'Room Temp',              CYAN_FILL)
+  ws.mergeCells('E4:E5'); hdr('E4', 'เวลาวัดอุณหภูมิ',       CYAN_FILL)
+  hdr('F4', 'อุณหภูมิ(oC)', CYAN_FILL)
+  hdr('F5', 'สะโพก', CYAN_FILL)
+  ws.mergeCells('G4:G5'); hdr('G4', 'หมายเหตุ',               CYAN_FILL)
 
   // Parts header (blue)
-  ws.mergeCells('H4:H5'); hdr('H4', 'Lot',                     BLUE_FILL)
-  ws.mergeCells('I4:I5'); hdr('I4', 'ชิ้นส่วน',               BLUE_FILL)
-  ws.mergeCells('J4:J5'); hdr('J4', 'เวลา',                   BLUE_FILL)
-  ws.mergeCells('K4:O4'); hdr('K4', 'อุณหภูมิชิ้นส่วน (°C)', BLUE_FILL)
-  hdr('K5', 'สะโพก', BLUE_FILL); hdr('L5', 'สันนอก', BLUE_FILL)
-  hdr('M5', 'สามชั้น', BLUE_FILL); hdr('N5', 'ไหล่', BLUE_FILL); hdr('O5', 'สันคอ', BLUE_FILL)
+  ws.mergeCells('I4:I5'); hdr('I4', 'Lot.',                    BLUE_FILL)
+  ws.mergeCells('J4:J5'); hdr('J4', 'ชิ้นส่วน',               BLUE_FILL)
+  ws.mergeCells('K4:K5'); hdr('K4', 'เวลาตัดแต่ง',           BLUE_FILL)
+  ws.mergeCells('L4:P4'); hdr('L4', 'อุณหภูมิ(oC)',           BLUE_FILL)
+  hdr('L5', 'สะโพก', BLUE_FILL); hdr('M5', 'สันนอก', BLUE_FILL)
+  hdr('N5', 'สามชั้น', BLUE_FILL); hdr('O5', 'ไหล่', BLUE_FILL); hdr('P5', 'สันคอ', BLUE_FILL)
+  ws.mergeCells('Q4:Q5'); hdr('Q4', 'หมายเหตุ',               BLUE_FILL)
 
   ws.getRow(4).height = 16
   ws.getRow(5).height = 14
@@ -245,9 +250,9 @@ export async function GET(req: NextRequest) {
     // Lot cells (merged + bold)
     if (span > 1) {
       ws.mergeCells(ri, 1, endRow, 1)
-      ws.mergeCells(ri, 8, endRow, 8)
+      ws.mergeCells(ri, 9, endRow, 9)
     }
-    for (const col of [1, 8]) {
+    for (const col of [1, 9]) {
       const c = ws.getCell(ri, col)
       c.value = spec
       style(c, { bold: true })
@@ -264,12 +269,13 @@ export async function GET(req: NextRequest) {
       }
       if (row) {
         setC(2, row.label)
-        setC(3, row.time)
-        setC(4, row.chillRoom ? `Chill ${row.chillRoom}` : null)
-        setC(5, row.chillAirTemp)
+        setC(3, row.chillRoom ? `Chill ${row.chillRoom}` : null)
+        setC(4, row.chillAirTemp)
+        setC(5, row.time)
         setC(6, row.hip)
+        setC(7, null)
       } else {
-        for (const col of [2, 3, 4, 5, 6]) setC(col, null)
+        for (const col of [2, 3, 4, 5, 6, 7]) setC(col, null)
       }
     }
 
@@ -283,15 +289,16 @@ export async function GET(req: NextRequest) {
         if (typeof v === 'number') c.numFmt = '0.0'
       }
       if (row) {
-        setP(9,  row.label)
-        setP(10, row.time)
-        setP(11, row.hip)
-        setP(12, row.outerLoin)
-        setP(13, row.belly)
-        setP(14, row.shoulder)
-        setP(15, row.neckLoin)
+        setP(10, row.label)
+        setP(11, row.time)
+        setP(12, row.hip)
+        setP(13, row.outerLoin)
+        setP(14, row.belly)
+        setP(15, row.shoulder)
+        setP(16, row.neckLoin)
+        setP(17, null)
       } else {
-        for (const col of [9, 10, 11, 12, 13, 14, 15]) setP(col, null)
+        for (const col of [10, 11, 12, 13, 14, 15, 16, 17]) setP(col, null)
       }
     }
 
@@ -303,13 +310,13 @@ export async function GET(req: NextRequest) {
 
   // ── Notes ──
   const noteFont = { size: 9, name: 'FreesiaUPC' }
-  ws.mergeCells(ri, 1, ri, 15)
+  ws.mergeCells(ri, 1, ri, 17)
   ws.getCell(ri, 1).value = 'หมายเหตุ: ตรวจสอบอุณหภูมิห้อง Chill และอุณหภูมิซีกสุกรก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C'
   ws.getCell(ri, 1).font  = noteFont
   ws.getCell(ri, 1).alignment = { vertical: 'middle' }
   ri++
 
-  ws.mergeCells(ri, 1, ri, 15)
+  ws.mergeCells(ri, 1, ri, 17)
   ws.getCell(ri, 1).value = 'ตรวจสอบอุณหภูมิชิ้นส่วนระหว่างผลิตตัดแต่ง โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันนอก สามชั้น สันคอ เนื้อไหล่ (ตัวแทนกลุ่มชิ้นส่วนที่มีความหนามากที่สุด) มาตรฐานอุณหภูมิเนื้อระหว่างผลิต ≤ 10 °C'
   ws.getCell(ri, 1).font  = noteFont
   ws.getCell(ri, 1).alignment = { vertical: 'middle' }

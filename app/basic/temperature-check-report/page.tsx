@@ -134,16 +134,17 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="bg-cyan-50 text-gray-700">
-            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot.</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ซีกสุกร</th>
-            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลา</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ห้อง Chill</th>
-            <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={2}>
-              อุณหภูมิซีกสุกร (°C)
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Room Temp</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลาวัดอุณหภูมิ</th>
+            <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={1}>
+              อุณหภูมิ(oC)
             </th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>หมายเหตุ</th>
           </tr>
           <tr className="bg-cyan-50 text-gray-600">
-            <th className="border border-gray-400 px-2 py-1 text-center">อุณหภูมิห้อง</th>
             <th className="border border-gray-400 px-2 py-1 text-center">สะโพก</th>
           </tr>
         </thead>
@@ -165,10 +166,11 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
                       </td>
                     )}
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{s.label}</td>
-                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{fmtTime(rec.updated_at)}</td>
                     <td className="border border-gray-400 px-2 py-1 text-center text-gray-700">{rec.chill_room ? `Chill ${rec.chill_room}` : '—'}</td>
                     <td className={cls}>{fmtVal(parseNum(recTemps.chillAirTemp ?? ''))}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-500 whitespace-nowrap">{fmtTime(rec.updated_at)}</td>
                     <td className={cls}>{fmtVal(avgCarcassPoint(set, 'hip'))}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-400"></td>
                   </tr>
                 )
               })
@@ -188,12 +190,13 @@ function PartsTable({ groups }: { groups: LotGroup<PartsTemps>[] }) {
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="bg-blue-50 text-gray-700">
-            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot.</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ชิ้นส่วน</th>
-            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลา</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลาตัดแต่ง</th>
             <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-blue-700" colSpan={5}>
-              อุณหภูมิชิ้นส่วน (°C)
+              อุณหภูมิ(oC)
             </th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>หมายเหตุ</th>
           </tr>
           <tr className="bg-blue-50 text-gray-600">
             <th className="border border-gray-400 px-2 py-1 text-center">สะโพก</th>
@@ -226,6 +229,7 @@ function PartsTable({ groups }: { groups: LotGroup<PartsTemps>[] }) {
                     <td className={cls}>{fmtVal(avgPartsPoint(set, 'belly'))}</td>
                     <td className={cls}>{fmtVal(avgPartsPoint(set, 'shoulder'))}</td>
                     <td className={cls}>{fmtVal(avgPartsPoint(set, 'neckLoin'))}</td>
+                    <td className="border border-gray-400 px-2 py-1 text-center text-gray-400"></td>
                   </tr>
                 )
               })
