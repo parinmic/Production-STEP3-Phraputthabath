@@ -19,7 +19,7 @@ export async function GET() {
     .order('uploaded_at', { ascending: false })
     .limit(5)
 
-  let rows: { spec_code: string; qty_3: number; weight_3: number; original_qty_3: number }[] = []
+  let rows: { spec_code: string; qty_3: number; weight_3: number }[] = []
   let sourceFile = ''
 
   for (const log of (logs ?? [])) {
@@ -53,10 +53,9 @@ export async function GET() {
       const qty      = qcQty ?? stockQty
       const avgWgt   = stockQty > 0 ? stockWgt / stockQty : 0
       return {
-        spec_code:      r.spec_code,
-        qty_3:          qty,
-        weight_3:       qcQty != null ? avgWgt * qty : stockWgt,
-        original_qty_3: stockQty,
+        spec_code: r.spec_code,
+        qty_3:     qty,
+        weight_3:  qcQty != null ? avgWgt * qty : stockWgt,
       }
     })
     sourceFile = log.source_file ?? ''

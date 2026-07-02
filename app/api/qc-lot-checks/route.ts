@@ -8,10 +8,9 @@ interface LotRow {
   spec_code: string
   qty_3: number
   weight_3: number
-  original_qty_3?: number
 }
 
-interface LotSnapshotRow extends Omit<LotRow, 'original_qty_3'> {
+interface LotSnapshotRow extends LotRow {
   round_number: number
   source_file: string | null
   sort_order: number
@@ -72,45 +71,6 @@ async function getCurrentRound(): Promise<RoundRow & { isNew: boolean }> {
   }
 
   return { ...latest, isNew: false }
-}
-
-async function stockQtyMapFromLogs(logs: { id: number }[] | null | undefined): Promise<Map<string, number>> {
-  for (const log of logs ?? []) {
-    const { data, error } = await supabase
-      .from('stock_20')
-      .select('spec_code, qty_total')
-      .eq('material_code', '90007')
-      .eq('upload_log_id', log.id)
-
-    if (error || !data?.length) continue
-    return new Map(data.map(r => [String(r.spec_code ?? '').trim(), num(r.qty_total)]))
-  }
-
-  return new Map()
-}
-
-async function getOriginalQtyMap(sourceFile?: string | null): Promise<Map<string, number>> {
-  if (sourceFile) {
-    const { data: sourceLogs } = await supabase
-      .from('upload_log')
-      .select('id')
-      .eq('table_name', 'stock_20')
-      .eq('source_file', sourceFile)
-      .order('uploaded_at', { ascending: false })
-      .limit(5)
-
-    const sourceQty = await stockQtyMapFromLogs(sourceLogs)
-    if (sourceQty.size) return sourceQty
-  }
-
-  const { data: latestLogs } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'stock_20')
-    .order('uploaded_at', { ascending: false })
-    .limit(5)
-
-  return stockQtyMapFromLogs(latestLogs)
 }
 
 export async function GET(req: NextRequest) {
@@ -207,19 +167,14 @@ export async function GET(req: NextRequest) {
   }
 
   const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
-  const originalQty = await getOriginalQtyMap(sourceFile)
-  const lotRows: LotRow[] = (itemRows ?? []).map(r => {
-    const spec = String(r.spec_code ?? '').trim()
-    return {
-      spec_code:      r.spec_code,
-      qty_3:          num(r.qty_3),
-      weight_3:       num(r.weight_3),
-      original_qty_3: originalQty.get(spec) ?? num(r.qty_3),
-    }
-  })
+  const lotRows: LotRow[] = (itemRows ?? []).map(r => ({
+    spec_code: r.spec_code,
+    qty_3:     num(r.qty_3),
+    weight_3:  num(r.weight_3),
+  }))
   const fallbackLotRows: LotRow[] = lotRows.length
     ? lotRows
-    : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0, original_qty_3: 0 }))
+    : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0 }))
   return NextResponse.json({
     temps, chillRoom, savedAt, recordedBy,
     lotRows:        fallbackLotRows,
@@ -244,24 +199,16 @@ export async function POST(req: NextRequest) {
 
     const sourceFile = String(body.source_file ?? body.sourceFile ?? '').trim() || null
     const updatedAt = new Date().toISOString()
-    const originalQty = new Map<string, number>()
-    for (const r of lotRowsInput as Record<string, unknown>[]) {
-      const spec = String(r.spec_code ?? '').trim()
-      if (spec && r.original_qty_3 !== undefined) originalQty.set(spec, num(r.original_qty_3))
-    }
     const rows: LotSnapshotRow[] = lotRowsInput
-      .map((r: Record<string, unknown>, i: number) => {
-        const spec = String(r.spec_code ?? '').trim()
-        return {
-          round_number:   round.round_number,
-          spec_code:      spec,
-          qty_3:          num(r.qty_3),
-          weight_3:       num(r.weight_3),
-          source_file:    sourceFile,
-          sort_order:     i,
-          updated_at:     updatedAt,
-        }
-      })
+      .map((r: Record<string, unknown>, i: number) => ({
+        round_number: round.round_number,
+        spec_code:    String(r.spec_code ?? '').trim(),
+        qty_3:        num(r.qty_3),
+        weight_3:     num(r.weight_3),
+        source_file:  sourceFile,
+        sort_order:   i,
+        updated_at:   updatedAt,
+      }))
       .filter((r: { spec_code: string }) => r.spec_code)
 
     const { error: delErr } = await supabase
@@ -278,7 +225,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       round: round.round_number,
-      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3, original_qty_3: originalQty.get(r.spec_code) ?? r.qty_3 })),
+      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3 })),
       sourceFile: sourceFile ?? '',
     })
   }
