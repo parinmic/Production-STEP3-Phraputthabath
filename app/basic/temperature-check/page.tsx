@@ -6,6 +6,7 @@ interface LotRow {
   spec_code: string
   qty_3:     number
   weight_3:  number
+  original_qty_3?: number
 }
 
 interface PointTemps {
@@ -109,7 +110,21 @@ function lotAgeKey(spec: string): number {
   return isNaN(day) ? Infinity : day
 }
 
-function PointInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+interface OriginalQtyInfo {
+  label: string
+  increased: boolean
+}
+
+function originalQtyInfo(row: LotRow): OriginalQtyInfo | null {
+  const original = row.original_qty_3
+  if (original === undefined || original === row.qty_3) return null
+  return {
+    label:     `แก้ไขจากเดิม ${original.toLocaleString('th-TH')} ตัว`,
+    increased: row.qty_3 > original,
+  }
+}
+
+function PointInput({ value, onChange, disabled, compact }: { value: string; onChange: (v: string) => void; disabled?: boolean; compact?: boolean }) {
   return (
     <input
       type="text"
@@ -118,36 +133,39 @@ function PointInput({ value, onChange, disabled }: { value: string; onChange: (v
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
       placeholder="—"
-      className="block mx-auto w-20 text-right text-sm border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+      className={`block mx-auto text-right border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500 ${
+        compact ? 'w-14 text-xs px-1.5 py-1' : 'w-20 text-sm px-2 py-1.5'
+      }`}
     />
   )
 }
 
-function AnimalSetGrid({ title, value, onChange, disabled }: {
+function AnimalSetGrid({ title, value, onChange, disabled, compact = false }: {
   title: string
   value: AnimalSet
   onChange: (animal: keyof AnimalSet, point: keyof PointTemps, v: string) => void
   disabled?: boolean
+  compact?: boolean
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-md p-2.5">
-      <p className="text-xs font-semibold text-gray-600 mb-1.5">{title}</p>
-      <table className="w-auto text-xs">
+    <div className={`bg-white border border-gray-200 rounded-md min-w-0 ${compact ? 'p-2' : 'p-2.5'}`}>
+      <p className={`font-semibold text-gray-600 ${compact ? 'text-[11px] mb-1' : 'text-xs mb-1.5'}`}>{title}</p>
+      <table className={`${compact ? 'w-full table-fixed text-[11px]' : 'w-auto text-xs'}`}>
         <thead>
           <tr>
-            <th className="text-left text-gray-400 font-normal pb-1.5 w-20"></th>
+            <th className={`text-left text-gray-400 font-normal ${compact ? 'pb-1 w-11' : 'pb-1.5 w-20'}`}></th>
             {POINTS.map(p => (
-              <th key={p.key} className="w-24 text-center text-cyan-600 font-semibold pb-1.5">{p.label}</th>
+              <th key={p.key} className={`text-center text-cyan-600 font-semibold ${compact ? 'pb-1' : 'w-24 pb-1.5'}`}>{p.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {ANIMALS.map(a => (
             <tr key={a.key}>
-              <td className="w-20 text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+              <td className={`text-gray-500 py-1 whitespace-nowrap ${compact ? 'w-11 pr-1' : 'w-20 pr-2'}`}>{a.label}</td>
               {POINTS.map(p => (
-                <td key={p.key} className="w-24 py-1 px-1 text-center">
-                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} />
+                <td key={p.key} className={`${compact ? 'py-1 px-0' : 'w-24 py-1 px-1'} text-center`}>
+                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} compact={compact} />
                 </td>
               ))}
             </tr>
@@ -587,6 +605,7 @@ export default function BasicTemperatureCheckPage() {
             const cls = statusClasses(status)
             const isOpen = !!expanded[r.spec_code]
             const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
+            const originalInfo = originalQtyInfo(r)
             return (
               <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cls.border} ${cls.bg}`}>
                 <div
@@ -616,6 +635,7 @@ export default function BasicTemperatureCheckPage() {
                       className={`w-14 text-right text-xs font-semibold text-blue-700 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
                     />
                     <span className="text-gray-400 text-xs">ตัว</span>
+                    {originalInfo && <span className="text-[10px] text-gray-300 whitespace-nowrap">{originalInfo.label}</span>}
                   </span>
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
@@ -689,7 +709,7 @@ export default function BasicTemperatureCheckPage() {
                         </button>
                       </div>
                     )}
-                    <div className="p-2.5 space-y-2.5 bg-gray-50 border-t border-gray-200">
+                    <div className="p-2.5 grid grid-cols-2 gap-2 bg-gray-50 border-t border-gray-200">
                       {SETS.map(s => (
                         <AnimalSetGrid
                           key={s.key}
@@ -697,6 +717,7 @@ export default function BasicTemperatureCheckPage() {
                           value={draftT[s.key]}
                           onChange={(animal, point, v) => setPoint(r.spec_code, s.key, animal, point, v)}
                           disabled={!isCurrent}
+                          compact
                         />
                       ))}
                     </div>
@@ -735,6 +756,7 @@ export default function BasicTemperatureCheckPage() {
                   const rowBg   = status === 'none' ? 'hover:bg-gray-50' : cls.bg
                   const isOpen  = !!expanded[r.spec_code]
                   const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
+                  const originalInfo = originalQtyInfo(r)
                   return (
                     <Fragment key={r.spec_code}>
                       <tr className={`transition-colors ${rowBg}`}>
@@ -749,17 +771,20 @@ export default function BasicTemperatureCheckPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-right">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={qtyValue}
-                            onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
-                            onBlur={() => saveQty(r.spec_code)}
-                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            disabled={!isCurrent || !isOpen}
-                            aria-label={`จำนวนตัว Lot ${r.spec_code}`}
-                            className={`w-24 text-right text-blue-700 font-semibold rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
-                          />
+                          <div className="inline-flex items-center justify-end gap-2">
+                            {originalInfo && <span className="text-xs text-gray-300 whitespace-nowrap">{originalInfo.label}</span>}
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={qtyValue}
+                              onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
+                              onBlur={() => saveQty(r.spec_code)}
+                              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                              disabled={!isCurrent || !isOpen}
+                              aria-label={`จำนวนตัว Lot ${r.spec_code}`}
+                              className={`w-24 text-right text-blue-700 font-semibold rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isOpen ? 'border border-blue-200 bg-white' : 'border border-transparent bg-transparent pointer-events-none'}`}
+                            />
+                          </div>
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           {isOpen && isCurrent && (
