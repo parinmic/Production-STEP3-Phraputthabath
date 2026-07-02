@@ -189,8 +189,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>): number {
   const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
   if (!wpb || wpb <= 0) return qty
-  const rounded = Math.floor(qty / wpb) * wpb
-  return rounded > 0 ? rounded : qty
+  return Math.ceil(qty / wpb) * wpb
 }
 
 function bagLabel(sku: string, qty: number, bagMap: Record<string, number>): string {
