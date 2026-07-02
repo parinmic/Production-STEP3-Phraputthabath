@@ -239,6 +239,49 @@ export async function POST(req: NextRequest) {
     await supabase.from('qc_check_rounds').insert({ round_number: round.round_number, started_at: round.started_at })
   }
 
+  if (body.qty_3 !== undefined || body.weight_3 !== undefined) {
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (body.qty_3 !== undefined) update.qty_3 = Math.max(0, num(body.qty_3))
+    if (body.weight_3 !== undefined) update.weight_3 = Math.max(0, num(body.weight_3))
+
+    const { data: existing, error: findErr } = await supabase
+      .from('qc_lot_round_items')
+      .select('source_file, sort_order')
+      .eq('round_number', round.round_number)
+      .eq('spec_code', spec_code)
+      .maybeSingle()
+
+    if (findErr) return NextResponse.json({ error: findErr.message }, { status: 500 })
+
+    const { error } = existing
+      ? await supabase
+        .from('qc_lot_round_items')
+        .update(update)
+        .eq('round_number', round.round_number)
+        .eq('spec_code', spec_code)
+      : await supabase
+        .from('qc_lot_round_items')
+        .insert({
+          round_number: round.round_number,
+          spec_code,
+          qty_3: body.qty_3 !== undefined ? Math.max(0, num(body.qty_3)) : 0,
+          weight_3: body.weight_3 !== undefined ? Math.max(0, num(body.weight_3)) : 0,
+          source_file: null,
+          sort_order: 0,
+          updated_at: update.updated_at,
+        })
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({
+      success: true,
+      round: round.round_number,
+      spec_code,
+      qty_3: update.qty_3,
+      weight_3: update.weight_3,
+    })
+  }
+
   // Accumulate recorder names across saves in the same round.
   const { data: existing } = await supabase
     .from('qc_lot_temperature_checks')

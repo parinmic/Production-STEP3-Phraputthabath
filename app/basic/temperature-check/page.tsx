@@ -132,6 +132,7 @@ export default function BasicTemperatureCheckPage() {
   const [generated,  setGenerated]  = useState(false)
   const [temps,      setTemps]      = useState<Record<string, TempRecord>>({})
   const [draftTemps, setDraftTemps] = useState<Record<string, TempRecord>>({})
+  const [draftQty,   setDraftQty]   = useState<Record<string, string>>({})
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({})
   const [chillRoom,  setChillRoom]  = useState<Record<string, string>>({})
   const [savedAt,    setSavedAt]    = useState<Record<string, string>>({})
@@ -165,6 +166,7 @@ export default function BasicTemperatureCheckPage() {
           const roundRows = (json.lotRows as LotRow[])
             .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
           setRows(roundRows)
+          setDraftQty({})
           setSourceFile(json.sourceFile ?? '')
           setGenerated(roundRows.length > 0)
         }
@@ -280,6 +282,53 @@ export default function BasicTemperatureCheckPage() {
         },
       }
     })
+  }
+
+  async function saveQty(spec: string) {
+    if (!isCurrent) return
+    const row = rows.find(r => r.spec_code === spec)
+    if (!row) return
+    const raw = draftQty[spec]
+    if (raw === undefined) return
+
+    if (raw === '') {
+      setDraftQty(prev => ({ ...prev, [spec]: String(row.qty_3) }))
+      return
+    }
+
+    const qty = Number(raw)
+    if (!Number.isFinite(qty) || qty < 0) {
+      setDraftQty(prev => ({ ...prev, [spec]: String(row.qty_3) }))
+      return
+    }
+    if (qty === row.qty_3) {
+      setDraftQty(prev => {
+        const next = { ...prev }
+        delete next[spec]
+        return next
+      })
+      return
+    }
+
+    setRows(prev => prev.map(r => r.spec_code === spec ? { ...r, qty_3: qty } : r))
+    try {
+      const res = await fetch('/api/qc-lot-checks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spec_code: spec, qty_3: qty }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error ?? 'save failed')
+      setDraftQty(prev => {
+        const next = { ...prev }
+        delete next[spec]
+        return next
+      })
+    } catch {
+      setRows(prev => prev.map(r => r.spec_code === spec ? row : r))
+      setDraftQty(prev => ({ ...prev, [spec]: String(row.qty_3) }))
+      setError('บันทึกจำนวนตัวหมูไม่สำเร็จ')
+    }
   }
 
   function toggleExpanded(spec: string) {
@@ -468,6 +517,7 @@ export default function BasicTemperatureCheckPage() {
             const tAvg   = calcAvg(t)
             const status = tempStatus(tAvg)
             const isOpen = !!expanded[r.spec_code]
+            const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
             const cardBorder = status === 'green' ? 'border-green-300' : status === 'red' ? 'border-red-300' : 'border-gray-200'
             const cardBg     = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'bg-white'
             return (
@@ -486,7 +536,20 @@ export default function BasicTemperatureCheckPage() {
                       Chill {chillRoom[r.spec_code]}
                     </span>
                   )}
-                  <span className="text-blue-700 font-semibold text-xs shrink-0">{r.qty_3.toLocaleString('th-TH')} <span className="text-gray-400 font-normal">ตัว</span></span>
+                  <span className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={qtyValue}
+                      onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
+                      onBlur={() => saveQty(r.spec_code)}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                      disabled={!isCurrent}
+                      aria-label={`จำนวนตัว Lot ${r.spec_code}`}
+                      className="w-14 text-right text-xs font-semibold text-blue-700 border border-blue-200 rounded px-1 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-transparent disabled:border-transparent"
+                    />
+                    <span className="text-gray-400 text-xs">ตัว</span>
+                  </span>
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
                       <>
@@ -593,6 +656,7 @@ export default function BasicTemperatureCheckPage() {
                   const status  = tempStatus(tAvg)
                   const rowBg   = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'hover:bg-gray-50'
                   const isOpen  = !!expanded[r.spec_code]
+                  const qtyValue = draftQty[r.spec_code] ?? String(r.qty_3)
                   return (
                     <Fragment key={r.spec_code}>
                       <tr className={`transition-colors ${rowBg}`}>
@@ -606,7 +670,19 @@ export default function BasicTemperatureCheckPage() {
                             )}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-right text-blue-700 font-semibold">{r.qty_3.toLocaleString('th-TH')}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={qtyValue}
+                            onChange={e => setDraftQty(prev => ({ ...prev, [r.spec_code]: e.target.value.replace(/[^0-9]/g, '') }))}
+                            onBlur={() => saveQty(r.spec_code)}
+                            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                            disabled={!isCurrent}
+                            aria-label={`จำนวนตัว Lot ${r.spec_code}`}
+                            className="w-24 text-right text-blue-700 font-semibold border border-blue-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-transparent disabled:border-transparent"
+                          />
+                        </td>
                         <td className="px-4 py-2.5 text-center">
                           {isOpen && isCurrent && (
                             <div className="inline-flex gap-1.5">
