@@ -2334,6 +2334,129 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     return jobInfo?.groups.get(productGroup) ?? 99
   }
 
+  const remainderTaskStartMins = (row: Record<string, unknown>): number => {
+    const mins = hhmmToMins(String(row['deadline_time'] ?? '')) ?? phaseStartMins
+    return phaseCfg.period === 'ค่ำ' && mins < phaseStartMins ? mins + 1440 : mins
+  }
+
+  const remainderTaskLineDurationMins = (row: Record<string, unknown>, qtyOverride?: number): number => {
+    const sku = String(row['sku'] ?? '').replace(/^0+/, '')
+    const prod = skuMap.get(sku) ?? skuMap.get(String(row['sku'] ?? ''))
+    const rate = prod?.rate ?? 0
+    const qty = qtyOverride ?? Number(row['target_quantity'] ?? 0)
+    return rate > 0 ? (qty / rate) * 60 : 0
+  }
+
+  const resetWorkerTimelineFromRows = (rows: Record<string, unknown>[]) => {
+    workerFreeAtMins.clear()
+    workerBusySegments.clear()
+    for (const w of workforce) {
+      let shiftStartMins = phaseCfg.startH * 60
+      let shiftEndMins = phaseEndMins
+      if (w.shift === 'เธเธฐ 1') { shiftStartMins = 8.5 * 60; shiftEndMins = isPhase3 ? phaseEndMins : 17.5 * 60 }
+      else if (w.shift === 'เธเธฐ 2') { shiftStartMins = 14.5 * 60; shiftEndMins = isPhase3 ? phaseEndMins : 23.5 * 60 }
+      const nameKey = normName(w.name)
+      const startFreeMins = Math.max(checkpointMins, shiftStartMins)
+      workerFreeAtMins.set(nameKey, startFreeMins)
+      workerBusySegments.set(nameKey, stationLineBreaks(normalizeStation(w.work_station ?? '')))
+      workerHours.set(nameKey, Math.max(0, Math.min(phaseEndMins, shiftEndMins) - startFreeMins) / 60)
+    }
+
+    const lineQtyByStartSku = new Map<string, number>()
+    for (const row of rows) {
+      const key = [
+        String(row['table_name'] ?? ''),
+        String(row['sku'] ?? '').replace(/^0+/, ''),
+        String(row['channel'] ?? ''),
+        remainderTaskStartMins(row),
+      ].join('|||')
+      lineQtyByStartSku.set(key, (lineQtyByStartSku.get(key) ?? 0) + Number(row['target_quantity'] ?? 0))
+    }
+
+    for (const row of [...rows].sort((a, b) => remainderTaskStartMins(a) - remainderTaskStartMins(b))) {
+      const nameKey = normName(String(row['worker_name'] ?? ''))
+      if (!nameKey || !workerFreeAtMins.has(nameKey)) continue
+      const start = remainderTaskStartMins(row)
+      const lineKey = [
+        String(row['table_name'] ?? ''),
+        String(row['sku'] ?? '').replace(/^0+/, ''),
+        String(row['channel'] ?? ''),
+        start,
+      ].join('|||')
+      const lineQty = lineQtyByStartSku.get(lineKey) ?? Number(row['target_quantity'] ?? 0)
+      const end = wallClockFinish(start, remainderTaskLineDurationMins(row, lineQty))
+      const busySegs = workerBusySegments.get(nameKey) ?? []
+      busySegs.push({ start, end })
+      workerBusySegments.set(nameKey, busySegs)
+      workerFreeAtMins.set(nameKey, Math.max(workerFreeAtMins.get(nameKey) ?? phaseStartMins, end))
+    }
+  }
+
+  const makeSmartRemainderRows = (
+    prod: ProductivityRow,
+    station: string,
+    remainKg: number,
+    seqStart: number,
+    channel: string,
+    noteTag: string,
+  ): Record<string, unknown>[] => {
+    const stationWorkers = workersByStation[station] ?? []
+    if (!stationWorkers.length) return []
+
+    let eligible = stationWorkers.filter(w => rawWorkerEligible(w, prod.product_group))
+    if (!eligible.length) eligible = stationWorkers
+    if (!eligible.length) return []
+
+    // Split the remainder across every eligible worker for this product group — production
+    // time is already gated by the line rate (not by headcount), so spreading the kg among
+    // the whole eligible team is free and keeps the rest of the group from sitting idle.
+    const selectedWorkers = eligible
+    const firstFree = Math.max(
+      ...selectedWorkers.map(w => getWorkerFreeAt(normName(w.name), workerFreeAtMins, workerBusySegments, phaseStartMins)),
+    )
+    const duration = prod.rate > 0 ? (remainKg / prod.rate) * 60 : 0
+    const endMins = wallClockFinish(firstFree, duration)
+
+    const rows: Record<string, unknown>[] = []
+    let assigned = 0
+    for (let i = 0; i < selectedWorkers.length; i++) {
+      const worker = selectedWorkers[i]
+      const qty = i === selectedWorkers.length - 1
+        ? Math.round((remainKg - assigned) * 10) / 10
+        : Math.floor((remainKg / selectedWorkers.length) * 10) / 10
+      assigned += qty
+      if (qty <= 0) continue
+      rows.push({
+        production_date: productionDate,
+        table_name:      station,
+        worker_code:     worker.emp_id,
+        worker_name:     worker.name,
+        sku:             prod.sku,
+        sku_name:        prod.sku_name,
+        target_quantity: qty,
+        unit:            channel === 'RAW' ? 'RAW' : 'เธเธ.',
+        period:          phaseCfg.period,
+        deadline_time:   minsToTimeStr(firstFree),
+        status:          'เธฃเธญเธเธฅเธดเธ•',
+        seq:             seqStart + i,
+        channel,
+        note:            noteTag,
+        is_deficit:      false,
+        effective_from:  effectiveFromISO,
+      })
+    }
+
+    for (const worker of selectedWorkers) {
+      const nameKey = normName(worker.name)
+      const busySegs = workerBusySegments.get(nameKey) ?? []
+      busySegs.push({ start: firstFree, end: endMins })
+      workerBusySegments.set(nameKey, busySegs)
+      workerFreeAtMins.set(nameKey, Math.max(workerFreeAtMins.get(nameKey) ?? phaseStartMins, endMins))
+    }
+
+    return rows
+  }
+
   const makeRawRemainderRows = (
     rawProd: ProductivityRow,
     station: string,
@@ -2503,6 +2626,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   resequenced.push(...cappedResequenced)
   sortByPlanOrder(resequenced)
   resequenced.forEach((a, i) => { a['seq'] = i })
+  resetWorkerTimelineFromRows(resequenced)
 
   // Append remainder assignments once per product group.
   if (Object.keys(groupYieldCap).length > 0) {
@@ -2512,6 +2636,12 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
     for (const [grp, yieldKg] of Object.entries(groupYieldCap)) {
       if (yieldKg <= 0) continue
+
+      // Rebuild worker busy-time from the authoritative row list (including remainder rows
+      // appended by earlier iterations of this loop) so a worker who just absorbed a large
+      // remainder batch for one product group can't be double-booked at the same instant by
+      // the next group's remainder assignment.
+      resetWorkerTimelineFromRows(resequenced)
 
       const groupRows = resequenced.filter(a => {
         if (String(a['note'] ?? '').includes('remainder')) return false
@@ -2532,7 +2662,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         if (remainKg < RAW_REMAINDER_MIN_KG) continue
         const station = resolveRemainderStation(grp, rawProd, usedStations)
         if (!station) continue
-        const rawRows = makeRawRemainderRows(rawProd, station, remainKg, rawSeq)
+        const rawRows = makeSmartRemainderRows(rawProd, station, remainKg, rawSeq, 'RAW', 'raw_remainder')
         rawSeq += rawRows.length
         resequenced.push(...rawRows)
         continue
@@ -2542,7 +2672,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       if (!bestWetMarketProd) continue
       const station = resolveRemainderStation(grp, bestWetMarketProd, usedStations)
       if (!station) continue
-      const remainderRows = makeWetMarketRemainderRows(bestWetMarketProd, station, remainKg, rawSeq)
+      const remainderRows = makeSmartRemainderRows(bestWetMarketProd, station, remainKg, rawSeq, 'Wet Market', 'yield_remainder')
       rawSeq += remainderRows.length
       resequenced.push(...remainderRows)
     }
