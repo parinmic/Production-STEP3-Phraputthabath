@@ -249,7 +249,7 @@ function buildHtml(
             <th rowspan="2">ห้อง Chill</th>
             <th rowspan="2">อุณหภูมิห้อง</th>
             <th rowspan="2">เวลาวัดอุณหภูมิ</th>
-            <th colspan="1" style="color:#0e7490">อุณหภูมิ(oC)</th>
+            <th colspan="1" style="color:#0e7490">อุณหภูมิ(°C)</th>
             <th rowspan="2">หมายเหตุ</th>
           </tr>
           <tr>
@@ -268,7 +268,7 @@ function buildHtml(
             <th rowspan="2">Lot.</th>
             <th rowspan="2">ชิ้นส่วน</th>
             <th rowspan="2">เวลาตัดแต่ง</th>
-            <th colspan="5" style="color:#1d4ed8">อุณหภูมิ(oC)</th>
+            <th colspan="5" style="color:#1d4ed8">อุณหภูมิ(°C)</th>
             <th rowspan="2">หมายเหตุ</th>
           </tr>
           <tr>

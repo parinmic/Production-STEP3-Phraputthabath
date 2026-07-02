@@ -140,7 +140,7 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>อุณหภูมิห้อง</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลาวัดอุณหภูมิ</th>
             <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={1}>
-              อุณหภูมิ(oC)
+              อุณหภูมิ(°C)
             </th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>หมายเหตุ</th>
           </tr>
@@ -194,7 +194,7 @@ function PartsTable({ groups }: { groups: LotGroup<PartsTemps>[] }) {
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ชิ้นส่วน</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลาตัดแต่ง</th>
             <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-blue-700" colSpan={5}>
-              อุณหภูมิ(oC)
+              อุณหภูมิ(°C)
             </th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>หมายเหตุ</th>
           </tr>

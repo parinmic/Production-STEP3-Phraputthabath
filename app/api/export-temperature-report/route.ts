@@ -193,7 +193,7 @@ export async function GET(req: NextRequest) {
   ws.mergeCells('C4:C5'); hdr('C4', 'ห้อง Chill',             CYAN_FILL)
   ws.mergeCells('D4:D5'); hdr('D4', 'อุณหภูมิห้อง',          CYAN_FILL)
   ws.mergeCells('E4:E5'); hdr('E4', 'เวลาวัดอุณหภูมิ',       CYAN_FILL)
-  hdr('F4', 'อุณหภูมิ(oC)', CYAN_FILL)
+  hdr('F4', 'อุณหภูมิ(°C)', CYAN_FILL)
   hdr('F5', 'สะโพก', CYAN_FILL)
   ws.mergeCells('G4:G5'); hdr('G4', 'หมายเหตุ',               CYAN_FILL)
 
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
   ws.mergeCells('I4:I5'); hdr('I4', 'Lot.',                    BLUE_FILL)
   ws.mergeCells('J4:J5'); hdr('J4', 'ชิ้นส่วน',               BLUE_FILL)
   ws.mergeCells('K4:K5'); hdr('K4', 'เวลาตัดแต่ง',           BLUE_FILL)
-  ws.mergeCells('L4:P4'); hdr('L4', 'อุณหภูมิ(oC)',           BLUE_FILL)
+  ws.mergeCells('L4:P4'); hdr('L4', 'อุณหภูมิ(°C)',           BLUE_FILL)
   hdr('L5', 'สะโพก', BLUE_FILL); hdr('M5', 'สันนอก', BLUE_FILL)
   hdr('N5', 'สามชั้น', BLUE_FILL); hdr('O5', 'ไหล่', BLUE_FILL); hdr('P5', 'สันคอ', BLUE_FILL)
   ws.mergeCells('Q4:Q5'); hdr('Q4', 'หมายเหตุ',               BLUE_FILL)
