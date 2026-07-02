@@ -137,7 +137,7 @@ function CarcassTable({ groups }: { groups: LotGroup<CarcassTemps>[] }) {
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Lot.</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ซีกสุกร</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>ห้อง Chill</th>
-            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>Room Temp</th>
+            <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>อุณหภูมิห้อง</th>
             <th className="border border-gray-400 px-2 py-1.5 text-center" rowSpan={2}>เวลาวัดอุณหภูมิ</th>
             <th className="border border-gray-400 px-3 py-1.5 text-center font-semibold text-cyan-700" colSpan={1}>
               อุณหภูมิ(oC)

@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
     { width: 16 }, // A  Lot. (carcass)
     { width: 11 }, // B  ซีกสุกร
     { width: 10 }, // C  ห้อง Chill
-    { width: 10 }, // D  Room Temp
+    { width: 10 }, // D  อุณหภูมิห้อง
     { width: 12 }, // E  เวลาวัดอุณหภูมิ
     { width: 9  }, // F  สะโพก
     { width: 10 }, // G  หมายเหตุ
@@ -191,7 +191,7 @@ export async function GET(req: NextRequest) {
   ws.mergeCells('A4:A5'); hdr('A4', 'Lot.',                   CYAN_FILL)
   ws.mergeCells('B4:B5'); hdr('B4', 'ซีกสุกร',               CYAN_FILL)
   ws.mergeCells('C4:C5'); hdr('C4', 'ห้อง Chill',             CYAN_FILL)
-  ws.mergeCells('D4:D5'); hdr('D4', 'Room Temp',              CYAN_FILL)
+  ws.mergeCells('D4:D5'); hdr('D4', 'อุณหภูมิห้อง',          CYAN_FILL)
   ws.mergeCells('E4:E5'); hdr('E4', 'เวลาวัดอุณหภูมิ',       CYAN_FILL)
   hdr('F4', 'อุณหภูมิ(oC)', CYAN_FILL)
   hdr('F5', 'สะโพก', CYAN_FILL)

@@ -247,7 +247,7 @@ function buildHtml(
             <th rowspan="2">Lot.</th>
             <th rowspan="2">ซีกสุกร</th>
             <th rowspan="2">ห้อง Chill</th>
-            <th rowspan="2">Room Temp</th>
+            <th rowspan="2">อุณหภูมิห้อง</th>
             <th rowspan="2">เวลาวัดอุณหภูมิ</th>
             <th colspan="1" style="color:#0e7490">อุณหภูมิ(oC)</th>
             <th rowspan="2">หมายเหตุ</th>
