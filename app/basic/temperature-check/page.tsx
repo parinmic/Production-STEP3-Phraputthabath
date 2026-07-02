@@ -161,14 +161,25 @@ export default function BasicTemperatureCheckPage() {
         setRounds(json.rounds ?? [])
         setIsCurrent(!!json.isCurrent)
         setViewRound(json.round ?? null)
-        if (json.liveRound != null && json.liveRound !== liveRoundRef.current) {
+        if (Array.isArray(json.lotRows) && (json.lotRows.length > 0 || explicitRound != null)) {
+          const roundRows = (json.lotRows as LotRow[])
+            .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
+          setRows(roundRows)
+          setSourceFile(json.sourceFile ?? '')
+          setGenerated(roundRows.length > 0)
+        }
+        if (json.liveRound != null && liveRoundRef.current != null && json.liveRound !== liveRoundRef.current) {
           // Live round advanced — drop any in-progress edits from the old round.
           if (followLiveRef.current) {
             setDraftTemps({})
             setExpanded({})
+            setRows([])
+            setSourceFile('')
+            setGenerated(false)
           }
           liveRoundRef.current = json.liveRound
         }
+        if (json.liveRound != null && liveRoundRef.current == null) liveRoundRef.current = json.liveRound
       })
       .catch(() => { /* ignore */ })
   }
@@ -224,6 +235,7 @@ export default function BasicTemperatureCheckPage() {
   }
 
   async function generate() {
+    if (!isCurrent) return
     setLoading(true)
     setError('')
     try {
@@ -233,9 +245,22 @@ export default function BasicTemperatureCheckPage() {
       const sorted: LotRow[] = (json.rows as LotRow[])
         .filter(r => r.qty_3 > 0)
         .sort((a, b) => lotAgeKey(a.spec_code) - lotAgeKey(b.spec_code) || a.spec_code.localeCompare(b.spec_code))
+      const snapRes = await fetch('/api/qc-lot-checks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lotRows: sorted, sourceFile: json.source_file ?? '' }),
+      })
+      const snapJson = await snapRes.json()
+      if (!snapRes.ok || snapJson.error) { setError(snapJson.error ?? 'บันทึก Snapshot Lot ไม่สำเร็จ'); return }
       setRows(sorted)
       setSourceFile(json.source_file ?? '')
       setGenerated(true)
+      if (snapJson.round != null) {
+        liveRoundRef.current = snapJson.round
+        setViewRound(snapJson.round)
+        setIsCurrent(true)
+        fetchRound()
+      }
     } catch {
       setError('โหลดข้อมูลไม่สำเร็จ')
     } finally {
@@ -329,7 +354,7 @@ export default function BasicTemperatureCheckPage() {
             {generated && (
               <button
                 onClick={generate}
-                disabled={loading}
+                disabled={loading || !isCurrent}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -338,7 +363,7 @@ export default function BasicTemperatureCheckPage() {
             )}
             <button
               onClick={generate}
-              disabled={loading}
+              disabled={loading || !isCurrent}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50"
             >
               <PlayCircle size={16} />

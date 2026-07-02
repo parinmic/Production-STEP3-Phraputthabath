@@ -4,6 +4,24 @@ import { supabase } from '@/lib/supabase'
 const ROUND_DURATION_MS  = 60 * 60 * 1000  // 1 hour
 const BANGKOK_OFFSET_MS  = 7  * 60 * 60 * 1000  // UTC+7
 
+interface LotRow {
+  spec_code: string
+  qty_3: number
+  weight_3: number
+}
+
+interface LotSnapshotRow extends LotRow {
+  round_number: number
+  source_file: string | null
+  sort_order: number
+  updated_at: string
+}
+
+function num(v: unknown): number {
+  const n = Number(v ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
 interface RoundRow {
   round_number:     number
   started_at:       string
@@ -128,6 +146,15 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const { data: itemRows, error: itemErr } = await supabase
+    .from('qc_lot_round_items')
+    .select('spec_code, qty_3, weight_3, source_file, sort_order')
+    .eq('round_number', viewRound)
+    .order('sort_order', { ascending: true })
+    .order('spec_code', { ascending: true })
+
+  if (itemErr) return NextResponse.json({ error: itemErr.message }, { status: 500 })
+
   const temps:      Record<string, unknown> = {}
   const chillRoom:  Record<string, string>  = {}
   const savedAt:    Record<string, string>  = {}
@@ -139,8 +166,20 @@ export async function GET(req: NextRequest) {
     if (row.recorded_by) recordedBy[row.spec_code] = row.recorded_by
   }
 
+  const lotRows: LotRow[] = (itemRows ?? []).map(r => ({
+    spec_code: r.spec_code,
+    qty_3:     num(r.qty_3),
+    weight_3:  num(r.weight_3),
+  }))
+  const fallbackLotRows: LotRow[] = lotRows.length
+    ? lotRows
+    : (data ?? []).map(r => ({ spec_code: r.spec_code, qty_3: 0, weight_3: 0 }))
+  const sourceFile = (itemRows ?? []).find(r => r.source_file)?.source_file ?? ''
+
   return NextResponse.json({
     temps, chillRoom, savedAt, recordedBy,
+    lotRows:        fallbackLotRows,
+    sourceFile,
     round:          viewRound,
     roundStartedAt: viewMeta?.started_at ?? null,
     isCurrent,
@@ -151,6 +190,47 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+
+  const lotRowsInput = Array.isArray(body.lot_rows) ? body.lot_rows : Array.isArray(body.lotRows) ? body.lotRows : null
+  if (lotRowsInput) {
+    const round = await getCurrentRound()
+    if (round.isNew) {
+      await supabase.from('qc_check_rounds').insert({ round_number: round.round_number, started_at: round.started_at })
+    }
+
+    const sourceFile = String(body.source_file ?? body.sourceFile ?? '').trim() || null
+    const updatedAt = new Date().toISOString()
+    const rows: LotSnapshotRow[] = lotRowsInput
+      .map((r: Record<string, unknown>, i: number) => ({
+        round_number: round.round_number,
+        spec_code:    String(r.spec_code ?? '').trim(),
+        qty_3:        num(r.qty_3),
+        weight_3:     num(r.weight_3),
+        source_file:  sourceFile,
+        sort_order:   i,
+        updated_at:   updatedAt,
+      }))
+      .filter((r: { spec_code: string }) => r.spec_code)
+
+    const { error: delErr } = await supabase
+      .from('qc_lot_round_items')
+      .delete()
+      .eq('round_number', round.round_number)
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+    if (rows.length) {
+      const { error: insertErr } = await supabase.from('qc_lot_round_items').insert(rows)
+      if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      round: round.round_number,
+      lotRows: rows.map(r => ({ spec_code: r.spec_code, qty_3: r.qty_3, weight_3: r.weight_3 })),
+      sourceFile: sourceFile ?? '',
+    })
+  }
+
   const spec_code = String(body.spec_code ?? '').trim()
   if (!spec_code) return NextResponse.json({ error: 'missing spec_code' }, { status: 400 })
 
