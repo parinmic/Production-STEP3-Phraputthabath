@@ -112,15 +112,13 @@ function lotAgeKey(spec: string): number {
 
 interface OriginalQtyInfo {
   label: string
-  increased: boolean
 }
 
 function originalQtyInfo(row: LotRow): OriginalQtyInfo | null {
   const original = row.original_qty_3
   if (original === undefined || original === row.qty_3) return null
   return {
-    label:     `แก้ไขจากเดิม ${original.toLocaleString('th-TH')} ตัว`,
-    increased: row.qty_3 > original,
+    label: `เดิม ${original.toLocaleString('th-TH')} ตัว`,
   }
 }
 
