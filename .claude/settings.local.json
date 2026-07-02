@@ -53,7 +53,11 @@
       "Bash(timeout 60 npx -y playwright@latest screenshot --timeout=20000 --viewport-size=390,900 --wait-for-selector=\"text=Chill\" --full-page \"http://localhost:3000/basic/pig-carcass-withdrawal\" \"/c/Users/parinya.the/AppData/Local/Temp/claude/c--Users-parinya-the-Production-STEP3-Phraputthabath/888d866d-76a9-417d-8c0e-0597065269b5/scratchpad/withdrawal-mobile16.png\")",
       "Bash(timeout 60 npx -y playwright@latest screenshot --timeout=20000 --viewport-size=390,900 --wait-for-selector=\"text=Chill\" --full-page \"http://localhost:3000/basic/pig-carcass-withdrawal\" \"/c/Users/parinya.the/AppData/Local/Temp/claude/c--Users-parinya-the-Production-STEP3-Phraputthabath/888d866d-76a9-417d-8c0e-0597065269b5/scratchpad/withdrawal-mobile17.png\")",
       "Bash(timeout 60 npx -y playwright@latest screenshot --timeout=20000 --viewport-size=390,900 --wait-for-selector=\"text=Chill\" --full-page \"http://localhost:3000/basic/pig-carcass-withdrawal\" \"/c/Users/parinya.the/AppData/Local/Temp/claude/c--Users-parinya-the-Production-STEP3-Phraputthabath/888d866d-76a9-417d-8c0e-0597065269b5/scratchpad/withdrawal-mobile18.png\")",
-      "Bash(timeout 60 npx -y playwright@latest screenshot --timeout=20000 --viewport-size=390,900 --wait-for-selector=\"text=Chill\" --full-page \"http://localhost:3000/basic/pig-carcass-withdrawal\" \"/c/Users/parinya.the/AppData/Local/Temp/claude/c--Users-parinya-the-Production-STEP3-Phraputthabath/888d866d-76a9-417d-8c0e-0597065269b5/scratchpad/withdrawal-mobile19.png\")"
+      "Bash(timeout 60 npx -y playwright@latest screenshot --timeout=20000 --viewport-size=390,900 --wait-for-selector=\"text=Chill\" --full-page \"http://localhost:3000/basic/pig-carcass-withdrawal\" \"/c/Users/parinya.the/AppData/Local/Temp/claude/c--Users-parinya-the-Production-STEP3-Phraputthabath/888d866d-76a9-417d-8c0e-0597065269b5/scratchpad/withdrawal-mobile19.png\")",
+      "mcp__supabase-dev__list_projects",
+      "mcp__supabase-production__list_projects",
+      "mcp__supabase-production__apply_migration",
+      "mcp__supabase-dev__apply_migration"
     ]
   },
   "enableAllProjectMcpServers": true

@@ -586,21 +586,13 @@ function allocateBalanced(params: {
     })
   }
 
-  // 4. Allocate — synchronized block per SKU (all selected workers start at the same time)
-  // Cross-station blocks (e.g. ซี่โครง in สะโพก) must not start until all own-station SKUs
-  // are done. crossStationStart is locked in the first time a cross-station block is reached.
-  let crossStationStart = phaseStartMins
-  let ownStationFinalized = false
-
+  // 4. Allocate per SKU block.
+  // Own-station blocks use a synchronized start (all selected workers start at the same time).
+  // Cross-station blocks (e.g. ซี่โครง processed by สามชั้น workers) each worker starts
+  // independently at their own freeAt — no global barrier — so early-finishing workers don't
+  // sit idle waiting for slower colleagues before picking up cross-station work.
   for (const block of skuBlocks) {
     const isOwnBlock = (STATION_TABLE[block.station] ?? block.station) === tableName
-    if (!ownStationFinalized && !isOwnBlock) {
-      ownStationFinalized = true
-      crossStationStart = workers.reduce(
-        (max, w) => Math.max(max, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
-        phaseStartMins,
-      )
-    }
 
     const normSku  = block.normSku
     const numBags  = Math.floor(block.totalQty / block.wpb)
@@ -679,21 +671,29 @@ function allocateBalanced(params: {
       selected         = selectPool.slice(0, numSelect)
     }
 
-    // blockStart = latest freeAt among selected workers (synchronized start)
+    // Own-station: synchronized start = latest freeAt among selected workers.
+    // Cross-station: no global barrier; blockStart is the earliest freeAt (used only for
+    // the feasibility skip check and overflow fallback reference).
     let blockStart = phaseStartMins
-    for (const w of selected)
-      blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
-    // Cross-station SKUs cannot start before all own-station work finishes
-    if (!isOwnBlock) blockStart = Math.max(blockStart, crossStationStart)
-    if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
-    if (blockStart >= limitEnd) { pushSkip(block, 'blockStart>=limitEnd', { blockStart, limitEnd, specialStart, specialStop }); continue }
+    if (isOwnBlock) {
+      for (const w of selected)
+        blockStart = Math.max(blockStart, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins)
+      if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
+      if (blockStart >= limitEnd) { pushSkip(block, 'blockStart>=limitEnd', { blockStart, limitEnd, specialStart, specialStop }); continue }
+    } else {
+      blockStart = selected.reduce(
+        (min, w) => Math.min(min, workerFreeAtMins.get(normName(w.name)) ?? phaseStartMins),
+        phaseEndMins,
+      )
+      if (specialStart !== null) blockStart = Math.max(blockStart, specialStart)
+      // selected is already filtered to freeAt < limitEnd, so feasibility is guaranteed above
+    }
 
     // Distribute bags equally; remainder goes to last worker
     // key = normSku (channels merged → one continuous block per worker)
-    const base     = Math.floor(numBags / selected.length)
-    const extra    = numBags - base * selected.length
-    const segRound = getRoundMins(blockStart, phaseRoundMins)
-    let overflow   = 0
+    const base   = Math.floor(numBags / selected.length)
+    const extra  = numBags - base * selected.length
+    let overflow = 0
 
     for (let i = 0; i < selected.length; i++) {
       const w       = selected[i]
@@ -702,13 +702,19 @@ function allocateBalanced(params: {
       overflow = 0
       if (bags < 1) continue
 
+      // Cross-station: each worker starts at their own freeAt (not synchronized with others)
+      const effectiveStart = isOwnBlock
+        ? blockStart
+        : Math.max(workerFreeAtMins.get(nameKey) ?? phaseStartMins, specialStart ?? phaseStartMins)
+      if (!isOwnBlock && effectiveStart >= limitEnd) { overflow += bags; continue }
+
       const segs = workerBusySegments.get(nameKey) ?? []
-      const fit  = fitMaxBags(blockStart, bags, block.wpb, block.rate, segs, limitEnd)
+      const fit  = fitMaxBags(effectiveStart, bags, block.wpb, block.rate, segs, limitEnd)
       if (fit.bags < 1) { overflow += bags; continue }
       if (fit.bags < bags) overflow += bags - fit.bags
 
       const qty = fit.bags * block.wpb
-      segs.push({ start: blockStart, end: fit.finish })
+      segs.push({ start: effectiveStart, end: fit.finish })
       workerBusySegments.set(nameKey, segs)
       workerFreeAtMins.set(nameKey, getWorkerFreeAt(nameKey, workerFreeAtMins, workerBusySegments, phaseStartMins))
       workerHours.set(nameKey, Math.max(0, (workerHours.get(nameKey) ?? 0) - qty / block.rate))
@@ -721,6 +727,7 @@ function allocateBalanced(params: {
       if (block.isDeficit) sdMap.set(normSku, true)
       workerSkuDeficit.set(nameKey, sdMap)
 
+      const segRound = getRoundMins(effectiveStart, phaseRoundMins)
       const srMap = workerSkuRoundQty.get(nameKey) ?? new Map<string, Map<number, number>>()
       const rMap  = srMap.get(normSku) ?? new Map<number, number>()
       rMap.set(segRound, (rMap.get(segRound) ?? 0) + qty)
@@ -728,8 +735,8 @@ function allocateBalanced(params: {
       workerSkuRoundQty.set(nameKey, srMap)
 
       const seMap = workerSkuEarliestStart.get(nameKey) ?? new Map<string, number>()
-      if (!seMap.has(normSku) || blockStart < (seMap.get(normSku) ?? Infinity))
-        seMap.set(normSku, blockStart)
+      if (!seMap.has(normSku) || effectiveStart < (seMap.get(normSku) ?? Infinity))
+        seMap.set(normSku, effectiveStart)
       workerSkuEarliestStart.set(nameKey, seMap)
 
       if (!skuAssignedWorkers.has(normSku)) skuAssignedWorkers.set(normSku, new Set())
@@ -745,7 +752,9 @@ function allocateBalanced(params: {
         if (overflow < 1) break
         const nameKey = normName(w.name)
         const segs    = workerBusySegments.get(nameKey) ?? []
-        const startAt = Math.max(blockStart, workerFreeAtMins.get(nameKey) ?? phaseStartMins)
+        const startAt = isOwnBlock
+        ? Math.max(blockStart, workerFreeAtMins.get(nameKey) ?? phaseStartMins)
+        : Math.max(workerFreeAtMins.get(nameKey) ?? phaseStartMins, specialStart ?? phaseStartMins)
         const fit     = fitMaxBags(startAt, overflow, block.wpb, block.rate, segs, phaseEndMins)
         if (fit.bags < 1) continue
 
@@ -3271,8 +3280,15 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
           phaseRoundMins: PHASE_ROUND_MINS[selectedPhase] ?? [phaseStartMins],
           wpbMap, specialTimeMap, debugSkips,
         })
-        for (const a of crossResult)
+        for (const a of crossResult) {
           a.note = a.note ? `${String(a.note)}|cross:${targetStation}` : `cross:${targetStation}`
+          // Update scheduledQtyMap so subsequent stations see this cross-station qty as already
+          // scheduled against targetStation — prevents the same remaining qty from being assigned
+          // to multiple cross-station workers (double-assign bug).
+          const ns = String(a.sku ?? '').replace(/^0+/, '')
+          const key = `${targetStation}|||${ns}`
+          scheduledQtyMap.set(key, (scheduledQtyMap.get(key) ?? 0) + Number(a.target_quantity))
+        }
         assignments.push(...crossResult)
       }
     }

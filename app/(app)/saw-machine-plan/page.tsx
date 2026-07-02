@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Scissors, Calendar, RefreshCw, ChevronDown, ChevronRight, CheckCircle2, X, ArrowRight } from 'lucide-react'
+import { Scissors, Calendar, RefreshCw, ChevronDown, ChevronRight, Wand2, CheckCircle2, X, ArrowRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import type { OptimizeChange } from '@/app/api/saw-machine/optimize/route'
+import type { OptimizeChange, SawScheduleEntry } from '@/app/api/saw-machine/optimize/route'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BREAKS: [number, number][] = [
@@ -373,65 +373,162 @@ function PhaseSection({ block }: { block: PhaseBlock }) {
   )
 }
 
-// ── Auto Optimize Result Panel ────────────────────────────────────────────────
-interface AutoOptimizeResult {
-  phase: number
-  phaseName: string
-  changes: OptimizeChange[]
-}
+// ── Optimize Panel ────────────────────────────────────────────────────────────
+function OptimizePanel({
+  phase, date, onClose, onApplied,
+}: { phase: number; date: string; onClose: () => void; onApplied: () => void }) {
+  const [step, setStep]           = useState<'idle' | 'loading' | 'preview' | 'applying' | 'done'>('idle')
+  const [changes, setChanges]     = useState<OptimizeChange[]>([])
+  const [schedule, setSchedule]   = useState<SawScheduleEntry[]>([])
+  const [error, setError]         = useState<string | null>(null)
 
-function AutoOptimizePanel({ results, onDismiss }: { results: AutoOptimizeResult[]; onDismiss: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const total = results.reduce((s, r) => s + r.changes.length, 0)
+  useEffect(() => {
+    setStep('loading')
+    fetch('/api/saw-machine/optimize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, phase, dryRun: true }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { setError(data.error); setStep('idle'); return }
+        setChanges(data.changes ?? [])
+        setSchedule(data.sawSchedule ?? [])
+        setStep('preview')
+      })
+      .catch(e => { setError(String(e)); setStep('idle') })
+  }, [date, phase])
+
+  const apply = async () => {
+    setStep('applying')
+    try {
+      const res = await fetch('/api/saw-machine/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase, dryRun: false }),
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); setStep('preview'); return }
+      setStep('done')
+    } catch (e) {
+      setError(String(e)); setStep('preview')
+    }
+  }
+
+  const PHASE_LABEL: Record<number, string> = { 1: 'เช้า', 2: 'บ่าย', 3: 'ค่ำ' }
 
   return (
-    <div className="mb-6 bg-teal-50 border border-teal-200 rounded-2xl overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <CheckCircle2 size={15} className="text-teal-600 shrink-0" />
-        <span className="text-sm font-medium text-teal-800 flex-1">
-          ปรับแผนอัตโนมัติเสร็จแล้ว — อัปเดต deadline {total} รายการ
-        </span>
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="text-xs font-medium text-teal-600 hover:text-teal-800 transition-colors"
-        >
-          {expanded ? 'ซ่อน' : 'ดูรายการ'}
-        </button>
-        <button
-          onClick={onDismiss}
-          className="p-1 rounded-lg hover:bg-teal-100 text-teal-400 hover:text-teal-600 transition-colors"
-        >
-          <X size={14} />
-        </button>
-      </div>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Wand2 size={16} className="text-teal-500" />
+            <span className="font-semibold text-gray-800">ปรับแผน Phase {PHASE_LABEL[phase]}</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
 
-      {expanded && (
-        <div className="border-t border-teal-200">
-          {results.map(r => (
-            <div key={r.phase}>
-              <div className="px-4 py-1.5 bg-teal-100/60 text-xs font-semibold text-teal-700">
-                Phase {r.phaseName} · {r.changes.length} รายการ
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {step === 'loading' && (
+            <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+              <RefreshCw size={16} className="animate-spin" />
+              <span className="text-sm">กำลังวิเคราะห์...</span>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">{error}</p>}
+
+          {(step === 'preview' || step === 'applying' || step === 'done') && (
+            <>
+              {/* Saw schedule */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">คิวเครื่องเลื่อย</p>
+              <div className="rounded-xl border border-gray-200 overflow-hidden mb-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="text-left px-3 py-2 font-semibold text-gray-500">สถานี</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-500">ผลิตเสร็จ</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-500">เครื่องว่าง</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-500">เลื่อยจบ</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-500">ช่องว่าง</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {schedule.map(s => (
+                      <tr key={s.station} className={s.gap_mins > 0 ? 'bg-amber-50/60' : ''}>
+                        <td className="px-3 py-2 font-medium text-gray-700">{s.station}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-500">{s.production_end}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-700">{s.saw_start}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-500">{s.saw_end}</td>
+                        <td className="px-3 py-2 text-right">
+                          {s.gap_mins > 0
+                            ? <span className="text-amber-600 font-semibold">{s.gap_mins} น.</span>
+                            : <span className="text-gray-400">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="divide-y divide-teal-100">
-                {r.changes.map((c, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2 bg-white">
-                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.direction === 'right' ? 'bg-amber-400' : 'bg-teal-400'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-700 truncate">{c.sku_name ?? c.sku}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{c.worker_name} · {c.reason}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
-                      <span className="text-gray-400">{c.old_deadline}</span>
-                      <ArrowRight size={10} className={c.direction === 'right' ? 'text-amber-400' : 'text-teal-400'} />
-                      <span className={`font-semibold ${c.direction === 'right' ? 'text-amber-600' : 'text-teal-600'}`}>{c.new_deadline}</span>
+
+              {/* Changes */}
+              {changes.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ไม่มีการเปลี่ยนแปลง — แผนปัจจุบันสอดคล้องกับเครื่องเลื่อยแล้ว</div>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">การเปลี่ยนแปลง deadline_time ({changes.length} รายการ)</p>
+                  <div className="rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="divide-y divide-gray-50 max-h-56 overflow-y-auto">
+                      {changes.map((c, i) => (
+                        <div key={i} className="flex items-center gap-3 px-3 py-2">
+                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.direction === 'right' ? 'bg-amber-400' : 'bg-teal-400'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-700 truncate">{c.sku_name ?? c.sku}</p>
+                            <p className="text-[10px] text-gray-400 truncate">{c.worker_name} · {c.reason}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
+                            <span className="text-gray-400">{c.old_deadline}</span>
+                            <ArrowRight size={10} className={c.direction === 'right' ? 'text-amber-400' : 'text-teal-400'} />
+                            <span className={`font-semibold ${c.direction === 'right' ? 'text-amber-600' : 'text-teal-600'}`}>{c.new_deadline}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+            </>
+          )}
+
+          {step === 'done' && (
+            <div className="flex items-center gap-2 mt-4 text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <CheckCircle2 size={16} />
+              <span className="text-sm font-medium">อัปเดต deadline_time เรียบร้อยแล้ว</span>
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50">
+          {step === 'done' ? (
+            <button onClick={() => { onApplied(); onClose() }}
+              className="px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-colors">
+              โหลดข้อมูลใหม่
+            </button>
+          ) : (
+            <>
+              <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">ยกเลิก</button>
+              {changes.length > 0 && step === 'preview' && (
+                <button onClick={apply}
+                  className="px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-xl hover:bg-teal-600 transition-colors">
+                  ยืนยันปรับแผน
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -442,13 +539,10 @@ export default function SawMachinePlanPage() {
   const [loading, setLoading] = useState(false)
   const [sawSkus, setSawSkus] = useState<SawMachineSku[]>([])
   const [rawMatByPeriodStation, setRawMatByPeriodStation] = useState<Map<string, Map<string, WithdrawalRawItem[]>>>(new Map())
-  const [autoResult, setAutoResult] = useState<AutoOptimizeResult[]>([])
-  const [showAutoResult, setShowAutoResult] = useState(false)
+  const [optimizePhase, setOptimizePhase] = useState<number | null>(null)
 
   const load = useCallback(async (d: string) => {
     setLoading(true)
-    setAutoResult([])
-    setShowAutoResult(false)
     try {
       const opts = (phase: number) => ({
         method: 'POST',
@@ -494,26 +588,6 @@ export default function SawMachinePlanPage() {
         rawMap.set(period, stMap)
       }
       setRawMatByPeriodStation(rawMap)
-
-      // Auto-optimize all phases immediately after data is ready
-      const PHASE_NAMES: Record<number, string> = { 1: 'เช้า', 2: 'บ่าย', 3: 'ค่ำ' }
-      const optimizeOpts = (phase: number) => ({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: d, phase, dryRun: false }),
-      })
-      const [o1, o2, o3] = await Promise.all([1, 2, 3].map(phase =>
-        fetch('/api/saw-machine/optimize', optimizeOpts(phase))
-          .then(r => r.json())
-          .catch(() => ({ changes: [] }))
-      ))
-      const results: AutoOptimizeResult[] = [o1, o2, o3]
-        .map((data, i) => ({ phase: i + 1, phaseName: PHASE_NAMES[i + 1], changes: (data.changes ?? []) as OptimizeChange[] }))
-        .filter(r => r.changes.length > 0)
-      if (results.length > 0) {
-        setAutoResult(results)
-        setShowAutoResult(true)
-      }
     } finally {
       setLoading(false)
     }
@@ -526,8 +600,19 @@ export default function SawMachinePlanPage() {
     [sawSkus, rawMatByPeriodStation],
   )
 
+  const PHASE_NUM: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      {optimizePhase !== null && (
+        <OptimizePanel
+          phase={optimizePhase}
+          date={date}
+          onClose={() => setOptimizePhase(null)}
+          onApplied={() => { setOptimizePhase(null); load(date) }}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <Scissors size={22} className="text-gray-600 shrink-0" />
@@ -556,10 +641,6 @@ export default function SawMachinePlanPage() {
         </div>
       </div>
 
-      {showAutoResult && (
-        <AutoOptimizePanel results={autoResult} onDismiss={() => setShowAutoResult(false)} />
-      )}
-
       {loading && (
         <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
           <RefreshCw size={18} className="animate-spin" />
@@ -575,7 +656,18 @@ export default function SawMachinePlanPage() {
       )}
 
       {!loading && phases.map(phase => (
-        <PhaseSection key={phase.phase} block={phase} />
+        <div key={phase.phase}>
+          <PhaseSection block={phase} />
+          <div className="flex justify-end -mt-4 mb-6">
+            <button
+              onClick={() => setOptimizePhase(PHASE_NUM[phase.phase] ?? 1)}
+              className="flex items-center gap-1.5 text-xs font-medium text-teal-600 border border-teal-200 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-xl transition-colors"
+            >
+              <Wand2 size={12} />
+              ปรับแผน {phase.phase}
+            </button>
+          </div>
+        </div>
       ))}
     </div>
   )
