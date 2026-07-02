@@ -6,6 +6,7 @@ import { Upload, AlertCircle, CheckCircle2, X, Calendar, Download } from 'lucide
 interface SapResult { sapCode: string; bags: number; weight: number }
 
 interface UploadRecord {
+  id: string
   source_file: string
   record_count: number
   uploaded_at: string
@@ -115,11 +116,11 @@ export default function YieldPage() {
     } catch { alert('ดาวน์โหลดไม่สำเร็จ') }
   }
 
-  const handleDelete = async (sourceFile: string) => {
+  const handleDelete = async (id: string, sourceFile: string) => {
     if (!confirm(`ลบ "${sourceFile}" และข้อมูลที่อัพโหลดออกจากระบบ?`)) return
-    setDeleting(sourceFile)
+    setDeleting(id)
     try {
-      const res  = await fetch(`/api/upload-yield?file=${encodeURIComponent(sourceFile)}`, { method: 'DELETE' })
+      const res  = await fetch(`/api/upload-yield?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.success) fetchHistory()
       else alert(data.message ?? 'ลบไม่สำเร็จ')
@@ -239,8 +240,8 @@ export default function YieldPage() {
                   <Download size={14} />
                 </button>
                 <button
-                  onClick={() => handleDelete(h.source_file)}
-                  disabled={deleting === h.source_file}
+                  onClick={() => handleDelete(h.id, h.source_file)}
+                  disabled={deleting === h.id}
                   className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1">
                   <X size={14} />
                 </button>
