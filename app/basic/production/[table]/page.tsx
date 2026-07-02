@@ -443,26 +443,30 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const sortedSkus = allSkus
     .filter(sku => skuStats[sku])
     .sort((a, b) => {
+      const seqA = skuStats[a].minSeq, seqB = skuStats[b].minSeq
+      if (seqA !== seqB) return seqA - seqB
       const grpA = getGrp(a), grpB = getGrp(b)
       if (grpA !== grpB) return grpA.localeCompare(grpB, 'th')
       const startA = skuStats[a].minStart, startB = skuStats[b].minStart
       if (startA !== startB) return startA - startB
       const endA = skuStats[a].maxEnd, endB = skuStats[b].maxEnd
       if (endA !== endB) return endA - endB
-      const seqA = skuStats[a].minSeq, seqB = skuStats[b].minSeq
-      if (seqA !== seqB) return seqA - seqB
       return skuStats[b].totalQty - skuStats[a].totalQty
     })
 
-  // Build group → skus list, then sort groups by total quantity descending
-  const skuGroups: { grp: string; skus: string[]; totalQty: number }[] = []
+  // Build group -> SKUs list, then keep groups in their first planned sequence.
+  const skuGroups: { grp: string; skus: string[]; totalQty: number; minSeq: number }[] = []
   for (const sku of sortedSkus) {
     const grp = getGrp(sku)
-    const last = skuGroups[skuGroups.length - 1]
-    if (!last || last.grp !== grp) skuGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
-    else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
+    const existing = skuGroups.find(g => g.grp === grp)
+    if (!existing) skuGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty, minSeq: skuStats[sku].minSeq })
+    else {
+      existing.skus.push(sku)
+      existing.totalQty += skuStats[sku].totalQty
+      existing.minSeq = Math.min(existing.minSeq, skuStats[sku].minSeq)
+    }
   }
-  skuGroups.sort((a, b) => b.totalQty - a.totalQty)
+  skuGroups.sort((a, b) => a.minSeq - b.minSeq)
 
   const usesApproachB = pigLots.some(l => Number(l.qty) > 0) && masYieldRows.length > 0 && carcassRate > 0
 
@@ -1138,22 +1142,26 @@ function ProductionSummaryView({ items, phaseStart, bagMap, date, tableName, gro
   const getSummaryGrp = (sku: string) => groupMap?.[sku] ?? groupMap?.[sku.replace(/^0+/, '')] ?? ''
 
   const sortedSkus = allSkus.filter(sku => skuStats[sku]).sort((a, b) => {
+    if (skuStats[a].minSeq !== skuStats[b].minSeq) return skuStats[a].minSeq - skuStats[b].minSeq
     const grpA = getSummaryGrp(a), grpB = getSummaryGrp(b)
     if (grpA !== grpB) return grpA.localeCompare(grpB, 'th')
     if (skuStats[a].minStart !== skuStats[b].minStart) return skuStats[a].minStart - skuStats[b].minStart
-    if (skuStats[a].minSeq !== skuStats[b].minSeq) return skuStats[a].minSeq - skuStats[b].minSeq
     return skuStats[b].totalQty - skuStats[a].totalQty
   })
 
-  // Build groups sorted by total qty desc
-  const summaryGroups: { grp: string; skus: string[]; totalQty: number }[] = []
+  // Build groups in their first planned sequence.
+  const summaryGroups: { grp: string; skus: string[]; totalQty: number; minSeq: number }[] = []
   for (const sku of sortedSkus) {
     const grp = getSummaryGrp(sku)
-    const last = summaryGroups[summaryGroups.length - 1]
-    if (!last || last.grp !== grp) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty })
-    else { last.skus.push(sku); last.totalQty += skuStats[sku].totalQty }
+    const existing = summaryGroups.find(g => g.grp === grp)
+    if (!existing) summaryGroups.push({ grp, skus: [sku], totalQty: skuStats[sku].totalQty, minSeq: skuStats[sku].minSeq })
+    else {
+      existing.skus.push(sku)
+      existing.totalQty += skuStats[sku].totalQty
+      existing.minSeq = Math.min(existing.minSeq, skuStats[sku].minSeq)
+    }
   }
-  summaryGroups.sort((a, b) => b.totalQty - a.totalQty)
+  summaryGroups.sort((a, b) => a.minSeq - b.minSeq)
 
   if (!sortedSkus.length) return null
 

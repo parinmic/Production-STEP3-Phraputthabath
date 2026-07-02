@@ -44,6 +44,7 @@ interface SkuTarget {
   targetQty: number
   channel: string
   isDeficit?: boolean
+  planOrder?: number
 }
 
 interface CarcassLot {
@@ -373,19 +374,19 @@ function allocateBalanced(params: {
 
   if (!targets.length || !workers.length) return []
 
-  interface ChEntry { channel: string; qty: number; isDeficit: boolean }
+  interface ChEntry { channel: string; qty: number; isDeficit: boolean; planOrder: number }
   interface SkuBlock {
     normSku: string; rawSku: string; skuName: string | null
     totalQty: number; isDeficit: boolean; productGroup: string
     rate: number; personRate: number; channels: ChEntry[]
-    isYieldCapped: boolean
+    isYieldCapped: boolean; planOrder: number
   }
   interface GroupBlock {
     productGroup: string
     blocks: SkuBlock[]
     totalQty: number
     manMins: number
-    flowMins: number
+    flowMins: number; planOrder: number
     isYieldCapped: boolean
   }
 
@@ -398,8 +399,9 @@ function allocateBalanced(params: {
     const existing = skuBlockMap.get(cleanSku)
     if (existing) {
       existing.totalQty += t.targetQty
-      existing.channels.push({ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false })
+      existing.channels.push({ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false, planOrder: t.planOrder ?? 999999 })
       if (t.isDeficit) existing.isDeficit = true
+      existing.planOrder = Math.min(existing.planOrder, t.planOrder ?? 999999)
     } else {
       skuBlockMap.set(cleanSku, {
         normSku: cleanSku, rawSku: t.sku,
@@ -408,13 +410,17 @@ function allocateBalanced(params: {
         productGroup: prod.product_group,
         rate: skuRateOverrideMap?.get(cleanSku) ?? prod.rate,
         personRate: prod.rate,
-        channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false }],
+        channels: [{ channel: t.channel, qty: t.targetQty, isDeficit: t.isDeficit || false, planOrder: t.planOrder ?? 999999 }],
         isYieldCapped: skuRateOverrideMap?.has(cleanSku) ?? false,
+        planOrder: t.planOrder ?? 999999,
       })
     }
   }
   const skuBlocks = Array.from(skuBlockMap.values())
-  skuBlocks.sort((a, b) => (b.totalQty / b.rate) - (a.totalQty / a.rate))
+  skuBlocks.sort((a, b) => {
+    if (a.planOrder !== b.planOrder) return a.planOrder - b.planOrder
+    return (b.totalQty / b.rate) - (a.totalQty / a.rate)
+  })
 
   const isWorkerEligible = (worker: WorkforceRow, skuGroup: string): boolean => {
     if (jobAssignMap.size === 0) return true
@@ -459,6 +465,7 @@ function allocateBalanced(params: {
       existing.totalQty += block.totalQty
       existing.manMins += manMins
       existing.flowMins += flowMins
+      existing.planOrder = Math.min(existing.planOrder, block.planOrder)
       existing.isYieldCapped = existing.isYieldCapped || block.isYieldCapped
     } else {
       groupMap.set(key, {
@@ -467,12 +474,16 @@ function allocateBalanced(params: {
         totalQty: block.totalQty,
         manMins,
         flowMins,
+        planOrder: block.planOrder,
         isYieldCapped: block.isYieldCapped,
       })
     }
   }
 
-  const groupedBlocks = Array.from(groupMap.values()).sort((a, b) => b.manMins - a.manMins)
+  const groupedBlocks = Array.from(groupMap.values()).sort((a, b) => {
+    if (a.planOrder !== b.planOrder) return a.planOrder - b.planOrder
+    return b.manMins - a.manMins
+  })
 
   const groupStartFor = (worker: WorkforceRow, group: GroupBlock): number => {
     const nameKey = normName(worker.name)
@@ -567,7 +578,7 @@ function allocateBalanced(params: {
             period,
             deadline_time:   minsToTimeStr(cursor),
             status:          'รอผลิต',
-            seq:             null,
+            seq:             ch.planOrder,
             channel:         ch.channel,
             note:            block.isDeficit ? `${noteRoundStr}|deficit` : noteRoundStr,
             is_deficit:      block.isDeficit,
@@ -1764,6 +1775,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   // Assign workers per channel pass
   const assignments: Record<string, unknown>[] = []
+  let nextPlanOrder = 0
 
   const runChannelPass = (passList: SkuTarget[]) => {
     const globalSkuTotalQty = new Map<string, number>()
@@ -1809,8 +1821,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         const prod = skuMap.get(normSku) ?? skuMap.get(item.sku)
         if (!prod) continue
         const station = resolveStationForProduct(prod)
+        const currentPlanOrder = nextPlanOrder++
         targetsByStation[station] ??= []
-        targetsByStation[station].push({ ...item, targetQty })
+        targetsByStation[station].push({ ...item, targetQty, planOrder: currentPlanOrder })
 
         let prevCh = ch
         for (let nextIdx = chIdx + 1; nextIdx < chsInPass.length; nextIdx++) {
@@ -1826,7 +1839,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           handled.add(nextKey)
           const nextQty = roundDownToBag(nextItem.sku, nextItem.targetQty)
           if (nextQty <= 0) break
-          targetsByStation[station].push({ ...nextItem, targetQty: nextQty })
+          const adjacentPlanOrder = nextPlanOrder++
+          targetsByStation[station].push({ ...nextItem, targetQty: nextQty, planOrder: adjacentPlanOrder })
           prevCh = nextCh
         }
       }
@@ -2037,6 +2051,28 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     return toMins(String(a['deadline_time'] ?? '')) - toMins(String(b['deadline_time'] ?? ''))
   })
 
+  const sortByPlanOrder = (rows: Record<string, unknown>[]) => {
+    const toMins = (s: string) => {
+      const p = s.split(':').map(Number)
+      return (p[0] ?? 0) * 60 + (p[1] ?? 0)
+    }
+    rows.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      const stationCmp = String(a['table_name'] ?? '').localeCompare(String(b['table_name'] ?? ''), 'th')
+      if (stationCmp !== 0) return stationCmp
+      const seqCmp = Number(a['seq'] ?? 999999) - Number(b['seq'] ?? 999999)
+      if (seqCmp !== 0) return seqCmp
+      const pCmp = (channelPriority[String(a['channel'] ?? '')] ?? 99) - (channelPriority[String(b['channel'] ?? '')] ?? 99)
+      if (pCmp !== 0) return pCmp
+      const grpCmp = String(productGroupForAssignment(a) ?? '').localeCompare(String(productGroupForAssignment(b) ?? ''), 'th')
+      if (grpCmp !== 0) return grpCmp
+      const timeCmp = toMins(String(a['deadline_time'] ?? '')) - toMins(String(b['deadline_time'] ?? ''))
+      if (timeCmp !== 0) return timeCmp
+      return String(a['worker_name'] ?? '').localeCompare(String(b['worker_name'] ?? ''), 'th')
+    })
+  }
+
+  sortByPlanOrder(resequenced)
+
   resequenced.forEach((a, i) => {
     a['seq'] = i
     a['effective_from'] = effectiveFromISO
@@ -2051,6 +2087,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const cappedResequenced = capResequencedToGroupYield(resequenced)
   resequenced.length = 0
   resequenced.push(...cappedResequenced)
+  sortByPlanOrder(resequenced)
   resequenced.forEach((a, i) => { a['seq'] = i })
 
   // Append remainder assignments (Raw or By Product) once per product group.
