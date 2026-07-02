@@ -870,13 +870,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                             // Approach B: production is shifted (not reduced) so show full planned qty
                             const lostKg = usesApproachB ? 0 : (skuLostKgMap.get(sku) ?? 0)
                             const effectiveQty = Math.max(0, stat.totalQty - lostKg)
-                            const wpb = bagMap[sku] ?? bagMap[sku.replace(/^0+/, '')]
-                            const bags = wpb && wpb > 0 ? Math.floor(effectiveQty / wpb) : 0
-                            const displayQty = wpb && wpb > 0 ? bags * wpb : effectiveQty
-                            const bagsLabel = bags > 0 ? `${bags} ถุง · ` : ''
+                            const period = Object.keys(stat.qtyByPeriod)[0]
+                            const displayQty = roundedDisplayQty(sku, effectiveQty, bagMap, period)
                             return (
                               <>
-                                {bagsLabel}{displayQty.toLocaleString()} กก.
+                                {bagLabel(sku, displayQty, bagMap)}{displayQty.toLocaleString()} กก.
                               </>
                             )
                           })()}
