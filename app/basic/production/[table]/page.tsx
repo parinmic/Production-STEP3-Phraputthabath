@@ -65,12 +65,17 @@ const isRawTask = (task: Assignment) =>
   || String(task.note ?? '').includes('raw_remainder')
   || String(task.sku_name ?? '').trim().toLowerCase().endsWith('-raw')
 
+// Broader than isRawTask — covers any non-target output (yield_remainder too),
+// used to color Gantt bar segments that didn't come from a demand target.
+const isRemainderTask = (task: Assignment) => String(task.note ?? '').includes('remainder')
+
 function timeToMins(t: string) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
 }
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
+const REMAINDER_COLOR = { bg: '#4b5563', fg: '#ffffff' }
 
 function buildSkuColorMap(allItems: Assignment[]): Record<string, typeof BAR_COLORS[0]> {
   const suppSkus = new Set(allItems.filter(a => a.channel === 'เสริม').map(a => a.sku))
@@ -378,6 +383,7 @@ interface SkuScheduleViewProps {
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
   groupMap?: Record<string, string>
+  productTypeMap?: Record<string, string>
   carcassThroughputByGroup?: Record<string, number>
   lineBreaks?: LineBreak[]
   pigLots?: PigLot[]
@@ -385,7 +391,7 @@ interface SkuScheduleViewProps {
   carcassRate?: number
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -409,7 +415,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
   const byWorker: Record<string, Assignment[]> = {}
   for (const a of items) { byWorker[a.worker_name] ??= []; byWorker[a.worker_name].push(a) }
 
-  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean }[], minSeq: number; isRaw: boolean }
+  type SkuStat = { name: string | null; totalQty: number; qtyByPeriod: Record<string, number>; minStart: number; maxEnd: number; workers: string[], segments: { start: number; end: number; worker: string; isDeficit: boolean; origin: 'target' | 'remainder' }[], minSeq: number; isRaw: boolean }
   const skuStats: Record<string, SkuStat> = {}
 
   const periodOrder: Record<string, number> = { 'เช้า': 1, 'บ่าย': 2, 'ค่ำ': 3 }
@@ -475,7 +481,11 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       const endMin = wallClockFinish(startMin, dur)
       curRaw = Math.max(curRaw, endMin)
       if (skuStats[task.sku]) {
-        skuStats[task.sku].segments.push({ start: startMin, end: endMin, worker: task.worker_name, isDeficit: !!task.note?.includes('|deficit') })
+        skuStats[task.sku].segments.push({
+          start: startMin, end: endMin, worker: task.worker_name,
+          isDeficit: !!task.note?.includes('|deficit'),
+          origin: isRemainderTask(task) ? 'remainder' : 'target',
+        })
       }
     }
   }
@@ -508,7 +518,38 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
       existing.minSeq = Math.min(existing.minSeq, skuStats[sku].minSeq)
     }
   }
-  skuGroups.sort((a, b) => a.minSeq - b.minSeq)
+
+  // Main Product groups above By Product groups; within each, higher standard
+  // yield (Mas Yield at the 90kg reference carcass weight) sorts to the top.
+  const getProductType = (sku: string) => productTypeMap?.[sku] ?? productTypeMap?.[sku.replace(/^0+/, '')] ?? ''
+  const groupCategoryRank = (grp: { skus: string[] }): number => {
+    for (const sku of grp.skus) {
+      const t = getProductType(sku).trim().toUpperCase()
+      if (t === 'MAIN PRODUCT' || t === 'MAIN') return 0
+      if (t === 'BY PRODUCT') return 1
+    }
+    return 2
+  }
+  const yieldStdCache = new Map<string, number>()
+  const groupYieldStd = (grpName: string): number => {
+    if (yieldStdCache.has(grpName)) return yieldStdCache.get(grpName)!
+    const rows = masYieldRows.filter(r => r.product_group === grpName)
+    let val = -Infinity
+    if (rows.length) {
+      const closest = rows.reduce((best, r) =>
+        Math.abs(r.carcass_weight - 90) < Math.abs(best.carcass_weight - 90) ? r : best, rows[0])
+      val = closest.yield_pct
+    }
+    yieldStdCache.set(grpName, val)
+    return val
+  }
+  skuGroups.sort((a, b) => {
+    const catA = groupCategoryRank(a), catB = groupCategoryRank(b)
+    if (catA !== catB) return catA - catB
+    const ystdA = groupYieldStd(a.grp), ystdB = groupYieldStd(b.grp)
+    if (ystdA !== ystdB) return ystdB - ystdA
+    return a.minSeq - b.minSeq
+  })
 
   const usesApproachB = pigLots.some(l => Number(l.qty) > 0) && masYieldRows.length > 0 && carcassRate > 0
   const skuEffectiveQtyMap = new Map<string, number>()
@@ -642,7 +683,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         skuStats[sku].minStart = segs[0].start
         skuStats[sku].maxEnd   = segs[segs.length - 1].end
         skuStats[sku].segments = skuStats[sku].workers.flatMap(w =>
-          segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+          segs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false, origin: 'target' as const }))
         )
         accKg += skuQty
       }
@@ -683,7 +724,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
               skuStats[rawSkuKey].minStart = remSegs[0].start
               skuStats[rawSkuKey].maxEnd   = remSegs[remSegs.length - 1].end
               skuStats[rawSkuKey].segments = skuStats[rawSkuKey].workers.flatMap(w =>
-                remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false }))
+                remSegs.map(s => ({ start: s.start, end: s.end, worker: w, isDeficit: false, origin: 'remainder' as const }))
               )
             } else {
               // No RAW assignment was generated, so keep this yield remainder out
@@ -728,7 +769,10 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
         }
         skuStats[sku].minStart = cursor
         skuStats[sku].maxEnd   = endMins
-        skuStats[sku].segments = skuStats[sku].workers.map(w => ({ start: cursor, end: endMins, worker: w, isDeficit: false }))
+        skuStats[sku].segments = skuStats[sku].workers.map(w => ({
+          start: cursor, end: endMins, worker: w, isDeficit: false,
+          origin: skuStats[sku].isRaw ? 'remainder' as const : 'target' as const,
+        }))
         cursor = endMins
       }
       grp.skus = bySeq
@@ -868,7 +912,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
             )}
             {visibleSkus.map(sku => {
               const stat      = skuStats[sku]
-              const col       = skuStats[sku]?.isRaw ? GOLD_COLOR : (skuColor[sku] ?? GOLD_COLOR)
+              const col       = skuStats[sku]?.isRaw ? REMAINDER_COLOR : (skuColor[sku] ?? GOLD_COLOR)
               const diffSecs  = Math.round(stat.maxEnd * 60 - nowSecs)
               const isDone    = diffSecs <= 0
               let cdText = ''
@@ -925,7 +969,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                   </div>
 
                   <div className="flex-1 relative h-10 sm:h-14">
-                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit)).map((seg, idx) => {
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit && s.origin === 'target')).map((seg, idx) => {
                       const barLeft  = Math.max(pct(seg.start), 0)
                       const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
                       const segDone  = nowMins >= seg.end
@@ -935,6 +979,18 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, bagMap, skuColor, nameMa
                           style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: col.bg,
                             opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
                           onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: col.bg }) }} />
+                      )
+                    })}
+                    {mergeSegmentsWithWorkers(stat.segments.filter(s => !s.isDeficit && s.origin === 'remainder')).map((seg, idx) => {
+                      const barLeft  = Math.max(pct(seg.start), 0)
+                      const barWidth = Math.max(pct(seg.end) - pct(seg.start), 0.5)
+                      const segDone  = nowMins >= seg.end
+                      const segPend  = nowMins < seg.start
+                      return (
+                        <div key={`r-${idx}`} className="absolute top-2 bottom-2 sm:top-2.5 sm:bottom-2.5 rounded-sm cursor-pointer"
+                          style={{ left: `${barLeft}%`, width: `${barWidth}%`, backgroundColor: REMAINDER_COLOR.bg,
+                            opacity: segDone ? 0.45 : segPend ? 0.35 : 1 }}
+                          onClick={e => { e.stopPropagation(); setBarPopup({ name: stat.name ?? sku, start: seg.start, end: seg.end, workers: seg.workers, color: REMAINDER_COLOR.bg }) }} />
                       )
                     })}
                     {mergeSegmentsWithWorkers(stat.segments.filter(s => s.isDeficit)).map((seg, idx) => {
@@ -2033,7 +2089,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+            <SkuScheduleView items={filtered} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
