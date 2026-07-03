@@ -113,17 +113,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ temps, chillRoom, savedAt, recordedBy })
   }
 
-  // Lot snapshot from the day's first round only — used by the withdrawal page so
-  // pig headcount stays fixed even if QC starts a new round later in the day.
+  // Lot snapshot from the day's first *generated* round — used by the withdrawal page so
+  // pig headcount stays fixed even if QC starts a new round later in the day. A round can
+  // exist purely from a temperature/chill edit without ever being Generated (no lot rows),
+  // so skip past those to the first round that actually has a snapshot.
   if (req.nextUrl.searchParams.get('firstOfDay')) {
     const todayStart = getTodayStart()
-    const { data: firstRound } = await supabase
+    const { data: candidateRounds } = await supabase
       .from('qc_check_rounds')
       .select('round_number, started_at')
       .gte('started_at', todayStart.toISOString())
       .order('round_number', { ascending: true })
-      .limit(1)
-      .maybeSingle()
+
+    const roundNumbers = (candidateRounds ?? []).map(r => r.round_number)
+    let firstRound: { round_number: number; started_at: string } | null = null
+    if (roundNumbers.length) {
+      const { data: itemRoundRows } = await supabase
+        .from('qc_lot_round_items')
+        .select('round_number')
+        .in('round_number', roundNumbers)
+      const roundsWithItems = new Set((itemRoundRows ?? []).map(r => r.round_number))
+      firstRound = candidateRounds!.find(r => roundsWithItems.has(r.round_number)) ?? null
+    }
 
     if (!firstRound) return NextResponse.json({ lotRows: [], sourceFile: '', round: null })
 
