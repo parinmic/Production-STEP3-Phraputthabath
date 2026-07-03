@@ -600,6 +600,46 @@ function allocateBalanced(params: {
   const groupedAssignments: Record<string, unknown>[] = []
   const groupMap = new Map<string, GroupBlock>()
 
+  const makeDeficitGroupRows = (
+    group: GroupBlock,
+    candidateWorkers: WorkforceRow[],
+  ): Record<string, unknown>[] => {
+    const worker = candidateWorkers[0] ?? workers[0]
+    if (!worker) return []
+    const deadlineMins = Math.max(phaseStartMins, phaseEndMins)
+    const rows: Record<string, unknown>[] = []
+
+    for (const block of group.blocks) {
+      const roundMins = getRoundMinsLocal(deadlineMins, phaseRoundMins)
+      for (const ch of block.channels) {
+        const finalQty = Math.round(Number(ch.qty ?? 0) * 100) / 100
+        if (finalQty <= 0) continue
+        const rawQueueNote = ch.channel === 'RAW_QUEUE' && ch.rawNeedTime && ch.rawFinishByMins !== null && ch.rawFinishByMins !== undefined
+          ? `round:${roundMins}:${finalQty}|raw-queue|need=${ch.rawNeedTime}|target=${minsToHHMM(ch.rawFinishByMins)}`
+          : `round:${roundMins}:${finalQty}`
+        rows.push({
+          production_date: productionDate,
+          table_name:      tableName,
+          worker_code:     worker.emp_id,
+          worker_name:     worker.name,
+          sku:             block.rawSku,
+          sku_name:        block.skuName,
+          target_quantity: finalQty,
+          unit:            'กก.',
+          period,
+          deadline_time:   minsToTimeStr(deadlineMins),
+          status:          'รอผลิต',
+          seq:             ch.planOrder,
+          channel:         ch.channel,
+          note:            `${rawQueueNote}|deficit|capacity_short`,
+          is_deficit:      true,
+        })
+      }
+    }
+
+    return rows
+  }
+
   for (const block of skuBlocks) {
     const key = block.productGroup || '__ungrouped__'
     const manMins = block.personRate > 0 ? (block.totalQty / block.personRate) * 60 : 0
@@ -677,7 +717,10 @@ function allocateBalanced(params: {
       const enoughForLine = group.flowMins <= 0 || group.manMins <= 0 || (group.manMins / groupWorkers.length) <= group.flowMins + 0.01
       if (enoughForLine && canScheduleGroupWith(group, groupWorkers)) break
     }
-    if (!groupWorkers.length || !canScheduleGroupWith(group, groupWorkers)) continue
+    if (!groupWorkers.length || !canScheduleGroupWith(group, groupWorkers)) {
+      groupedAssignments.push(...makeDeficitGroupRows(group, sortedWorkers))
+      continue
+    }
 
     const groupStart = Math.max(...groupWorkers.map(w => groupStartFor(w, group)))
     let cursor = groupStart
@@ -1543,6 +1586,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
     const kept: Record<string, unknown>[] = []
     for (const row of rows) {
+      if (row['is_deficit'] || String(row['note'] ?? '').includes('|deficit')) {
+        kept.push(row)
+        continue
+      }
       if (String(row['note'] ?? '').includes('remainder')) {
         kept.push(row)
         continue
@@ -1562,12 +1609,22 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         hasCap = true
         maxQty = Math.min(maxQty, remaining / c.share)
       }
-      if (hasCap && maxQty <= 0) continue
+      if (hasCap && maxQty <= 0) {
+        row['is_deficit'] = true
+        row['note'] = row['note'] ? `${row['note']}|deficit|yield_short` : 'deficit|yield_short'
+        kept.push(row)
+        continue
+      }
       const cappedQty = hasCap ? Math.min(qty, maxQty) : qty
       const finalQty = selectedPhase === 1
         ? floorToBag(String(row['sku'] ?? ''), cappedQty)
         : Math.round(cappedQty * 100) / 100
-      if (finalQty <= 0) continue
+      if (finalQty <= 0) {
+        row['is_deficit'] = true
+        row['note'] = row['note'] ? `${row['note']}|deficit|yield_short` : 'deficit|yield_short'
+        kept.push(row)
+        continue
+      }
       row['target_quantity'] = finalQty
       syncRoundNoteQty(row)
       for (const c of consumption) {
@@ -2113,10 +2170,21 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           hasGroupCap = true
           maxQty = Math.min(maxQty, remaining / c.share)
         }
-        if (hasGroupCap && maxQty <= 0) { item.targetQty = 0; continue }
-        if (hasGroupCap && item.targetQty > maxQty) item.targetQty = capPhaseTarget(normSku, maxQty)
+        if (hasGroupCap && maxQty <= 0) {
+          item.isDeficit = true
+          continue
+        }
+        if (hasGroupCap && item.targetQty > maxQty) {
+          const cappedTarget = capPhaseTarget(normSku, maxQty)
+          if (cappedTarget <= 0) {
+            item.isDeficit = true
+            continue
+          }
+          item.targetQty = cappedTarget
+        }
         for (const c of consumption) {
           if (groupRemaining[c.product_group] === undefined) continue
+          if (item.isDeficit) continue
           groupRemaining[c.product_group] = Math.max(0, groupRemaining[c.product_group] - item.targetQty * c.share)
         }
       }
@@ -2336,7 +2404,13 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       })
 
       // Step 3: compute endMins and finalize task
-      if (task.isKept) {
+      if (task.is_deficit) {
+        const deficitStart = Math.max(startMins, phaseEndMins)
+        task.deadline_time = minsToTimeStr(deficitStart)
+        const note = String(task.note ?? '')
+        if (!note.includes('|deficit')) task.note = note ? `${note}|deficit` : 'deficit'
+        keptTasks.push(task)
+      } else if (task.isKept) {
         const endMins = wallClockFinish(startMins, duration)
         busySegs.push({ start: startMins, end: endMins })
         curMins = Math.max(curMins, endMins)
@@ -2789,7 +2863,17 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       consumeRemainingYield(grp, Number(a['target_quantity'] ?? 0))
     }
 
+    const groupsWithUnmetDemand = new Set<string>()
+    for (const a of resequenced) {
+      if (!(a['is_deficit'] || String(a['note'] ?? '').includes('|deficit'))) continue
+      const grp = productGroupForAssignment(a)
+      if (grp) groupsWithUnmetDemand.add(grp)
+    }
+
     for (const [sourceGrp, splits] of Array.from(yieldConsumptionByGroup.entries())) {
+      if (groupsWithUnmetDemand.has(sourceGrp) || splits.some(c => groupsWithUnmetDemand.has(c.product_group))) {
+        continue
+      }
       const remainKg = Math.round(splits.reduce((minQty: number, c: { product_group: string; share: number }) => {
         const remaining = remainingYield[c.product_group]
         if (remaining === undefined) return minQty
@@ -2830,6 +2914,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
 
     for (const [grp, yieldKg] of Object.entries(remainingYield)) {
+      if (groupsWithUnmetDemand.has(grp)) continue
       if (yieldKg <= 0) continue
 
       const groupRows = resequenced.filter(a => {
