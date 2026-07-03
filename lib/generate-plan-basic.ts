@@ -1716,23 +1716,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
   }
 
-  // Fallback groupYieldCap: selected lots fall short of the trimming target → fill the
-  // gap with shortage pigs × 90 kg default weight, on top of whatever real lots cover.
-  // shortage = trimmingQty − sum(selected lots) (= trimmingQty when no lots selected)
-  const selectedLotQty = sortedLotsForDuration.reduce((s, l) => s + l.qty, 0)
-  const shortage = params.trimmingQty ? params.trimmingQty - selectedLotQty : 0
-  if (shortage > 0 && capYield.length > 0) {
-    const defaultWeight = 90
-    const nearestWt = capUniqWts.reduce((b, w) =>
-      Math.abs(w - defaultWeight) < Math.abs(b - defaultWeight) ? w : b, capUniqWts[0] ?? 0)
-    for (const my of capYield) {
-      if (my.carcass_weight !== nearestWt) continue
-      if (parseYieldNoteSplits(my.notes).length) continue
-      const kg = (my.yield_pct / 100) * defaultWeight * shortage
-      groupYieldCap[my.product_group] = (groupYieldCap[my.product_group] ?? 0) + kg
-    }
-  }
-
   // Parse variance masters
   const lotusVarianceMap = new Map<string, number>()
   const lotusSkuVarianceMap = new Map<string, number>()
@@ -2821,6 +2804,56 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     })
   }
 
+  const candidateRemainderStations = (
+    group: string,
+    prod: ProductivityRow,
+    usedStations: string[],
+  ): string[] => {
+    const stations: string[] = []
+    const add = (station: string | null | undefined) => {
+      const normalized = normalizeStation(String(station ?? ''))
+      if (!normalized) return
+      if (!workersByStation[normalized]?.length) return
+      if (!stations.includes(normalized)) stations.push(normalized)
+    }
+
+    add(resolveRemainderStation(group, prod, usedStations))
+    for (const station of usedStations) add(station)
+    for (const station of allowedStationsForGroup(group)) add(station)
+    add(resolveStationForProduct(prod))
+    for (const station of BASIC_TABLE_NAMES) add(station)
+
+    return stations
+  }
+
+  const buildRawRemainderRows = (
+    group: string,
+    rawProd: ProductivityRow,
+    usedStations: string[],
+    remainKg: number,
+    seqStart: number,
+  ): Record<string, unknown>[] => {
+    for (const station of candidateRemainderStations(group, rawProd, usedStations)) {
+      const rows = makeSmartRemainderRows(rawProd, station, remainKg, seqStart, 'RAW', 'raw_remainder')
+      if (rows.length) return rows
+    }
+    return []
+  }
+
+  const buildWetMarketRemainderRows = (
+    group: string,
+    prod: ProductivityRow,
+    usedStations: string[],
+    remainKg: number,
+    seqStart: number,
+  ): Record<string, unknown>[] => {
+    for (const station of candidateRemainderStations(group, prod, usedStations)) {
+      const rows = makeSmartRemainderRows(prod, station, remainKg, seqStart, 'Wet Market', 'yield_remainder')
+      if (rows.length) return rows
+    }
+    return []
+  }
+
   sortByPlanOrder(resequenced)
 
   resequenced.forEach((a, i) => {
@@ -2894,9 +2927,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
       if (rawProd) {
         if (remainKg < RAW_REMAINDER_MIN_KG) continue
-        const station = resolveRemainderStation(sourceGrp, rawProd, usedStations)
-        if (!station) continue
-        const rawRows = makeSmartRemainderRows(rawProd, station, remainKg, rawSeq, 'RAW', 'raw_remainder')
+        const rawRows = buildRawRemainderRows(sourceGrp, rawProd, usedStations, remainKg, rawSeq)
+        if (!rawRows.length) continue
         rawSeq += rawRows.length
         resequenced.push(...rawRows)
         consumeRemainingYield(sourceGrp, remainKg)
@@ -2905,9 +2937,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
       const bestWetMarketProd = bestWetMarketSkuByGroup.get(sourceGrp)
       if (!bestWetMarketProd) continue
-      const station = resolveRemainderStation(sourceGrp, bestWetMarketProd, usedStations)
-      if (!station) continue
-      const remainderRows = makeSmartRemainderRows(bestWetMarketProd, station, remainKg, rawSeq, 'Wet Market', 'yield_remainder')
+      const remainderRows = buildWetMarketRemainderRows(sourceGrp, bestWetMarketProd, usedStations, remainKg, rawSeq)
+      if (!remainderRows.length) continue
       rawSeq += remainderRows.length
       resequenced.push(...remainderRows)
       consumeRemainingYield(sourceGrp, remainKg)
@@ -2933,9 +2964,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
       if (rawProd) {
         if (remainKg < RAW_REMAINDER_MIN_KG) continue
-        const station = resolveRemainderStation(grp, rawProd, usedStations)
-        if (!station) continue
-        const rawRows = makeSmartRemainderRows(rawProd, station, remainKg, rawSeq, 'RAW', 'raw_remainder')
+        const rawRows = buildRawRemainderRows(grp, rawProd, usedStations, remainKg, rawSeq)
+        if (!rawRows.length) continue
         rawSeq += rawRows.length
         resequenced.push(...rawRows)
         continue
@@ -2943,9 +2973,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
       const bestWetMarketProd = bestWetMarketSkuByGroup.get(grp)
       if (!bestWetMarketProd) continue
-      const station = resolveRemainderStation(grp, bestWetMarketProd, usedStations)
-      if (!station) continue
-      const remainderRows = makeSmartRemainderRows(bestWetMarketProd, station, remainKg, rawSeq, 'Wet Market', 'yield_remainder')
+      const remainderRows = buildWetMarketRemainderRows(grp, bestWetMarketProd, usedStations, remainKg, rawSeq)
+      if (!remainderRows.length) continue
       rawSeq += remainderRows.length
       resequenced.push(...remainderRows)
     }
