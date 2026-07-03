@@ -161,6 +161,14 @@ function availableWorkMins(fromMins: number, toMins: number): number {
   return Math.max(0, total - overlap)
 }
 
+function segmentActiveMins(segments: { start: number; end: number }[], fromMins: number, toMins: number): number {
+  return segments.reduce((sum, seg) => {
+    const start = Math.max(seg.start, fromMins)
+    const end = Math.min(seg.end, toMins)
+    return end > start ? sum + availableWorkMins(start, end) : sum
+  }, 0)
+}
+
 function timeStrToMins(t: string): number {
   const [h, m] = String(t).split(':').map(Number)
   if (Number.isNaN(h) || Number.isNaN(m)) return 0
@@ -2256,6 +2264,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         if (specialStart !== null) {
           isSpecialTask = true
           startMins = Math.max(curMins, specialStart)
+          if (!isPhase3 && startMins >= phaseEndMins) continue
         } else {
           startMins = curMins
           let advanced = true
@@ -2268,6 +2277,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
               if (startMins >= bs && startMins < be) { startMins = be; advanced = true }
             }
           }
+          if (!isPhase3 && startMins >= phaseEndMins) continue
         }
       }
 
@@ -2308,10 +2318,49 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         keptTasks.push(task)
       } else {
         task.deadline_time = minsToTimeStr(startMins)
-        // Not capped to phaseEndMins — output is paced by yield/line rate, not
-        // by whether it fits inside the nominal shift window. Yield capping
-        // (elsewhere) is what actually limits qty; this may run past shift end.
-        const endMins = wallClockFinish(startMins, duration)
+        let endMins = wallClockFinish(startMins, duration)
+
+        // Phase 1/2 are capped to their own window (truncate to what fits);
+        // Phase 3 is the day's catch-all and always runs to completion.
+        if (!isPhase3 && endMins > phaseEndMins) {
+          const taskStationName = normalizeStation(String(task.table_name ?? taskStation))
+          const stationBreakMins = segmentActiveMins(stationLineBreaks(taskStationName), startMins, phaseEndMins)
+          const availMins = Math.max(0, availableWorkMins(startMins, phaseEndMins) - stationBreakMins)
+          let truncQty: number
+          if (isYieldCapped && sortedLotsForDuration.length && params.carcassRate) {
+            const pigsAvail = Math.floor(availMins * 60 / params.carcassRate)
+            const activeMinsAtStart = availableWorkMins(510, startMins)
+            const pigIdx = Math.floor(activeMinsAtStart * 60 / params.carcassRate)
+            let consumed2 = 0; let activeLot: typeof sortedLotsForDuration[0] | null = null
+            for (const l of sortedLotsForDuration) { if (pigIdx < consumed2 + l.qty) { activeLot = l; break }; consumed2 += l.qty }
+            if (!activeLot) activeLot = sortedLotsForDuration[sortedLotsForDuration.length - 1]
+            if (activeLot && capUniqWts.length) {
+              const nearWt = capUniqWts.reduce((b, w) => Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
+              const yieldPct = capYield
+                .filter(r => r.carcass_weight === nearWt && r.product_group === prod?.product_group)
+                .reduce((sum, r) => sum + Number(r.yield_pct ?? 0), 0)
+              const ypig = yieldPct > 0 ? (yieldPct / 100) * activeLot.avg_weight : 0
+              truncQty = ypig > 0 ? pigsAvail * ypig : 0
+            } else { truncQty = 0 }
+          } else {
+            truncQty = (availMins / 60) * fallbackRate
+          }
+          const originalQty = Number(task.target_quantity ?? 0)
+          const originalSkuTotal = skuTotalQtyAcrossWorkers.get(cleanSku) ?? originalQty
+          const rowShare = isYieldCapped && originalSkuTotal > 0 ? originalQty / originalSkuTotal : 1
+          const cappedTruncQty = isYieldCapped ? Math.min(originalQty, truncQty * rowShare) : truncQty
+          const finalQty = selectedPhase === 1
+            ? floorToBag(String(task.sku ?? ''), cappedTruncQty)
+            : Math.round(cappedTruncQty * 100) / 100
+          if (finalQty <= 0) continue
+          task.target_quantity = finalQty
+          syncRoundNoteQty(task)
+          endMins = wallClockFinish(startMins, computeTaskDuration({
+            qty: finalQty, productGroup: prod?.product_group, startMins,
+            sortedLots: isYieldCapped ? sortedLotsForDuration : [],
+            carcassRateSec: params.carcassRate ?? 0, masYield: capYield, capUniqWts, fallbackRate,
+          }))
+        }
 
         busySegs.push({ start: startMins, end: endMins })
         curMins = endMins

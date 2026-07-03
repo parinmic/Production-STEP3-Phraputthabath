@@ -401,6 +401,7 @@ interface SkuScheduleViewProps {
   allPhaseItems?: Assignment[]
   phaseStart: number
   phaseEnd: number
+  selectedPhase?: number | 'all'
   bagMap: Record<string, number>
   skuColor: Record<string, typeof BAR_COLORS[0]>
   nameMap: Record<string, string>
@@ -439,7 +440,11 @@ function phaseCappedBagQty(sku: string, period: string, allPhaseItems: Assignmen
   return result
 }
 
-function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, selectedPhase, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
+  // Phase 1/2 are capped to their own window (bars/qty trimmed to fit);
+  // Phase 3 is the day's catch-all and always runs to completion, matching
+  // the backend's !isPhase3 truncation exception in generate-plan-basic.ts.
+  const isFinalPhase = selectedPhase === 3 || selectedPhase === 'all'
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -679,6 +684,9 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
 
     const pigOffset   = pigsAt(phaseStartMins)
     const phaseEndWall = phaseEnd * 60
+    // Phase 1/2 bars/qty are capped to their own window; Phase 3 (and 'all')
+    // run to completion, matching the backend's !isPhase3 exception.
+    const capWall = isFinalPhase ? Infinity : phaseEndWall
 
     for (const grp of skuGroups) {
       const group = grp.grp
@@ -691,8 +699,8 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
         const skuQty   = skuStats[sku].totalQty
         const startPig = pigForYield(prePhaseYield + accKg, group)
         const endPig   = pigForYield(prePhaseYield + accKg + skuQty, group)
-        const phaseEndPig = pigsAt(phaseEndWall)
-        const effectiveEndPig = Math.min(endPig, Math.max(startPig, phaseEndPig))
+        const capPig = pigsAt(capWall)
+        const effectiveEndPig = Math.min(endPig, Math.max(startPig, capPig))
         const effectiveQty = Math.max(0, yieldUpToPig(effectiveEndPig, group) - yieldUpToPig(startPig, group))
         skuEffectiveQtyMap.set(sku, Math.min(skuQty, Math.round(effectiveQty)))
 
@@ -701,19 +709,19 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
         let curPig  = startPig
         let curTime = Math.max(phaseStartMins, pigToWC(startPig))
 
-        while (curPig < endPig - 0.001 && curTime < phaseEndWall) {
+        while (curPig < endPig - 0.001 && curTime < capWall) {
           // Skip if inside any pause (static or breakline)
           const inPause = allPauses.find(p => p.start <= curTime && p.end > curTime)
-          if (inPause) { curTime = Math.min(inPause.end, phaseEndWall); curPig = pigsAt(curTime); continue }
+          if (inPause) { curTime = Math.min(inPause.end, capWall); curPig = pigsAt(curTime); continue }
 
           // Next breakline after curTime (static breaks already skipped by pigToWC)
           const nextBL = sortedBL.find(b => b.start > curTime)
-          const windowEnd = nextBL ? Math.min(nextBL.start, phaseEndWall) : phaseEndWall
+          const windowEnd = nextBL ? Math.min(nextBL.start, capWall) : capWall
           const pigAtWindow = pigsAt(windowEnd)
 
           if (pigAtWindow >= endPig) {
             // SKU finishes before the next breakline
-            const segEnd = Math.min(pigToWC(endPig), phaseEndWall)
+            const segEnd = Math.min(pigToWC(endPig), capWall)
             if (segEnd > curTime) segs.push({ start: curTime, end: segEnd })
             curPig = endPig
             break
@@ -727,7 +735,7 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
 
         if (!segs.length) {
           const st = Math.max(phaseStartMins, pigToWC(startPig))
-          segs.push({ start: st, end: Math.max(st, Math.min(phaseEndWall, pigToWC(endPig))) })
+          segs.push({ start: st, end: Math.max(st, Math.min(capWall, pigToWC(endPig))) })
         }
 
         skuStats[sku].minStart = segs[0].start
@@ -788,6 +796,8 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
     }
   } else if ((carcassThroughputByGroup && Object.keys(carcassThroughputByGroup).length > 0) || skuGroups.some(grp => grp.skus.some(sku => skuStats[sku]?.isRaw))) {
     const phaseEndWallSeq = phaseEnd * 60
+    // Phase 1/2 are capped to their own window; Phase 3 (and 'all') run to completion.
+    const capWallSeq = isFinalPhase ? Infinity : phaseEndWallSeq
     let phaseNetMinsSeq = phaseEndWallSeq - phaseStartMins
     for (const [bs, be] of BREAKS) {
       phaseNetMinsSeq -= Math.max(0, Math.min(be, phaseEndWallSeq) - Math.max(bs, phaseStartMins))
@@ -803,17 +813,17 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, bagMap, s
       let cursor = phaseStartMins
       const bySeq = [...grp.skus].sort((a, b) => (skuStats[a].minSeq ?? 999999) - (skuStats[b].minSeq ?? 999999))
       for (const sku of bySeq) {
-        if (cursor >= phaseEndWallSeq) {
-          skuStats[sku].minStart = phaseEndWallSeq
-          skuStats[sku].maxEnd   = phaseEndWallSeq
+        if (cursor >= capWallSeq) {
+          skuStats[sku].minStart = capWallSeq
+          skuStats[sku].maxEnd   = capWallSeq
           skuStats[sku].segments = []
           skuStats[sku].totalQty = 0
           continue
         }
         const durMins = Math.round(skuStats[sku].totalQty / throughput)
         const rawEnd  = wallClockFinish(cursor, durMins)
-        const endMins = Math.min(rawEnd, phaseEndWallSeq)
-        if (rawEnd > phaseEndWallSeq) {
+        const endMins = Math.min(rawEnd, capWallSeq)
+        if (rawEnd > capWallSeq) {
           let netMins = endMins - cursor
           for (const [bs, be] of BREAKS) netMins -= Math.max(0, Math.min(be, endMins) - Math.max(bs, cursor))
           skuStats[sku].totalQty = Math.round(throughput * Math.max(0, netMins))
@@ -2141,7 +2151,7 @@ export default function BasicTablePage() {
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
-            <SkuScheduleView items={filtered} allPhaseItems={items} phaseStart={viewStartH} phaseEnd={viewEndH} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+            <SkuScheduleView items={filtered} allPhaseItems={items} phaseStart={viewStartH} phaseEnd={viewEndH} selectedPhase={selectedPhase} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
