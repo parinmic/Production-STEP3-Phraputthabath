@@ -1,8 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(req: NextRequest) {
-  const { step } = await req.json()
-
+export async function POST() {
   const user = {
     id: 'admin',
     username: 'Admin',
@@ -11,9 +9,7 @@ export async function POST(req: NextRequest) {
     step: 'all',
   }
 
-  const redirectTo = step === 2 ? '/basic' : '/home'
-
-  const res = NextResponse.json({ success: true, redirectTo })
+  const res = NextResponse.json({ success: true, user })
   res.cookies.set('step3_session', JSON.stringify(user), {
     httpOnly: true,
     sameSite: 'lax',
