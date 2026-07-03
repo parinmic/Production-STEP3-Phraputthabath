@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const MENU_LABELS: Record<string, string> = {
   all:              'ทุกเมนู',
@@ -26,6 +27,8 @@ interface Position {
   menus: string[]
 }
 
+interface PreviewRow { position: string; username: string; password: string; menu: string }
+
 const EMPTY_ADD = { username: '', password: '', position_id: '' }
 
 export default function AdminUsersPage() {
@@ -44,6 +47,11 @@ export default function AdminUsersPage() {
   const [showNewPw, setShowNewPw]   = useState(false)
 
   const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  // Upload Excel
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [preview, setPreview]       = useState<PreviewRow[] | null>(null)
+  const [uploadLoading, setUploadLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -132,6 +140,48 @@ export default function AdminUsersPage() {
 
   const selectedPos = positions.find(p => p.id === addForm.position_id)
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const wb = XLSX.read(ev.target!.result, { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+      // skip header row (row 0)
+      const rows: PreviewRow[] = raw.slice(1)
+        .filter(r => String(r[0] ?? '').trim())
+        .map(r => ({
+          position: String(r[0] ?? '').trim(),
+          username: String(r[1] ?? '').trim(),
+          password: String(r[2] ?? '').trim(),
+          menu:     String(r[3] ?? '').trim(),
+        }))
+      setPreview(rows)
+    }
+    reader.readAsArrayBuffer(file)
+    e.target.value = ''
+  }
+
+  async function handleUploadConfirm() {
+    if (!preview?.length) return
+    setUploadLoading(true)
+    const res = await fetch('/api/admin/users/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: preview }),
+    })
+    const data = await res.json()
+    if (data.success) {
+      flash(true, `อัพโหลดสำเร็จ — สร้างใหม่ ${data.created} รายการ, อัปเดต ${data.updated} รายการ`)
+      setPreview(null)
+      load()
+    } else {
+      flash(false, data.message ?? 'เกิดข้อผิดพลาด')
+    }
+    setUploadLoading(false)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -140,22 +190,79 @@ export default function AdminUsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">User ระบบผลิต</h1>
           <p className="text-gray-500 mt-1 text-sm">จัดการผู้ใช้งานระบบพิเศษ (STEP 3)</p>
         </div>
-        <button
-          onClick={() => {
-            setShowAdd(true)
-            setAddForm({ ...EMPTY_ADD, position_id: positions[0]?.id ?? '' })
-          }}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={16} />
-          เพิ่ม User
-        </button>
+        <div className="flex items-center gap-2">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            <FileSpreadsheet size={16} />
+            อัพโหลด Excel
+          </button>
+          <button
+            onClick={() => {
+              setShowAdd(true)
+              setAddForm({ ...EMPTY_ADD, position_id: positions[0]?.id ?? '' })
+            }}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={16} />
+            เพิ่ม User
+          </button>
+        </div>
       </div>
 
       {/* Flash */}
       {msg && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium border ${msg.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
           {msg.text}
+        </div>
+      )}
+
+      {/* Excel preview */}
+      {preview && (
+        <div className="border border-blue-200 rounded-xl overflow-hidden">
+          <div className="bg-blue-50 px-4 py-3 flex items-center justify-between border-b border-blue-200">
+            <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
+              <Upload size={15} />
+              พบข้อมูล {preview.length} แถว — ตรวจสอบก่อนยืนยัน
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleUploadConfirm}
+                disabled={uploadLoading}
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+              >
+                <Check size={14} />
+                {uploadLoading ? 'กำลังบันทึก...' : 'ยืนยันอัพโหลด'}
+              </button>
+              <button onClick={() => setPreview(null)} className="p-1.5 text-blue-400 hover:text-blue-600">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">ตำแหน่ง</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Username</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Password</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">Menu</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {preview.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-3 py-1.5 text-gray-800">{r.position}</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-700">{r.username || <span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-400">{r.password ? '••••' : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-1.5 text-gray-600">{r.menu}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
