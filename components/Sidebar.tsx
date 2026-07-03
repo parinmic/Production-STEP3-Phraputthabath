@@ -1,8 +1,10 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut } from 'lucide-react'
 import { useState, useEffect } from 'react'
+
+interface SessionUser { id: string; username: string; position: string; menus: string[] }
 
 const TABLES = [
   { label: 'Station สามชั้น', slug: 'sam-chan',  dot: 'bg-blue-500' },
@@ -37,8 +39,17 @@ const CALCULATION_TYPES = [
   // { label: 'Mas Raw Material',          slug: 'mas-raw-material',        dot: 'bg-red-500' },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ user }: { user: SessionUser | null }) {
   const p = usePathname()
+  const router = useRouter()
+
+  // ตรวจสอบสิทธิ์เมนู: null = ยังไม่ได้ login (แสดงทั้งหมด), 'all' = ทั้งหมด
+  const has = (key: string) => !user || user.menus.includes('all') || user.menus.includes(key)
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+  }
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))
   const [openShortage, setOpenShortage]   = useState(p.startsWith('/shortage'))
@@ -108,150 +119,164 @@ export default function Sidebar() {
             <LayoutDashboard size={18} className="shrink-0" />
             <span className={labelCls}>ภาพรวม</span>
           </Link>
+          {has('all') && (
           <Link href="/executive-dashboard" className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/executive-dashboard')}`} title="Dashboard บริหาร">
             <BarChart3 size={18} className="shrink-0" />
             <span className={labelCls}>Dashboard บริหาร</span>
           </Link>
+          )}
 
-          <p className={sectionCls}>คำสั่งเบิกและผลิต</p>
-          <div className={dividerCls} />
+          {has('withdrawal') || has('production') || has('saw_machine_plan') || has('shortage') ? (
+          <><p className={sectionCls}>คำสั่งเบิกและผลิต</p>
+          <div className={dividerCls} /></>) : null}
 
           {/* รายการเบิกสินค้า */}
-          <button
-            onClick={() => setOpenWithdrawal(!openWithdrawal)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/withdrawal') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
-            title="รายการเบิกสินค้า"
-          >
-            <PackageOpen size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>รายการเบิกสินค้า</span>
-            {!collapsed && (openWithdrawal ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openWithdrawal && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {[
-                { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
-                { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
-                { label: 'Phase 3 (แผน 100%)',  slug: '3', dot: 'bg-purple-500' },
-              ].map((t) => (
-                <Link key={t.slug} href={`/withdrawal/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/withdrawal/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {openWithdrawal && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {['1','2','3'].map((phase) => (
-                <Link key={phase} href={`/withdrawal/${phase}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/withdrawal/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={`Phase ${phase}`}>
-                  <span className="text-xs font-bold">P{phase}</span>
-                </Link>
-              ))}
-            </div>
-          )}
+          {has('withdrawal') && (<>
+            <button
+              onClick={() => setOpenWithdrawal(!openWithdrawal)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/withdrawal') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+              title="รายการเบิกสินค้า"
+            >
+              <PackageOpen size={18} className="shrink-0" />
+              <span className={`flex-1 text-left ${labelCls}`}>รายการเบิกสินค้า</span>
+              {!collapsed && (openWithdrawal ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            </button>
+            {openWithdrawal && (
+              <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+                {[
+                  { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
+                  { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
+                  { label: 'Phase 3 (แผน 100%)',  slug: '3', dot: 'bg-purple-500' },
+                ].map((t) => (
+                  <Link key={t.slug} href={`/withdrawal/${t.slug}`}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/withdrawal/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+            {openWithdrawal && collapsed && (
+              <div className="space-y-1 hidden md:block">
+                {['1','2','3'].map((phase) => (
+                  <Link key={phase} href={`/withdrawal/${phase}`}
+                    className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/withdrawal/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                    title={`Phase ${phase}`}>
+                    <span className="text-xs font-bold">P{phase}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>)}
 
           {/* คำสั่งผลิตราย Station */}
-          <button
-            onClick={() => setOpen(!open)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/production') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
-            title="คำสั่งผลิตราย Station"
-          >
-            <ClipboardList size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>คำสั่งผลิตราย Station</span>
-            {!collapsed && (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
+          {has('production') && (<>
+            <button
+              onClick={() => setOpen(!open)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/production') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+              title="คำสั่งผลิตราย Station"
+            >
+              <ClipboardList size={18} className="shrink-0" />
+              <span className={`flex-1 text-left ${labelCls}`}>คำสั่งผลิตราย Station</span>
+              {!collapsed && (open ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            </button>
+            {open && (
+              <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+                {TABLES.map((t) => (
+                  <Link key={t.slug} href={`/production/${t.slug}`}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+            {open && collapsed && (
+              <div className="space-y-1 hidden md:block">
+                {TABLES.map((t) => (
+                  <Link key={t.slug} href={`/production/${t.slug}`}
+                    className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                    title={t.label}>
+                    <span className={`w-2 h-2 rounded-full ${t.dot}`} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>)}
 
-          {open && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {TABLES.map((t) => (
-                <Link key={t.slug} href={`/production/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {open && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {TABLES.map((t) => (
-                <Link key={t.slug} href={`/production/${t.slug}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/production/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={t.label}>
-                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                </Link>
-              ))}
-            </div>
-          )}
-
+          {has('saw_machine_plan') && (
           <Link href="/saw-machine-plan"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/saw-machine-plan')}`}
             title="แผนการใช้เครื่องเลื่อย">
             <Scissors size={18} className="shrink-0" />
             <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
           </Link>
+          )}
 
+          {has('all') && (
           <Link href="/workforce-daily-status"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/workforce-daily-status')}`}
             title="ตรวจสอบสถานะกำลังคนประจำวัน">
             <CalendarDays size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </Link>
+          )}
 
+          {has('all') && (
           <Link href="/wip-plan"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/wip-plan')}`}
             title="แผนผลิต WIP">
             <Layers size={18} className="shrink-0" />
             <span className={labelCls}>แผนผลิต WIP</span>
           </Link>
+          )}
 
           {/* รายการ Raw รอผลิต */}
-          <button
-            onClick={() => setOpenShortage(!openShortage)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/shortage') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
-            title="รายการ Raw รอผลิต"
-          >
-            <AlertTriangle size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>รายการ Raw รอผลิต</span>
-            {!collapsed && (openShortage ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
+          {has('shortage') && (<>
+            <button
+              onClick={() => setOpenShortage(!openShortage)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p.startsWith('/shortage') ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+              title="รายการ Raw รอผลิต"
+            >
+              <AlertTriangle size={18} className="shrink-0" />
+              <span className={`flex-1 text-left ${labelCls}`}>รายการ Raw รอผลิต</span>
+              {!collapsed && (openShortage ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            </button>
+            {openShortage && (
+              <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
+                {[
+                  { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
+                  { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
+                  { label: 'Phase 3 (แผน 100%)',  slug: '3', dot: 'bg-purple-500' },
+                ].map((t) => (
+                  <Link key={t.slug} href={`/shortage/${t.slug}`}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/shortage/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+            {openShortage && collapsed && (
+              <div className="space-y-1 hidden md:block">
+                {['1','2','3'].map((phase) => (
+                  <Link key={phase} href={`/shortage/${phase}`}
+                    className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/shortage/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+                    title={`Shortage Phase ${phase}`}>
+                    <span className="text-xs font-bold">S{phase}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>)}
 
-          {openShortage && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {[
-                { label: 'Phase 1 (รอบเช้า)', slug: '1', dot: 'bg-blue-500' },
-                { label: 'Phase 2 (รอบบ่าย)', slug: '2', dot: 'bg-orange-500' },
-                { label: 'Phase 3 (แผน 100%)',  slug: '3', dot: 'bg-purple-500' },
-              ].map((t) => (
-                <Link key={t.slug} href={`/shortage/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/shortage/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {openShortage && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {['1','2','3'].map((phase) => (
-                <Link key={phase} href={`/shortage/${phase}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/shortage/${phase}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={`Shortage Phase ${phase}`}>
-                  <span className="text-xs font-bold">S{phase}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-
+          {has('all') && (
           <Link href="/withdrawal/rm-allocation"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/withdrawal/rm-allocation')}`}
             title="จัดสรรเนื้อ Raw Mat">
             <Beef size={18} className="shrink-0" />
             <span className={labelCls}>จัดสรรเนื้อ Raw Mat</span>
           </Link>
+          )}
 
-          <div className="hidden md:block space-y-1">
+          {has('all') && <div className="hidden md:block space-y-1">
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
@@ -496,17 +521,33 @@ export default function Sidebar() {
             <span className={labelCls}>User ระบบผลิต</span>
           </Link>
 
-          </div>{/* end hidden md:block */}
+          </div>}
 
         </nav>
 
-        <div className="border-t border-gray-700 px-2 py-3">
+        <div className="border-t border-gray-700 px-2 py-3 space-y-1">
+          {user && (
+            <div className={`px-3 py-2 ${collapsed ? 'md:hidden' : ''}`}>
+              <p className="text-xs font-semibold text-white truncate">{user.username}</p>
+              <p className="text-xs text-gray-400 truncate">{user.position}</p>
+            </div>
+          )}
           <Link href="/"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors ${collapsed ? 'md:justify-center' : ''}`}
             title="กลับหน้าหลัก">
             <ArrowLeft size={18} className="shrink-0" />
             <span className={labelCls}>กลับหน้าหลัก</span>
           </Link>
+          {user && (
+            <button
+              onClick={handleLogout}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-red-900 hover:text-red-300 transition-colors ${collapsed ? 'md:justify-center' : ''}`}
+              title="ออกจากระบบ"
+            >
+              <LogOut size={18} className="shrink-0" />
+              <span className={labelCls}>ออกจากระบบ</span>
+            </button>
+          )}
         </div>
       </aside>
     </>

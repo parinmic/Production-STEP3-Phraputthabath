@@ -1,9 +1,22 @@
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 
 export default function DashboardPage() {
+  const raw = cookies().get('step3_session')?.value
+  const user = raw ? JSON.parse(raw) as { username: string; position: string } : null
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">ภาพรวม ตัดแต่งพิเศษ</h1>
+      <div className="flex items-start justify-between mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">ภาพรวม ตัดแต่งพิเศษ</h1>
+        {user && (
+          <div className="text-right">
+            <p className="text-sm font-semibold text-gray-800">{user.username}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{user.position}</p>
+          </div>
+        )}
+      </div>
+
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">คำสั่งผลิตแยกตามโต้ะ</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
