@@ -1,5 +1,6 @@
 import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
 import { computeRawShortageRows } from '@/lib/compute-raw-shortage'
+import { fetchLatestMasYield } from '@/lib/mas-yield'
 
 // ========== Types ==========
 
@@ -1205,7 +1206,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     { data: masterProductTypeRaw },
     { data: oldAssignmentsRaw },
     { data: quotasRaw },
-    { data: masYieldRaw },
+    masYieldRaw,
     { data: masSayapanRaw },
     { data: masGroupStationRuleRaw },
     { data: lineBreakRaw },
@@ -1264,7 +1265,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
       .eq('quota_date', productionDate).eq('channel', 'Wet Market'),
-    supabase.from('mas_yield').select('carcass_weight, product_group, yield_pct, notes'),
+    fetchLatestMasYield(supabase),
     supabase.from('mas_sayapan').select('product_group, station'),
     supabase.from('mas_group_station_rule')
       .select('product_group, station, is_enabled, split_mode, priority, share_pct, allow_same_sku, sku_route_mode, raw_remainder_mode, overflow_station'),
@@ -2061,6 +2062,18 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       raw.push(...(channelTargets[ch] ?? []))
     }
     assignList = mergeAssignList(raw)
+  }
+
+  if (useRegen && keptChannelQtyMap.size > 0) {
+    assignList = assignList
+      .map(item => {
+        const sku = item.sku.replace(/^0+/, '')
+        const keptQty = keptChannelQtyMap.get(`${item.channel}_${sku}`) ?? 0
+        return keptQty > 0
+          ? { ...item, targetQty: Math.max(0, item.targetQty - keptQty) }
+          : item
+      })
+      .filter(item => item.targetQty > 0)
   }
 
   // Special time SKUs first
