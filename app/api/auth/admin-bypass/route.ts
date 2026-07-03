@@ -14,7 +14,7 @@ export async function POST() {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60 * 10,
+    maxAge: 60 * 60, // 1 ชั่วโมง
   })
   return res
 }
