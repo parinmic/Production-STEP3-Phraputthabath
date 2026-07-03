@@ -1794,12 +1794,17 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const keptAssignments: any[] = []
   const keptChannelQtyMap = new Map<string, number>()
   const workerKeptMaxEndMins = new Map<string, number>()
+  const isAutoRemainderAssignment = (row: Record<string, unknown>): boolean => {
+    const note = String(row.note ?? '')
+    return note.includes('raw_remainder') || note.includes('yield_remainder')
+  }
 
   if (useRegen && oldAssignmentsRaw) {
     // Yield-capped SKUs: total kept qty across every worker sharing the SKU before the
     // checkpoint, since duration is gated by raw-material throughput, not worker split share.
     const keptSkuTotalQty = new Map<string, number>()
     for (const a of oldAssignmentsRaw) {
+      if (isAutoRemainderAssignment(a)) continue
       const wName = normName(a.worker_name || '')
       if (!currentWorkforceNames.has(wName)) continue
       const deadlineStr = a.deadline_time as string | null
@@ -1811,6 +1816,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
 
     for (const a of oldAssignmentsRaw) {
+      if (isAutoRemainderAssignment(a)) continue
       const wName = normName(a.worker_name || '')
       if (currentWorkforceNames.has(wName)) {
         const deadlineStr = a.deadline_time as string | null
