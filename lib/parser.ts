@@ -439,8 +439,11 @@ function parseSupplLoadingTime(raw: unknown): string {
 
 function parseSupplProductionDate(raw: unknown): string {
   if (raw instanceof Date) {
-    const y = raw.getFullYear() > 2400 ? raw.getFullYear() - 543 : raw.getFullYear()
-    return `${y}-${String(raw.getMonth()+1).padStart(2,'0')}-${String(raw.getDate()).padStart(2,'0')}`
+    // XLSX cellDates:true บางครั้งแปลง serial เป็น Date ที่คลาดเคลื่อนไม่กี่วินาที (float precision)
+    // เช่น เที่ยงคืนของวันที่ 5 กลายเป็น 23:59:56 ของวันที่ 4 → ปัดเวลาให้ตรงเที่ยงคืน UTC ก่อนอ่านวันที่
+    const rounded = new Date(Math.round(raw.getTime() / 86400000) * 86400000)
+    const y = rounded.getUTCFullYear() > 2400 ? rounded.getUTCFullYear() - 543 : rounded.getUTCFullYear()
+    return `${y}-${String(rounded.getUTCMonth()+1).padStart(2,'0')}-${String(rounded.getUTCDate()).padStart(2,'0')}`
   }
   const num = Number(raw)
   if (!isNaN(num) && num > 40000) {
