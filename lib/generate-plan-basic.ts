@@ -2902,15 +2902,16 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       consumeRemainingYield(grp, Number(a['target_quantity'] ?? 0))
     }
 
-    const groupsWithUnmetDemand = new Set<string>()
+    const groupsWithYieldShortage = new Set<string>()
     for (const a of resequenced) {
       if (!(a['is_deficit'] || String(a['note'] ?? '').includes('|deficit'))) continue
+      if (!String(a['note'] ?? '').includes('yield_short')) continue
       const grp = productGroupForAssignment(a)
-      if (grp) groupsWithUnmetDemand.add(grp)
+      if (grp) groupsWithYieldShortage.add(grp)
     }
 
     for (const [sourceGrp, splits] of Array.from(yieldConsumptionByGroup.entries())) {
-      if (groupsWithUnmetDemand.has(sourceGrp) || splits.some(c => groupsWithUnmetDemand.has(c.product_group))) {
+      if (groupsWithYieldShortage.has(sourceGrp) || splits.some(c => groupsWithYieldShortage.has(c.product_group))) {
         continue
       }
       const remainKg = Math.round(splits.reduce((minQty: number, c: { product_group: string; share: number }) => {
@@ -2951,7 +2952,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     }
 
     for (const [grp, yieldKg] of Object.entries(remainingYield)) {
-      if (groupsWithUnmetDemand.has(grp)) continue
+      if (groupsWithYieldShortage.has(grp)) continue
       if (yieldKg <= 0) continue
 
       const groupRows = resequenced.filter(a => {
