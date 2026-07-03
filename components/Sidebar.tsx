@@ -22,7 +22,6 @@ const MANPOWER_TYPES = [
   { label: 'สไลด์พิเศษ',   slug: 'slide-special',    dot: 'bg-purple-500' },
   { label: 'เผาขาพิเศษ',   slug: 'pao-kha-special',  dot: 'bg-fuchsia-500' },
   { label: 'เลาะขาพิเศษ',  slug: 'loa-kha-special',  dot: 'bg-teal-500' },
-  { label: 'กำลังคนแนะนำ', slug: 'recommended',      dot: 'bg-pink-500' },
 ]
 
 const CALCULATION_TYPES = [

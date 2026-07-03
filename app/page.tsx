@@ -19,7 +19,7 @@ export default function LandingPage() {
         </Link>
 
         <Link
-          href="/home"
+          href="/login"
           className="flex-1 flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-blue-600 bg-blue-600 text-white py-8 sm:py-10 px-6 text-xl font-semibold active:opacity-80 hover:bg-blue-700 hover:border-blue-700 transition-colors shadow-sm"
         >
           พิเศษ

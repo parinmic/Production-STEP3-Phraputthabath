@@ -74,17 +74,34 @@ async function computeSlideNeeds(
     bomMap.set(b.product_sap, list)
   }
 
-  // 3. Check which raw SAP codes exist in stock (any weight) — WIP items won't be found
+  // 3. Check which raw components exist in stock — WIP items won't be found
+  // Check by both SAP code and material name to avoid misclassification when SAP codes differ.
   const allRawSaps  = Array.from(new Set(bomRows.map(b => b.raw_sap).filter(Boolean) as string[]))
-  const stockSapSet = new Set<string>()
+  const allRawNames = Array.from(new Set(bomRows.map(b => b.raw_name).filter(Boolean) as string[]))
+  const expandedRawNames = Array.from(new Set(allRawNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])))
+  const stockSapSet  = new Set<string>()
+  const stockNameSet = new Set<string>()
 
+  const stockProms: Promise<{ data: { material_code?: string | null; material_name?: string | null }[] | null }>[] = []
   if (allRawSaps.length) {
-    const [r0010, r20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code').in('material_code', allRawSaps).limit(500),
-      supabase.from('stock_20').select('material_code').in('material_code', allRawSaps).limit(500),
-    ])
-    for (const r of [...(r0010.data ?? []), ...(r20.data ?? [])]) {
-      if (r.material_code) stockSapSet.add(String(r.material_code).trim())
+    stockProms.push(
+      supabase.from('stock_0010').select('material_code').in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
+      supabase.from('stock_20').select('material_code').in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
+    )
+  }
+  if (expandedRawNames.length) {
+    stockProms.push(
+      supabase.from('stock_0010').select('material_name').in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
+      supabase.from('stock_20').select('material_name').in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
+    )
+  }
+  if (stockProms.length) {
+    const results = await Promise.all(stockProms)
+    for (const res of results) {
+      for (const r of res.data ?? []) {
+        if (r.material_code) stockSapSet.add(String(r.material_code).trim())
+        if (r.material_name) stockNameSet.add(normName(String(r.material_name).trim()))
+      }
     }
   }
 
@@ -103,7 +120,7 @@ async function computeSlideNeeds(
       for (const b of boms) {
         const needed = b.yield_pct > 0 ? Number(a.target_quantity) / b.yield_pct : Number(a.target_quantity)
 
-        if (stockSapSet.has(b.raw_sap.trim())) {
+        if (stockSapSet.has(b.raw_sap.trim()) || stockNameSet.has(normName(b.raw_name ?? ''))) {
           // Cap fraction: only warehouse-stocked components (WIP components have no alloc so skip)
           const normN  = normName(b.raw_name ?? b.raw_sap)
           const byRaw  = fullNeeded.get(phase) ?? new Map()
