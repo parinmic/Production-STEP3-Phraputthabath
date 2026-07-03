@@ -302,11 +302,13 @@ CREATE TABLE IF NOT EXISTS production_plan_100 (
   cpft_weight    numeric DEFAULT 0,
   makro_bags     numeric DEFAULT 0,
   makro_weight   numeric DEFAULT 0,
+  period         text,
   source_file    text,
   uploaded_at    timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_plan100_date    ON production_plan_100(plan_date);
 CREATE INDEX IF NOT EXISTS idx_plan100_station ON production_plan_100(plan_date, station);
+CREATE INDEX IF NOT EXISTS idx_plan100_date_period ON production_plan_100(plan_date, period);
 ALTER TABLE production_plan_100 ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_plan100" ON production_plan_100;
 CREATE POLICY "allow_all_plan100" ON production_plan_100 FOR ALL USING (true) WITH CHECK (true);
