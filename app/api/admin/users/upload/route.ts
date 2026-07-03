@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-// แปลงชื่อเมนูภาษาไทยจาก Excel → menu_key
-const MENU_MAP: Record<string, string> = {
-  'รายการเบิกสินค้า':          'withdrawal',
-  'แผนการใช้เครื่องเลื่อย':   'saw_machine_plan',
-  'รายการ raw รอผลิต':          'shortage',
-  'all':                        'all',
-}
-
 function toMenuKey(label: string): string {
   const lower = label.trim().toLowerCase()
   if (lower === 'all') return 'all'
@@ -16,13 +8,21 @@ function toMenuKey(label: string): string {
   if (lower.includes('เลื่อย'))    return 'saw_machine_plan'
   if (lower.includes('raw') || lower.includes('รอผลิต')) return 'shortage'
   if (lower.includes('ผลิต') || lower.includes('station')) return 'production'
-  return MENU_MAP[label.trim()] ?? label.trim()
+  return label.trim()
+}
+
+function toStepKey(raw: string | number | null | undefined): string {
+  const s = String(raw ?? '').trim().toLowerCase()
+  if (s === 'all') return 'all'
+  if (s === '2') return '2'
+  return '3'
 }
 
 interface RawRow {
   position: string
   username: string
   password: string
+  step: string | number
   menu: string
 }
 
@@ -32,26 +32,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'ไม่มีข้อมูลในไฟล์' }, { status: 400 })
   }
 
-  // Group by position
-  const posMap = new Map<string, { users: Map<string, string>; menus: Set<string> }>()
+  const posMap = new Map<string, { users: Map<string, string>; menus: Set<string>; step: string }>()
 
   for (const r of rows) {
-    const posName = String(r.position ?? '').trim()
+    const posName  = String(r.position ?? '').trim()
     const username = String(r.username ?? '').trim()
     const password = String(r.password ?? '').trim()
-    const menuKey = toMenuKey(String(r.menu ?? ''))
+    const menuKey  = toMenuKey(String(r.menu ?? ''))
+    const step     = toStepKey(r.step)
 
     if (!posName) continue
 
-    if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Set() })
+    if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Set(), step })
     const entry = posMap.get(posName)!
 
     if (menuKey) entry.menus.add(menuKey)
     if (username) entry.users.set(username, password)
   }
 
-  const positions = Array.from(posMap.entries()).map(([name, { users, menus }]) => ({
+  const positions = Array.from(posMap.entries()).map(([name, { users, menus, step }]) => ({
     name,
+    step,
     menus: Array.from(menus),
     users: Array.from(users.entries()).map(([username, password]) => ({ username, password })),
   }))

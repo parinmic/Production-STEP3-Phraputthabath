@@ -6,6 +6,7 @@ export interface SessionUser {
   username: string
   position: string
   menus: string[]
+  step: string  // 'all' | '2' | '3'
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
