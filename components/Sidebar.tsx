@@ -489,6 +489,12 @@ export default function Sidebar() {
             <ShieldAlert size={18} className="shrink-0" />
             <span className={labelCls}>จัดการแผนผลิต</span>
           </Link>
+          <Link href="/admin/users"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${a('/admin/users')}`}
+            title="User ระบบผลิต">
+            <Users size={18} className="shrink-0" />
+            <span className={labelCls}>User ระบบผลิต</span>
+          </Link>
 
           </div>{/* end hidden md:block */}
 
