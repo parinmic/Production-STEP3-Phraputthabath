@@ -213,14 +213,6 @@ function lineBreakSegments(
     .filter(b => b.end > b.start)
 }
 
-function segmentActiveMins(segments: { start: number; end: number }[], fromMins: number, toMins: number): number {
-  return segments.reduce((sum, seg) => {
-    const start = Math.max(seg.start, fromMins)
-    const end = Math.min(seg.end, toMins)
-    return end > start ? sum + availableWorkMins(start, end) : sum
-  }, 0)
-}
-
 function wallClockFinish(fromMins: number, workMins: number): number {
   if (workMins <= 0) return fromMins
   let pos = fromMins
@@ -417,46 +409,6 @@ function getWorkerFreeAt(
   return freeAt
 }
 
-function estimateWorkerFinish(
-  freeAt: number,
-  durationMins: number,
-  busySegments: { start: number; end: number }[],
-  limitEnd: number,
-  specialStart: number | null,
-  specialStop: number | null,
-): number | null {
-  let pos = (specialStart !== null) ? Math.max(freeAt, specialStart) : freeAt
-  const targetEnd = (specialStop !== null) ? Math.min(limitEnd, specialStop) : limitEnd
-  let remaining = durationMins
-  const sortedSegs = [...busySegments].sort((a, b) => a.start - b.start)
-
-  while (remaining > 0.01) {
-    let advanced = true
-    while (advanced) {
-      advanced = false
-      for (const seg of sortedSegs) {
-        if (pos >= seg.start - 0.01 && pos < seg.end) { pos = seg.end; advanced = true }
-      }
-      for (const [bs, be] of BREAKS) {
-        if (pos >= bs && pos < be) { pos = be; advanced = true }
-      }
-    }
-    if (pos >= targetEnd) return null
-    let nextEvent = targetEnd
-    for (const seg of sortedSegs) {
-      if (seg.start > pos) nextEvent = Math.min(nextEvent, seg.start)
-    }
-    for (const [bs] of BREAKS) {
-      if (bs > pos) nextEvent = Math.min(nextEvent, bs)
-    }
-    const chunk = nextEvent - pos
-    if (remaining <= chunk) return pos + remaining
-    remaining -= chunk
-    pos = nextEvent
-  }
-  return pos
-}
-
 // ========== Worker Allocation (balanced LPT) ==========
 
 function allocateBalanced(params: {
@@ -600,46 +552,6 @@ function allocateBalanced(params: {
   const groupedAssignments: Record<string, unknown>[] = []
   const groupMap = new Map<string, GroupBlock>()
 
-  const makeDeficitGroupRows = (
-    group: GroupBlock,
-    candidateWorkers: WorkforceRow[],
-  ): Record<string, unknown>[] => {
-    const worker = candidateWorkers[0] ?? workers[0]
-    if (!worker) return []
-    const deadlineMins = Math.max(phaseStartMins, phaseEndMins)
-    const rows: Record<string, unknown>[] = []
-
-    for (const block of group.blocks) {
-      const roundMins = getRoundMinsLocal(deadlineMins, phaseRoundMins)
-      for (const ch of block.channels) {
-        const finalQty = Math.round(Number(ch.qty ?? 0) * 100) / 100
-        if (finalQty <= 0) continue
-        const rawQueueNote = ch.channel === 'RAW_QUEUE' && ch.rawNeedTime && ch.rawFinishByMins !== null && ch.rawFinishByMins !== undefined
-          ? `round:${roundMins}:${finalQty}|raw-queue|need=${ch.rawNeedTime}|target=${minsToHHMM(ch.rawFinishByMins)}`
-          : `round:${roundMins}:${finalQty}`
-        rows.push({
-          production_date: productionDate,
-          table_name:      tableName,
-          worker_code:     worker.emp_id,
-          worker_name:     worker.name,
-          sku:             block.rawSku,
-          sku_name:        block.skuName,
-          target_quantity: finalQty,
-          unit:            'กก.',
-          period,
-          deadline_time:   minsToTimeStr(deadlineMins),
-          status:          'รอผลิต',
-          seq:             ch.planOrder,
-          channel:         ch.channel,
-          note:            `${rawQueueNote}|deficit|capacity_short`,
-          is_deficit:      true,
-        })
-      }
-    }
-
-    return rows
-  }
-
   for (const block of skuBlocks) {
     const key = block.productGroup || '__ungrouped__'
     const manMins = block.personRate > 0 ? (block.totalQty / block.personRate) * 60 : 0
@@ -682,21 +594,6 @@ function allocateBalanced(params: {
     return start
   }
 
-  const groupDurationFor = (group: GroupBlock): number => {
-    return group.flowMins
-  }
-
-  const canScheduleGroupWith = (group: GroupBlock, groupWorkers: WorkforceRow[]): boolean => {
-    if (!groupWorkers.length) return false
-    const duration = groupDurationFor(group)
-    return groupWorkers.every(worker => {
-      const nameKey = normName(worker.name)
-      const startAt = groupStartFor(worker, group)
-      const busySegs = workerBusySegments.get(nameKey) ?? []
-      return estimateWorkerFinish(startAt, duration, busySegs, phaseEndMins, null, null) !== null
-    })
-  }
-
   for (const group of groupedBlocks) {
     let eligibleWorkers = workers.filter(w => isWorkerEligible(w, group.productGroup))
     if (!eligibleWorkers.length) eligibleWorkers = workers
@@ -711,15 +608,14 @@ function allocateBalanced(params: {
       return freeA - freeB
     })
 
+    // Output is paced by yield/line rate, not headcount — add workers until the
+    // line-rate ratio is covered, then schedule regardless of whether they'd
+    // finish within the shift window. Yield capping (elsewhere) is what limits qty.
     const groupWorkers: WorkforceRow[] = []
     for (const worker of sortedWorkers) {
       groupWorkers.push(worker)
       const enoughForLine = group.flowMins <= 0 || group.manMins <= 0 || (group.manMins / groupWorkers.length) <= group.flowMins + 0.01
-      if (enoughForLine && canScheduleGroupWith(group, groupWorkers)) break
-    }
-    if (!groupWorkers.length || !canScheduleGroupWith(group, groupWorkers)) {
-      groupedAssignments.push(...makeDeficitGroupRows(group, sortedWorkers))
-      continue
+      if (enoughForLine) break
     }
 
     const groupStart = Math.max(...groupWorkers.map(w => groupStartFor(w, group)))
@@ -2360,7 +2256,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         if (specialStart !== null) {
           isSpecialTask = true
           startMins = Math.max(curMins, specialStart)
-          if (!isPhase3 && startMins >= phaseEndMins) continue
         } else {
           startMins = curMins
           let advanced = true
@@ -2373,7 +2268,6 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
               if (startMins >= bs && startMins < be) { startMins = be; advanced = true }
             }
           }
-          if (!isPhase3 && startMins >= phaseEndMins) continue
         }
       }
 
@@ -2414,47 +2308,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         keptTasks.push(task)
       } else {
         task.deadline_time = minsToTimeStr(startMins)
-        let endMins = wallClockFinish(startMins, duration)
-
-        if (!isPhase3 && endMins > phaseEndMins) {
-          const taskStationName = normalizeStation(String(task.table_name ?? taskStation))
-          const stationBreakMins = segmentActiveMins(stationLineBreaks(taskStationName), startMins, phaseEndMins)
-          const availMins = Math.max(0, availableWorkMins(startMins, phaseEndMins) - stationBreakMins)
-          let truncQty: number
-          if (isYieldCapped && sortedLotsForDuration.length && params.carcassRate) {
-            const pigsAvail = Math.floor(availMins * 60 / params.carcassRate)
-            const activeMinsAtStart = availableWorkMins(510, startMins)
-            const pigIdx = Math.floor(activeMinsAtStart * 60 / params.carcassRate)
-            let consumed2 = 0; let activeLot: typeof sortedLotsForDuration[0] | null = null
-            for (const l of sortedLotsForDuration) { if (pigIdx < consumed2 + l.qty) { activeLot = l; break }; consumed2 += l.qty }
-            if (!activeLot) activeLot = sortedLotsForDuration[sortedLotsForDuration.length - 1]
-            if (activeLot && capUniqWts.length) {
-              const nearWt = capUniqWts.reduce((b, w) => Math.abs(w - activeLot!.avg_weight) < Math.abs(b - activeLot!.avg_weight) ? w : b, capUniqWts[0])
-              const yieldPct = capYield
-                .filter(r => r.carcass_weight === nearWt && r.product_group === prod?.product_group)
-                .reduce((sum, r) => sum + Number(r.yield_pct ?? 0), 0)
-              const ypig = yieldPct > 0 ? (yieldPct / 100) * activeLot.avg_weight : 0
-              truncQty = ypig > 0 ? pigsAvail * ypig : 0
-            } else { truncQty = 0 }
-          } else {
-            truncQty = (availMins / 60) * fallbackRate
-          }
-          const originalQty = Number(task.target_quantity ?? 0)
-          const originalSkuTotal = skuTotalQtyAcrossWorkers.get(cleanSku) ?? originalQty
-          const rowShare = isYieldCapped && originalSkuTotal > 0 ? originalQty / originalSkuTotal : 1
-          const cappedTruncQty = isYieldCapped ? Math.min(originalQty, truncQty * rowShare) : truncQty
-          const finalQty = selectedPhase === 1
-            ? floorToBag(String(task.sku ?? ''), cappedTruncQty)
-            : Math.round(cappedTruncQty * 100) / 100
-          if (finalQty <= 0) continue
-          task.target_quantity = finalQty
-          syncRoundNoteQty(task)
-          endMins = wallClockFinish(startMins, computeTaskDuration({
-            qty: finalQty, productGroup: prod?.product_group, startMins,
-            sortedLots: isYieldCapped ? sortedLotsForDuration : [],
-            carcassRateSec: params.carcassRate ?? 0, masYield: capYield, capUniqWts, fallbackRate,
-          }))
-        }
+        // Not capped to phaseEndMins — output is paced by yield/line rate, not
+        // by whether it fits inside the nominal shift window. Yield capping
+        // (elsewhere) is what actually limits qty; this may run past shift end.
+        const endMins = wallClockFinish(startMins, duration)
 
         busySegs.push({ start: startMins, end: endMins })
         curMins = endMins
