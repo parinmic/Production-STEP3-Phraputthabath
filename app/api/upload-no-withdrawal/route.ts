@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (logErr) throw logErr
 
     const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
-    const { error } = await supabase.from('no_withdrawal_skus').insert(recordsWithId)
+    const { error } = await supabase.from('no_withdrawal_skus').upsert(recordsWithId, { onConflict: 'sap' })
     if (error) {
       await supabase.from('upload_log').delete().eq('id', uploadLogId)
       throw error
