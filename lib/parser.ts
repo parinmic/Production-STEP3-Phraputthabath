@@ -3,6 +3,14 @@ import Papa from 'papaparse'
 
 export type ParsedRow = Record<string, string | number | null>
 
+function cleanMakroBranchName(value: unknown) {
+  const cleaned = String(value ?? '')
+    .trim()
+    .replace(/^MAKRO\s*\d+\s*[-–—:/]?\s*/i, '')
+    .trim()
+  return cleaned || null
+}
+
 export async function parseFile(file: File): Promise<ParsedRow[]> {
   const name = file.name.toLowerCase()
   if (name.endsWith('.csv')) return parseCsv(file)
@@ -194,14 +202,14 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
     for (const ci of activeBranchCols) {
       const qty = Number(row[ci]) || 0
       if (!qty) continue
-      const branch = String(hRow[ci] ?? '').trim()
+      const branch = cleanMakroBranchName(hRow[ci])
       results.push({
         delivery_date: deliveryDate || null,
         order_date:    deliveryDate || null,
         sku,
         sku_name:      skuName,
         quantity:      qty,
-        period:        branch || currentStation || null,
+        period:        branch || cleanMakroBranchName(currentStation),
       })
       pushedBranch = true
     }
@@ -215,7 +223,7 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
         sku,
         sku_name:      skuName,
         quantity:      qty,
-        period:        currentStation || null,
+        period:        cleanMakroBranchName(currentStation),
       })
     }
   }

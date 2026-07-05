@@ -429,6 +429,14 @@ const PERIOD_SEQUENCE = ['เช้า', 'บ่าย', 'ค่ำ']
 
 const normalizeSkuValue = (sku: string) => String(sku ?? '').replace(/^0+/, '')
 
+function cleanMakroBranchName(value: string | null | undefined) {
+  const cleaned = String(value ?? '')
+    .trim()
+    .replace(/^MAKRO\s*\d+\s*[-–—:/]?\s*/i, '')
+    .trim()
+  return cleaned || 'Makro'
+}
+
 function makroRoundForPeriod(period: string | null) {
   return period === 'เช้า' ? '0800' : '1400'
 }
@@ -461,7 +469,7 @@ function MakroBranchPivotView({ items, orderRows }: { items: Assignment[]; order
     const sku = normalizeSkuValue(row.sku)
     const round = row.upload_round || '0800'
     const key = `${round}|||${sku}`
-    const branch = String(row.period ?? '').trim() || 'Makro'
+    const branch = cleanMakroBranchName(row.period)
     const entry = orderShare.get(key) ?? { total: 0, branches: new Map<string, number>() }
     entry.total += qty
     entry.branches.set(branch, (entry.branches.get(branch) ?? 0) + qty)
