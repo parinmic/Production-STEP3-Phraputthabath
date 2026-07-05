@@ -938,16 +938,6 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, selectedP
               </span>
             </div>
           ))}
-          {lineBreaks.map((lb, i) => {
-            const bs = timeToMins(lb.start_time), be = timeToMins(lb.end_time)
-            if (bs >= chartEnd || be <= chartStart) return null
-            const l = pct(Math.max(bs, chartStart))
-            const w = Math.max(pct(Math.min(be, chartEnd)) - l, 0)
-            return (
-              <div key={`hdr-lb-${i}`} className="absolute top-0 bottom-0 pointer-events-none z-20"
-                style={{ left: `${l}%`, width: `${w}%`, backgroundColor: '#e5e7eb' }} />
-            )
-          })}
           {nowMins >= chartStart && nowMins <= chartEnd && (
             <div className="absolute top-0 bottom-0 w-px bg-red-400 z-30 pointer-events-none" style={{ left: `${pct(nowMins)}%` }} />
           )}
