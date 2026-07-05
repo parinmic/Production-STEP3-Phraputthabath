@@ -319,7 +319,10 @@ export async function POST(req: NextRequest) {
   for (const b of bomRows ?? []) {
     if (!b.raw_sap) continue
     const list = bomMap.get(b.product_sap) ?? []
-    list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0, priority: (b as { priority?: number | null }).priority ?? null })
+    // กัน bom_items ที่มีแถวซ้ำ (product_sap, raw_sap) เดิม — เช่นอัพโหลด BOM ซ้ำโดยไม่ลบชุดเก่าออกก่อน
+    if (!list.some(e => e.raw_sap === b.raw_sap)) {
+      list.push({ raw_sap: b.raw_sap, raw_name: b.raw_name ?? null, yield_pct: b.yield_pct ?? 0, priority: (b as { priority?: number | null }).priority ?? null })
+    }
     bomMap.set(b.product_sap, list)
   }
 
