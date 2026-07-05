@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase'
 import { generatePlan } from '@/lib/generate-plan'
-import { generateBasicPlan } from '@/lib/generate-plan-basic'
 
 const PHASE2_UPLOAD_TABLES = ['makro_orders_1400', 'lotus_orders_1400', 'wet_market_orders_1400']
 
@@ -29,12 +28,9 @@ export async function checkAndAutoGeneratePhase2(date?: string): Promise<string 
   const uploaded = new Set((data ?? []).map(r => r.table_name as string))
   if (!PHASE2_UPLOAD_TABLES.every(t => uploaded.has(t))) return null
 
-  const [specialResult, basicResult] = await Promise.all([
-    generatePlan({ date: workDate, phase: 2 }),
-    generateBasicPlan({ date: workDate, phase: 2 }),
-  ])
+  const specialResult = await generatePlan({ date: workDate, phase: 2 })
 
-  return `${specialResult.message} | Basic: ${basicResult.message}`
+  return specialResult.message
 }
 
 /**

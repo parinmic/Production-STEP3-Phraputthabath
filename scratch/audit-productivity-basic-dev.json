@@ -1,0 +1,4695 @@
+﻿[
+    {
+        "row_data":  {
+                         "SAP":  23057691,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลวTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057827,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครง(M)",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057815,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057818,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057824,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058555,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068390,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23097791,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในหมู 1 กก. (M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105754,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สามชั้นหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105752,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันนอกหมู กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057674,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23096254,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT(XL)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103813,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110577,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมู แพ็คถาด กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110578,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษแพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090967,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057688,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057812,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105753,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สะโพกหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000130,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057673,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000218,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลว",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105855,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057693,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกแว่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกแว่น",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057681,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมูTT",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034427,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันสันหลัง-Raw",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034424,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้า-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034425,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลัง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034416,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034408,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034418,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034417,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034415,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034413,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034410,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034412,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090968,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057689,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057697,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057679,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้าTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057671,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่างTT",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068102,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูติดหนังติดมันคอTT(คอมัน)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23095553,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย (SIS) กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105854,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่หมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057690,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057702,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110612,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย แพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000143,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057676,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057672,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่TT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105755,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันคอหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000127,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่ติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105751,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค หัวไหล่หมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23015376,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังไหล่ติดมัน",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23107097,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูคุ้มค่า กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23108714,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูบั้งห่อชีท กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090971,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000206,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103812,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อขาหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23066879,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23073188,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058591,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ(คาตั๊ง) (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057809,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058551,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง (M)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057821,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23064091,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  "สะโพกเบสิค",
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งติดหนัง TT",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057687,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังหมูรวมTT",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057685,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันแข็ง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057675,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23039061,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสัันนอกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23089787,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสันนอกติดหนังเลาะซี่โครง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057700,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057678,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23092652,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น TT-spec 1",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057677,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105856,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057695,
+                         "Product":  "By Product",
+                         "__EMPTY":  "สะโพกเบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันท้องTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันท้อง",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23045518,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันเปลว เบอร์ 1",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057680,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลังTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23106120,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมู(ติดเนื้อพิเศษ)",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057672,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่TT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057812,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105753,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สะโพกหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000130,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057673,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000218,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลว",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105855,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057693,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกแว่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกแว่น",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057681,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมูTT",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23106120,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมู(ติดเนื้อพิเศษ)",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057680,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลังTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23045518,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันเปลว เบอร์ 1",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057691,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลวTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057815,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057818,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057824,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057827,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครง(M)",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058555,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068390,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23097791,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในหมู 1 กก. (M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105754,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สามชั้นหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105752,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันนอกหมู กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057674,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23096254,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT(XL)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103813,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110577,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมู แพ็คถาด กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110578,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษแพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090967,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057688,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057695,
+                         "Product":  "By Product",
+                         "__EMPTY":  "สะโพกเบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันท้องTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันท้อง",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105856,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057677,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23092652,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น TT-spec 1",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057678,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057700,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23089787,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสันนอกติดหนังเลาะซี่โครง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23039061,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสัันนอกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057675,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057685,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันแข็ง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057687,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังหมูรวมTT",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23064091,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  "สะโพกเบสิค",
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งติดหนัง TT",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057821,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058551,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง (M)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057809,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058591,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ(คาตั๊ง) (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23073188,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23066879,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103812,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อขาหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000206,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090971,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23108714,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูบั้งห่อชีท กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23107097,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูคุ้มค่า กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23015376,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังไหล่ติดมัน",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105751,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค หัวไหล่หมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000127,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่ติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105755,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันคอหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057676,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000143,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110612,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย แพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057702,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057690,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105854,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่หมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23095553,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย (SIS) กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068102,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูติดหนังติดมันคอTT(คอมัน)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057671,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่างTT",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057679,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้าTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057697,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057689,
+                         "Product":  "By Product",
+                         "__EMPTY":  "ไหล่เบสิค",
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090968,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034412,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034410,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034413,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034415,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034417,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034418,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034408,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034416,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034425,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลัง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034424,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้า-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034427,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันสันหลัง-Raw",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23107097,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูคุ้มค่า กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23015376,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังไหล่ติดมัน",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105751,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค หัวไหล่หมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000127,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่ติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105755,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันคอหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057672,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่TT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057676,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000143,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110612,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย แพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110613,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "หนังหมูสด แพ็คถาด กก. ละ",
+                         "กลุ่มสินค้า":  "หนังไหล่ติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057702,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057690,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105854,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ไหล่หมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23095553,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อนใบพาย (SIS) กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068102,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูติดหนังติดมันคอTT(คอมัน)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057671,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่างTT",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057679,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้าTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057697,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอTT",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057689,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090968,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034412,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034410,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034413,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034415,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034417,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034418,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่น-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034408,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034416,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034425,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลัง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034424,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ขาหน้า-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มขาหน้า",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034427,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันสันหลัง-Raw",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23034428,
+                         "Product":  "RAW",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็ง-Raw",
+                         "กลุ่มสินค้า":  "กลุ่มมันแข็ง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23108714,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอหมูบั้งห่อชีท กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090971,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000206,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันคอ",
+                         "กลุ่มสินค้า":  "กลุ่มชิ้นมันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103812,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อขาหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23066879,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกอ่อน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกอ่อน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23073188,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058591,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกข้อ(คาตั๊ง) (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกข้อ",
+                         "กำลังการผลิต (กก./ชม./คน)":  18
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057809,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "เนื้อไหล่(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อไหล่",
+                         "กำลังการผลิต (กก./ชม./คน)":  60
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058551,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "คอหมูย่าง (M)",
+                         "กลุ่มสินค้า":  "กลุ่มคอหมูย่าง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057821,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "สันคอ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสันคอ",
+                         "กำลังการผลิต (กก./ชม./คน)":  35
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000203,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันแข็ง",
+                         "กลุ่มสินค้า":  "กลุ่มเศษมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23025099,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ชิ้นมันแข็ง1",
+                         "กลุ่มสินค้า":  "กลุ่มเศษมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23064091,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งติดหนัง TT",
+                         "กลุ่มสินค้า":  "หนังสันหลังติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  13
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057687,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หนังหมูรวมTT",
+                         "กลุ่มสินค้า":  "หนังสะโพกติดมัน",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057685,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันแข็งTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันแข็ง",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057675,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058183,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เศษสามชั้นTT",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23039061,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสัันนอกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23089787,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นติดสันนอกติดหนังเลาะซี่โครง",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057701,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงอ่อนTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057700,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057678,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครงแผ่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23092652,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น TT-spec 1",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057677,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105856,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057695,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "มันท้องTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันท้อง",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057688,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23090967,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23086966,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในแต่ง SIS กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110578,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษแพ็คถาด กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23110577,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมู แพ็คถาด กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23103813,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปหมูแพ็ค 5 กก.",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23096254,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้นTT(XL)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057674,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอกTT",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105752,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สันนอกหมู กก. ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105754,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สามชั้นหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23097791,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันในหมู 1 กก. (M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23068390,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุปติดเนื้อพิเศษ(M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23058555,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "กระดูกซุป (M)",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกซุป",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057827,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "ซี่โครง(M)",
+                         "กลุ่มสินค้า":  "กลุ่มซี่โครง",
+                         "กำลังการผลิต (กก./ชม./คน)":  40
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057824,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สามชั้น(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสามชั้น",
+                         "กำลังการผลิต (กก./ชม./คน)":  55
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057818,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันใน(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันใน",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057815,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สามชั้นเบสิค",
+                         "ชื่อสินค้า":  "สันนอก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มสันนอก",
+                         "กำลังการผลิต (กก./ชม./คน)":  50
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057691,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลวTT",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23045518,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลว เบอร์ 1",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057680,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "ขาหลังTT",
+                         "กลุ่มสินค้า":  "กลุ่มขาหลัง",
+                         "กำลังการผลิต (กก./ชม./คน)":  45
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23106120,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมู(ติดเนื้อพิเศษ)",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057681,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "หางหมูTT",
+                         "กลุ่มสินค้า":  "กลุ่มหางหมู",
+                         "กำลังการผลิต (กก./ชม./คน)":  8
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057693,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "กระดูกแว่นTT",
+                         "กลุ่มสินค้า":  "กลุ่มกระดูกแว่น",
+                         "กำลังการผลิต (กก./ชม./คน)":  10
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105855,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกหมู B2B (Basic)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000218,
+                         "Product":  "By Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "ไหล่เบสิค",
+                         "ชื่อสินค้า":  "มันเปลว",
+                         "กลุ่มสินค้า":  "กลุ่มมันเปลว",
+                         "กำลังการผลิต (กก./ชม./คน)":  15
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057673,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกTT",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23000130,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพกติดหนัง",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23105753,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "เซพแพ็ค สะโพกหมู กก.ละ",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    },
+    {
+        "row_data":  {
+                         "SAP":  23057812,
+                         "Product":  "Main Product",
+                         "__EMPTY":  null,
+                         "__EMPTY_1":  null,
+                         "__EMPTY_2":  null,
+                         "__EMPTY_3":  null,
+                         "__EMPTY_4":  null,
+                         "__EMPTY_5":  null,
+                         "__EMPTY_6":  null,
+                         "__EMPTY_7":  null,
+                         "__EMPTY_8":  null,
+                         "จุดงาน":  "สะโพกเบสิค",
+                         "ชื่อสินค้า":  "สะโพก(M)",
+                         "กลุ่มสินค้า":  "กลุ่มเนื้อสะโพก",
+                         "กำลังการผลิต (กก./ชม./คน)":  75
+                     }
+    }
+]

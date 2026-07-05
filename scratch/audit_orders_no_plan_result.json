@@ -1,0 +1,265 @@
+{
+  "source": "https://hmcppjhjybqmlxhdbmbh.supabase.co",
+  "results": [
+    {
+      "date": "2026-07-01",
+      "ordersCheckedSkus": 54,
+      "assignmentRows": 287,
+      "latestAssignmentRows": 287,
+      "noPlanAtAllCount": 0,
+      "noPlanAtAll": [],
+      "onlyDeficitPlanCount": 18,
+      "onlyDeficitPlan": [
+        {
+          "sku": "23057688",
+          "name": "กระดูกซุปTT",
+          "orderQty": 1889,
+          "deficitQty": 1145,
+          "byChannel": {
+            "Wet Market": 955,
+            "LOTUS": 190,
+            "Plan100": 744
+          }
+        },
+        {
+          "sku": "23057674",
+          "name": "สันนอกTT",
+          "orderQty": 1136,
+          "deficitQty": 568,
+          "byChannel": {
+            "Wet Market": 270,
+            "LOTUS": 305,
+            "Plan100": 561
+          }
+        },
+        {
+          "sku": "23064091",
+          "name": "มันแข็งติดหนัง TT",
+          "orderQty": 975,
+          "deficitQty": 1115,
+          "byChannel": {
+            "Wet Market": 875,
+            "LOTUS": 50,
+            "Plan100": 50
+          }
+        },
+        {
+          "sku": "23058555",
+          "name": "กระดูกซุป (M)",
+          "orderQty": 910,
+          "deficitQty": 550,
+          "byChannel": {
+            "Makro": 910
+          }
+        },
+        {
+          "sku": "23057685",
+          "name": "มันแข็งTT",
+          "orderQty": 770,
+          "deficitQty": 385,
+          "byChannel": {
+            "Wet Market": 275,
+            "LOTUS": 110,
+            "Plan100": 385
+          }
+        },
+        {
+          "sku": "23057691",
+          "name": "มันเปลวTT",
+          "orderQty": 453,
+          "deficitQty": 255,
+          "byChannel": {
+            "Wet Market": 255,
+            "Plan100": 198
+          }
+        },
+        {
+          "sku": "23045518",
+          "name": "มันเปลว เบอร์ 1",
+          "orderQty": 308,
+          "deficitQty": 200,
+          "byChannel": {
+            "Wet Market": 200,
+            "Plan100": 108
+          }
+        },
+        {
+          "sku": "23057697",
+          "name": "ชิ้นมันคอTT",
+          "orderQty": 299,
+          "deficitQty": 165,
+          "byChannel": {
+            "Wet Market": 100,
+            "LOTUS": 65,
+            "Plan100": 134
+          }
+        },
+        {
+          "sku": "23057690",
+          "name": "กระดูกอ่อนTT",
+          "orderQty": 270,
+          "deficitQty": 150,
+          "byChannel": {
+            "Wet Market": 50,
+            "LOTUS": 100,
+            "Plan100": 120
+          }
+        },
+        {
+          "sku": "23095553",
+          "name": "กระดูกอ่อนใบพาย (SIS) กก. ละ",
+          "orderQty": 195,
+          "deficitQty": 144,
+          "byChannel": {
+            "LOTUS": 144,
+            "Plan100": 51
+          }
+        },
+        {
+          "sku": "23057675",
+          "name": "สันในTT",
+          "orderQty": 169,
+          "deficitQty": 140,
+          "byChannel": {
+            "Wet Market": 125,
+            "LOTUS": 15,
+            "Plan100": 29
+          }
+        },
+        {
+          "sku": "23057681",
+          "name": "หางหมูTT",
+          "orderQty": 160,
+          "deficitQty": 90,
+          "byChannel": {
+            "Wet Market": 90,
+            "Plan100": 70
+          }
+        },
+        {
+          "sku": "23057678",
+          "name": "ซี่โครงแผ่นTT",
+          "orderQty": 122,
+          "deficitQty": 80,
+          "byChannel": {
+            "Wet Market": 80,
+            "Plan100": 42
+          }
+        },
+        {
+          "sku": "23057702",
+          "name": "กระดูกอกTT",
+          "orderQty": 115,
+          "deficitQty": 140,
+          "byChannel": {
+            "Wet Market": 115
+          }
+        },
+        {
+          "sku": "23057687",
+          "name": "หนังหมูรวมTT",
+          "orderQty": 104,
+          "deficitQty": 115,
+          "byChannel": {
+            "Wet Market": 70,
+            "Plan100": 34
+          }
+        },
+        {
+          "sku": "23068390",
+          "name": "กระดูกซุปติดเนื้อพิเศษ(M)",
+          "orderQty": 100,
+          "deficitQty": 50,
+          "byChannel": {
+            "Makro": 100
+          }
+        },
+        {
+          "sku": "23073188",
+          "name": "กระดูกอก(M)",
+          "orderQty": 35,
+          "deficitQty": 15,
+          "byChannel": {
+            "Makro": 35
+          }
+        },
+        {
+          "sku": "23015376",
+          "name": "หนังไหล่ติดมัน",
+          "orderQty": 20,
+          "deficitQty": 40,
+          "byChannel": {
+            "Plan100": 20
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-07-02",
+      "ordersCheckedSkus": 49,
+      "assignmentRows": 346,
+      "latestAssignmentRows": 346,
+      "noPlanAtAllCount": 7,
+      "noPlanAtAll": [
+        {
+          "sku": "23057700",
+          "name": "ซี่โครงTT",
+          "orderQty": 275,
+          "byChannel": {
+            "Plan100": 275
+          }
+        },
+        {
+          "sku": "23086966",
+          "name": "สันในแต่ง SIS กก.ละ",
+          "orderQty": 201,
+          "byChannel": {
+            "Plan100": 201
+          }
+        },
+        {
+          "sku": "23057685",
+          "name": "มันแข็งTT",
+          "orderQty": 159,
+          "byChannel": {
+            "Plan100": 159
+          }
+        },
+        {
+          "sku": "23068390",
+          "name": "กระดูกซุปติดเนื้อพิเศษ(M)",
+          "orderQty": 150,
+          "byChannel": {
+            "Makro": 150
+          }
+        },
+        {
+          "sku": "23045518",
+          "name": "มันเปลว เบอร์ 1",
+          "orderQty": 110,
+          "byChannel": {
+            "Plan100": 110
+          }
+        },
+        {
+          "sku": "23073188",
+          "name": "กระดูกอก(M)",
+          "orderQty": 45,
+          "byChannel": {
+            "Makro": 45
+          }
+        },
+        {
+          "sku": "23057678",
+          "name": "ซี่โครงแผ่นTT",
+          "orderQty": 25,
+          "byChannel": {
+            "Plan100": 25
+          }
+        }
+      ],
+      "onlyDeficitPlanCount": 0,
+      "onlyDeficitPlan": []
+    }
+  ]
+}

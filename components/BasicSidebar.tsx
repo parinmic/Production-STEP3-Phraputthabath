@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { canAccessStation } from '@/lib/station-access'
 
@@ -498,12 +498,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>Admin</p>
           <div className={dividerCls} />
-          <NavLink href="/basic/admin/production-plan" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/production-plan', canAll)}`}
-            title="จัดการแผนผลิต">
-            <ShieldAlert size={18} className="shrink-0" />
-            <span className={labelCls}>จัดการแผนผลิต</span>
-          </NavLink>
           <NavLink href="/basic/admin/users" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', canAll)}`}
             title="User ระบบผลิต">

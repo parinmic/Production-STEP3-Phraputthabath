@@ -1,15 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Slice, Trash2, Plus, AlertCircle, Download, RefreshCw, CheckCircle2 } from 'lucide-react'
+import { Slice, Trash2, Plus, AlertCircle, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const STATIONS = ['ทั้งหมด', 'สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
-
-const PHASES = [
-  { phase: 1, label: 'Phase 1', startH: 8.5,  endH: 14.5 },
-  { phase: 2, label: 'Phase 2', startH: 14.5, endH: 16.5 },
-  { phase: 3, label: 'Phase 3', startH: 16.5, endH: 24 },
-]
 
 const BREAK_REASONS = [
   'จุดงานเปิดหมูซีกติดขัด',
@@ -53,11 +47,6 @@ function breakMins(b: LineBreak): number {
   const [sh, sm] = b.start_time.split(':').map(Number)
   const [eh, em] = b.end_time.split(':').map(Number)
   return Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
-}
-
-function timeToMins(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
 }
 
 function exportExcel(date: string, breaks: LineBreak[]) {
@@ -120,8 +109,6 @@ export default function BreaklinePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [adjusting, setAdjusting] = useState(false)
-  const [adjustResult, setAdjustResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // Form state
   const [station,      setStation]      = useState('ทั้งหมด')
@@ -172,64 +159,6 @@ export default function BreaklinePage() {
     } finally { setDeletingId(null) }
   }
 
-  const now = new Date()
-  const todayDate = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-  const nowMins = now.getHours() * 60 + now.getMinutes()
-  const isToday = date === todayDate
-  const currentPhase = date === todayDate
-    ? PHASES.find(p => nowMins >= p.startH * 60 && nowMins < p.endH * 60)
-    : undefined
-  const breaklinePhases = PHASES.filter(p => breaks.some(b => {
-    const bs = timeToMins(b.start_time)
-    const be = timeToMins(b.end_time)
-    return be > p.startH * 60 && bs < p.endH * 60
-  }))
-  const adjustablePhases = isToday
-    ? (currentPhase && breaklinePhases.some(p => p.phase === currentPhase.phase) ? [currentPhase] : [])
-    : breaklinePhases
-  const phaseLabel = adjustablePhases.map(p => p.label).join(', ')
-
-  const handleAdjustPlan = async (phase: number) => {
-    const phaseCfg = PHASES.find(p => p.phase === phase)
-    if (!phaseCfg) return
-    setAdjusting(true)
-    setAdjustResult(null)
-    try {
-      let carcassLots: unknown = undefined
-      let carcassRate: number | undefined = undefined
-      let trimmingQty = 0
-      try {
-        const selRes = await fetch('/api/pig-carcass-lot-selection')
-        const selJson = await selRes.json()
-        if (selJson.selected?.length) carcassLots = selJson.selected
-        if (selJson.rate != null) carcassRate = parseFloat(selJson.rate) || undefined
-        if (selJson.trimmingQty) trimmingQty = parseInt(selJson.trimmingQty) || 0
-      } catch { /* ignore optional carcass selection */ }
-
-      const res = await fetch('/api/production/generate-basic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          phase,
-          deductMode: 'plan',
-          carcassLots,
-          carcassRate,
-          trimmingQty,
-        }),
-      })
-      const result = await res.json()
-      setAdjustResult({
-        ...result,
-        message: result.message ? `${phaseCfg.label}: ${result.message}` : `${phaseCfg.label}: ปรับแผนเรียบร้อย`,
-      })
-    } catch {
-      setAdjustResult({ success: false, message: `${phaseCfg.label}: เกิดข้อผิดพลาด` })
-    } finally {
-      setAdjusting(false)
-    }
-  }
-
   const grouped = STATIONS.filter(s => s !== 'ทั้งหมด').reduce<Record<string, LineBreak[]>>((acc, s) => {
     acc[s] = breaks.filter(b => b.station === s || b.station === 'ทั้งหมด')
     return acc
@@ -247,7 +176,7 @@ export default function BreaklinePage() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <input
-            type="date" value={date} onChange={e => { setDate(e.target.value); setAdjustResult(null) }}
+            type="date" value={date} onChange={e => setDate(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
           />
           <button
@@ -337,39 +266,6 @@ export default function BreaklinePage() {
           {submitting ? 'กำลังบันทึก...' : 'บันทึก Breakline'}
         </button>
       </form>
-
-      {adjustablePhases.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex-1">
-            <p className="text-sm font-bold text-amber-800">มี Breakline ใน {phaseLabel}</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {isToday ? 'กดเพื่อคำนวณและเขียนแผน Basic ใหม่ตามเวลาผลิตที่เหลือ' : 'วันที่ย้อนหลัง/ล่วงหน้าสามารถเลือก Phase ที่ต้องการปรับแผนได้'}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {adjustablePhases.map(p => (
-              <button
-                key={p.phase}
-                type="button"
-                onClick={() => handleAdjustPlan(p.phase)}
-                disabled={adjusting}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50">
-                <RefreshCw size={16} className={adjusting ? 'animate-spin' : ''} />
-                {adjusting ? 'กำลังปรับ...' : `ปรับ ${p.label}`}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {adjustResult && (
-        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm border ${
-          adjustResult.success ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
-        }`}>
-          {adjustResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-          {adjustResult.message}
-        </div>
-      )}
 
       {/* Break list */}
       <div className="space-y-3">
