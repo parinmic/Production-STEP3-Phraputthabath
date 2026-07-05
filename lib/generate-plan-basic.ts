@@ -598,12 +598,16 @@ function subtractProducedTargetsAcrossLotusWetPool(
   return result
 }
 
+// Reconstructs what phase 1 actually saved to production_assignments (bag-rounded), so that
+// later phases subtract the real produced amount instead of the pre-rounding theoretical one —
+// otherwise the subtraction overestimates what's already made and under-serves the remainder.
 async function buildPhase1SkuTargets(
   date: string,
   lots: SelectedLot[],
   rateSecPerPig: number,
   masYield: Awaited<ReturnType<typeof fetchLatestMasYield>>,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
+  bagSizeMap: Map<string, number>,
 ): Promise<BasicSkuTarget[]> {
   const phase1Lots = consumeLotsForPhase(lots, 1, BASIC_PHASES[1], rateSecPerPig)
   if (!phase1Lots.length) return []
@@ -617,7 +621,7 @@ async function buildPhase1SkuTargets(
   ])
   const orderTargets = allocateTargetsByYield(phase1Targets, [...makroTargets, ...wetMarketTargets, ...lotusTargets], channelPriority)
   const balanceTargets = await buildEnoughYieldBalanceTargets(date, phase1Targets, orderTargets, productivityByGroup)
-  return [...orderTargets, ...balanceTargets]
+  return roundSkuTargetsDownToBag([...orderTargets, ...balanceTargets], bagSizeMap)
 }
 
 async function buildPhase2AllocatedTargets(
@@ -627,6 +631,7 @@ async function buildPhase2AllocatedTargets(
   masYield: Awaited<ReturnType<typeof fetchLatestMasYield>>,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
   subtractPhase1: boolean,
+  bagSizeMap: Map<string, number>,
   includeZeroQuantity = false,
 ): Promise<BasicSkuTarget[]> {
   const phase2Lots = consumeLotsForPhase(lots, 2, BASIC_PHASES[2], rateSecPerPig)
@@ -641,12 +646,13 @@ async function buildPhase2AllocatedTargets(
   ])
   const baseOrderTargets = [...makroTargets, ...wetMarketTargets, ...lotusTargets]
   const phase1Targets = subtractPhase1
-    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup)
+    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
   const phase2OrderTargets = subtractPhase1
     ? subtractProducedTargets(baseOrderTargets, phase1Targets)
     : baseOrderTargets
-  return allocateTargetsByYield(phase2Targets, phase2OrderTargets, channelPriority, includeZeroQuantity)
+  const allocated = allocateTargetsByYield(phase2Targets, phase2OrderTargets, channelPriority, includeZeroQuantity)
+  return includeZeroQuantity ? allocated : roundSkuTargetsDownToBag(allocated, bagSizeMap)
 }
 
 async function fetchLatestMakro0800Targets(
@@ -1266,13 +1272,13 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const shouldSubtractPhase2ForPhase3 = phase === 3 && Boolean(params.subtractPhase2FromPhase3)
   const baseOrderTargets = [...makroTargets, ...wetMarketTargets, ...lotusTargets]
   const phase1SkuTargets = shouldSubtractPhase1
-    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup)
+    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
   const phase3Phase1SkuTargets = shouldSubtractPhase1ForPhase3
-    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup)
+    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
   const phase3Phase2SkuTargets = shouldSubtractPhase2ForPhase3
-    ? await buildPhase2AllocatedTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, shouldSubtractPhase1ForPhase3)
+    ? await buildPhase2AllocatedTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, shouldSubtractPhase1ForPhase3, bagSizeMap)
     : []
   const phase3Plan100Targets = phase === 3
     ? (() => {
