@@ -1,4 +1,4 @@
-import { fetchLatestPlan100, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { fetchLatestMasYield } from '@/lib/mas-yield'
 
 export type BasicPhase = 1 | 2 | 3
@@ -398,16 +398,20 @@ function buildYieldTargetsFromLots(
     .sort((a, b) => (a.station ?? '').localeCompare(b.station ?? '') || a.productGroup.localeCompare(b.productGroup))
 }
 
+function targetDeductKey(target: BasicSkuTarget): string {
+  return `${normalizeSku(target.sku)}|||${channelPriorityKey(target.channel)}`
+}
+
 function subtractProducedTargets(targets: BasicSkuTarget[], producedTargets: BasicSkuTarget[]): BasicSkuTarget[] {
-  const producedBySku = producedTargets.reduce((map, target) => {
-    const sku = normalizeSku(target.sku)
-    map.set(sku, (map.get(sku) ?? 0) + target.quantityKg)
+  const producedBySkuChannel = producedTargets.reduce((map, target) => {
+    const key = targetDeductKey(target)
+    map.set(key, (map.get(key) ?? 0) + target.quantityKg)
     return map
   }, new Map<string, number>())
 
   return targets
     .map(target => {
-      const deductedKg = producedBySku.get(normalizeSku(target.sku)) ?? 0
+      const deductedKg = producedBySkuChannel.get(targetDeductKey(target)) ?? 0
       const remainingKg = Math.max(0, target.quantityKg - deductedKg)
       return {
         ...target,
@@ -425,15 +429,15 @@ function subtractProducedTargetsWithField(
   producedTargets: BasicSkuTarget[],
   field: 'phase1DeductedKg' | 'phase2DeductedKg',
 ): BasicSkuTarget[] {
-  const producedBySku = producedTargets.reduce((map, target) => {
-    const sku = normalizeSku(target.sku)
-    map.set(sku, (map.get(sku) ?? 0) + target.quantityKg)
+  const producedBySkuChannel = producedTargets.reduce((map, target) => {
+    const key = targetDeductKey(target)
+    map.set(key, (map.get(key) ?? 0) + target.quantityKg)
     return map
   }, new Map<string, number>())
 
   return targets
     .map(target => {
-      const deductedKg = producedBySku.get(normalizeSku(target.sku)) ?? 0
+      const deductedKg = producedBySkuChannel.get(targetDeductKey(target)) ?? 0
       const remainingKg = Math.max(0, target.quantityKg - deductedKg)
       return {
         ...target,
@@ -672,7 +676,16 @@ async function fetchPlan100ChannelTargets(
   weightColumn: 'lotus_weight' | 'cpft_weight',
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const data = await fetchLatestPlan100([date])
+  const data = await fetchPaged<{
+    sap: string
+    product_name: string | null
+    lotus_weight: number | null
+    cpft_weight: number | null
+  }>(
+    'production_plan_100',
+    'sap, product_name, lotus_weight, cpft_weight',
+    query => query.eq('plan_date', date),
+  )
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
