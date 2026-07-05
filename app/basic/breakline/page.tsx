@@ -35,6 +35,18 @@ interface LineBreak {
   created_at: string
 }
 
+function generateTimeOptions(stepMinutes: number): string[] {
+  const times: string[] = []
+  for (let m = 0; m < 24 * 60; m += stepMinutes) {
+    const h  = Math.floor(m / 60).toString().padStart(2, '0')
+    const mm = (m % 60).toString().padStart(2, '0')
+    times.push(`${h}:${mm}`)
+  }
+  return times
+}
+
+const TIME_OPTIONS = generateTimeOptions(5)
+
 function durationLabel(start: string, end: string) {
   const [sh, sm] = start.split(':').map(Number)
   const [eh, em] = end.split(':').map(Number)
@@ -198,34 +210,47 @@ export default function BreaklinePage() {
         {/* Station */}
         <div>
           <label className="text-xs font-medium text-gray-500 mb-1.5 block">สถานี</label>
-          <div className="flex flex-wrap gap-2">
-            {STATIONS.map(s => {
-              const c = STATION_COLOR[s]
-              return (
-                <button key={s} type="button"
-                  onClick={() => setStation(s)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    station === s ? `${c.border} ${c.bg} ${c.text} shadow-sm` : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-                  {s}
-                </button>
-              )
-            })}
-          </div>
+          <select
+            value={station}
+            onChange={e => setStation(e.target.value)}
+            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+          >
+            {STATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
 
         {/* Time range */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1.5 block">เวลาเริ่ม</label>
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required
-              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            <select
+              value={startTime}
+              onChange={e => {
+                const v = e.target.value
+                setStartTime(v)
+                if (endTime && endTime <= v) setEndTime('')
+              }}
+              required
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+            >
+              <option value="">— เลือกเวลา —</option>
+              {TIME_OPTIONS.map(t => <option key={t} value={t}>{t} น.</option>)}
+            </select>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1.5 block">เวลาสิ้นสุด</label>
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required
-              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            <select
+              value={endTime}
+              onChange={e => setEndTime(e.target.value)}
+              required
+              disabled={!startTime}
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              <option value="">{startTime ? '— เลือกเวลา —' : 'เลือกเวลาเริ่มก่อน'}</option>
+              {TIME_OPTIONS.filter(t => t > startTime).map(t => (
+                <option key={t} value={t}>{t} น. ({durationLabel(startTime, t)})</option>
+              ))}
+            </select>
           </div>
         </div>
         {startTime && endTime && startTime < endTime && (
