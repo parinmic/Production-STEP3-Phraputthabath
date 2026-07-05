@@ -1014,9 +1014,18 @@ function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, selectedP
                             const effectiveQty = usesApproachB
                               ? (skuEffectiveQtyMap.get(sku) ?? stat.totalQty)
                               : Math.max(0, stat.totalQty - (skuLostKgMap.get(sku) ?? 0))
-                            const period = Object.keys(stat.qtyByPeriod)[0]
-                            const capped = phaseCappedBagQty(sku, period, allPhaseItems ?? items, bagMap)
-                            const displayQty = capped ?? roundedDisplayQty(sku, effectiveQty, bagMap, period)
+                            const periods = Object.keys(stat.qtyByPeriod)
+                            const displayQty = selectedPhase === 'all'
+                              ? periods.reduce((sum, period) => {
+                                  const capped = phaseCappedBagQty(sku, period, allPhaseItems ?? items, bagMap)
+                                  const rawQty = stat.qtyByPeriod[period] ?? 0
+                                  return sum + (capped ?? roundedDisplayQty(sku, rawQty, bagMap, period))
+                                }, 0)
+                              : (() => {
+                                  const period = periods[0]
+                                  const capped = phaseCappedBagQty(sku, period, allPhaseItems ?? items, bagMap)
+                                  return capped ?? roundedDisplayQty(sku, effectiveQty, bagMap, period)
+                                })()
                             return (
                               <>
                                 {bagLabel(sku, displayQty, bagMap)}{displayQty.toLocaleString()} กก.
