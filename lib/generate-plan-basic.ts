@@ -300,6 +300,8 @@ async function fetchBagSizeMap(): Promise<Map<string, number>> {
 // day, and every later call (Phase 2, Phase 3, or a Phase 1 re-run) reuses the same snapshot even
 // if a newer stock file gets uploaded in between — otherwise reconstructing "what Phase 1 already
 // produced" later in the day would net against a different stock balance than Phase 1 actually used.
+// basic_stock_snapshot.upload_log_id has ON DELETE CASCADE back to upload_log, so deleting the
+// pinned upload clears the lock and the next call re-resolves against whatever's current.
 async function resolveOpeningStockUploadId(date: string): Promise<string | null> {
   const { data: existing, error: existingError } = await supabase
     .from('basic_stock_snapshot')
