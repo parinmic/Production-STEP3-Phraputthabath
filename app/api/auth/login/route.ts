@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60, // 1 ชั่วโมง
+    maxAge: 60 * 60 * 10, // 10 ชั่วโมง
   })
   return res
 }
