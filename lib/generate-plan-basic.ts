@@ -776,37 +776,6 @@ async function fetchPlan100WetMarketTargets(
   return fetchPlan100ChannelTargets(date, 'Wet Market', 'cpft_weight', productivityByGroup)
 }
 
-async function buildPhase2MakroShortageTargets(
-  date: string,
-  lots: SelectedLot[],
-  rateSecPerPig: number,
-  masYield: Awaited<ReturnType<typeof fetchLatestMasYield>>,
-  productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
-  subtractPhase1: boolean,
-): Promise<BasicSkuTarget[]> {
-  const phase2AllocatedTargets = await buildPhase2AllocatedTargets(
-    date,
-    lots,
-    rateSecPerPig,
-    masYield,
-    productivityByGroup,
-    subtractPhase1,
-    true,
-  )
-
-  return phase2AllocatedTargets
-    .filter(target => target.channel === 'Makro' && (target.shortageKg ?? 0) > 0)
-    .map(target => ({
-      ...target,
-      rawOrderKg: Math.round((target.shortageKg ?? 0) * 100) / 100,
-      requestedQuantityKg: Math.round((target.shortageKg ?? 0) * 100) / 100,
-      shortageKg: undefined,
-      allocationStatus: undefined,
-      quantityKg: Math.round((target.shortageKg ?? 0) * 100) / 100,
-    }))
-    .filter(target => target.quantityKg > 0)
-}
-
 async function fetchMakroHistorySums(date: string): Promise<Map<string, { hist0800Kg: number; hist1400Kg: number }>> {
   const histDates = [shiftDate(date, -7), shiftDate(date, -14)]
   const data = await fetchPaged<{ sku: string; quantity: number; upload_round: string }>(
@@ -1187,7 +1156,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         ])
       : phase === 3
         ? await Promise.all([
-            buildPhase2MakroShortageTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, Boolean(params.subtractPhase1FromPhase3)),
+            fetchMakro1400Targets(date, productivityByGroup),
             fetchPlan100WetMarketTargets(date, productivityByGroup),
             fetchPlan100LotusTargets(date, productivityByGroup),
             fetchBasicChannelPriority(phase),
@@ -1218,10 +1187,22 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         return planTargets
       })()
     : []
+  const phase3MakroTargets = phase === 3
+    ? (() => {
+        let planTargets = makroTargets
+        if (shouldSubtractPhase1ForPhase3) {
+          planTargets = subtractProducedTargets(planTargets, phase3Phase1SkuTargets.filter(target => target.channel === 'Makro'))
+        }
+        if (shouldSubtractPhase2ForPhase3) {
+          planTargets = subtractProducedTargets(planTargets, phase3Phase2SkuTargets.filter(target => target.channel === 'Makro'))
+        }
+        return planTargets
+      })()
+    : []
   const phaseOrderTargets = phase === 2 && shouldSubtractPhase1
     ? subtractProducedTargets(baseOrderTargets, phase1SkuTargets)
     : phase === 3
-      ? [...makroTargets, ...phase3Plan100Targets]
+      ? [...phase3MakroTargets, ...phase3Plan100Targets]
       : baseOrderTargets
   const shouldAllocateByYield = phase === 1 || phase === 2 || phase === 3
   const orderTargets = shouldAllocateByYield
