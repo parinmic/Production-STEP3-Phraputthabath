@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged, fetchLatestMakroOrders } from '@/lib/generate-plan-basic'
+import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged, fetchLatestMakroOrders, fetchOpeningStock0010, lookupOpeningStockKg } from '@/lib/generate-plan-basic'
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
-interface PlanCheckRow { station: string; sku: string; skuName: string | null; plan100: ChannelQty; produced: ChannelQty }
+interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     const productivityByGroup = await fetchProductivityByGroup()
     const skuLookup = buildSkuLookup(productivityByGroup)
 
-    const [plan100Rows, makroRows, assignRows] = await Promise.all([
+    const [plan100Rows, makroRows, assignRows, openingStock] = await Promise.all([
       fetchPaged<{ sap: string; product_name: string | null; lotus_weight: number | null; cpft_weight: number | null }>(
         'production_plan_100',
         'sap, product_name, lotus_weight, cpft_weight',
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
         'table_name, sku, target_quantity, channel',
         query => query.eq('production_date', date).in('table_name', BASIC_STATIONS).in('channel', ['Wet Market', 'LOTUS', 'Makro']),
       ),
+      fetchOpeningStock0010(),
     ])
 
     const rowMap = new Map<string, PlanCheckRow>()
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
           station: prod.station,
           sku: prod.sku,
           skuName: prod.skuName,
+          openingStockKg: round2(lookupOpeningStockKg(openingStock, prod.sku, prod.skuName)),
           plan100: { wetMarket: 0, lotus: 0, makro: 0 },
           produced: { wetMarket: 0, lotus: 0, makro: 0 },
         }

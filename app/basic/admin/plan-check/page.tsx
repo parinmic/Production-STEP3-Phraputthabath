@@ -11,7 +11,7 @@ const STATION_COLORS: Record<string, string> = {
 }
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
-interface PlanCheckRow { station: string; sku: string; skuName: string | null; plan100: ChannelQty; produced: ChannelQty }
+interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty }
 
 function fmt(n: number): string {
   return n > 0 ? n.toLocaleString('th-TH', { maximumFractionDigits: 0 }) : '—'
@@ -106,6 +106,7 @@ export default function BasicPlanCheckPage() {
               <tr>
                 <th rowSpan={2} className="px-4 py-2 text-left font-semibold text-gray-700 align-bottom">สายพาน</th>
                 <th rowSpan={2} className="px-4 py-2 text-left font-semibold text-gray-700 align-bottom">SKU</th>
+                <th rowSpan={2} className="px-3 py-2 text-right font-semibold text-gray-700 align-bottom border-l border-gray-200">ปริมาณ สต็อกยกมา</th>
                 <th colSpan={3} className="px-4 py-2 text-center font-semibold text-gray-700 border-l border-gray-200">แผน 100%</th>
                 <th colSpan={3} className="px-4 py-2 text-center font-semibold text-gray-700 border-l border-gray-200">แผนผลิต</th>
               </tr>
@@ -122,7 +123,7 @@ export default function BasicPlanCheckPage() {
               {grouped.map(({ station, items }) => (
                 <Fragment key={station}>
                   <tr className="bg-slate-100/70">
-                    <td colSpan={8} className="px-4 py-1.5">
+                    <td colSpan={9} className="px-4 py-1.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
                         {station}
                       </span>
@@ -135,6 +136,7 @@ export default function BasicPlanCheckPage() {
                         <span className="font-medium">{r.skuName ?? r.sku}</span>
                         <span className="block text-xs text-gray-400 font-mono">{r.sku}</span>
                       </td>
+                      <td className="px-3 py-2.5 text-right text-gray-700 border-l border-gray-200">{fmt(r.openingStockKg)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700 border-l border-gray-100">{fmt(r.plan100.wetMarket)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmt(r.plan100.lotus)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmt(r.plan100.makro)}</td>
@@ -148,7 +150,7 @@ export default function BasicPlanCheckPage() {
             </tbody>
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
-                <td colSpan={2} className="px-4 py-3 text-right font-semibold text-gray-700">รวมทั้งหมด</td>
+                <td colSpan={3} className="px-4 py-3 text-right font-semibold text-gray-700">รวมทั้งหมด</td>
                 <td className="px-3 py-3 text-right font-bold text-gray-900 border-l border-gray-200">{fmt(grandPlan100.wetMarket)}</td>
                 <td className="px-3 py-3 text-right font-bold text-gray-900">{fmt(grandPlan100.lotus)}</td>
                 <td className="px-3 py-3 text-right font-bold text-gray-900">{fmt(grandPlan100.makro)}</td>

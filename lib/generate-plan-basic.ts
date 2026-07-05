@@ -301,7 +301,7 @@ async function fetchBagSizeMap(): Promise<Map<string, number>> {
 // independently at each phase looks like double-counting but telescopes to exactly one deduction
 // from the day's final order total, since each phase's "already produced" figure already reflects
 // its own stock-adjusted target.
-async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, number>; byName: Map<string, number> }> {
+export async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, number>; byName: Map<string, number> }> {
   const byCode = new Map<string, number>()
   const byName = new Map<string, number>()
 
@@ -334,7 +334,7 @@ async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, number>; b
   return { byCode, byName }
 }
 
-function lookupOpeningStockKg(stock: { byCode: Map<string, number>; byName: Map<string, number> }, sku: string, skuName: string | null): number {
+export function lookupOpeningStockKg(stock: { byCode: Map<string, number>; byName: Map<string, number> }, sku: string, skuName: string | null): number {
   return stock.byCode.get(normalizeSku(sku)) ?? stock.byName.get(normMatName(skuName ?? '')) ?? 0
 }
 
