@@ -19,7 +19,7 @@ export async function GET() {
     const sku           = String(r['SAP'] ?? '').trim()
     const sku_name      = String(r['ชื่อสินค้า'] ?? '').trim()
     const product_group = String(r['กลุ่มสินค้า'] ?? '').trim()
-    const station       = String(r['จุดงาน'] ?? '').trim()
+    const station       = String(r['สายพาน'] ?? '').trim()
     const product       = String(r['Product'] ?? '').trim()
     if (!sku || seen.has(sku)) continue
     seen.add(sku)

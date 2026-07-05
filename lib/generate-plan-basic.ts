@@ -23,6 +23,7 @@ export interface BasicProductivitySku {
   sku: string
   skuName: string | null
   product: string | null
+  stations: string[]
 }
 
 export interface BasicSkuTarget {
@@ -426,44 +427,90 @@ export async function fetchProductivityByGroup(): Promise<Map<string, { station:
   )
 
   const map = new Map<string, { station: string; skus: BasicProductivitySku[] }>()
-  const seenSkuByGroup = new Set<string>()
+  const skuEntryByGroup = new Map<string, Map<string, BasicProductivitySku>>()
   for (const row of data ?? []) {
     const r = row.row_data as Record<string, unknown>
     const sku = String(r['SAP'] ?? '').trim()
     const skuName = String(r['ชื่อสินค้า'] ?? '').trim() || null
     const productGroup = String(r['กลุ่มสินค้า'] ?? '').trim()
-    const station = String(r['จุดงาน'] ?? '').trim()
+    const station = String(r['สายพาน'] ?? '').trim()
     const product = String(r['Product'] ?? '').trim() || null
     if (!productGroup) continue
 
     const current = map.get(productGroup) ?? { station, skus: [] }
     if (!current.station && station) current.station = station
 
-    const seenKey = `${productGroup}|||${sku}`
-    if (sku && !seenSkuByGroup.has(seenKey)) {
-      current.skus.push({ sku, skuName, product })
-      seenSkuByGroup.add(seenKey)
+    const skuEntries = skuEntryByGroup.get(productGroup) ?? new Map<string, BasicProductivitySku>()
+    if (sku) {
+      const entry = skuEntries.get(sku)
+      if (!entry) {
+        const created: BasicProductivitySku = { sku, skuName, product, stations: station ? [station] : [] }
+        skuEntries.set(sku, created)
+        current.skus.push(created)
+      } else if (station && !entry.stations.includes(station)) {
+        entry.stations.push(station)
+      }
     }
+    skuEntryByGroup.set(productGroup, skuEntries)
     map.set(productGroup, current)
   }
   return map
 }
 
 export function buildSkuLookup(productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>) {
-  const lookup = new Map<string, { sku: string; skuName: string | null; productGroup: string; station: string | null }>()
+  const lookup = new Map<string, { sku: string; skuName: string | null; productGroup: string; station: string | null; stations: string[] }>()
   for (const [productGroup, group] of productivityByGroup.entries()) {
     for (const sku of group.skus) {
       const norm = normalizeSku(sku.sku)
       if (!norm || lookup.has(norm)) continue
+      const stations = sku.stations.length ? sku.stations : (group.station ? [group.station] : [])
       lookup.set(norm, {
         sku: sku.sku,
         skuName: sku.skuName,
         productGroup,
         station: group.station || null,
+        stations,
       })
     }
   }
   return lookup
+}
+
+// Same-name SKUs that appear under more than one belt (สายพาน) in Mas Productivity Basic are a
+// single byproduct produced independently by each belt as it processes its own carcass part —
+// there is no per-belt yield split yet, so the day's total target is divided evenly across the
+// belts that can produce it.
+function splitSkuTargetsByStation(
+  skuTargets: BasicSkuTarget[],
+  skuLookup: Map<string, { sku: string; skuName: string | null; productGroup: string; station: string | null; stations: string[] }>,
+): BasicSkuTarget[] {
+  const result: BasicSkuTarget[] = []
+  for (const target of skuTargets) {
+    const stations = skuLookup.get(normalizeSku(target.sku))?.stations ?? (target.station ? [target.station] : [])
+    if (stations.length <= 1) {
+      result.push(stations[0] ? { ...target, station: stations[0] } : target)
+      continue
+    }
+
+    const n = stations.length
+    const baseShare = Math.floor((target.quantityKg / n) * 100) / 100
+    let allocated = 0
+    stations.forEach((station, idx) => {
+      const isLast = idx === n - 1
+      const shareKg = isLast ? Math.round((target.quantityKg - allocated) * 100) / 100 : baseShare
+      allocated = Math.round((allocated + shareKg) * 100) / 100
+      if (shareKg <= 0) return
+      const ratio = target.quantityKg > 0 ? shareKg / target.quantityKg : 0
+      result.push({
+        ...target,
+        station,
+        quantityKg: shareKg,
+        requestedQuantityKg: target.requestedQuantityKg != null ? Math.round(target.requestedQuantityKg * ratio * 100) / 100 : target.requestedQuantityKg,
+        shortageKg: target.shortageKg != null ? Math.round(target.shortageKg * ratio * 100) / 100 : target.shortageKg,
+      })
+    })
+  }
+  return result
 }
 
 function channelPriorityKey(channel: string): string {
@@ -1440,7 +1487,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const balanceTargets = shouldAllocateByYield
     ? await buildEnoughYieldBalanceTargets(date, targets, orderTargets, productivityByGroup)
     : []
-  const skuTargets = roundSkuTargetsDownToBag([...orderTargets, ...balanceTargets], bagSizeMap)
+  const roundedSkuTargets = roundSkuTargetsDownToBag([...orderTargets, ...balanceTargets], bagSizeMap)
+  const skuTargets = splitSkuTargetsByStation(roundedSkuTargets, buildSkuLookup(productivityByGroup))
 
   return {
     success: true,
