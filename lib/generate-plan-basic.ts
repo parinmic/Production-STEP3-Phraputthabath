@@ -297,6 +297,48 @@ function roundDownToBag(bagSizeMap: Map<string, number>, sku: string, qty: numbe
   return Math.floor((qty / wpb) + 1e-9) * wpb
 }
 
+// A SKU's demand often lands in this list as several rows (Makro order + Wet Market order +
+// Yield Balance filler, split further across allocation attempts). Flooring each row to the
+// nearest bag independently zeroes out any row smaller than one bag even when the SKU's combined
+// output easily covers a whole bag — e.g. Wet Market 3kg + Yield Balance 4kg both vanish under a
+// 5kg bag even though together they're 7kg. Instead, floor the SKU's total once, then trim only
+// the Yield Balance row (discretionary filler, not a placed order) to absorb the remainder;
+// firm channel orders are only trimmed if Yield Balance alone can't cover the loss.
+function roundSkuTargetsDownToBag(list: BasicSkuTarget[], bagSizeMap: Map<string, number>): BasicSkuTarget[] {
+  const bySku = new Map<string, BasicSkuTarget[]>()
+  for (const t of list) {
+    const group = bySku.get(t.sku) ?? []
+    group.push(t)
+    bySku.set(t.sku, group)
+  }
+
+  const result: BasicSkuTarget[] = []
+  for (const [sku, group] of Array.from(bySku.entries())) {
+    const total = group.reduce((sum: number, t: BasicSkuTarget) => sum + t.quantityKg, 0)
+    const roundedTotal = roundDownToBag(bagSizeMap, sku, total)
+    let trim = Math.round((total - roundedTotal) * 100) / 100
+
+    const trimOrder = [...group].sort((a, b) => {
+      const aBalance = a.channel === 'Yield Balance' ? 0 : 1
+      const bBalance = b.channel === 'Yield Balance' ? 0 : 1
+      if (aBalance !== bBalance) return aBalance - bBalance
+      return (b.channelPriority ?? 999) - (a.channelPriority ?? 999)
+    })
+
+    for (const t of trimOrder) {
+      if (trim <= 0) {
+        result.push(t)
+        continue
+      }
+      const take = Math.min(trim, t.quantityKg)
+      const newQty = Math.round((t.quantityKg - take) * 100) / 100
+      trim = Math.round((trim - take) * 100) / 100
+      if (newQty > 0) result.push({ ...t, quantityKg: newQty })
+    }
+  }
+  return result
+}
+
 export async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
   const data = await fetchPaged<{ row_data: Record<string, unknown> }>(
     'master_logic_calculation',
@@ -1268,9 +1310,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const balanceTargets = shouldAllocateByYield
     ? await buildEnoughYieldBalanceTargets(date, targets, orderTargets, productivityByGroup)
     : []
-  const skuTargets = [...orderTargets, ...balanceTargets]
-    .map(t => ({ ...t, quantityKg: roundDownToBag(bagSizeMap, t.sku, t.quantityKg) }))
-    .filter(t => t.quantityKg > 0)
+  const skuTargets = roundSkuTargetsDownToBag([...orderTargets, ...balanceTargets], bagSizeMap)
 
   return {
     success: true,
