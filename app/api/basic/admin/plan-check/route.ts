@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchLatestPlan100 } from '@/lib/supabase'
 import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged } from '@/lib/generate-plan-basic'
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
@@ -22,7 +21,11 @@ export async function GET(req: NextRequest) {
     const skuLookup = buildSkuLookup(productivityByGroup)
 
     const [plan100Rows, makroRows, assignRows] = await Promise.all([
-      fetchLatestPlan100([date]),
+      fetchPaged<{ sap: string; product_name: string | null; lotus_weight: number | null; cpft_weight: number | null }>(
+        'production_plan_100',
+        'sap, product_name, lotus_weight, cpft_weight',
+        query => query.eq('plan_date', date),
+      ),
       fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
         'makro_orders',
         'sku, sku_name, quantity',
