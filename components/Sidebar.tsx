@@ -61,7 +61,8 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+    router.push('/')
+    router.refresh()
   }
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))

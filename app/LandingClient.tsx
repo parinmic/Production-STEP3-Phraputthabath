@@ -29,6 +29,7 @@ export default function LandingClient({ initialUser }: { initialUser: SessionUse
     if (data.success) {
       setSession(data.user)
       setView('select')
+      router.refresh() // sync the cached "/" render with the new cookie so browser Back doesn't show the stale pre-login screen
     } else {
       setError(data.message ?? 'เข้าสู่ระบบไม่สำเร็จ')
     }
@@ -41,6 +42,7 @@ export default function LandingClient({ initialUser }: { initialUser: SessionUse
     if (data.success) {
       setSession(data.user)
       setView('select')
+      router.refresh()
     }
   }
 
@@ -51,6 +53,7 @@ export default function LandingClient({ initialUser }: { initialUser: SessionUse
     setUsername('')
     setPassword('')
     setError('')
+    router.refresh()
   }
 
   /* ── Login view ─────────────────────────────────────────── */
