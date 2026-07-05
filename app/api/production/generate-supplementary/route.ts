@@ -372,14 +372,17 @@ export async function POST(req: NextRequest) {
     if (!latestLog)
       return NextResponse.json({ success: false, message: `ไม่พบข้อมูลแผนเสริม ${slotStr} — กรุณาอัพโหลดก่อน` }, { status: 400 })
 
+    // เช็ค delivery_date ให้ตรงกับวันที่กำลัง generate — กันไฟล์เสริมเก่า (อัพครั้งล่าสุดแต่คนละวัน)
+    // ถูกดึงมาใช้ซ้ำในวันที่ยังไม่มีใครอัพไฟล์ใหม่
     const { data: planData } = await supabase
       .from('production_plan_supplementary')
       .select('sku, sku_name, quantity, loading_time, deadline_time')
       .eq('source_file', latestLog.source_file)
       .eq('slot', slotStr)
+      .eq('delivery_date', productionDate)
 
     if (!planData?.length)
-      return NextResponse.json({ success: false, message: 'ไม่พบรายการในแผนเสริม' }, { status: 400 })
+      return NextResponse.json({ success: false, message: `ไม่พบรายการแผนเสริมสำหรับวันที่ ${productionDate} — กรุณาอัพโหลดไฟล์แผนเสริมของวันนี้` }, { status: 400 })
 
     // deadline_time = finish before this time (e.g. "13:00")
     const deadlineStr = planData[0].deadline_time as string | null

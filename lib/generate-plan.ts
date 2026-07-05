@@ -2687,8 +2687,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('table_name', `production_plan_supplementary_${slot}`)
       .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
     if (!log) return null
+    // เช็ค delivery_date ให้ตรงกับวันที่กำลัง generate จริง — กันไฟล์เสริมเก่า (อัพครั้งล่าสุดแต่คนละวัน)
+    // ถูกดึงมาใช้ซ้ำในวันอื่นที่ยังไม่มีใครอัพไฟล์ใหม่
     const { data } = await supabase.from('production_plan_supplementary')
-      .select('sku, sku_name, quantity, deadline_time').eq('source_file', log.source_file).eq('slot', String(slot))
+      .select('sku, sku_name, quantity, deadline_time')
+      .eq('source_file', log.source_file).eq('slot', String(slot)).eq('delivery_date', productionDate)
     if (!data?.length) return null
     const deadlineStr = data[0].deadline_time as string | null
     if (!deadlineStr) return null
