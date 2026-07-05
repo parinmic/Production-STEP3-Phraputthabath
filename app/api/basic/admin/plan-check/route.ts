@@ -5,6 +5,8 @@ const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบส
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
 interface ExtraQty { supplementary: number; raw: number }
+interface ChannelNote { stockCovered: number; shortage: number; surplus: number }
+interface ChannelNotes { wetMarket: ChannelNote; lotus: ChannelNote; makro: ChannelNote }
 interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty }
 
 function round2(n: number): number {
@@ -27,6 +29,31 @@ function rebalanceLotusWetProduced(row: PlanCheckRow) {
   if (wetToLotus > 0) {
     row.produced.lotus += wetToLotus
     row.produced.wetMarket -= wetToLotus
+  }
+}
+
+function buildNotes(row: PlanCheckRow): ChannelNotes {
+  const wetStockCovered = Math.min(row.openingStockKg, row.plan100.wetMarket)
+  const wetNeed = Math.max(0, row.plan100.wetMarket - wetStockCovered)
+  const lotusNeed = row.plan100.lotus
+  const makroNeed = row.plan100.makro
+
+  return {
+    wetMarket: {
+      stockCovered: round2(wetStockCovered),
+      shortage: round2(Math.max(0, wetNeed - row.produced.wetMarket)),
+      surplus: round2(Math.max(0, row.produced.wetMarket - wetNeed)),
+    },
+    lotus: {
+      stockCovered: 0,
+      shortage: round2(Math.max(0, lotusNeed - row.produced.lotus)),
+      surplus: round2(Math.max(0, row.produced.lotus - lotusNeed)),
+    },
+    makro: {
+      stockCovered: 0,
+      shortage: round2(Math.max(0, makroNeed - row.produced.makro)),
+      surplus: round2(Math.max(0, row.produced.makro - makroNeed)),
+    },
   }
 }
 
@@ -114,6 +141,7 @@ export async function GET(req: NextRequest) {
         plan100: { wetMarket: round2(r.plan100.wetMarket), lotus: round2(r.plan100.lotus), makro: round2(r.plan100.makro) },
         produced: { wetMarket: round2(r.produced.wetMarket), lotus: round2(r.produced.lotus), makro: round2(r.produced.makro) },
         extra: { supplementary: round2(r.extra.supplementary), raw: round2(r.extra.raw) },
+        notes: buildNotes(r),
       }))
       .sort((a, b) => BASIC_STATIONS.indexOf(a.station) - BASIC_STATIONS.indexOf(b.station) || a.sku.localeCompare(b.sku))
 

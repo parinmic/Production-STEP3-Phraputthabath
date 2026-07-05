@@ -12,7 +12,9 @@ const STATION_COLORS: Record<string, string> = {
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
 interface ExtraQty { supplementary: number; raw: number }
-interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty }
+interface ChannelNote { stockCovered: number; shortage: number; surplus: number }
+interface ChannelNotes { wetMarket: ChannelNote; lotus: ChannelNote; makro: ChannelNote }
+interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty; notes: ChannelNotes }
 
 function fmt(n: number): string {
   return n > 0 ? n.toLocaleString('th-TH', { maximumFractionDigits: 0 }) : '—'
@@ -26,16 +28,47 @@ function sumChannel(rows: PlanCheckRow[], field: 'plan100' | 'produced'): Channe
   }), { wetMarket: 0, lotus: 0, makro: 0 })
 }
 
-function planTotal(r: PlanCheckRow): number {
-  return r.plan100.wetMarket + r.plan100.lotus + r.plan100.makro
+function sumNotes(rows: PlanCheckRow[], channel: keyof ChannelNotes): ChannelNote {
+  return rows.reduce((acc, r) => ({
+    stockCovered: acc.stockCovered + r.notes[channel].stockCovered,
+    shortage: acc.shortage + r.notes[channel].shortage,
+    surplus: acc.surplus + r.notes[channel].surplus,
+  }), { stockCovered: 0, shortage: 0, surplus: 0 })
 }
 
-function producedTotal(r: PlanCheckRow): number {
-  return r.produced.wetMarket + r.produced.lotus + r.produced.makro + r.extra.supplementary + r.extra.raw
-}
-
-function shortageOf(r: PlanCheckRow): number {
-  return Math.max(0, planTotal(r) - producedTotal(r))
+function PlanQtyCell({
+  qty,
+  note,
+  supplementary = 0,
+  raw = 0,
+  total = false,
+}: {
+  qty: number
+  note: ChannelNote
+  supplementary?: number
+  raw?: number
+  total?: boolean
+}) {
+  return (
+    <>
+      <span className={total ? 'font-bold text-emerald-700' : 'font-semibold text-emerald-700'}>{fmt(qty)}</span>
+      {note.stockCovered > 0 && (
+        <span className="block text-[11px] text-sky-600">(มีสต็อกยกมา {fmt(note.stockCovered)})</span>
+      )}
+      {note.surplus > 0 && (
+        <span className="block text-[11px] text-amber-600">(+{fmt(note.surplus)} เนื้อเหลือ)</span>
+      )}
+      {supplementary > 0 && (
+        <span className="block text-[11px] text-amber-600">(+{fmt(supplementary)} เสริม)</span>
+      )}
+      {raw > 0 && (
+        <span className="block text-[11px] text-indigo-600">(+{fmt(raw)} ชดเชย Yield)</span>
+      )}
+      {note.shortage > 0 && (
+        <span className="block text-[11px] text-red-600">(ขาด {fmt(note.shortage)} เนื้อไม่พอ)</span>
+      )}
+    </>
+  )
 }
 
 export default function BasicPlanCheckPage() {
@@ -68,9 +101,11 @@ export default function BasicPlanCheckPage() {
 
   const grandPlan100 = sumChannel(rows, 'plan100')
   const grandProduced = sumChannel(rows, 'produced')
-  const grandProducedTotal = rows.reduce((s, r) => s + producedTotal(r), 0)
   const grandExtraSupp = rows.reduce((s, r) => s + r.extra.supplementary, 0)
-  const grandShortage = rows.reduce((s, r) => s + shortageOf(r), 0)
+  const grandExtraRaw = rows.reduce((s, r) => s + r.extra.raw, 0)
+  const grandWetNotes = sumNotes(rows, 'wetMarket')
+  const grandLotusNotes = sumNotes(rows, 'lotus')
+  const grandMakroNotes = sumNotes(rows, 'makro')
 
   return (
     <div className="space-y-6">
@@ -78,7 +113,7 @@ export default function BasicPlanCheckPage() {
         <h1 className="text-2xl font-bold text-gray-900">ตรวจสอบแผนผลิต</h1>
         <p className="text-gray-500 mt-1 text-sm">
           เทียบแผน 100% (ออเดอร์ที่อัพโหลด — Makro รอบ 14:00 / LOTUS และ Wet Market จากแผนผลิต 100%) กับแผนผลิตจริง แยกตามสายพานและ SKU
-          ({'"'}ผลิตจริงทั้งหมด{'"'} รวมงานเสริมและ RAW ที่ผลิตชดเชยยอดยีลด์ส่วนเกินด้วย)
+          วงเล็บใต้แผนผลิตแสดงสต็อกยกมา งานเสริม RAW ชดเชย Yield เนื้อเหลือ และยอดขาดหลังหักสต็อกแล้ว
         </p>
       </div>
 
@@ -118,7 +153,7 @@ export default function BasicPlanCheckPage() {
 
       {!loading && !error && rows.length > 0 && (
         <div className="border border-gray-200 rounded-2xl overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm bg-white min-w-[880px]">
+          <table className="w-full text-sm bg-white min-w-[820px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th rowSpan={2} className="px-4 py-2 text-left font-semibold text-gray-700 align-bottom">สายพาน</th>
@@ -126,7 +161,6 @@ export default function BasicPlanCheckPage() {
                 <th rowSpan={2} className="px-3 py-2 text-right font-semibold text-gray-700 align-bottom border-l border-gray-200">ปริมาณ สต็อกยกมา</th>
                 <th colSpan={3} className="px-4 py-2 text-center font-semibold text-gray-700 border-l border-gray-200">แผน 100%</th>
                 <th colSpan={3} className="px-4 py-2 text-center font-semibold text-gray-700 border-l border-gray-200">แผนผลิต</th>
-                <th rowSpan={2} className="px-4 py-2 text-right font-semibold text-gray-700 align-bottom border-l border-gray-200">ผลิตจริงทั้งหมด</th>
               </tr>
               <tr className="text-xs text-gray-500">
                 <th className="px-3 py-1.5 text-right font-medium border-l border-gray-200">Wet Market</th>
@@ -141,7 +175,7 @@ export default function BasicPlanCheckPage() {
               {grouped.map(({ station, items }) => (
                 <Fragment key={station}>
                   <tr className="bg-slate-100/70">
-                    <td colSpan={10} className="px-4 py-1.5">
+                    <td colSpan={9} className="px-4 py-1.5">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[station] ?? 'bg-gray-100 text-gray-700'}`}>
                         {station}
                       </span>
@@ -158,17 +192,14 @@ export default function BasicPlanCheckPage() {
                       <td className="px-3 py-2.5 text-right text-gray-700 border-l border-gray-100">{fmt(r.plan100.wetMarket)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmt(r.plan100.lotus)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmt(r.plan100.makro)}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-emerald-700 border-l border-gray-100">{fmt(r.produced.wetMarket)}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">{fmt(r.produced.lotus)}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-emerald-700">{fmt(r.produced.makro)}</td>
-                      <td className="px-3 py-2.5 text-right border-l border-gray-200">
-                        <span className="font-semibold text-gray-900">{fmt(producedTotal(r))}</span>
-                        {r.extra.supplementary > 0 && (
-                          <span className="block text-[11px] text-amber-600">(เสริม +{fmt(r.extra.supplementary)})</span>
-                        )}
-                        {shortageOf(r) > 0 && (
-                          <span className="block text-[11px] text-red-600">(ขาด -{fmt(shortageOf(r))} เนื้อไม่พอ)</span>
-                        )}
+                      <td className="px-3 py-2.5 text-right border-l border-gray-100">
+                        <PlanQtyCell qty={r.produced.wetMarket} note={r.notes.wetMarket} supplementary={r.extra.supplementary} raw={r.extra.raw} />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <PlanQtyCell qty={r.produced.lotus} note={r.notes.lotus} />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <PlanQtyCell qty={r.produced.makro} note={r.notes.makro} />
                       </td>
                     </tr>
                   ))}
@@ -181,17 +212,14 @@ export default function BasicPlanCheckPage() {
                 <td className="px-3 py-3 text-right font-bold text-gray-900 border-l border-gray-200">{fmt(grandPlan100.wetMarket)}</td>
                 <td className="px-3 py-3 text-right font-bold text-gray-900">{fmt(grandPlan100.lotus)}</td>
                 <td className="px-3 py-3 text-right font-bold text-gray-900">{fmt(grandPlan100.makro)}</td>
-                <td className="px-3 py-3 text-right font-bold text-emerald-700 border-l border-gray-200">{fmt(grandProduced.wetMarket)}</td>
-                <td className="px-3 py-3 text-right font-bold text-emerald-700">{fmt(grandProduced.lotus)}</td>
-                <td className="px-3 py-3 text-right font-bold text-emerald-700">{fmt(grandProduced.makro)}</td>
                 <td className="px-3 py-3 text-right border-l border-gray-200">
-                  <span className="font-bold text-gray-900">{fmt(grandProducedTotal)}</span>
-                  {grandExtraSupp > 0 && (
-                    <span className="block text-[11px] text-amber-600">(เสริม +{fmt(grandExtraSupp)})</span>
-                  )}
-                  {grandShortage > 0 && (
-                    <span className="block text-[11px] text-red-600">(ขาด -{fmt(grandShortage)} เนื้อไม่พอ)</span>
-                  )}
+                  <PlanQtyCell qty={grandProduced.wetMarket} note={grandWetNotes} supplementary={grandExtraSupp} raw={grandExtraRaw} total />
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <PlanQtyCell qty={grandProduced.lotus} note={grandLotusNotes} total />
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <PlanQtyCell qty={grandProduced.makro} note={grandMakroNotes} total />
                 </td>
               </tr>
             </tfoot>
