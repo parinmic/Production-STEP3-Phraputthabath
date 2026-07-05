@@ -157,23 +157,69 @@ function findClosestWeight(avg: number, weights: number[]): number {
   return weights.reduce((best, w) => Math.abs(w - avg) < Math.abs(best - avg) ? w : best, weights[0])
 }
 
-function phaseCapacityPigs(phaseCfg: BasicPhaseConfig, rateSecPerPig: number): number {
+// Merges overlapping windows before summing so a recorded breakline that coincides with the
+// static lunch/dinner break (or another breakline) isn't double-counted against gross minutes.
+function sumBreakMinutes(breaks: BasicBreakWindow[], rangeStart: number, rangeEnd: number): number {
+  const clipped = breaks
+    .map(br => [Math.max(rangeStart, br.startMins), Math.min(rangeEnd, br.endMins)] as [number, number])
+    .filter(([s, e]) => e > s)
+    .sort((a, b) => a[0] - b[0])
+
+  let total = 0
+  let curStart = -Infinity
+  let curEnd = -Infinity
+  for (const [s, e] of clipped) {
+    if (s > curEnd) {
+      if (curEnd > curStart) total += curEnd - curStart
+      curStart = s
+      curEnd = e
+    } else {
+      curEnd = Math.max(curEnd, e)
+    }
+  }
+  if (curEnd > curStart) total += curEnd - curStart
+  return total
+}
+
+// Only "ทั้งหมด" (whole-line) breaklines stop carcass cutting itself, so only those reduce total
+// pig capacity here — a single-station breakline (e.g. ไหล่เบสิค) doesn't slow the shared
+// carcass line, it only costs that station its own output, which isn't modeled by this function.
+export async function fetchDynamicBreakWindows(date: string): Promise<BasicBreakWindow[]> {
+  const { data, error } = await supabase
+    .from('basic_line_breaks')
+    .select('start_time, end_time')
+    .eq('production_date', date)
+    .eq('station', 'ทั้งหมด')
+  if (error) throw error
+
+  return (data ?? [])
+    .map(row => {
+      const [sh, sm] = String(row.start_time).split(':').map(Number)
+      const [eh, em] = String(row.end_time).split(':').map(Number)
+      return { startTime: String(row.start_time), endTime: String(row.end_time), startMins: sh * 60 + sm, endMins: eh * 60 + em }
+    })
+    .filter(b => b.endMins > b.startMins)
+}
+
+function phaseCapacityPigs(phaseCfg: BasicPhaseConfig, rateSecPerPig: number, dynamicBreaks: BasicBreakWindow[] = []): number {
   if (rateSecPerPig <= 0) return 0
   if (phaseCfg.endMins == null) return Number.MAX_SAFE_INTEGER
   const grossMins = phaseCfg.endMins - phaseCfg.startMins
-  const breakMins = phaseCfg.breaks.reduce((sum, br) => {
-    const overlapStart = Math.max(phaseCfg.startMins, br.startMins)
-    const overlapEnd = Math.min(phaseCfg.endMins!, br.endMins)
-    return sum + Math.max(0, overlapEnd - overlapStart)
-  }, 0)
+  const breakMins = sumBreakMinutes([...phaseCfg.breaks, ...dynamicBreaks], phaseCfg.startMins, phaseCfg.endMins)
   return Math.floor(((grossMins - breakMins) * 60) / rateSecPerPig)
 }
 
-function consumeLotsForPhase(lots: SelectedLot[], phase: BasicPhase, phaseCfg: BasicPhaseConfig, rateSecPerPig: number): SelectedLot[] {
+function consumeLotsForPhase(
+  lots: SelectedLot[],
+  phase: BasicPhase,
+  phaseCfg: BasicPhaseConfig,
+  rateSecPerPig: number,
+  dynamicBreaks: BasicBreakWindow[] = [],
+): SelectedLot[] {
   const capacityByPhase = {
-    1: phaseCapacityPigs(BASIC_PHASES[1], rateSecPerPig),
-    2: phaseCapacityPigs(BASIC_PHASES[2], rateSecPerPig),
-    3: phaseCapacityPigs(BASIC_PHASES[3], rateSecPerPig),
+    1: phaseCapacityPigs(BASIC_PHASES[1], rateSecPerPig, dynamicBreaks),
+    2: phaseCapacityPigs(BASIC_PHASES[2], rateSecPerPig, dynamicBreaks),
+    3: phaseCapacityPigs(BASIC_PHASES[3], rateSecPerPig, dynamicBreaks),
   } satisfies Record<BasicPhase, number>
 
   const sorted = lots.slice().sort((a, b) => a.order - b.order)
@@ -754,7 +800,8 @@ async function buildPhase1SkuTargets(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
   bagSizeMap: Map<string, number>,
 ): Promise<BasicSkuTarget[]> {
-  const phase1Lots = consumeLotsForPhase(lots, 1, BASIC_PHASES[1], rateSecPerPig)
+  const dynamicBreaks = await fetchDynamicBreakWindows(date)
+  const phase1Lots = consumeLotsForPhase(lots, 1, BASIC_PHASES[1], rateSecPerPig, dynamicBreaks)
   if (!phase1Lots.length) return []
 
   const phase1Targets = buildYieldTargetsFromLots(phase1Lots, masYield, productivityByGroup)
@@ -779,7 +826,8 @@ async function buildPhase2AllocatedTargets(
   bagSizeMap: Map<string, number>,
   includeZeroQuantity = false,
 ): Promise<BasicSkuTarget[]> {
-  const phase2Lots = consumeLotsForPhase(lots, 2, BASIC_PHASES[2], rateSecPerPig)
+  const dynamicBreaks = await fetchDynamicBreakWindows(date)
+  const phase2Lots = consumeLotsForPhase(lots, 2, BASIC_PHASES[2], rateSecPerPig, dynamicBreaks)
   if (!phase2Lots.length) return []
 
   const phase2Targets = buildYieldTargetsFromLots(phase2Lots, masYield, productivityByGroup)
@@ -1396,11 +1444,12 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   const date = params.date || todayBangkok()
   const phaseCfg = BASIC_PHASES[phase]
-  const [{ lots, rateSecPerPig }, masYield, productivityByGroup, bagSizeMap] = await Promise.all([
+  const [{ lots, rateSecPerPig }, masYield, productivityByGroup, bagSizeMap, dynamicBreaks] = await Promise.all([
     fetchSelectedLotsAndRate(),
     fetchLatestMasYield(supabase),
     fetchProductivityByGroup(),
     fetchBagSizeMap(),
+    fetchDynamicBreakWindows(date),
   ])
 
   if (!lots.length) {
@@ -1410,10 +1459,11 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     return { success: false, message: 'ไม่พบข้อมูล Mas Yield', phase, period: phaseCfg.period }
   }
 
-  const phaseLots = consumeLotsForPhase(lots, phase, phaseCfg, rateSecPerPig)
+  const phaseLots = consumeLotsForPhase(lots, phase, phaseCfg, rateSecPerPig, dynamicBreaks)
   if (!phaseLots.length) {
     return { success: false, message: `ไม่มีจำนวนหมูซีกเหลือสำหรับ Phase ${phase}`, phase, period: phaseCfg.period }
   }
+  const breaklineMinsInPhase = phaseCfg.endMins != null ? sumBreakMinutes(dynamicBreaks, phaseCfg.startMins, phaseCfg.endMins) : 0
 
   const targets = buildYieldTargetsFromLots(phaseLots, masYield, productivityByGroup)
   const [makroTargets, wetMarketTargets, lotusTargets, channelPriority] = phase === 1
@@ -1492,7 +1542,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   return {
     success: true,
-    message: `คำนวณ Yield Basic วันที่ ${date} Phase ${phase} ได้ ${targets.length} กลุ่มสินค้า${shouldAllocateByYield ? ` / Makro ${makroTargets.length} SKU / Wet Market ${wetMarketTargets.length} SKU / LOTUS ${lotusTargets.length} SKU / Balance ${balanceTargets.length} SKU${shouldSubtractPhase1 ? ` / หัก Phase 1 ${phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase1ForPhase3 ? ` / หัก Phase 1 ${phase3Phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase2ForPhase3 ? ` / หัก Phase 2 ${phase3Phase2SkuTargets.length} SKU` : ''}` : ''}`,
+    message: `คำนวณ Yield Basic วันที่ ${date} Phase ${phase} ได้ ${targets.length} กลุ่มสินค้า${shouldAllocateByYield ? ` / Makro ${makroTargets.length} SKU / Wet Market ${wetMarketTargets.length} SKU / LOTUS ${lotusTargets.length} SKU / Balance ${balanceTargets.length} SKU${shouldSubtractPhase1 ? ` / หัก Phase 1 ${phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase1ForPhase3 ? ` / หัก Phase 1 ${phase3Phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase2ForPhase3 ? ` / หัก Phase 2 ${phase3Phase2SkuTargets.length} SKU` : ''}` : ''}${breaklineMinsInPhase > 0 ? ` / หัก Breakline ${breaklineMinsInPhase} นาที` : ''}`,
     phase,
     period: phaseCfg.period,
     startTime: phaseCfg.startTime,
