@@ -47,6 +47,7 @@ export interface BasicSkuTarget {
   phase1DeductedKg?: number
   phase2DeductedKg?: number
   openingStockKg?: number
+  auditReasons?: string[]
   quantityKg: number
   neededByTime?: string
 }
@@ -643,6 +644,13 @@ function roundDownToBag(bagSizeMap: Map<string, number>, sku: string, qty: numbe
   return Math.floor((qty / wpb) + 1e-9) * wpb
 }
 
+function addAuditReason(target: BasicSkuTarget, reason: string | null | undefined): BasicSkuTarget {
+  if (!reason) return target
+  const reasons = new Set(target.auditReasons ?? [])
+  reasons.add(reason)
+  return { ...target, auditReasons: Array.from(reasons) }
+}
+
 // A SKU's demand often lands in this list as several rows (Makro order + Wet Market order +
 // Yield Balance filler, split further across allocation attempts). Flooring each row to the
 // nearest bag independently zeroes out any row smaller than one bag even when the SKU's combined
@@ -679,7 +687,7 @@ function roundSkuTargetsDownToBag(list: BasicSkuTarget[], bagSizeMap: Map<string
       const take = Math.min(trim, t.quantityKg)
       const newQty = Math.round((t.quantityKg - take) * 100) / 100
       trim = Math.round((trim - take) * 100) / 100
-      if (newQty > 0) result.push({ ...t, quantityKg: newQty })
+      if (newQty > 0) result.push({ ...addAuditReason(t, 'rounded_to_bag'), quantityKg: newQty })
     }
   }
   return result
@@ -847,12 +855,16 @@ function allocateTargetsByYield(
       const allocatedQuantityKg = Math.max(0, Math.min(remainingKg, target.quantityKg))
       remainingKg -= allocatedQuantityKg
 
+      const shortageKg = Math.round(Math.max(0, requestedQuantityKg - allocatedQuantityKg) * 100) / 100
       allocated.push({
         ...target,
         requestedQuantityKg,
-        shortageKg: Math.round(Math.max(0, requestedQuantityKg - allocatedQuantityKg) * 100) / 100,
+        shortageKg,
         allocationStatus: allocatedQuantityKg >= requestedQuantityKg ? 'full' : 'partial',
         channelPriority: channelPriority.get(channelPriorityKey(target.channel)) ?? 999,
+        auditReasons: shortageKg > 0
+          ? Array.from(new Set([...(target.auditReasons ?? []), 'raw_yield_limited']))
+          : target.auditReasons,
         quantityKg: Math.round(allocatedQuantityKg * 100) / 100,
       })
     }
@@ -920,6 +932,9 @@ function subtractProducedTargets(targets: BasicSkuTarget[], producedTargets: Bas
         rawOrderKg: Math.round(remainingKg * 100) / 100,
         requestedQuantityKg: Math.round(target.quantityKg * 100) / 100,
         phase1DeductedKg: Math.round(Math.min(target.quantityKg, deductedKg) * 100) / 100,
+        auditReasons: deductedKg > 0
+          ? Array.from(new Set([...(target.auditReasons ?? []), 'previous_phase_deducted']))
+          : target.auditReasons,
         quantityKg: Math.round(remainingKg * 100) / 100,
       }
     })
@@ -1001,6 +1016,9 @@ function subtractProducedTargetsAcrossLotusWetPool(
         rawOrderKg: roundedAllocated,
         requestedQuantityKg: Math.round((target.requestedQuantityKg ?? target.quantityKg) * 100) / 100,
         [field]: Math.round(Math.max(0, target.quantityKg - roundedAllocated) * 100) / 100,
+        auditReasons: roundedAllocated < target.quantityKg
+          ? Array.from(new Set([...(target.auditReasons ?? []), field === 'phase1DeductedKg' ? 'phase1_deducted' : 'phase2_deducted']))
+          : target.auditReasons,
         quantityKg: roundedAllocated,
       })
     }
@@ -1057,7 +1075,11 @@ async function buildPhase2AllocatedTargets(
     fetchLotus1400Targets(date, productivityByGroup),
     fetchBasicChannelPriority(2),
   ])
-  const baseOrderTargets = [...makroTargets, ...wetMarketTargets, ...lotusTargets]
+  const baseOrderTargets = [
+    ...makroTargets.map(target => addAuditReason(target, 'makro_1400_order')),
+    ...wetMarketTargets.map(target => addAuditReason(target, 'wet_market_1400_order')),
+    ...lotusTargets.map(target => addAuditReason(target, 'lotus_1400_order')),
+  ]
   const phase1Targets = subtractPhase1
     ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
@@ -1230,6 +1252,7 @@ async function fetchWetMarket1400Targets(
       const quantityKg = Math.max(0, t.quantityKg - openingStockKg)
       return {
         ...t,
+        auditReasons: openingStockKg > 0 ? Array.from(new Set([...(t.auditReasons ?? []), 'opening_stock'])) : t.auditReasons,
         openingStockKg: Math.round(openingStockKg * 100) / 100,
         quantityKg: Math.round(quantityKg * 100) / 100,
       }
@@ -1297,6 +1320,7 @@ async function fetchPlan100ChannelTargets(
       return {
         ...t,
         rawOrderKg: Math.round(t.rawOrderKg * 100) / 100,
+        auditReasons: openingStockKg > 0 ? Array.from(new Set([...(t.auditReasons ?? []), 'opening_stock'])) : t.auditReasons,
         openingStockKg: Math.round(openingStockKg * 100) / 100,
         quantityKg: Math.round(quantityKg * 100) / 100,
       }
@@ -1428,6 +1452,7 @@ async function fetchWetMarket1600AverageTargets(
         avgOrderKg: Math.round(avgOrderKg * 100) / 100,
         histDays: histDates.length,
         variance,
+        auditReasons: openingStockKg > 0 ? Array.from(new Set([...(t.auditReasons ?? []), 'opening_stock'])) : t.auditReasons,
         openingStockKg: Math.round(openingStockKg * 100) / 100,
         quantityKg: Math.round(quantityKg * 100) / 100,
       }
@@ -1720,7 +1745,11 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const shouldSubtractPhase1 = phase === 2 && Boolean(params.subtractPhase1FromPhase2)
   const shouldSubtractPhase1ForPhase3 = phase === 3 && Boolean(params.subtractPhase1FromPhase3)
   const shouldSubtractPhase2ForPhase3 = phase === 3 && Boolean(params.subtractPhase2FromPhase3)
-  const baseOrderTargets = [...makroTargets, ...wetMarketTargets, ...lotusTargets]
+  const baseOrderTargets = [
+    ...makroTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_makro_0800_estimate' : 'makro_1400_order')),
+    ...wetMarketTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_wet_market_average' : 'wet_market_plan100_or_1400')),
+    ...lotusTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_lotus_average' : 'lotus_plan100_or_1400')),
+  ]
   const phase1SkuTargets = shouldSubtractPhase1
     ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []

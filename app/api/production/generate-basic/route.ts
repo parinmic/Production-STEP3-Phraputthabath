@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
             t.productGroup ? `group:${t.productGroup}` : null,
             t.allocationStatus ? `allocation:${t.allocationStatus}` : null,
             Number(t.shortageKg ?? 0) > 0 ? `shortage:${Math.round(Number(t.shortageKg) * 100) / 100}` : null,
+            ...(t.auditReasons ?? []).map(reason => `reason:${reason}`),
           ].filter(Boolean).join('|')
 
       return {

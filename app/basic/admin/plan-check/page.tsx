@@ -12,7 +12,8 @@ const STATION_COLORS: Record<string, string> = {
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
 interface ExtraQty { supplementary: number; raw: number }
-interface ChannelNote { stockCovered: number; shortage: number; surplus: number }
+interface ReasonNote { label: string; quantity: number }
+interface ChannelNote { stockCovered: number; shortage: number; surplus: number; shortageReasons: ReasonNote[]; surplusReasons: ReasonNote[] }
 interface ChannelNotes { wetMarket: ChannelNote; lotus: ChannelNote; makro: ChannelNote }
 interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty; notes: ChannelNotes }
 
@@ -29,24 +30,40 @@ function sumChannel(rows: PlanCheckRow[], field: 'plan100' | 'produced'): Channe
 }
 
 function sumNotes(rows: PlanCheckRow[], channel: keyof ChannelNotes): ChannelNote {
-  return rows.reduce((acc, r) => ({
-    stockCovered: acc.stockCovered + r.notes[channel].stockCovered,
-    shortage: acc.shortage + r.notes[channel].shortage,
-    surplus: acc.surplus + r.notes[channel].surplus,
-  }), { stockCovered: 0, shortage: 0, surplus: 0 })
+  const shortageMap = new Map<string, number>()
+  const surplusMap = new Map<string, number>()
+  let stockCovered = 0
+  let shortage = 0
+  let surplus = 0
+  const add = (map: Map<string, number>, notes: ReasonNote[]) => {
+    for (const note of notes) map.set(note.label, (map.get(note.label) ?? 0) + note.quantity)
+  }
+  for (const r of rows) {
+    const note = r.notes[channel]
+    stockCovered += note.stockCovered
+    shortage += note.shortage
+    surplus += note.surplus
+    add(shortageMap, note.shortageReasons ?? [])
+    add(surplusMap, note.surplusReasons ?? [])
+  }
+  return {
+    stockCovered,
+    shortage,
+    surplus,
+    shortageReasons: Array.from(shortageMap.entries()).map(([label, quantity]) => ({ label, quantity })),
+    surplusReasons: Array.from(surplusMap.entries()).map(([label, quantity]) => ({ label, quantity })),
+  }
 }
 
 function PlanQtyCell({
   qty,
   note,
-  surplusLabel = 'เนื้อเหลือ',
   supplementary = 0,
   raw = 0,
   total = false,
 }: {
   qty: number
   note: ChannelNote
-  surplusLabel?: string
   supplementary?: number
   raw?: number
   total?: boolean
@@ -57,18 +74,18 @@ function PlanQtyCell({
       {note.stockCovered > 0 && (
         <span className="block text-[11px] text-sky-600">(มีสต็อกยกมา {fmt(note.stockCovered)})</span>
       )}
-      {note.surplus > 0 && (
-        <span className="block text-[11px] text-amber-600">(+{fmt(note.surplus)} {surplusLabel})</span>
-      )}
+      {(note.surplusReasons ?? []).map((reason, idx) => (
+        <span key={`surplus-${idx}`} className="block text-[11px] text-amber-600">(+{fmt(reason.quantity)} {reason.label})</span>
+      ))}
       {supplementary > 0 && (
         <span className="block text-[11px] text-amber-600">(+{fmt(supplementary)} เสริม)</span>
       )}
       {raw > 0 && (
         <span className="block text-[11px] text-indigo-600">(+{fmt(raw)} ชดเชย Yield)</span>
       )}
-      {note.shortage > 0 && (
-        <span className="block text-[11px] text-red-600">(ขาด {fmt(note.shortage)} เนื้อไม่พอ)</span>
-      )}
+      {(note.shortageReasons ?? []).map((reason, idx) => (
+        <span key={`shortage-${idx}`} className="block text-[11px] text-red-600">(ขาด {fmt(reason.quantity)} {reason.label})</span>
+      ))}
     </>
   )
 }
@@ -115,7 +132,7 @@ export default function BasicPlanCheckPage() {
         <h1 className="text-2xl font-bold text-gray-900">ตรวจสอบแผนผลิต</h1>
         <p className="text-gray-500 mt-1 text-sm">
           เทียบแผน 100% (ออเดอร์ที่อัพโหลด — Makro รอบ 14:00 / LOTUS และ Wet Market จากแผนผลิต 100%) กับแผนผลิตจริง แยกตามสายพานและ SKU
-          วงเล็บใต้แผนผลิตแสดงสต็อกยกมา งานเสริม RAW ชดเชย Yield ส่วนต่างบวก และยอดขาดหลังหักสต็อกแล้ว
+          วงเล็บใต้แผนผลิตอ่านจากเหตุผลที่บันทึกในแผน และแสดงยอดขาดหลังหักสต็อกแล้ว
         </p>
       </div>
 
@@ -201,7 +218,7 @@ export default function BasicPlanCheckPage() {
                         <PlanQtyCell qty={r.produced.lotus} note={r.notes.lotus} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <PlanQtyCell qty={r.produced.makro} note={r.notes.makro} surplusLabel="Phase 1 ประมาณแผนเกิน" />
+                        <PlanQtyCell qty={r.produced.makro} note={r.notes.makro} />
                       </td>
                     </tr>
                   ))}
@@ -221,7 +238,7 @@ export default function BasicPlanCheckPage() {
                   <PlanQtyCell qty={grandProduced.lotus} note={grandLotusNotes} total />
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <PlanQtyCell qty={grandProduced.makro} note={grandMakroNotes} surplusLabel="Phase 1 ประมาณแผนเกิน" total />
+                  <PlanQtyCell qty={grandProduced.makro} note={grandMakroNotes} total />
                 </td>
               </tr>
             </tfoot>

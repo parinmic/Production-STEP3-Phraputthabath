@@ -5,9 +5,11 @@ const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบส
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
 interface ExtraQty { supplementary: number; raw: number }
-interface ChannelNote { stockCovered: number; shortage: number; surplus: number }
+interface ReasonNote { label: string; quantity: number }
+interface ChannelNote { stockCovered: number; shortage: number; surplus: number; shortageReasons: ReasonNote[]; surplusReasons: ReasonNote[] }
 interface ChannelNotes { wetMarket: ChannelNote; lotus: ChannelNote; makro: ChannelNote }
-interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty }
+interface ReasonQty { wetMarket: Map<string, number>; lotus: Map<string, number>; makro: Map<string, number> }
+interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty; reasonQty: ReasonQty }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -32,27 +34,82 @@ function rebalanceLotusWetProduced(row: PlanCheckRow) {
   }
 }
 
+const REASON_LABELS: Record<string, string> = {
+  phase1_makro_0800_estimate: 'Phase 1 ประมาณแผนเกิน',
+  phase1_wet_market_average: 'Phase 1 ใช้ค่าเฉลี่ย',
+  phase1_lotus_average: 'Phase 1 ใช้ค่าเฉลี่ย',
+  raw_yield_limited: 'เนื้อไม่พอ',
+  rounded_to_bag: 'ปัดตามขนาดถุง',
+  previous_phase_deducted: 'หักยอด Phase ก่อนหน้า',
+  phase1_deducted: 'หักยอด Phase 1',
+  phase2_deducted: 'หักยอด Phase 2',
+}
+
+function parseReasonCodes(note: string | null): string[] {
+  return String(note ?? '')
+    .split('|')
+    .map(part => part.trim())
+    .filter(part => part.startsWith('reason:'))
+    .map(part => part.slice('reason:'.length))
+    .filter(Boolean)
+}
+
+function addReasonQty(map: Map<string, number>, codes: string[], qty: number) {
+  for (const code of codes) {
+    map.set(code, (map.get(code) ?? 0) + qty)
+  }
+}
+
+function reasonNotes(map: Map<string, number>, amount: number, preferredCodes: string[], fallbackLabel: string): ReasonNote[] {
+  let remaining = round2(amount)
+  const notes: ReasonNote[] = []
+  for (const code of preferredCodes) {
+    if (remaining <= 0) break
+    const qty = map.get(code) ?? 0
+    if (qty <= 0) continue
+    const take = round2(Math.min(remaining, qty))
+    if (take > 0) {
+      notes.push({ label: REASON_LABELS[code] ?? code, quantity: take })
+      remaining = round2(remaining - take)
+    }
+  }
+  if (remaining > 0) notes.push({ label: fallbackLabel, quantity: remaining })
+  return notes
+}
+
 function buildNotes(row: PlanCheckRow): ChannelNotes {
   const wetStockCovered = Math.min(row.openingStockKg, row.plan100.wetMarket)
   const wetNeed = Math.max(0, row.plan100.wetMarket - wetStockCovered)
   const lotusNeed = row.plan100.lotus
   const makroNeed = row.plan100.makro
+  const wetShortage = round2(Math.max(0, wetNeed - row.produced.wetMarket))
+  const wetSurplus = round2(Math.max(0, row.produced.wetMarket - wetNeed))
+  const lotusShortage = round2(Math.max(0, lotusNeed - row.produced.lotus))
+  const lotusSurplus = round2(Math.max(0, row.produced.lotus - lotusNeed))
+  const makroShortage = round2(Math.max(0, makroNeed - row.produced.makro))
+  const makroSurplus = round2(Math.max(0, row.produced.makro - makroNeed))
 
   return {
     wetMarket: {
       stockCovered: round2(wetStockCovered),
-      shortage: round2(Math.max(0, wetNeed - row.produced.wetMarket)),
-      surplus: round2(Math.max(0, row.produced.wetMarket - wetNeed)),
+      shortage: wetShortage,
+      surplus: wetSurplus,
+      shortageReasons: reasonNotes(row.reasonQty.wetMarket, wetShortage, ['raw_yield_limited', 'rounded_to_bag'], 'ไม่ระบุสาเหตุ'),
+      surplusReasons: reasonNotes(row.reasonQty.wetMarket, wetSurplus, ['phase1_wet_market_average'], 'ส่วนต่างบวกไม่ระบุสาเหตุ'),
     },
     lotus: {
       stockCovered: 0,
-      shortage: round2(Math.max(0, lotusNeed - row.produced.lotus)),
-      surplus: round2(Math.max(0, row.produced.lotus - lotusNeed)),
+      shortage: lotusShortage,
+      surplus: lotusSurplus,
+      shortageReasons: reasonNotes(row.reasonQty.lotus, lotusShortage, ['raw_yield_limited', 'rounded_to_bag'], 'ไม่ระบุสาเหตุ'),
+      surplusReasons: reasonNotes(row.reasonQty.lotus, lotusSurplus, ['phase1_lotus_average'], 'ส่วนต่างบวกไม่ระบุสาเหตุ'),
     },
     makro: {
       stockCovered: 0,
-      shortage: round2(Math.max(0, makroNeed - row.produced.makro)),
-      surplus: round2(Math.max(0, row.produced.makro - makroNeed)),
+      shortage: makroShortage,
+      surplus: makroSurplus,
+      shortageReasons: reasonNotes(row.reasonQty.makro, makroShortage, ['raw_yield_limited', 'rounded_to_bag'], 'ไม่ระบุสาเหตุ'),
+      surplusReasons: reasonNotes(row.reasonQty.makro, makroSurplus, ['phase1_makro_0800_estimate'], 'ส่วนต่างบวกไม่ระบุสาเหตุ'),
     },
   }
 }
@@ -74,9 +131,9 @@ export async function GET(req: NextRequest) {
         query => query.eq('plan_date', date),
       ),
       fetchLatestMakroOrders([date], ['1400']),
-      fetchPaged<{ table_name: string; sku: string; target_quantity: number; channel: string | null }>(
+      fetchPaged<{ table_name: string; sku: string; target_quantity: number; channel: string | null; note: string | null }>(
         'production_assignments',
-        'table_name, sku, target_quantity, channel',
+        'table_name, sku, target_quantity, channel, note',
         query => query.eq('production_date', date).in('table_name', BASIC_STATIONS)
           .in('channel', ['Wet Market', 'LOTUS', 'Makro', 'เสริม', 'Yield Balance']),
       ),
@@ -98,6 +155,7 @@ export async function GET(req: NextRequest) {
           plan100: { wetMarket: 0, lotus: 0, makro: 0 },
           produced: { wetMarket: 0, lotus: 0, makro: 0 },
           extra: { supplementary: 0, raw: 0 },
+          reasonQty: { wetMarket: new Map(), lotus: new Map(), makro: new Map() },
         }
         rowMap.set(key, row)
       }
@@ -121,23 +179,25 @@ export async function GET(req: NextRequest) {
       const row = getRow(normalizeSku(String(r.sku ?? '')))
       if (!row) continue
       const qty = Number(r.target_quantity ?? 0) || 0
-      if (r.channel === 'Wet Market') row.produced.wetMarket += qty
-      else if (r.channel === 'LOTUS') row.produced.lotus += qty
-      else if (r.channel === 'Makro') row.produced.makro += qty
+      const reasons = parseReasonCodes(r.note)
+      if (r.channel === 'Wet Market') { row.produced.wetMarket += qty; addReasonQty(row.reasonQty.wetMarket, reasons, qty) }
+      else if (r.channel === 'LOTUS') { row.produced.lotus += qty; addReasonQty(row.reasonQty.lotus, reasons, qty) }
+      else if (r.channel === 'Makro') { row.produced.makro += qty; addReasonQty(row.reasonQty.makro, reasons, qty) }
       else if (r.channel === 'เสริม') row.extra.supplementary += qty
       else if (r.channel === 'Yield Balance') row.extra.raw += qty
     }
 
-    for (const row of rowMap.values()) {
-      rebalanceLotusWetProduced(row)
-    }
+    Array.from(rowMap.values()).forEach(row => rebalanceLotusWetProduced(row))
 
     const rows = Array.from(rowMap.values())
       .filter(r => r.plan100.wetMarket > 0 || r.plan100.lotus > 0 || r.plan100.makro > 0
         || r.produced.wetMarket > 0 || r.produced.lotus > 0 || r.produced.makro > 0
         || r.extra.supplementary > 0 || r.extra.raw > 0)
       .map(r => ({
-        ...r,
+        station: r.station,
+        sku: r.sku,
+        skuName: r.skuName,
+        openingStockKg: r.openingStockKg,
         plan100: { wetMarket: round2(r.plan100.wetMarket), lotus: round2(r.plan100.lotus), makro: round2(r.plan100.makro) },
         produced: { wetMarket: round2(r.produced.wetMarket), lotus: round2(r.produced.lotus), makro: round2(r.produced.makro) },
         extra: { supplementary: round2(r.extra.supplementary), raw: round2(r.extra.raw) },
