@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import BasicSidebar from '@/components/BasicSidebar'
+import UserStatusBar from '@/components/UserStatusBar'
 
 interface SessionUser {
   id: string
@@ -16,7 +17,10 @@ export default function BasicLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex">
       <BasicSidebar user={user} />
-      <main className="flex-1 min-h-screen mt-14 md:mt-0 p-3 sm:p-8 overflow-x-hidden overflow-y-auto">{children}</main>
+      <main className="flex-1 min-h-screen mt-14 md:mt-0 p-3 sm:p-8 overflow-x-hidden overflow-y-auto">
+        <UserStatusBar user={user} />
+        {children}
+      </main>
     </div>
   )
 }
