@@ -266,9 +266,6 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
   },
 }
 
-// Tables that wipe-and-replace on every upload — only latest data is kept in the table
-const REPLACE_ALL_TABLES = new Set(['stock_0010', 'stock_20', 'stock_100'])
-
 async function fetchAllRows(
   table: string,
   select: string,
@@ -282,11 +279,8 @@ async function fetchAllRows(
     let q = supabase
       .from(table)
       .select(select)
+      .eq('source_file', sourceFile)
       .range(from, from + PAGE - 1)
-
-    if (!REPLACE_ALL_TABLES.has(table)) {
-      q = q.eq('source_file', sourceFile)
-    }
 
     if (slot && table === 'production_plan_supplementary') {
       q = q.eq('slot', slot)
