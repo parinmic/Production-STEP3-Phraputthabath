@@ -208,15 +208,33 @@ async function fetchSelectedLotsAndRate() {
   }
 }
 
-async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
-  const { data, error } = await supabase
-    .from('master_logic_calculation')
-    .select('row_data')
-    .eq('calculation_type', 'Mas Productivity Basic')
-    .order('uploaded_at', { ascending: false })
-    .limit(5000)
+async function fetchPaged<T>(
+  table: string,
+  select: string,
+  apply: (query: any) => any = query => query,
+): Promise<T[]> {
+  const PAGE = 1000
+  const all: T[] = []
+  let from = 0
 
-  if (error) throw error
+  while (true) {
+    const query = apply(supabase.from(table).select(select)).range(from, from + PAGE - 1)
+    const { data, error } = await query
+    if (error) throw error
+    all.push(...((data ?? []) as T[]))
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+
+  return all
+}
+
+async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
+  const data = await fetchPaged<{ row_data: Record<string, unknown> }>(
+    'master_logic_calculation',
+    'row_data',
+    query => query.eq('calculation_type', 'Mas Productivity Basic').order('uploaded_at', { ascending: false }),
+  )
 
   const map = new Map<string, { station: string; skus: BasicProductivitySku[] }>()
   const seenSkuByGroup = new Set<string>()
@@ -319,7 +337,7 @@ function allocateTargetsByYield(
       .sort((a, b) => {
         const pa = channelPriority.get(channelPriorityKey(a.target.channel)) ?? 999
         const pb = channelPriority.get(channelPriorityKey(b.target.channel)) ?? 999
-        return pa - pb || a.index - b.index
+        return pa - pb || b.target.quantityKg - a.target.quantityKg || a.index - b.index
       })
 
     for (const { target } of sortedTargets) {
@@ -483,17 +501,15 @@ async function fetchLatestMakro0800Targets(
   date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const [{ data, error }, varianceByGroupTrend, histSums] = await Promise.all([
-    supabase
-      .from('makro_orders')
-      .select('sku, sku_name, quantity')
-      .eq('delivery_date', date)
-      .eq('upload_round', '0800'),
+  const [data, varianceByGroupTrend, histSums] = await Promise.all([
+    fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+      'makro_orders',
+      'sku, sku_name, quantity',
+      query => query.eq('delivery_date', date).eq('upload_round', '0800'),
+    ),
     fetchMakroVarianceBasic(),
     fetchMakroHistorySums(date),
   ])
-
-  if (error) throw error
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
@@ -545,18 +561,16 @@ async function fetchMakro1400Targets(
   date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const { data, error } = await supabase
-    .from('makro_orders')
-    .select('sku, sku_name, quantity')
-    .eq('delivery_date', date)
-    .eq('upload_round', '1400')
-
-  if (error) throw error
+  const data = await fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+    'makro_orders',
+    'sku, sku_name, quantity',
+    query => query.eq('delivery_date', date).eq('upload_round', '1400'),
+  )
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const norm = normalizeSku(String(row.sku ?? ''))
     const prod = skuLookup.get(norm)
     if (!prod) continue
@@ -596,18 +610,16 @@ async function fetchLatestRoundUploadTargets(
   uploadRound: '1400',
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const { data, error } = await supabase
-    .from(ordersTable)
-    .select('sku, sku_name, quantity')
-    .eq('delivery_date', date)
-    .eq('upload_round', uploadRound)
-
-  if (error) throw error
+  const data = await fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+    ordersTable,
+    'sku, sku_name, quantity',
+    query => query.eq('delivery_date', date).eq('upload_round', uploadRound),
+  )
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const norm = normalizeSku(String(row.sku ?? ''))
     const prod = skuLookup.get(norm)
     if (!prod) continue
@@ -746,16 +758,14 @@ async function buildPhase2MakroShortageTargets(
 
 async function fetchMakroHistorySums(date: string): Promise<Map<string, { hist0800Kg: number; hist1400Kg: number }>> {
   const histDates = [shiftDate(date, -7), shiftDate(date, -14)]
-  const { data, error } = await supabase
-    .from('makro_orders')
-    .select('sku, quantity, upload_round')
-    .in('delivery_date', histDates)
-    .in('upload_round', ['0800', '1400'])
-
-  if (error) throw error
+  const data = await fetchPaged<{ sku: string; quantity: number; upload_round: string }>(
+    'makro_orders',
+    'sku, quantity, upload_round',
+    query => query.in('delivery_date', histDates).in('upload_round', ['0800', '1400']),
+  )
 
   const map = new Map<string, { hist0800Kg: number; hist1400Kg: number }>()
-  for (const row of data ?? []) {
+  for (const row of data) {
     const sku = normalizeSku(String(row.sku ?? ''))
     if (!sku) continue
     const current = map.get(sku) ?? { hist0800Kg: 0, hist1400Kg: 0 }
@@ -805,21 +815,19 @@ async function fetchWetMarket1600AverageTargets(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
-  const [varianceBySku, { data, error }] = await Promise.all([
+  const [varianceBySku, data] = await Promise.all([
     fetchWetMarketVarianceBasic(),
-    supabase
-      .from('wet_market_orders')
-      .select('sku, sku_name, quantity')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1600'),
+    fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+      'wet_market_orders',
+      'sku, sku_name, quantity',
+      query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
+    ),
   ])
-
-  if (error) throw error
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const norm = normalizeSku(String(row.sku ?? ''))
     const prod = skuLookup.get(norm)
     if (!prod) continue
@@ -902,21 +910,19 @@ async function fetchLotus1600AverageTargets(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
-  const [varianceBySku, { data, error }] = await Promise.all([
+  const [varianceBySku, data] = await Promise.all([
     fetchLotusVarianceBasic(),
-    supabase
-      .from('lotus_orders')
-      .select('sku, sku_name, quantity')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1600'),
+    fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+      'lotus_orders',
+      'sku, sku_name, quantity',
+      query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
+    ),
   ])
-
-  if (error) throw error
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const norm = normalizeSku(String(row.sku ?? ''))
     const prod = skuLookup.get(norm)
     if (!prod) continue
@@ -999,18 +1005,16 @@ async function fetchWetMarketTopSkuByGroup(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<Map<string, { sku: string; skuName: string | null; station: string | null; quantityKg: number }>> {
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
-  const { data, error } = await supabase
-    .from('wet_market_orders')
-    .select('sku, sku_name, quantity')
-    .in('delivery_date', histDates)
-    .eq('upload_round', '1600')
-
-  if (error) throw error
+  const data = await fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
+    'wet_market_orders',
+    'sku, sku_name, quantity',
+    query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
+  )
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const sumByGroupSku = new Map<string, { sku: string; skuName: string | null; station: string | null; quantityKg: number }>()
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const norm = normalizeSku(String(row.sku ?? ''))
     const prod = skuLookup.get(norm)
     if (!prod) continue
