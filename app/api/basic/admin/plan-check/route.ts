@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged } from '@/lib/generate-plan-basic'
+import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged, fetchLatestMakroOrders } from '@/lib/generate-plan-basic'
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
@@ -45,11 +45,7 @@ export async function GET(req: NextRequest) {
         'sap, product_name, lotus_weight, cpft_weight',
         query => query.eq('plan_date', date),
       ),
-      fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
-        'makro_orders',
-        'sku, sku_name, quantity',
-        query => query.eq('delivery_date', date).eq('upload_round', '1400'),
-      ),
+      fetchLatestMakroOrders([date], ['1400']),
       fetchPaged<{ table_name: string; sku: string; target_quantity: number; channel: string | null }>(
         'production_assignments',
         'table_name, sku, target_quantity, channel',
