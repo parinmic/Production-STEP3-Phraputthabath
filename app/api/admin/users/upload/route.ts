@@ -72,6 +72,25 @@ export async function POST(req: NextRequest) {
     if (username) entry.users.set(username, password)
   }
 
+  // username เป็น unique key ของ sys_users — ถ้าไฟล์ใช้ username เดียวกันซ้ำกันคนละตำแหน่ง
+  // ตำแหน่งที่ upsert ทีหลังจะแย่ง user คนนั้นไปจากตำแหน่งก่อนหน้าแบบเงียบๆ (position_id ถูกทับ)
+  // เช็คก่อนอัพโหลดจริง กันข้อมูลหาย
+  const usernameToPositions = new Map<string, Set<string>>()
+  for (const [name, { users }] of Array.from(posMap.entries())) {
+    for (const username of Array.from(users.keys())) {
+      if (!usernameToPositions.has(username)) usernameToPositions.set(username, new Set())
+      usernameToPositions.get(username)!.add(name)
+    }
+  }
+  const duplicates = Array.from(usernameToPositions.entries()).filter(([, positions]) => positions.size > 1)
+  if (duplicates.length > 0) {
+    const detail = duplicates.map(([username, positions]) => `${username} (${Array.from(positions).join(', ')})`).join('; ')
+    return NextResponse.json(
+      { success: false, message: `พบ Username ซ้ำกันคนละตำแหน่ง — แต่ละ Username ต้องผูกกับตำแหน่งเดียวเท่านั้น: ${detail}` },
+      { status: 400 }
+    )
+  }
+
   const positions = Array.from(posMap.entries()).map(([name, { users, menus, step }]) => ({
     name,
     step,
