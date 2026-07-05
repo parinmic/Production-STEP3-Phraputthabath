@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { canAccessStation } from '@/lib/station-access'
+import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
 interface SessionUser { menus: string[] }
 
@@ -46,8 +46,9 @@ function NavLink({ href, allowed, className, title, children }: {
 export default function BasicSidebar({ user }: { user: SessionUser | null }) {
   const p = usePathname()
 
-  // ตรวจสอบสิทธิ์เมนู: null = ยังไม่ได้ login (แสดงทั้งหมด), 'all' = ทั้งหมด — เหมือน Sidebar.tsx ฝั่งพิเศษ
-  const has = (key: string) => !user || user.menus.includes('all') || user.menus.includes(key)
+  // ตรวจสอบสิทธิ์เมนู: null = ยังไม่ได้ login (แสดงทั้งหมด), 'all' = ทั้งหมด
+  // key เป็นหมายเลขตามชีท Detail ของไฟล์ "User ระบบผลิต.xlsx" — ใช้ scheme เดียวกับ Sidebar.tsx ฝั่งพิเศษ
+  const has = (key: string) => hasSpecialMenu(user?.menus, key)
 
   const [open, setOpen]                       = useState(p.startsWith('/basic/production'))
   const [openShortage, setOpenShortage]       = useState(p.startsWith('/basic/shortage'))
@@ -71,9 +72,9 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
   const sectionCls = `text-gray-500 text-xs font-semibold uppercase tracking-wider pt-3 pb-1 px-3 ${collapsed ? 'md:hidden' : ''}`
   const dividerCls = `border-t border-gray-700 my-2 hidden ${collapsed ? 'md:block' : ''}`
 
-  const canWithdrawal = has('withdrawal')
-  const canShortage   = has('shortage')
-  const canProduction = has('production')
+  const canWithdrawal = has('14')
+  const canShortage   = has('4')
+  const canProduction = BASIC_STATIONS.some((t) => canAccessBasicStation(user?.menus, t.slug))
   const canAll        = has('all')
 
   return (
@@ -125,16 +126,16 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           {/* QC */}
           <button
-            onClick={() => canAll && setOpenQc(!openQc)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/temperature-check'), canAll)}`}
+            onClick={() => has('13') && setOpenQc(!openQc)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/temperature-check'), has('13'))}`}
             title="ตรวจอุณหภูมิ(QC)"
           >
             <Thermometer size={18} className="shrink-0" />
             <span className={`flex-1 text-left ${labelCls}`}>ตรวจอุณหภูมิ(QC)</span>
-            {canAll && !collapsed && (openQc ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            {has('13') && !collapsed && (openQc ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
           </button>
 
-          {openQc && canAll && (
+          {openQc && has('13') && (
             <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
               <Link href="/basic/temperature-check"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/temperature-check' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
@@ -150,7 +151,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
               </Link>
             </div>
           )}
-          {openQc && canAll && collapsed && (
+          {openQc && has('13') && collapsed && (
             <div className="space-y-1 hidden md:block">
               <Link href="/basic/temperature-check"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/temperature-check' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
@@ -229,7 +230,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
           {open && canProduction && (
             <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
               {BASIC_STATIONS.map((t) => {
-                const canStation = canAccessStation(user?.menus, t.slug)
+                const canStation = canAccessBasicStation(user?.menus, t.slug)
                 return (
                   <NavLink key={t.slug} href={`/basic/production/${t.slug}`} allowed={canStation}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
@@ -244,7 +245,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
           {open && canProduction && collapsed && (
             <div className="space-y-1 hidden md:block">
               {BASIC_STATIONS.map((t) => {
-                const canStation = canAccessStation(user?.menus, t.slug)
+                const canStation = canAccessBasicStation(user?.menus, t.slug)
                 return (
                   <NavLink key={t.slug} href={`/basic/production/${t.slug}`} allowed={canStation}
                     className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${
@@ -258,8 +259,8 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             </div>
           )}
 
-          <NavLink href="/basic/breakline" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/breakline', canAll)}`}
+          <NavLink href="/basic/breakline" allowed={has('16')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/breakline', has('16'))}`}
             title="Breakline">
             <Slice size={18} className="shrink-0" />
             <span className={labelCls}>Breakline</span>
@@ -324,8 +325,8 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
           )}
 
           {/* รอบการลงหมูซีก */}
-          <NavLink href="/basic/carcass-cycle" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/carcass-cycle', canAll)}`}
+          <NavLink href="/basic/carcass-cycle" allowed={has('17')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/carcass-cycle', has('17'))}`}
             title="รอบการลงหมูซีก">
             <Timer size={18} className="shrink-0" />
             <span className={labelCls}>รอบการลงหมูซีก</span>
@@ -375,16 +376,16 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
           )}
 
           {[
-            { href: '/basic/makro',              icon: ShoppingCart,    label: 'คำสั่งซื้อ Makro' },
-            { href: '/basic/lotus',              icon: Leaf,            label: 'คำสั่งซื้อ LOTUS' },
-            { href: '/basic/wet-market',         icon: Store,           label: 'คำสั่งซื้อ Wet Market' },
-            { href: '/basic/plan-100',           icon: FileSpreadsheet, label: 'แผนผลิต 100%' },
-            { href: '/basic/supplementary-plan', icon: CalendarPlus,    label: 'แผนรอบเสริม' },
-            { href: '/basic/stock-raw-material', icon: Package,         label: 'Stock Raw Material' },
-            { href: '/basic/yield',              icon: TrendingUp,      label: 'รับผลได้' },
+            { href: '/basic/makro',              icon: ShoppingCart,    label: 'คำสั่งซื้อ Makro',     key: '7.1' },
+            { href: '/basic/lotus',              icon: Leaf,            label: 'คำสั่งซื้อ LOTUS',     key: '7.2' },
+            { href: '/basic/wet-market',         icon: Store,           label: 'คำสั่งซื้อ Wet Market', key: '7.3' },
+            { href: '/basic/plan-100',           icon: FileSpreadsheet, label: 'แผนผลิต 100%',        key: '7.5' },
+            { href: '/basic/supplementary-plan', icon: CalendarPlus,    label: 'แผนรอบเสริม',         key: '7.6' },
+            { href: '/basic/stock-raw-material', icon: Package,         label: 'Stock Raw Material',  key: '8'   },
+            { href: '/basic/yield',              icon: TrendingUp,      label: 'รับผลได้',            key: '9'   },
           ].map((m) => (
-            <NavLink key={m.href} href={m.href} allowed={canAll}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls(m.href, canAll)}`}
+            <NavLink key={m.href} href={m.href} allowed={has(m.key)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls(m.href, has(m.key))}`}
               title={m.label}>
               <m.icon size={18} className="shrink-0" />
               <span className={labelCls}>{m.label}</span>
@@ -396,16 +397,16 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           {/* กำลังคน */}
           <button
-            onClick={() => canAll && setOpenManpower(!openManpower)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/master-logic/manpower'), canAll)}`}
+            onClick={() => has('10.1') && setOpenManpower(!openManpower)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/master-logic/manpower'), has('10.1'))}`}
             title="กำลังคน"
           >
             <UserCog size={18} className="shrink-0" />
             <span className={`flex-1 text-left ${labelCls}`}>กำลังคน</span>
-            {canAll && !collapsed && (openManpower ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            {has('10.1') && !collapsed && (openManpower ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
           </button>
 
-          {openManpower && canAll && (
+          {openManpower && has('10.1') && (
             <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
               {MANPOWER_TYPES.map((t) => (
                 <Link key={t.slug} href={`/basic/master-logic/manpower/${t.slug}`}
@@ -415,7 +416,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
               ))}
             </div>
           )}
-          {openManpower && canAll && collapsed && (
+          {openManpower && has('10.1') && collapsed && (
             <div className="space-y-1 hidden md:block">
               {MANPOWER_TYPES.map((t) => (
                 <Link key={t.slug} href={`/basic/master-logic/manpower/${t.slug}`}
@@ -429,16 +430,16 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           {/* Master Calculation */}
           <button
-            onClick={() => canAll && setOpenCalculation(!openCalculation)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls((p.startsWith('/basic/master-logic/calculation') || p === '/basic/master-logic/temp-qc'), canAll)}`}
+            onClick={() => has('10.2') && setOpenCalculation(!openCalculation)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls((p.startsWith('/basic/master-logic/calculation') || p === '/basic/master-logic/temp-qc'), has('10.2'))}`}
             title="Master Calculation"
           >
             <Calculator size={18} className="shrink-0" />
             <span className={`flex-1 text-left ${labelCls}`}>Master Calculation</span>
-            {canAll && !collapsed && (openCalculation ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
+            {has('10.2') && !collapsed && (openCalculation ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
           </button>
 
-          {openCalculation && canAll && (
+          {openCalculation && has('10.2') && (
             <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
               {CALCULATION_TYPES.map((t) => (
                 <Link key={t.slug} href={`/basic/master-logic/calculation/${t.slug}`}
@@ -464,7 +465,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
               </Link>
             </div>
           )}
-          {openCalculation && canAll && collapsed && (
+          {openCalculation && has('10.2') && collapsed && (
             <div className="space-y-1 hidden md:block">
               {CALCULATION_TYPES.map((t) => (
                 <Link key={t.slug} href={`/basic/master-logic/calculation/${t.slug}`}
@@ -498,8 +499,8 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>Admin</p>
           <div className={dividerCls} />
-          <NavLink href="/basic/admin/users" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', canAll)}`}
+          <NavLink href="/basic/admin/users" allowed={has('12')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', has('12'))}`}
             title="User ระบบผลิต">
             <Users size={18} className="shrink-0" />
             <span className={labelCls}>User ระบบผลิต</span>

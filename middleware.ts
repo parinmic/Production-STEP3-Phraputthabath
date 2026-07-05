@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { canAccessStation, BASIC_STATION_SLUGS } from '@/lib/station-access'
-import { canAccessSpecialStation, SPECIAL_STATION_MENU_NUMBER } from '@/lib/special-menu'
+import {
+  canAccessSpecialStation, SPECIAL_STATION_MENU_NUMBER,
+  canAccessBasicStation, BASIC_STATION_MENU_NUMBER,
+} from '@/lib/special-menu'
 
 const SESSION_COOKIE = 'step3_session'
 
@@ -67,8 +69,8 @@ export function middleware(req: NextRequest) {
 
   // Station-level gating: /production/<slug> (special) and /basic/production/<slug>
   // (basic) — a position restricted to specific stations cannot open another
-  // station's page directly by URL. Special side uses the numeric menu scheme
-  // (menu key = the station's number, e.g. "2.1"); basic still uses `station:<slug>`.
+  // station's page directly by URL. Both sides use the numeric menu scheme
+  // from the "Detail" sheet of "User ระบบผลิต.xlsx" (e.g. "2.1", "15.1").
   const specialStation = pathname.match(/^\/production\/([^/]+)$/)
   if (specialStation && specialStation[1] in SPECIAL_STATION_MENU_NUMBER) {
     if (!canAccessSpecialStation(user.menus, specialStation[1])) {
@@ -77,8 +79,8 @@ export function middleware(req: NextRequest) {
   }
 
   const basicStation = pathname.match(/^\/basic\/production\/([^/]+)$/)
-  if (basicStation && (BASIC_STATION_SLUGS as readonly string[]).includes(basicStation[1])) {
-    if (!canAccessStation(user.menus, basicStation[1])) {
+  if (basicStation && basicStation[1] in BASIC_STATION_MENU_NUMBER) {
+    if (!canAccessBasicStation(user.menus, basicStation[1])) {
       return NextResponse.redirect(new URL('/basic', req.url))
     }
   }

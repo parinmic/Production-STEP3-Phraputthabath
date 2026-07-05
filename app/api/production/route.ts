@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { canAccessStation, STATION_LABEL_TO_SLUG } from '@/lib/station-access'
-import { canAccessSpecialStation, SPECIAL_STATION_MENU_NUMBER } from '@/lib/special-menu'
+import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
+import {
+  canAccessSpecialStation, SPECIAL_STATION_MENU_NUMBER,
+  canAccessBasicStation, BASIC_STATION_MENU_NUMBER,
+} from '@/lib/special-menu'
 
 export async function GET(req: NextRequest) {
   const date  = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
@@ -11,10 +14,11 @@ export async function GET(req: NextRequest) {
   if (slug) {
     const raw = req.cookies.get('step3_session')?.value
     const user = raw ? JSON.parse(raw) : null
-    const isSpecialStation = slug in SPECIAL_STATION_MENU_NUMBER
-    const allowed = isSpecialStation
+    const allowed = slug in SPECIAL_STATION_MENU_NUMBER
       ? canAccessSpecialStation(user?.menus, slug)
-      : canAccessStation(user?.menus, slug)
+      : slug in BASIC_STATION_MENU_NUMBER
+      ? canAccessBasicStation(user?.menus, slug)
+      : true
     if (!allowed) {
       return NextResponse.json({ assignments: [], message: 'ไม่มีสิทธิ์เข้าถึง station นี้' }, { status: 403 })
     }

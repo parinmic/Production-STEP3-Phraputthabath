@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { canAccessStation } from '@/lib/station-access'
+import { canAccessBasicStation } from '@/lib/special-menu'
 
 const DISABLED_CLS = 'text-gray-400 bg-gray-50 opacity-50 cursor-not-allowed pointer-events-none'
 
@@ -19,7 +19,7 @@ export default function BasicHomePage() {
             { label: 'Station ไหล่เบสิค',   slug: 'lai-basic',      cls: 'border-green-500 bg-green-50 text-green-700' },
             { label: 'Station สามชั้นเบสิค', slug: 'sam-chan-basic', cls: 'border-blue-500 bg-blue-50 text-blue-700' },
           ].map((t) => {
-            const allowed = canAccessStation(user?.menus, t.slug)
+            const allowed = canAccessBasicStation(user?.menus, t.slug)
             if (!allowed) {
               return (
                 <div key={t.slug} className={`border-2 border-gray-200 ${DISABLED_CLS} rounded-xl p-5 font-semibold text-center`} aria-disabled="true">
