@@ -654,13 +654,32 @@ function subtractProducedTargetsAcrossLotusWetPool(
       deficitKg: Math.max(0, target.quantityKg - (producedBySkuChannel.get(targetDeductKey(target)) ?? 0)),
     }))
     const totalDeficit = deficits.reduce((sum, row) => sum + row.deficitKg, 0)
-    let remainingToAllocate = remainingTotal
+    const sizeOf = (row: { target: BasicSkuTarget; deficitKg: number }) =>
+      totalDeficit > 0 ? row.deficitKg : row.target.quantityKg
 
-    for (const { target, deficitKg } of deficits) {
-      const allocatedKg = totalDeficit > 0
-        ? Math.min(deficitKg, remainingToAllocate)
-        : Math.min(target.quantityKg, remainingToAllocate)
+    // LOTUS never draws on carried-over stock, so it must always get its own full deficit out of
+    // the shared pool regardless of how much the pool has left — Wet Market (whose deficit can be
+    // shrunk by opening stock) absorbs whatever remains, floored at 0, instead of splitting any
+    // pool shortfall with Lotus.
+    const lotusRow = deficits.find(d => channelPriorityKey(d.target.channel) === 'lotus')
+    const otherRows = deficits.filter(d => channelPriorityKey(d.target.channel) !== 'lotus')
+
+    let remainingToAllocate = remainingTotal
+    const allocations: { target: BasicSkuTarget; allocatedKg: number }[] = []
+
+    if (lotusRow) {
+      const allocatedKg = sizeOf(lotusRow)
+      allocations.push({ target: lotusRow.target, allocatedKg })
       remainingToAllocate -= allocatedKg
+    }
+
+    for (const row of otherRows) {
+      const allocatedKg = Math.max(0, Math.min(sizeOf(row), remainingToAllocate))
+      allocations.push({ target: row.target, allocatedKg })
+      remainingToAllocate -= allocatedKg
+    }
+
+    for (const { target, allocatedKg } of allocations) {
       const roundedAllocated = Math.round(Math.max(0, allocatedKg) * 100) / 100
       if (roundedAllocated <= 0) continue
 
