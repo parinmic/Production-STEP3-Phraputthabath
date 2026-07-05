@@ -36,7 +36,15 @@ function getSessionUser(req: NextRequest): SessionUser | null {
   return null
 }
 
+// ปิดการบังคับ login/step/station ทั้งหมดชั่วคราว — ไม่ได้ลบ logic ทิ้ง
+// แค่ให้ผ่านทุก request ไปเลย ต้องการเปิดกลับมาใช้งานจริง ให้ลบ if-block นี้ออก
+const LOGIN_ENFORCEMENT_ENABLED = false
+
 export function middleware(req: NextRequest) {
+  if (!LOGIN_ENFORCEMENT_ENABLED) {
+    return NextResponse.next()
+  }
+
   const { pathname } = req.nextUrl
 
   if (isPublicPath(pathname)) {
