@@ -39,12 +39,14 @@ function sumNotes(rows: PlanCheckRow[], channel: keyof ChannelNotes): ChannelNot
 function PlanQtyCell({
   qty,
   note,
+  surplusLabel = 'เนื้อเหลือ',
   supplementary = 0,
   raw = 0,
   total = false,
 }: {
   qty: number
   note: ChannelNote
+  surplusLabel?: string
   supplementary?: number
   raw?: number
   total?: boolean
@@ -56,7 +58,7 @@ function PlanQtyCell({
         <span className="block text-[11px] text-sky-600">(มีสต็อกยกมา {fmt(note.stockCovered)})</span>
       )}
       {note.surplus > 0 && (
-        <span className="block text-[11px] text-amber-600">(+{fmt(note.surplus)} เนื้อเหลือ)</span>
+        <span className="block text-[11px] text-amber-600">(+{fmt(note.surplus)} {surplusLabel})</span>
       )}
       {supplementary > 0 && (
         <span className="block text-[11px] text-amber-600">(+{fmt(supplementary)} เสริม)</span>
@@ -113,7 +115,7 @@ export default function BasicPlanCheckPage() {
         <h1 className="text-2xl font-bold text-gray-900">ตรวจสอบแผนผลิต</h1>
         <p className="text-gray-500 mt-1 text-sm">
           เทียบแผน 100% (ออเดอร์ที่อัพโหลด — Makro รอบ 14:00 / LOTUS และ Wet Market จากแผนผลิต 100%) กับแผนผลิตจริง แยกตามสายพานและ SKU
-          วงเล็บใต้แผนผลิตแสดงสต็อกยกมา งานเสริม RAW ชดเชย Yield เนื้อเหลือ และยอดขาดหลังหักสต็อกแล้ว
+          วงเล็บใต้แผนผลิตแสดงสต็อกยกมา งานเสริม RAW ชดเชย Yield ส่วนต่างบวก และยอดขาดหลังหักสต็อกแล้ว
         </p>
       </div>
 
@@ -199,7 +201,7 @@ export default function BasicPlanCheckPage() {
                         <PlanQtyCell qty={r.produced.lotus} note={r.notes.lotus} />
                       </td>
                       <td className="px-3 py-2.5 text-right">
-                        <PlanQtyCell qty={r.produced.makro} note={r.notes.makro} />
+                        <PlanQtyCell qty={r.produced.makro} note={r.notes.makro} surplusLabel="Phase 1 ประมาณแผนเกิน" />
                       </td>
                     </tr>
                   ))}
@@ -219,7 +221,7 @@ export default function BasicPlanCheckPage() {
                   <PlanQtyCell qty={grandProduced.lotus} note={grandLotusNotes} total />
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <PlanQtyCell qty={grandProduced.makro} note={grandMakroNotes} total />
+                  <PlanQtyCell qty={grandProduced.makro} note={grandMakroNotes} surplusLabel="Phase 1 ประมาณแผนเกิน" total />
                 </td>
               </tr>
             </tfoot>
