@@ -4,7 +4,8 @@ import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged, fet
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
 interface ChannelQty { wetMarket: number; lotus: number; makro: number }
-interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty }
+interface ExtraQty { supplementary: number; raw: number }
+interface PlanCheckRow { station: string; sku: string; skuName: string | null; openingStockKg: number; plan100: ChannelQty; produced: ChannelQty; extra: ExtraQty }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -49,7 +50,8 @@ export async function GET(req: NextRequest) {
       fetchPaged<{ table_name: string; sku: string; target_quantity: number; channel: string | null }>(
         'production_assignments',
         'table_name, sku, target_quantity, channel',
-        query => query.eq('production_date', date).in('table_name', BASIC_STATIONS).in('channel', ['Wet Market', 'LOTUS', 'Makro']),
+        query => query.eq('production_date', date).in('table_name', BASIC_STATIONS)
+          .in('channel', ['Wet Market', 'LOTUS', 'Makro', 'เสริม', 'Yield Balance']),
       ),
       fetchOpeningStock0010(date),
     ])
@@ -68,6 +70,7 @@ export async function GET(req: NextRequest) {
           openingStockKg: round2(lookupOpeningStockKg(openingStock, prod.sku, prod.skuName)),
           plan100: { wetMarket: 0, lotus: 0, makro: 0 },
           produced: { wetMarket: 0, lotus: 0, makro: 0 },
+          extra: { supplementary: 0, raw: 0 },
         }
         rowMap.set(key, row)
       }
@@ -94,6 +97,8 @@ export async function GET(req: NextRequest) {
       if (r.channel === 'Wet Market') row.produced.wetMarket += qty
       else if (r.channel === 'LOTUS') row.produced.lotus += qty
       else if (r.channel === 'Makro') row.produced.makro += qty
+      else if (r.channel === 'เสริม') row.extra.supplementary += qty
+      else if (r.channel === 'Yield Balance') row.extra.raw += qty
     }
 
     for (const row of rowMap.values()) {
@@ -102,11 +107,13 @@ export async function GET(req: NextRequest) {
 
     const rows = Array.from(rowMap.values())
       .filter(r => r.plan100.wetMarket > 0 || r.plan100.lotus > 0 || r.plan100.makro > 0
-        || r.produced.wetMarket > 0 || r.produced.lotus > 0 || r.produced.makro > 0)
+        || r.produced.wetMarket > 0 || r.produced.lotus > 0 || r.produced.makro > 0
+        || r.extra.supplementary > 0 || r.extra.raw > 0)
       .map(r => ({
         ...r,
         plan100: { wetMarket: round2(r.plan100.wetMarket), lotus: round2(r.plan100.lotus), makro: round2(r.plan100.makro) },
         produced: { wetMarket: round2(r.produced.wetMarket), lotus: round2(r.produced.lotus), makro: round2(r.produced.makro) },
+        extra: { supplementary: round2(r.extra.supplementary), raw: round2(r.extra.raw) },
       }))
       .sort((a, b) => BASIC_STATIONS.indexOf(a.station) - BASIC_STATIONS.indexOf(b.station) || a.sku.localeCompare(b.sku))
 
