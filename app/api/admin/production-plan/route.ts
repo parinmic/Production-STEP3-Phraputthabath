@@ -211,23 +211,39 @@ export async function DELETE(req: NextRequest) {
 // body: { production_date, period, table_name, sku, sku_name, target_quantity, channel }
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  const productionDate = body.production_date
+  const tableName = body.table_name
+  const period = body.period
+  const sku = String(body.sku ?? '').trim()
+
+  if (!productionDate || !tableName || !sku || !period)
+    return NextResponse.json({ error: 'กรุณากรอก production_date, table_name, sku, period' }, { status: 400 })
+
+  const { data: latestRows, error: latestErr } = await supabase
+    .from('production_assignments')
+    .select('effective_from')
+    .eq('production_date', productionDate)
+    .eq('table_name', tableName)
+    .eq('period', period)
+    .order('effective_from', { ascending: false })
+    .limit(1)
+
+  if (latestErr) return NextResponse.json({ error: latestErr.message }, { status: 500 })
 
   const row = {
-    production_date:  body.production_date,
-    table_name:       body.table_name,
+    production_date:  productionDate,
+    table_name:       tableName,
     worker_code:      '-',
     worker_name:      '-',
-    sku:              String(body.sku ?? '').trim(),
+    sku,
     sku_name:         body.sku_name ?? null,
     target_quantity:  Number(body.target_quantity ?? 0),
     unit:             'กก.',
-    period:           body.period,
+    period,
     channel:          body.channel ?? null,
     status:           'รอดำเนินการ',
+    effective_from:   latestRows?.[0]?.effective_from ?? new Date().toISOString(),
   }
-
-  if (!row.production_date || !row.table_name || !row.sku || !row.period)
-    return NextResponse.json({ error: 'กรุณากรอก production_date, table_name, sku, period' }, { status: 400 })
 
   const { error } = await supabase.from('production_assignments').insert(row)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

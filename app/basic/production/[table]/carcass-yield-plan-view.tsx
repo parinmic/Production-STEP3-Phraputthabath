@@ -21,6 +21,7 @@ interface CarcassLot  { qty: number; avg_weight: number; order: number }
 interface AssignRow   {
   sku: string; sku_name: string | null; target_quantity: number
   unit: string | null; note: string | null; channel: string | null; table_name: string
+  effective_from: string | null
 }
 
 function closestWt(avg: number, wts: number[]) {
@@ -75,13 +76,23 @@ export default function CarcassYieldPlanView({
       if (period) {
         const { data, error: dbErr } = await supabase
           .from('production_assignments')
-          .select('sku, sku_name, target_quantity, unit, note, channel, table_name')
+          .select('sku, sku_name, target_quantity, unit, note, channel, table_name, effective_from')
           .eq('production_date', date)
           .eq('period', period)
           .in('table_name', stationFilter)
           .order('seq', { ascending: true })
         if (dbErr) throw new Error(dbErr.message)
-        setItems((data ?? []) as AssignRow[])
+        const maxEffectiveByStation = new Map<string, string>()
+        for (const row of (data ?? []) as AssignRow[]) {
+          if (!row.effective_from) continue
+          const current = maxEffectiveByStation.get(row.table_name)
+          if (!current || row.effective_from > current) maxEffectiveByStation.set(row.table_name, row.effective_from)
+        }
+        const latestRows = ((data ?? []) as AssignRow[]).filter(row => {
+          const latest = maxEffectiveByStation.get(row.table_name)
+          return !latest || row.effective_from === latest
+        })
+        setItems(latestRows)
       } else {
         setItems([])
       }

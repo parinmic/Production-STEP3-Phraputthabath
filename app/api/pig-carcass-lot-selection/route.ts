@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 export async function GET() {
   const { data, error } = await supabase
     .from('pig_carcass_lot_selection')
-    .select('selected, trimming_qty, updated_at')
+    .select('selected, trimming_qty, rate, updated_at')
     .eq('id', 1)
     .maybeSingle()
 
