@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
 
@@ -442,8 +442,7 @@ function phaseCappedBagQty(sku: string, period: string, allPhaseItems: Assignmen
 
 function SkuScheduleView({ items, allPhaseItems, phaseStart, phaseEnd, selectedPhase, bagMap, skuColor, nameMap, groupMap, productTypeMap, carcassThroughputByGroup, lineBreaks = [], pigLots = [], masYieldRows = [], carcassRate = 90 }: SkuScheduleViewProps) {
   // Phase 1/2 are capped to their own window (bars/qty trimmed to fit);
-  // Phase 3 is the day's catch-all and always runs to completion, matching
-  // the backend's !isPhase3 truncation exception in generate-plan-basic.ts.
+  // Phase 3 is the day's catch-all and always runs to completion.
   const isFinalPhase = selectedPhase === 3 || selectedPhase === 'all'
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
@@ -1865,10 +1864,12 @@ export default function BasicTablePage() {
   const [carcassRate,  setCarcassRate]  = useState<number>(90)
   const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
   const [loading, setLoading]     = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [showGenModal, setShowGenModal] = useState(false)
   const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
+  const [phase2PromptOpen, setPhase2PromptOpen] = useState(false)
+  const [phase3PromptOpen, setPhase3PromptOpen] = useState(false)
+  const [subtractPhase1FromPhase2, setSubtractPhase1FromPhase2] = useState(false)
+  const [subtractPhase1FromPhase3, setSubtractPhase1FromPhase3] = useState(false)
+  const [subtractPhase2FromPhase3, setSubtractPhase2FromPhase3] = useState(false)
 
   const loadData = (d: string, silent = false) => {
     if (!cfg) return
@@ -1969,39 +1970,24 @@ export default function BasicTablePage() {
     return () => clearInterval(id)
   }, [date, cfg?.label])
 
-  const generate = async (deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
-    if (selectedPhase === 'all') return
-    setGenerating(true); setGenResult(null); setShowGenModal(false)
-    try {
-      let carcassLots: unknown = undefined
-      let carcassRate: number | undefined = undefined
-      let trimmingQty = 0
-      try {
-        // Pull the shared selection from the server — it may have been set on a different machine.
-        const selRes  = await fetch('/api/pig-carcass-lot-selection')
-        const selJson = await selRes.json()
-        if (selJson.selected?.length) carcassLots = selJson.selected
-        if (selJson.rate != null) carcassRate = parseFloat(selJson.rate) || undefined
-        if (selJson.trimmingQty) trimmingQty = parseInt(selJson.trimmingQty) || 0
-      } catch { /* ignore */ }
-      const res = await fetch('/api/production/generate-basic', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase: selectedPhase, deductMode, carcassLots, carcassRate, trimmingQty }),
-      })
-      const result = await res.json()
-      setGenResult(result)
-      if (result.success) loadData(date)
-    } catch { setGenResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
-    setGenerating(false)
-  }
-
-  const handleGenerateClick = () => {
-    if (selectedPhase === 'all') return
-    if (selectedPhase === 1) { generate('plan'); return }
-    setShowGenModal(true)
-  }
-
   if (!cfg) return <p className="text-red-500">ไม่พบ Station</p>
+
+  const handleCreatePhaseClick = () => {
+    if (selectedPhase === 2) {
+      setPhase2PromptOpen(true)
+    } else if (selectedPhase === 3) {
+      setPhase3PromptOpen(true)
+    }
+  }
+
+  const handlePhase2SubtractChoice = (subtractPhase1: boolean) => {
+    setSubtractPhase1FromPhase2(subtractPhase1)
+    setPhase2PromptOpen(false)
+  }
+
+  const handlePhase3Confirm = () => {
+    setPhase3PromptOpen(false)
+  }
 
   const phaseConfig  = selectedPhase === 'all' ? null : PHASES.find(p => p.phase === selectedPhase)!
   const filtered     = selectedPhase === 'all' ? items : items.filter(a => a.period === phaseConfig!.period)
@@ -2033,37 +2019,8 @@ export default function BasicTablePage() {
     return result
   })()
 
-  const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: string }[] = [
-    { mode: 'plan',   label: 'แผน Phase ก่อนหน้า',     desc: `หักลบจากยอดที่วางแผนไว้ใน Phase ${(selectedPhase as number) - 1}` },
-    { mode: 'actual', label: 'ยอดผลิต Phase ก่อนหน้า', desc: 'หักลบเฉพาะงานที่เสร็จแล้ว (สถานะ: เสร็จแล้ว)' },
-    { mode: 'yield',  label: 'ยอดรับผลได้ล่าสุด',       desc: 'หักลบจากข้อมูลที่อัพโหลดในเมนู รับผลได้' },
-  ]
-
   return (
     <>
-    {showGenModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
-           onClick={() => setShowGenModal(false)}>
-        <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm"
-             onClick={e => e.stopPropagation()}>
-          <h2 className="text-base font-semibold text-gray-900">สร้าง Phase {selectedPhase}</h2>
-          <p className="text-sm text-gray-500 mt-1 mb-5">เลือกยอดที่ใช้หักลบจากเป้าหมาย</p>
-          <div className="space-y-2.5">
-            {DEDUCT_OPTIONS.map(opt => (
-              <button key={opt.mode} onClick={() => generate(opt.mode)}
-                className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                <div className="font-medium text-gray-900 text-sm">{opt.label}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setShowGenModal(false)}
-            className="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors">
-            ยกเลิก
-          </button>
-        </div>
-      </div>
-    )}
     <div className="space-y-3 sm:space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Station {cfg.label}</h1>
@@ -2078,7 +2035,7 @@ export default function BasicTablePage() {
 
       <div className="flex items-center gap-2">
         <button
-          onClick={() => { setPhase('all'); setGenResult(null) }}
+          onClick={() => setPhase('all')}
           className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors border ${selectedPhase === 'all'
             ? 'bg-gray-800 text-white border-gray-800'
             : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
@@ -2087,7 +2044,7 @@ export default function BasicTablePage() {
         </button>
         {PHASES.map(p => (
           <button key={p.phase}
-            onClick={() => { setPhase(p.phase); setGenResult(null) }}
+            onClick={() => setPhase(p.phase)}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
             <span className="block">{p.label}</span>
             <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
@@ -2098,25 +2055,91 @@ export default function BasicTablePage() {
           <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-sm text-gray-700">
             <Calendar size={14} className="text-gray-400" />
             <input type="date" value={date}
-              onChange={e => { setDate(e.target.value); setGenResult(null) }}
+              onChange={e => setDate(e.target.value)}
               className="outline-none bg-transparent text-sm" />
           </div>
           {selectedPhase !== 'all' && (
-            <button onClick={handleGenerateClick} disabled={generating}
+            <button type="button"
+              onClick={handleCreatePhaseClick}
+              data-subtract-phase1={subtractPhase1FromPhase2}
+              data-subtract-phase1-phase3={subtractPhase1FromPhase3}
+              data-subtract-phase2-phase3={subtractPhase2FromPhase3}
               className="btn-primary flex items-center gap-2 text-sm">
-              <Zap size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
+              <ClipboardList size={15} />สร้าง Phase {selectedPhase}
             </button>
-          )}
-          {genResult && (
-            <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${
-              genResult.success ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
-            }`}>
-              {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              {genResult.message}
-            </div>
           )}
         </div>
       </div>
+
+      {phase2PromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">สร้าง Phase 2</h2>
+              <p className="mt-1 text-sm text-gray-500">ต้องการหักยอด Phase 1 ออกจากยอด Phase 2 ก่อนสร้างแผนหรือไม่</p>
+            </div>
+            <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => handlePhase2SubtractChoice(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ไม่หัก Phase 1
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePhase2SubtractChoice(true)}
+                className="px-4 py-2 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700">
+                หัก Phase 1
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {phase3PromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">สร้าง Phase 3</h2>
+              <p className="mt-1 text-sm text-gray-500">เลือกแผนก่อนหน้าที่ต้องการหักออกก่อนสร้าง Phase 3</p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={subtractPhase1FromPhase3}
+                  onChange={e => setSubtractPhase1FromPhase3(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                />
+                หักแผน Phase 1
+              </label>
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={subtractPhase2FromPhase3}
+                  onChange={e => setSubtractPhase2FromPhase3(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                />
+                หักแผน Phase 2
+              </label>
+            </div>
+            <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:justify-end border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setPhase3PromptOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handlePhase3Confirm}
+                className="px-4 py-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800">
+                ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && <div className="card text-center py-16 text-gray-400">กำลังโหลด...</div>}
 
@@ -2147,7 +2170,6 @@ export default function BasicTablePage() {
           {filtered.length === 0 && (
             <div className="card text-center py-16 text-gray-400">
               <p className="font-medium">ยังไม่มีคำสั่งผลิต{selectedPhase === 'all' ? '' : ` Phase ${selectedPhase}`} วันที่ {date}</p>
-              {selectedPhase !== 'all' && <p className="text-sm mt-1">กรุณากด "สร้าง Phase {selectedPhase}"</p>}
             </div>
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
