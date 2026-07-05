@@ -424,30 +424,68 @@ function subtractProducedTargets(targets: BasicSkuTarget[], producedTargets: Bas
     .filter(target => target.quantityKg > 0)
 }
 
-function subtractProducedTargetsWithField(
+function isLotusWetChannel(channel: string): boolean {
+  const key = channelPriorityKey(channel)
+  return key === 'lotus' || key === 'wet market'
+}
+
+function subtractProducedTargetsAcrossLotusWetPool(
   targets: BasicSkuTarget[],
   producedTargets: BasicSkuTarget[],
   field: 'phase1DeductedKg' | 'phase2DeductedKg',
 ): BasicSkuTarget[] {
+  const producedBySkuPool = producedTargets.reduce((map, target) => {
+    if (!isLotusWetChannel(target.channel)) return map
+    const sku = normalizeSku(target.sku)
+    map.set(sku, (map.get(sku) ?? 0) + target.quantityKg)
+    return map
+  }, new Map<string, number>())
+
   const producedBySkuChannel = producedTargets.reduce((map, target) => {
+    if (!isLotusWetChannel(target.channel)) return map
     const key = targetDeductKey(target)
     map.set(key, (map.get(key) ?? 0) + target.quantityKg)
     return map
   }, new Map<string, number>())
 
-  return targets
-    .map(target => {
-      const deductedKg = producedBySkuChannel.get(targetDeductKey(target)) ?? 0
-      const remainingKg = Math.max(0, target.quantityKg - deductedKg)
-      return {
+  const targetsBySku = targets.reduce((map, target) => {
+    const sku = normalizeSku(target.sku)
+    const list = map.get(sku) ?? []
+    list.push(target)
+    map.set(sku, list)
+    return map
+  }, new Map<string, BasicSkuTarget[]>())
+
+  const result: BasicSkuTarget[] = []
+  for (const [sku, skuTargets] of targetsBySku.entries()) {
+    const targetTotal = skuTargets.reduce((sum, target) => sum + target.quantityKg, 0)
+    const remainingTotal = Math.max(0, targetTotal - (producedBySkuPool.get(sku) ?? 0))
+    const deficits = skuTargets.map(target => ({
+      target,
+      deficitKg: Math.max(0, target.quantityKg - (producedBySkuChannel.get(targetDeductKey(target)) ?? 0)),
+    }))
+    const totalDeficit = deficits.reduce((sum, row) => sum + row.deficitKg, 0)
+    let remainingToAllocate = remainingTotal
+
+    for (const { target, deficitKg } of deficits) {
+      const allocatedKg = totalDeficit > 0
+        ? Math.min(deficitKg, remainingToAllocate)
+        : Math.min(target.quantityKg, remainingToAllocate)
+      remainingToAllocate -= allocatedKg
+      const roundedAllocated = Math.round(Math.max(0, allocatedKg) * 100) / 100
+      if (roundedAllocated <= 0) continue
+
+      result.push({
         ...target,
-        rawOrderKg: Math.round(remainingKg * 100) / 100,
+        rawOrderKg: roundedAllocated,
         requestedQuantityKg: Math.round((target.requestedQuantityKg ?? target.quantityKg) * 100) / 100,
-        [field]: Math.round(Math.min(target.quantityKg, deductedKg) * 100) / 100,
-        quantityKg: Math.round(remainingKg * 100) / 100,
-      }
-    })
-    .filter(target => target.quantityKg > 0)
+        [field]: Math.round(Math.max(0, target.quantityKg - roundedAllocated) * 100) / 100,
+        quantityKg: roundedAllocated,
+      })
+    }
+  }
+
+  return result
 }
 
 async function buildPhase1SkuTargets(
@@ -1172,10 +1210,10 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     ? (() => {
         let planTargets = [...wetMarketTargets, ...lotusTargets]
         if (shouldSubtractPhase1ForPhase3) {
-          planTargets = subtractProducedTargetsWithField(planTargets, phase3Phase1SkuTargets, 'phase1DeductedKg')
+          planTargets = subtractProducedTargetsAcrossLotusWetPool(planTargets, phase3Phase1SkuTargets, 'phase1DeductedKg')
         }
         if (shouldSubtractPhase2ForPhase3) {
-          planTargets = subtractProducedTargetsWithField(planTargets, phase3Phase2SkuTargets, 'phase2DeductedKg')
+          planTargets = subtractProducedTargetsAcrossLotusWetPool(planTargets, phase3Phase2SkuTargets, 'phase2DeductedKg')
         }
         return planTargets
       })()
