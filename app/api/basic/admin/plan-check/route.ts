@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         'table_name, sku, target_quantity, channel',
         query => query.eq('production_date', date).in('table_name', BASIC_STATIONS).in('channel', ['Wet Market', 'LOTUS', 'Makro']),
       ),
-      fetchOpeningStock0010(),
+      fetchOpeningStock0010(date),
     ])
 
     const rowMap = new Map<string, PlanCheckRow>()

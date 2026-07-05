@@ -296,14 +296,18 @@ async function fetchBagSizeMap(): Promise<Map<string, number>> {
   return map
 }
 
-// Carried-over Wet Market stock (คลัง 0010) nets against demand at every Basic phase before the
-// existing phase1/phase2-produced deduction runs. Subtracting the same full opening balance
-// independently at each phase looks like double-counting but telescopes to exactly one deduction
-// from the day's final order total, since each phase's "already produced" figure already reflects
-// its own stock-adjusted target.
-export async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, number>; byName: Map<string, number> }> {
-  const byCode = new Map<string, number>()
-  const byName = new Map<string, number>()
+// Pins the stock_0010 upload_log_id used for a production date the first time it's resolved that
+// day, and every later call (Phase 2, Phase 3, or a Phase 1 re-run) reuses the same snapshot even
+// if a newer stock file gets uploaded in between — otherwise reconstructing "what Phase 1 already
+// produced" later in the day would net against a different stock balance than Phase 1 actually used.
+async function resolveOpeningStockUploadId(date: string): Promise<string | null> {
+  const { data: existing, error: existingError } = await supabase
+    .from('basic_stock_snapshot')
+    .select('upload_log_id')
+    .eq('production_date', date)
+    .maybeSingle()
+  if (existingError) throw existingError
+  if (existing?.upload_log_id) return existing.upload_log_id
 
   const { data: latestLog, error: logError } = await supabase
     .from('upload_log')
@@ -312,14 +316,40 @@ export async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, num
     .order('uploaded_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-
   if (logError) throw logError
-  if (!latestLog?.id) return { byCode, byName }
+  if (!latestLog?.id) return null
+
+  const { error: lockError } = await supabase
+    .from('basic_stock_snapshot')
+    .upsert({ production_date: date, upload_log_id: latestLog.id }, { onConflict: 'production_date', ignoreDuplicates: true })
+  if (lockError) throw lockError
+
+  // Re-read in case a concurrent request already locked a different upload_log_id first.
+  const { data: locked, error: lockedError } = await supabase
+    .from('basic_stock_snapshot')
+    .select('upload_log_id')
+    .eq('production_date', date)
+    .maybeSingle()
+  if (lockedError) throw lockedError
+  return locked?.upload_log_id ?? latestLog.id
+}
+
+// Carried-over Wet Market stock (คลัง 0010) nets against demand at every Basic phase before the
+// existing phase1/phase2-produced deduction runs. Subtracting the same full opening balance
+// independently at each phase looks like double-counting but telescopes to exactly one deduction
+// from the day's final order total, since each phase's "already produced" figure already reflects
+// its own stock-adjusted target.
+export async function fetchOpeningStock0010(date: string): Promise<{ byCode: Map<string, number>; byName: Map<string, number> }> {
+  const byCode = new Map<string, number>()
+  const byName = new Map<string, number>()
+
+  const uploadLogId = await resolveOpeningStockUploadId(date)
+  if (!uploadLogId) return { byCode, byName }
 
   const rows = await fetchPaged<{ material_code: string | null; material_name: string | null; weight_total: number | null }>(
     'stock_0010',
     'material_code, material_name, weight_total',
-    query => query.eq('upload_log_id', latestLog.id).gt('weight_total', 0),
+    query => query.eq('upload_log_id', uploadLogId).gt('weight_total', 0),
   )
 
   for (const row of rows) {
@@ -855,7 +885,7 @@ async function fetchWetMarket1400Targets(
 ): Promise<BasicSkuTarget[]> {
   const [targets, openingStock] = await Promise.all([
     fetchLatestRoundUploadTargets('Wet Market', 'wet_market_orders', date, '1400', productivityByGroup),
-    fetchOpeningStock0010(),
+    fetchOpeningStock0010(date),
   ])
 
   return targets
@@ -922,7 +952,7 @@ async function fetchPlan100ChannelTargets(
     targetMap.set(norm, current)
   }
 
-  const openingStock = channel === 'Wet Market' ? await fetchOpeningStock0010() : null
+  const openingStock = channel === 'Wet Market' ? await fetchOpeningStock0010(date) : null
 
   return Array.from(targetMap.values())
     .map(t => {
@@ -1015,7 +1045,7 @@ async function fetchWetMarket1600AverageTargets(
       'sku, sku_name, quantity',
       query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
     ),
-    fetchOpeningStock0010(),
+    fetchOpeningStock0010(date),
   ])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
