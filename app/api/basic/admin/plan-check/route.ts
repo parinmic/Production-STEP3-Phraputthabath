@@ -10,6 +10,25 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+function rebalanceLotusWetProduced(row: PlanCheckRow) {
+  const wetDeficit = Math.max(0, row.plan100.wetMarket - row.produced.wetMarket)
+  const wetSurplus = Math.max(0, row.produced.wetMarket - row.plan100.wetMarket)
+  const lotusDeficit = Math.max(0, row.plan100.lotus - row.produced.lotus)
+  const lotusSurplus = Math.max(0, row.produced.lotus - row.plan100.lotus)
+
+  const lotusToWet = Math.min(wetDeficit, lotusSurplus)
+  if (lotusToWet > 0) {
+    row.produced.wetMarket += lotusToWet
+    row.produced.lotus -= lotusToWet
+  }
+
+  const wetToLotus = Math.min(lotusDeficit, wetSurplus)
+  if (wetToLotus > 0) {
+    row.produced.lotus += wetToLotus
+    row.produced.wetMarket -= wetToLotus
+  }
+}
+
 // GET /api/basic/admin/plan-check?date=2026-07-05
 // เทียบ "แผน 100%" (ออเดอร์ที่อัพโหลด) กับ "แผนผลิต" (production_assignments จริง) แยกตามสายพานและ SKU
 export async function GET(req: NextRequest) {
@@ -77,6 +96,10 @@ export async function GET(req: NextRequest) {
       if (r.channel === 'Wet Market') row.produced.wetMarket += qty
       else if (r.channel === 'LOTUS') row.produced.lotus += qty
       else if (r.channel === 'Makro') row.produced.makro += qty
+    }
+
+    for (const row of rowMap.values()) {
+      rebalanceLotusWetProduced(row)
     }
 
     const rows = Array.from(rowMap.values())
