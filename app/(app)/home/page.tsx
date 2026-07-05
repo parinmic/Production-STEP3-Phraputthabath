@@ -1,9 +1,12 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
+import { canAccessStation } from '@/lib/station-access'
+
+const DISABLED_CLS = 'text-gray-400 bg-gray-50 opacity-50 cursor-not-allowed pointer-events-none'
 
 export default function DashboardPage() {
   const raw = cookies().get('step3_session')?.value
-  const user = raw ? JSON.parse(raw) as { username: string; position: string } : null
+  const user = raw ? JSON.parse(raw) as { username: string; position: string; menus?: string[] } : null
 
   return (
     <div>
@@ -28,12 +31,22 @@ export default function DashboardPage() {
             { label: 'Station สไลด์',  slug: 'slide',    cls: 'border-purple-500 bg-purple-50 text-purple-700' },
             { label: 'Station เผาขา',  slug: 'pao-kha',  cls: 'border-fuchsia-500 bg-fuchsia-50 text-fuchsia-700' },
             { label: 'Station เลาะขา', slug: 'loa-kha',  cls: 'border-teal-500 bg-teal-50 text-teal-700' },
-          ].map((t) => (
-            <Link key={t.slug} href={`/production/${t.slug}`}
-              className={`border-2 ${t.cls} rounded-xl p-5 font-semibold text-center hover:opacity-80`}>
-              {t.label}
-            </Link>
-          ))}
+          ].map((t) => {
+            const allowed = canAccessStation(user?.menus, t.slug)
+            if (!allowed) {
+              return (
+                <div key={t.slug} className={`border-2 border-gray-200 ${DISABLED_CLS} rounded-xl p-5 font-semibold text-center`} aria-disabled="true">
+                  {t.label}
+                </div>
+              )
+            }
+            return (
+              <Link key={t.slug} href={`/production/${t.slug}`}
+                className={`border-2 ${t.cls} rounded-xl p-5 font-semibold text-center hover:opacity-80`}>
+                {t.label}
+              </Link>
+            )
+          })}
         </div>
       </div>
     </div>

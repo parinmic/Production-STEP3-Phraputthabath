@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 
 const MENU_LABELS: Record<string, string> = {
   all:              'ทุกเมนู',
@@ -9,6 +10,18 @@ const MENU_LABELS: Record<string, string> = {
   production:       'คำสั่งผลิต',
   saw_machine_plan: 'เครื่องเลื่อย',
   shortage:         'Raw รอผลิต',
+}
+
+const SLUG_TO_STATION_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(STATION_LABEL_TO_SLUG).map(([label, slug]) => [slug, label])
+)
+
+function menuLabel(key: string): string {
+  if (key.startsWith('station:')) {
+    const slug = key.slice('station:'.length)
+    return `เฉพาะ Station ${SLUG_TO_STATION_LABEL[slug] ?? slug}`
+  }
+  return MENU_LABELS[key] ?? key
 }
 
 const STEP_LABELS: Record<string, { label: string; cls: string }> = {
@@ -327,7 +340,7 @@ export default function AdminUsersPage() {
           {selectedPos && (
             <p className="text-xs text-gray-500">
               เมนู: <span className="text-gray-700 font-medium">
-                {selectedPos.menus.map(k => MENU_LABELS[k] ?? k).join(', ') || '—'}
+                {selectedPos.menus.map(menuLabel).join(', ') || '—'}
               </span>
               {' · '}
               Step: <span className="text-gray-700 font-medium">{STEP_LABELS[selectedPos.step]?.label ?? selectedPos.step}</span>
@@ -385,7 +398,7 @@ export default function AdminUsersPage() {
                       <div className="flex flex-wrap gap-1">
                         {u.menus.map(k => (
                           <span key={k} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                            {MENU_LABELS[k] ?? k}
+                            {menuLabel(k)}
                           </span>
                         ))}
                       </div>

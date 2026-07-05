@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { canAccessStation, STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 
 export async function GET(req: NextRequest) {
   const date  = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
   const table = req.nextUrl.searchParams.get('table') ?? ''
+
+  const slug = STATION_LABEL_TO_SLUG[table]
+  if (slug) {
+    const raw = req.cookies.get('step3_session')?.value
+    const user = raw ? JSON.parse(raw) : null
+    if (!canAccessStation(user?.menus, slug)) {
+      return NextResponse.json({ assignments: [], message: 'ไม่มีสิทธิ์เข้าถึง station นี้' }, { status: 403 })
+    }
+  }
 
   // Step 1: หา effective_from ล่าสุดต่อ period (รวม future batch — แผนใหม่แสดงทันทีไม่รอ checkpoint)
   let periodQuery = supabase

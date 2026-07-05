@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 
-function toMenuKey(label: string): string {
-  const lower = label.trim().toLowerCase()
-  if (lower === 'all') return 'all'
-  if (lower.includes('เบิก'))      return 'withdrawal'
-  if (lower.includes('เลื่อย'))    return 'saw_machine_plan'
-  if (lower.includes('raw') || lower.includes('รอผลิต')) return 'shortage'
-  if (lower.includes('ผลิต') || lower.includes('station')) return 'production'
-  return label.trim()
+// คืนค่าเป็นหลาย key ได้: 1 หมวดหลัก (all/withdrawal/saw_machine_plan/shortage/production)
+// บวกกับ station:<slug> ถ้าข้อความใน Menu ระบุชื่อ station ไว้ด้วย (เช่น "คำสั่งผลิต สะโพก"
+// จะได้ทั้ง production และ station:sa-phok — จำกัดให้เห็น/เข้าได้เฉพาะ station นั้น)
+function toMenuKeys(label: string): string[] {
+  const raw = label.trim()
+  const lower = raw.toLowerCase()
+  const keys: string[] = []
+
+  if (lower === 'all') keys.push('all')
+  else if (lower.includes('เบิก')) keys.push('withdrawal')
+  else if (lower.includes('เลื่อย')) keys.push('saw_machine_plan')
+  else if (lower.includes('raw') || lower.includes('รอผลิต')) keys.push('shortage')
+  else if (lower.includes('ผลิต') || lower.includes('station')) keys.push('production')
+  else if (raw) keys.push(raw)
+
+  for (const [stationLabel, slug] of Object.entries(STATION_LABEL_TO_SLUG)) {
+    if (raw.includes(stationLabel)) keys.push(`station:${slug}`)
+  }
+
+  return keys
 }
 
 function toStepKey(raw: string | number | null | undefined): string {
@@ -38,7 +51,7 @@ export async function POST(req: NextRequest) {
     const posName  = String(r.position ?? '').trim()
     const username = String(r.username ?? '').trim()
     const password = String(r.password ?? '').trim()
-    const menuKey  = toMenuKey(String(r.menu ?? ''))
+    const menuKeys = toMenuKeys(String(r.menu ?? ''))
     const step     = toStepKey(r.step)
 
     if (!posName) continue
@@ -46,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Set(), step })
     const entry = posMap.get(posName)!
 
-    if (menuKey) entry.menus.add(menuKey)
+    for (const k of menuKeys) if (k) entry.menus.add(k)
     if (username) entry.users.set(username, password)
   }
 
