@@ -90,11 +90,12 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
     finally { setDeleting(null) }
   }
 
-  const handleDownload = async (sourceFile: string) => {
+  const handleDownload = async (h: UploadRecord) => {
     if (!downloadTable) return
     try {
       const slot = downloadSlot ? `&slot=${encodeURIComponent(downloadSlot)}` : ''
-      const res  = await fetch(`/api/download-upload?table=${encodeURIComponent(downloadTable)}&file=${encodeURIComponent(sourceFile)}${slot}`)
+      const identifier = h.id ? `id=${encodeURIComponent(h.id)}` : `file=${encodeURIComponent(h.source_file)}`
+      const res  = await fetch(`/api/download-upload?table=${encodeURIComponent(downloadTable)}&${identifier}${slot}`)
       const json = await res.json()
       if (!json.data?.length) { alert('ไม่มีข้อมูล'); return }
       const headers: Record<string, string> = json.headers
@@ -104,7 +105,7 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
       const ws = XLSX.utils.aoa_to_sheet([thaiHeaders, ...rows])
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูล')
-      const baseName = sourceFile.replace(/\.[^.]+$/, '')
+      const baseName = h.source_file.replace(/\.[^.]+$/, '')
       XLSX.writeFile(wb, `${baseName}_export.xlsx`)
     } catch { alert('ดาวน์โหลดไม่สำเร็จ') }
   }
@@ -157,7 +158,7 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
                 </div>
                 {downloadTable && (
                   <button
-                    onClick={() => handleDownload(h.source_file)}
+                    onClick={() => handleDownload(h)}
                     className="shrink-0 text-gray-300 hover:text-blue-500 transition-colors p-1"
                     title="ดาวน์โหลด Excel"
                   >

@@ -269,7 +269,7 @@ const TABLE_CONFIG: Record<string, { cols: string[]; headers: Record<string, str
 async function fetchAllRows(
   table: string,
   select: string,
-  sourceFile: string,
+  identifier: { uploadLogId: string } | { sourceFile: string },
   slot?: string | null
 ): Promise<{ data: any[]; error: any }> {
   const PAGE = 1000
@@ -279,8 +279,11 @@ async function fetchAllRows(
     let q = supabase
       .from(table)
       .select(select)
-      .eq('source_file', sourceFile)
       .range(from, from + PAGE - 1)
+
+    q = 'uploadLogId' in identifier
+      ? q.eq('upload_log_id', identifier.uploadLogId)
+      : q.eq('source_file', identifier.sourceFile)
 
     if (slot && table === 'production_plan_supplementary') {
       q = q.eq('slot', slot)
@@ -296,18 +299,23 @@ async function fetchAllRows(
 }
 
 export async function GET(req: NextRequest) {
-  const table      = req.nextUrl.searchParams.get('table') ?? ''
-  const sourceFile = req.nextUrl.searchParams.get('file')  ?? ''
-  const slot       = req.nextUrl.searchParams.get('slot')
+  const table       = req.nextUrl.searchParams.get('table') ?? ''
+  const uploadLogId = req.nextUrl.searchParams.get('id')
+  const sourceFile  = req.nextUrl.searchParams.get('file') ?? ''
+  const slot        = req.nextUrl.searchParams.get('slot')
 
-  if (!table || !sourceFile) {
-    return NextResponse.json({ error: 'missing table or file' }, { status: 400 })
+  if (!table || (!uploadLogId && !sourceFile)) {
+    return NextResponse.json({ error: 'missing table or id/file' }, { status: 400 })
   }
+
+  // Prefer the specific upload's id so re-uploads sharing the same filename don't pull in
+  // every past upload's rows — fall back to source_file for callers that predate upload ids.
+  const identifier = uploadLogId ? { uploadLogId } : { sourceFile }
 
   // Handle master logic tables (JSONB row_data format)
   const isMasterTable = table === 'master_logic_calculation' || table === 'master_logic_manpower'
   if (isMasterTable) {
-    const { data, error } = await fetchAllRows(table, 'row_data', sourceFile)
+    const { data, error } = await fetchAllRows(table, 'row_data', identifier)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data || !data.length) return NextResponse.json({ headers: {}, data: [] })
@@ -325,7 +333,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `unknown table: ${table}` }, { status: 400 })
   }
 
-  const { data, error } = await fetchAllRows(table, config.cols.join(','), sourceFile, slot)
+  const { data, error } = await fetchAllRows(table, config.cols.join(','), identifier, slot)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ headers: config.headers, data: data ?? [] })
