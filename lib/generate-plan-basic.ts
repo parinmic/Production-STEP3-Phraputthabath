@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { fetchLatestPlan100, supabase } from '@/lib/supabase'
 import { fetchLatestMasYield } from '@/lib/mas-yield'
 
 export type BasicPhase = 1 | 2 | 3
@@ -464,9 +464,9 @@ async function buildPhase2AllocatedTargets(
 
   const phase2Targets = buildYieldTargetsFromLots(phase2Lots, masYield, productivityByGroup)
   const [makroTargets, wetMarketTargets, lotusTargets, channelPriority] = await Promise.all([
-    fetchLatestMakro1400Targets(productivityByGroup),
-    fetchLatestWetMarket1400Targets(productivityByGroup),
-    fetchLatestLotus1400Targets(productivityByGroup),
+    fetchMakro1400Targets(date, productivityByGroup),
+    fetchWetMarket1400Targets(date, productivityByGroup),
+    fetchLotus1400Targets(date, productivityByGroup),
     fetchBasicChannelPriority(2),
   ])
   const baseOrderTargets = [...makroTargets, ...wetMarketTargets, ...lotusTargets]
@@ -483,25 +483,15 @@ async function fetchLatestMakro0800Targets(
   date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const [{ data: latestLog, error: logError }, varianceByGroupTrend, histSums] = await Promise.all([
+  const [{ data, error }, varianceByGroupTrend, histSums] = await Promise.all([
     supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'makro_orders_0800')
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-      .maybeSingle(),
+      .from('makro_orders')
+      .select('sku, sku_name, quantity')
+      .eq('delivery_date', date)
+      .eq('upload_round', '0800'),
     fetchMakroVarianceBasic(),
     fetchMakroHistorySums(date),
   ])
-
-  if (logError) throw logError
-  if (!latestLog?.id) return []
-
-  const { data, error } = await supabase
-    .from('makro_orders')
-    .select('sku, sku_name, quantity')
-    .eq('upload_log_id', latestLog.id)
 
   if (error) throw error
 
@@ -551,24 +541,15 @@ async function fetchLatestMakro0800Targets(
     .sort((a, b) => (a.station ?? '').localeCompare(b.station ?? '') || a.productGroup.localeCompare(b.productGroup) || a.sku.localeCompare(b.sku))
 }
 
-async function fetchLatestMakro1400Targets(
+async function fetchMakro1400Targets(
+  date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const { data: latestLog, error: logError } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'makro_orders_1400')
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (logError) throw logError
-  if (!latestLog?.id) return []
-
   const { data, error } = await supabase
     .from('makro_orders')
     .select('sku, sku_name, quantity')
-    .eq('upload_log_id', latestLog.id)
+    .eq('delivery_date', date)
+    .eq('upload_round', '1400')
 
   if (error) throw error
 
@@ -611,24 +592,15 @@ async function fetchLatestMakro1400Targets(
 async function fetchLatestRoundUploadTargets(
   channel: string,
   ordersTable: 'lotus_orders' | 'wet_market_orders',
-  uploadLogTable: string,
+  date: string,
+  uploadRound: '1400',
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const { data: latestLog, error: logError } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', uploadLogTable)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (logError) throw logError
-  if (!latestLog?.id) return []
-
   const { data, error } = await supabase
     .from(ordersTable)
     .select('sku, sku_name, quantity')
-    .eq('upload_log_id', latestLog.id)
+    .eq('delivery_date', date)
+    .eq('upload_round', uploadRound)
 
   if (error) throw error
 
@@ -668,16 +640,18 @@ async function fetchLatestRoundUploadTargets(
     .sort((a, b) => (a.station ?? '').localeCompare(b.station ?? '') || a.productGroup.localeCompare(b.productGroup) || a.sku.localeCompare(b.sku))
 }
 
-async function fetchLatestWetMarket1400Targets(
+async function fetchWetMarket1400Targets(
+  date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  return fetchLatestRoundUploadTargets('Wet Market', 'wet_market_orders', 'wet_market_orders_1400', productivityByGroup)
+  return fetchLatestRoundUploadTargets('Wet Market', 'wet_market_orders', date, '1400', productivityByGroup)
 }
 
-async function fetchLatestLotus1400Targets(
+async function fetchLotus1400Targets(
+  date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  return fetchLatestRoundUploadTargets('LOTUS', 'lotus_orders', 'lotus_orders_1400', productivityByGroup)
+  return fetchLatestRoundUploadTargets('LOTUS', 'lotus_orders', date, '1400', productivityByGroup)
 }
 
 async function fetchPlan100ChannelTargets(
@@ -686,27 +660,7 @@ async function fetchPlan100ChannelTargets(
   weightColumn: 'lotus_weight' | 'cpft_weight',
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const { data: latestLog, error: logError } = await supabase
-    .from('upload_log')
-    .select('id')
-    .eq('table_name', 'production_plan_100')
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (logError) throw logError
-
-  let query = supabase
-    .from('production_plan_100')
-    .select(`sap, product_name, ${weightColumn}`)
-    .eq('plan_date', date)
-
-  if (latestLog?.id) {
-    query = query.eq('upload_log_id', latestLog.id)
-  }
-
-  const { data, error } = await query
-  if (error) throw error
+  const data = await fetchLatestPlan100([date])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
@@ -1171,9 +1125,9 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
       ])
     : phase === 2
       ? await Promise.all([
-          fetchLatestMakro1400Targets(productivityByGroup),
-          fetchLatestWetMarket1400Targets(productivityByGroup),
-          fetchLatestLotus1400Targets(productivityByGroup),
+          fetchMakro1400Targets(date, productivityByGroup),
+          fetchWetMarket1400Targets(date, productivityByGroup),
+          fetchLotus1400Targets(date, productivityByGroup),
           fetchBasicChannelPriority(phase),
         ])
       : phase === 3

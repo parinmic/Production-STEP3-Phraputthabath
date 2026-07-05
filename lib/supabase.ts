@@ -38,6 +38,8 @@ export interface Plan100Row {
   sap: string
   product_name: string | null
   weight_total: number
+  lotus_weight?: number
+  cpft_weight?: number
 }
 
 // A re-upload of the same plan_date's file leaves the old rows in place (no replace-on-upload),
@@ -53,7 +55,7 @@ export async function fetchLatestPlan100(dates: string[]): Promise<Plan100Row[]>
   while (true) {
     const { data, error } = await supabase
       .from('production_plan_100')
-      .select('plan_date, sap, product_name, weight_total, upload_log_id, uploaded_at')
+      .select('plan_date, sap, product_name, weight_total, lotus_weight, cpft_weight, upload_log_id, uploaded_at')
       .in('plan_date', dates)
       .range(from, from + PAGE - 1)
     if (error) throw error
@@ -76,5 +78,12 @@ export async function fetchLatestPlan100(dates: string[]): Promise<Plan100Row[]>
       const latest = latestByDate.get(r.plan_date)
       return !latest || r.upload_log_id === latest.uploadLogId
     })
-    .map(({ plan_date, sap, product_name, weight_total }) => ({ plan_date, sap, product_name, weight_total }))
+    .map(({ plan_date, sap, product_name, weight_total, lotus_weight, cpft_weight }) => ({
+      plan_date,
+      sap,
+      product_name,
+      weight_total,
+      lotus_weight,
+      cpft_weight,
+    }))
 }
