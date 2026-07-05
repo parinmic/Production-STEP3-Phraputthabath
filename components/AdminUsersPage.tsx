@@ -3,7 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
+import { SPECIAL_MENU_LABELS } from '@/lib/special-menu'
 
+// รูปแบบเก่า (ก่อนเปลี่ยนไฟล์ "User ระบบผลิต.xlsx" เป็นตัวเลข) — เก็บไว้แสดงผลย้อนหลังเผื่อมีข้อมูลเก่าค้าง
 const MENU_LABELS: Record<string, string> = {
   all:              'ทุกเมนู',
   withdrawal:       'เบิกสินค้า',
@@ -17,6 +19,8 @@ const SLUG_TO_STATION_LABEL: Record<string, string> = Object.fromEntries(
 )
 
 function menuLabel(key: string): string {
+  if (key === 'all') return 'ทุกเมนู'
+  if (key in SPECIAL_MENU_LABELS) return `[${key}] ${SPECIAL_MENU_LABELS[key]}`
   if (key.startsWith('station:')) {
     const slug = key.slice('station:'.length)
     return `เฉพาะ Station ${SLUG_TO_STATION_LABEL[slug] ?? slug}`

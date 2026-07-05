@@ -2,20 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 
-// คืนค่าเป็นหลาย key ได้: 1 หมวดหลัก (all/withdrawal/saw_machine_plan/shortage/production)
-// บวกกับ station:<slug> ถ้าข้อความใน Menu ระบุชื่อ station ไว้ด้วย (เช่น "คำสั่งผลิต สะโพก"
-// จะได้ทั้ง production และ station:sa-phok — จำกัดให้เห็น/เข้าได้เฉพาะ station นั้น)
-function toMenuKeys(label: string): string[] {
-  const raw = label.trim()
+// รูปแบบไฟล์ "User ระบบผลิต.xlsx" ชีท Main: คอลัมน์ Menu เป็นตัวเลขตามชีท Detail
+// (เช่น 2.1 = คำสั่งผลิต Station สะโพกพิเศษ) หรือ "All" — 1 แถว = 1 สิทธิ์ ต่อ position
+// ยังรองรับรูปแบบเก่า (ข้อความอธิบาย เช่น "คำสั่งผลิต สะโพก") ไว้เผื่ออัพโหลดฝั่งเบสิคที่ยังไม่มีเลข
+function toMenuKeys(cell: string): string[] {
+  const raw = cell.trim()
+  if (!raw) return []
+  if (raw.toLowerCase() === 'all') return ['all']
+
+  const num = Number(raw)
+  if (Number.isFinite(num)) return [String(num)]
+
+  return toLegacyMenuKeys(raw)
+}
+
+function toLegacyMenuKeys(raw: string): string[] {
   const lower = raw.toLowerCase()
   const keys: string[] = []
 
-  if (lower === 'all') keys.push('all')
-  else if (lower.includes('เบิก')) keys.push('withdrawal')
+  if (lower.includes('เบิก')) keys.push('withdrawal')
   else if (lower.includes('เลื่อย')) keys.push('saw_machine_plan')
   else if (lower.includes('raw') || lower.includes('รอผลิต')) keys.push('shortage')
   else if (lower.includes('ผลิต') || lower.includes('station')) keys.push('production')
-  else if (raw) keys.push(raw)
+  else keys.push(raw)
 
   for (const [stationLabel, slug] of Object.entries(STATION_LABEL_TO_SLUG)) {
     if (raw.includes(stationLabel)) keys.push(`station:${slug}`)

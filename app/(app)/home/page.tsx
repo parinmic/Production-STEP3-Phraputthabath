@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { canAccessStation } from '@/lib/station-access'
+import { canAccessSpecialStation } from '@/lib/special-menu'
 
 const DISABLED_CLS = 'text-gray-400 bg-gray-50 opacity-50 cursor-not-allowed pointer-events-none'
 
@@ -32,7 +32,7 @@ export default function DashboardPage() {
             { label: 'Station เผาขา',  slug: 'pao-kha',  cls: 'border-fuchsia-500 bg-fuchsia-50 text-fuchsia-700' },
             { label: 'Station เลาะขา', slug: 'loa-kha',  cls: 'border-teal-500 bg-teal-50 text-teal-700' },
           ].map((t) => {
-            const allowed = canAccessStation(user?.menus, t.slug)
+            const allowed = canAccessSpecialStation(user?.menus, t.slug)
             if (!allowed) {
               return (
                 <div key={t.slug} className={`border-2 border-gray-200 ${DISABLED_CLS} rounded-xl p-5 font-semibold text-center`} aria-disabled="true">
