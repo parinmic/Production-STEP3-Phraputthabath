@@ -272,6 +272,31 @@ export async function fetchLatestMakroOrders(
     .map(({ delivery_date, upload_round, sku, sku_name, quantity }) => ({ delivery_date, upload_round, sku, sku_name, quantity }))
 }
 
+// Rounds down to the nearest picking-unit (bag) multiple so packed output never exceeds the
+// order/yield target that fed into it — matches roundDownToBag() in lib/generate-plan.ts.
+async function fetchBagSizeMap(): Promise<Map<string, number>> {
+  const data = await fetchPaged<{ sap: string; weight_per_bag: number }>(
+    'picking_unit_master',
+    'sap, weight_per_bag',
+  )
+  const map = new Map<string, number>()
+  for (const r of data) {
+    const sap = String(r.sap ?? '').trim()
+    const wpb = Number(r.weight_per_bag ?? 0)
+    if (sap && wpb > 0) {
+      map.set(sap, wpb)
+      map.set(sap.replace(/^0+/, ''), wpb)
+    }
+  }
+  return map
+}
+
+function roundDownToBag(bagSizeMap: Map<string, number>, sku: string, qty: number): number {
+  const wpb = bagSizeMap.get(sku) ?? bagSizeMap.get(sku.replace(/^0+/, ''))
+  if (!wpb || wpb <= 0) return qty
+  return Math.floor((qty / wpb) + 1e-9) * wpb
+}
+
 export async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
   const data = await fetchPaged<{ row_data: Record<string, unknown> }>(
     'master_logic_calculation',
@@ -1152,10 +1177,11 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   const date = params.date || todayBangkok()
   const phaseCfg = BASIC_PHASES[phase]
-  const [{ lots, rateSecPerPig }, masYield, productivityByGroup] = await Promise.all([
+  const [{ lots, rateSecPerPig }, masYield, productivityByGroup, bagSizeMap] = await Promise.all([
     fetchSelectedLotsAndRate(),
     fetchLatestMasYield(supabase),
     fetchProductivityByGroup(),
+    fetchBagSizeMap(),
   ])
 
   if (!lots.length) {
@@ -1243,6 +1269,8 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
     ? await buildEnoughYieldBalanceTargets(date, targets, orderTargets, productivityByGroup)
     : []
   const skuTargets = [...orderTargets, ...balanceTargets]
+    .map(t => ({ ...t, quantityKg: roundDownToBag(bagSizeMap, t.sku, t.quantityKg) }))
+    .filter(t => t.quantityKg > 0)
 
   return {
     success: true,
