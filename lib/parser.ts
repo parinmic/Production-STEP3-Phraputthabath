@@ -169,7 +169,7 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
   // Branch cols = all numeric cols between col 3 and totalCol (exclusive), or all from col 3 if no totalCol
   const branchCols = hRow
     .map((_, i) => i)
-    .filter(i => i >= 3 && i !== totalCol && typeof hRow[i] !== 'string')
+    .filter(i => i >= 3 && i !== totalCol && hRow[i] != null && hRow[i] !== '')
 
   const results: ParsedRow[] = []
   let currentStation = ''
@@ -185,25 +185,39 @@ function processMakroPlan100Sheet(raw: (string | number | Date | null)[][]): Par
     const stationVal = String(row[0] ?? '').trim()
     if (stationVal) currentStation = stationVal
 
-    // ใช้ totalCol ถ้ามีและมีค่า; ถ้า null/undefined (formula ไม่มี cached value) ให้ sum branch cols แทน
-    let qty = 0
-    if (totalCol >= 0 && row[totalCol] != null && row[totalCol] !== '') {
-      qty = Number(row[totalCol]) || 0
+    // เก็บแยกรายสาขาไว้ใน period เพื่อให้หน้า production แตกยอด Makro ตามสาขาได้
+    // โดยยอดรวมต่อ SKU ยังเท่าเดิม เพราะขั้น generate รวม quantity ตาม SKU อยู่แล้ว
+    const sku = String(col1)
+    const skuName = String(row[2] ?? '').trim()
+    const activeBranchCols = branchCols.length > 0 ? branchCols : hRow.map((_, i) => i).filter(i => i >= 3 && i !== totalCol)
+    let pushedBranch = false
+    for (const ci of activeBranchCols) {
+      const qty = Number(row[ci]) || 0
+      if (!qty) continue
+      const branch = String(hRow[ci] ?? '').trim()
+      results.push({
+        delivery_date: deliveryDate || null,
+        order_date:    deliveryDate || null,
+        sku,
+        sku_name:      skuName,
+        quantity:      qty,
+        period:        branch || currentStation || null,
+      })
+      pushedBranch = true
     }
-    if (!qty) {
-      qty = (branchCols.length > 0 ? branchCols : hRow.map((_, i) => i).filter(i => i >= 3))
-        .reduce<number>((s, ci) => s + (Number(row[ci]) || 0), 0)
-    }
-    if (!qty) continue
 
-    results.push({
-      delivery_date: deliveryDate || null,
-      order_date:    deliveryDate || null,
-      sku:           String(col1),
-      sku_name:      String(row[2] ?? '').trim(),
-      quantity:      qty,
-      period:        currentStation || null,
-    })
+    if (!pushedBranch && totalCol >= 0 && row[totalCol] != null && row[totalCol] !== '') {
+      const qty = Number(row[totalCol]) || 0
+      if (!qty) continue
+      results.push({
+        delivery_date: deliveryDate || null,
+        order_date:    deliveryDate || null,
+        sku,
+        sku_name:      skuName,
+        quantity:      qty,
+        period:        currentStation || null,
+      })
+    }
   }
 
   if (!results.length) throw new Error('ไม่พบข้อมูลในชีท แผน Makro 100%')

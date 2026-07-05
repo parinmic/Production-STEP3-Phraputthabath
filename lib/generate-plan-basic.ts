@@ -48,6 +48,7 @@ export interface BasicSkuTarget {
   phase2DeductedKg?: number
   openingStockKg?: number
   quantityKg: number
+  neededByTime?: string
 }
 
 export interface GenerateBasicPlanResult {
@@ -63,7 +64,7 @@ export interface GenerateBasicPlanResult {
   skuTargets?: BasicSkuTarget[]
 }
 
-interface BasicPhaseConfig {
+export interface BasicPhaseConfig {
   phase: BasicPhase
   period: string
   startTime: string
@@ -80,7 +81,7 @@ interface SelectedLot {
   order: number
 }
 
-interface BasicBreakWindow {
+export interface BasicBreakWindow {
   startTime: string
   endTime: string
   startMins: number
@@ -415,6 +416,225 @@ export async function fetchOpeningStock0010(date: string): Promise<{ byCode: Map
 
 export function lookupOpeningStockKg(stock: { byCode: Map<string, number>; byName: Map<string, number> }, sku: string, skuName: string | null): number {
   return stock.byCode.get(normalizeSku(sku)) ?? stock.byName.get(normMatName(skuName ?? '')) ?? 0
+}
+
+export function timeStrToMins(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+export function minsToTimeStr(mins: number): string {
+  const wrapped = ((mins % 1440) + 1440) % 1440
+  const hh = Math.floor(wrapped / 60)
+  const mm = wrapped % 60
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0')
+}
+
+// Advances a cursor by a work duration while skipping over any break windows it crosses —
+// mirrors what wallClockFinish() does client-side for display in the production table, but that
+// version isn't exported and hardcodes a static BREAKS constant instead of a phase's actual
+// static+dynamic breaks, so it can't be reused here.
+export function addMinsSkippingBreaks(startMins: number, durationMins: number, breaks: BasicBreakWindow[]): number {
+  let cursor = startMins
+  let remaining = durationMins
+  const sorted = breaks.filter(b => b.endMins > b.startMins).sort((a, b) => a.startMins - b.startMins)
+
+  for (const br of sorted) {
+    if (remaining <= 0) break
+    if (br.endMins <= cursor) continue
+
+    const workableBeforeBreak = Math.max(0, br.startMins - cursor)
+    if (workableBeforeBreak >= remaining) return cursor + remaining
+    remaining -= workableBeforeBreak
+    cursor = Math.max(cursor, br.endMins)
+  }
+
+  return cursor + remaining
+}
+
+// Basket size (weight_per_bag/kg_per_basket) and per-basket production minutes for Basic raw
+// materials — same source /api/basic/picking-unit exposes to the shortage page, extracted here so
+// the raw-queue scheduling in generate-basic's route can use it too without a second implementation.
+export async function fetchBasicPickingUnitMaps(): Promise<{ bagMap: Record<string, number>; minsMap: Record<string, number> }> {
+  const [{ data: basicData, error }, { data: rawData }] = await Promise.all([
+    supabase.from('picking_unit_master_basic').select('sap, weight_per_bag, mins_per_basket'),
+    supabase.from('mas_raw_basket').select('sap_code, kg_per_basket'),
+  ])
+  if (error) throw error
+
+  const bagMap: Record<string, number> = {}
+  const minsMap: Record<string, number> = {}
+
+  for (const row of basicData ?? []) {
+    const sku  = String(row.sap ?? '').trim()
+    const wpb  = Number(row.weight_per_bag ?? 0)
+    const mpb  = row.mins_per_basket != null ? Number(row.mins_per_basket) : 0
+    const norm = normalizeSku(sku)
+    if (sku && wpb > 0) { bagMap[sku] = wpb; bagMap[norm] = wpb }
+    if (sku && mpb > 0) { minsMap[sku] = mpb; minsMap[norm] = mpb }
+  }
+
+  // Merge Raw basket sizes (no mins available from this source)
+  for (const row of rawData ?? []) {
+    const sku  = String(row.sap_code ?? '').trim()
+    const wpb  = Number(row.kg_per_basket ?? 0)
+    const norm = normalizeSku(sku)
+    if (sku && wpb > 0 && !bagMap[sku]) {
+      bagMap[sku]  = wpb
+      bagMap[norm] = wpb
+    }
+  }
+
+  return { bagMap, minsMap }
+}
+
+const SPECIAL_SHORTAGE_STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
+
+// Parses the "rounds:510=60;600=40" note prefix some deficit rows carry — the original demand the
+// Special scheduler tried to fit, which is more accurate than target_quantity for deficit-backlog
+// rows where only a small residual amount got fit at the end of the shift. Mirrors the shortage
+// page's parseNoteTotal().
+function parseDeficitNoteTotal(note: string | null): number {
+  if (!note) return 0
+  const clean = note.split('|')[0]
+  if (!clean.startsWith('rounds:')) return 0
+  return clean.replace('rounds:', '').split(';').reduce((s, p) => {
+    const [, q] = p.split('=')
+    return s + (parseFloat(q) || 0)
+  }, 0)
+}
+
+// Mirrors the "รายการ Raw รอผลิต" shortage page's own deficit→BOM→stock-filter pipeline
+// (app/(app)/shortage/[phase]/page.tsx), but server-side and folded into BasicSkuTarget[] so this
+// demand can compete for the same yield pool as Makro/Wet Market/LOTUS instead of being inserted
+// as a disconnected manual queue afterwards.
+export async function fetchRawQueueTargets(
+  date: string,
+  period: string,
+  productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
+): Promise<{ targets: BasicSkuTarget[]; unresolvedCount: number }> {
+  const { data: deficitRows } = await supabase
+    .from('production_assignments')
+    .select('sku, sku_name, target_quantity, deadline_time, note, table_name')
+    .eq('production_date', date)
+    .eq('period', period)
+    .like('note', '%|deficit%')
+    .in('table_name', SPECIAL_SHORTAGE_STATIONS)
+
+  if (!deficitRows?.length) return { targets: [], unresolvedCount: 0 }
+
+  const skus     = Array.from(new Set(deficitRows.map(a => String(a.sku))))
+  const skusNorm = Array.from(new Set(skus.map(s => normalizeSku(s))))
+  const { data: bomRows } = await supabase
+    .from('bom_items')
+    .select('product_sap, raw_sap, raw_name, yield_pct')
+    .in('product_sap', [...skus, ...skusNorm])
+
+  const bomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
+  for (const b of bomRows ?? []) {
+    if (!b.raw_name) continue
+    const norm = normalizeSku(String(b.product_sap ?? ''))
+    for (const key of [b.product_sap, norm]) {
+      const list = bomMap.get(key) ?? []
+      if (!list.some(x => x.raw_sap === b.raw_sap)) {
+        list.push({ raw_sap: b.raw_sap ?? '', raw_name: b.raw_name, yield_pct: Number(b.yield_pct) || 1 })
+        bomMap.set(key, list)
+      }
+    }
+  }
+
+  type RawAgg = { rawSap: string; rawName: string | null; quantityKg: number; neededByTime: string | null }
+  const rawMap = new Map<string, RawAgg>()
+
+  for (const a of deficitRows) {
+    const sku       = String(a.sku)
+    const norm      = normalizeSku(sku)
+    const noteTotal = parseDeficitNoteTotal(a.note as string | null)
+    const qty       = noteTotal > 0 ? noteTotal : Number(a.target_quantity)
+    const time      = String(a.deadline_time ?? '').slice(0, 5)
+    const boms      = bomMap.get(norm) ?? bomMap.get(sku) ?? []
+
+    const addRaw = (rawSap: string, rawName: string | null, rawQty: number) => {
+      const key = rawSap || rawName || norm
+      const ex  = rawMap.get(key)
+      if (ex) {
+        ex.quantityKg += rawQty
+        if (time && (!ex.neededByTime || time < ex.neededByTime)) ex.neededByTime = time
+      } else {
+        rawMap.set(key, { rawSap: rawSap || sku, rawName: rawName ?? (a.sku_name as string | null), quantityKg: rawQty, neededByTime: time || null })
+      }
+    }
+
+    if (!boms.length) {
+      addRaw(sku, a.sku_name as string | null, qty)
+    } else {
+      for (const b of boms) {
+        addRaw(b.raw_sap || b.raw_name, b.raw_name, b.yield_pct > 0 ? qty / b.yield_pct : qty)
+      }
+    }
+  }
+
+  // Only keep raw materials where stock is truly insufficient — same 3-warehouse, name-matched
+  // check the shortage page uses (BOM codes may differ from stock codes, so match by name).
+  const rawNames = Array.from(new Set(
+    Array.from(rawMap.values()).map(r => r.rawName).filter(Boolean) as string[]
+  ))
+  const expandedNames = Array.from(new Set(rawNames.flatMap(n => [
+    n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
+  ])))
+
+  const stockByName = new Map<string, number>()
+  if (expandedNames.length > 0) {
+    const [s0010, s20, s100] = await Promise.all([
+      supabase.from('stock_0010').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+    ])
+    for (const row of [...(s0010.data ?? []), ...(s20.data ?? []), ...(s100.data ?? [])]) {
+      const k = normMatName(row.material_name ?? '')
+      stockByName.set(k, (stockByName.get(k) ?? 0) + Number(row.weight_total))
+    }
+  }
+
+  const shortRaw = Array.from(rawMap.values()).filter(r => {
+    const available = stockByName.get(normMatName(r.rawName ?? '')) ?? 0
+    return available < (r.quantityKg - 0.005)
+  })
+
+  // Resolve each raw material to whichever Basic productGroup/station actually produces it —
+  // primarily by SAP code, falling back to name since BOM raw_sap isn't guaranteed to match the
+  // SAP coding used in "Mas Productivity Basic" (other code in this app, e.g. rm-allocation, also
+  // treats raw_sap as unreliable and matches by name first).
+  const skuLookup  = buildSkuLookup(productivityByGroup)
+  const nameLookup = new Map<string, ReturnType<typeof buildSkuLookup> extends Map<string, infer V> ? V : never>()
+  for (const entry of Array.from(skuLookup.values())) {
+    const key = normMatName(entry.skuName ?? '')
+    if (key && !nameLookup.has(key)) nameLookup.set(key, entry)
+  }
+
+  let unresolvedCount = 0
+  const targets: BasicSkuTarget[] = []
+  for (const r of shortRaw) {
+    const prod = skuLookup.get(normalizeSku(r.rawSap)) ?? nameLookup.get(normMatName(r.rawName ?? ''))
+    if (!prod) { unresolvedCount++; continue }
+
+    targets.push({
+      channel: 'Raw Queue',
+      sku: prod.sku,
+      skuName: prod.skuName ?? r.rawName,
+      productGroup: prod.productGroup,
+      station: prod.station,
+      rawOrderKg: 0,
+      hist0800Kg: 0,
+      hist1400Kg: 0,
+      ratio: null,
+      variance: 0,
+      quantityKg: Math.round(r.quantityKg * 100) / 100,
+      neededByTime: r.neededByTime ?? undefined,
+    })
+  }
+
+  return { targets, unresolvedCount }
 }
 
 function roundDownToBag(bagSizeMap: Map<string, number>, sku: string, qty: number): number {
@@ -1466,12 +1686,13 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const breaklineMinsInPhase = phaseCfg.endMins != null ? sumBreakMinutes(dynamicBreaks, phaseCfg.startMins, phaseCfg.endMins) : 0
 
   const targets = buildYieldTargetsFromLots(phaseLots, masYield, productivityByGroup)
-  const [makroTargets, wetMarketTargets, lotusTargets, channelPriority] = phase === 1
+  const [makroTargets, wetMarketTargets, lotusTargets, channelPriority, rawQueueResult] = phase === 1
     ? await Promise.all([
         fetchLatestMakro0800Targets(date, productivityByGroup),
         fetchWetMarket1600AverageTargets(date, productivityByGroup),
         fetchLotus1600AverageTargets(date, productivityByGroup),
         fetchBasicChannelPriority(phase),
+        fetchRawQueueTargets(date, phaseCfg.period, productivityByGroup),
       ])
     : phase === 2
       ? await Promise.all([
@@ -1479,6 +1700,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
           fetchWetMarket1400Targets(date, productivityByGroup),
           fetchLotus1400Targets(date, productivityByGroup),
           fetchBasicChannelPriority(phase),
+          fetchRawQueueTargets(date, phaseCfg.period, productivityByGroup),
         ])
       : phase === 3
         ? await Promise.all([
@@ -1486,8 +1708,15 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
             fetchPlan100WetMarketTargets(date, productivityByGroup),
             fetchPlan100LotusTargets(date, productivityByGroup),
             fetchBasicChannelPriority(phase),
+            fetchRawQueueTargets(date, phaseCfg.period, productivityByGroup),
           ])
-        : [[], [], [], new Map<string, number>()]
+        : [[], [], [], new Map<string, number>(), { targets: [], unresolvedCount: 0 }]
+
+  // "รายการ Raw รอผลิต" from Special always outranks Makro/Wet Market/LOTUS for the shared yield
+  // pool, regardless of what's uploaded in "Mas Channel Basic" — it's blocking a hard downstream
+  // deadline, not a discretionary order.
+  channelPriority.set('raw queue', 0)
+  const rawQueueTargets = rawQueueResult.targets
   const shouldSubtractPhase1 = phase === 2 && Boolean(params.subtractPhase1FromPhase2)
   const shouldSubtractPhase1ForPhase3 = phase === 3 && Boolean(params.subtractPhase1FromPhase3)
   const shouldSubtractPhase2ForPhase3 = phase === 3 && Boolean(params.subtractPhase2FromPhase3)
@@ -1525,11 +1754,14 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
         return planTargets
       })()
     : []
-  const phaseOrderTargets = phase === 2 && shouldSubtractPhase1
-    ? subtractProducedTargets(baseOrderTargets, phase1SkuTargets)
-    : phase === 3
-      ? [...phase3MakroTargets, ...phase3Plan100Targets]
-      : baseOrderTargets
+  const phaseOrderTargets = [
+    ...(phase === 2 && shouldSubtractPhase1
+      ? subtractProducedTargets(baseOrderTargets, phase1SkuTargets)
+      : phase === 3
+        ? [...phase3MakroTargets, ...phase3Plan100Targets]
+        : baseOrderTargets),
+    ...rawQueueTargets,
+  ]
   const shouldAllocateByYield = phase === 1 || phase === 2 || phase === 3
   const orderTargets = shouldAllocateByYield
     ? allocateTargetsByYield(targets, phaseOrderTargets, channelPriority)
@@ -1542,7 +1774,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
 
   return {
     success: true,
-    message: `คำนวณ Yield Basic วันที่ ${date} Phase ${phase} ได้ ${targets.length} กลุ่มสินค้า${shouldAllocateByYield ? ` / Makro ${makroTargets.length} SKU / Wet Market ${wetMarketTargets.length} SKU / LOTUS ${lotusTargets.length} SKU / Balance ${balanceTargets.length} SKU${shouldSubtractPhase1 ? ` / หัก Phase 1 ${phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase1ForPhase3 ? ` / หัก Phase 1 ${phase3Phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase2ForPhase3 ? ` / หัก Phase 2 ${phase3Phase2SkuTargets.length} SKU` : ''}` : ''}${breaklineMinsInPhase > 0 ? ` / หัก Breakline ${breaklineMinsInPhase} นาที` : ''}`,
+    message: `คำนวณ Yield Basic วันที่ ${date} Phase ${phase} ได้ ${targets.length} กลุ่มสินค้า${shouldAllocateByYield ? ` / Makro ${makroTargets.length} SKU / Wet Market ${wetMarketTargets.length} SKU / LOTUS ${lotusTargets.length} SKU / Balance ${balanceTargets.length} SKU / Raw Queue ${rawQueueTargets.length} SKU${rawQueueResult.unresolvedCount > 0 ? ` (resolve ไม่ได้ ${rawQueueResult.unresolvedCount})` : ''}${shouldSubtractPhase1 ? ` / หัก Phase 1 ${phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase1ForPhase3 ? ` / หัก Phase 1 ${phase3Phase1SkuTargets.length} SKU` : ''}${shouldSubtractPhase2ForPhase3 ? ` / หัก Phase 2 ${phase3Phase2SkuTargets.length} SKU` : ''}` : ''}${breaklineMinsInPhase > 0 ? ` / หัก Breakline ${breaklineMinsInPhase} นาที` : ''}`,
     phase,
     period: phaseCfg.period,
     startTime: phaseCfg.startTime,

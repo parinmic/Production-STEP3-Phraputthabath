@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Calendar, RefreshCw, AlertTriangle, Download, ListPlus } from 'lucide-react'
+import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
 interface ShortageRow {
   sku: string
@@ -57,8 +57,6 @@ export default function ShortagePage() {
   const [rows, setRows]         = useState<ShortageRow[]>([])
   const [loading, setLoad]      = useState(false)
   const [exporting, setExp]     = useState(false)
-  const [inserting, setIns]     = useState(false)
-  const [insResult, setInsResult] = useState<{ success: boolean; message: string } | null>(null)
   const [basicBagMap,  setBasicBagMap]  = useState<Record<string, number>>({})
   const [basicMinsMap, setBasicMinsMap] = useState<Record<string, number>>({})
   const captureRef              = useRef<HTMLDivElement>(null)
@@ -268,28 +266,6 @@ export default function ShortagePage() {
     return 'text-gray-500 bg-gray-50 border-gray-200'
   }
 
-  const insertQueue = async () => {
-    setIns(true); setInsResult(null)
-    try {
-      const items = rows
-        .filter(r => r.productionTime && r.work_station)
-        .map(r => {
-          const { baskets, mins } = getBasketInfo(r.sku, r.deficit ?? 0)
-          return { ...r, baskets, mins }
-        })
-        .filter(r => r.baskets != null)
-      if (!items.length) { setInsResult({ success: false, message: 'ไม่มีข้อมูลปริมาณ/ตะกร้า — กรุณาอัปโหลดไฟล์ Master ตะกร้า Raw ก่อน' }); return }
-      const res = await fetch('/api/basic/insert-raw-queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, phase, items }),
-      })
-      const data = await res.json()
-      setInsResult(data)
-    } catch { setInsResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
-    setIns(false)
-  }
-
   const exportImage = async () => {
     setExp(true)
     try {
@@ -453,21 +429,9 @@ export default function ShortagePage() {
               <Download size={15} className={exporting ? 'animate-pulse' : ''} />
             </button>
           )}
-          {rows.length > 0 && (
-            <button onClick={insertQueue} disabled={inserting}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 shrink-0">
-              <ListPlus size={15} className={inserting ? 'animate-pulse' : ''} />
-              แทรกคิว
-            </button>
-          )}
         </div>
         {rows.length > 0 && (
           <p className="text-xs text-gray-400 mt-2">{rows.length} รายการขาด · {dateDisplay}</p>
-        )}
-        {insResult && (
-          <p className={`text-xs mt-1.5 font-medium ${insResult.success ? 'text-blue-600' : 'text-red-500'}`}>
-            {insResult.message}
-          </p>
         )}
       </div>
 

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Store } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
 
@@ -58,6 +58,17 @@ interface LineBreak {
   start_time: string  // 'HH:MM'
   end_time: string    // 'HH:MM'
   reason: string | null
+}
+
+interface MakroBranchOrder {
+  delivery_date: string | null
+  upload_round: string | null
+  sku: string
+  sku_name: string | null
+  quantity: number
+  period: string | null
+  upload_log_id?: string | null
+  uploaded_at?: string | null
 }
 
 const isRawTask = (task: Assignment) =>
@@ -415,6 +426,143 @@ interface SkuScheduleViewProps {
 }
 
 const PERIOD_SEQUENCE = ['เช้า', 'บ่าย', 'ค่ำ']
+
+const normalizeSkuValue = (sku: string) => String(sku ?? '').replace(/^0+/, '')
+
+function makroRoundForPeriod(period: string | null) {
+  return period === 'เช้า' ? '0800' : '1400'
+}
+
+function latestMakroBranchRows(rows: MakroBranchOrder[]) {
+  const latestByGroup = new Map<string, { uploadedAt: string; uploadLogId: string }>()
+  for (const row of rows) {
+    if (!row.delivery_date || !row.upload_round || !row.uploaded_at || !row.upload_log_id) continue
+    const key = `${row.delivery_date}|||${row.upload_round}`
+    const current = latestByGroup.get(key)
+    if (!current || row.uploaded_at > current.uploadedAt) {
+      latestByGroup.set(key, { uploadedAt: row.uploaded_at, uploadLogId: row.upload_log_id })
+    }
+  }
+  return rows.filter(row => {
+    if (!row.delivery_date || !row.upload_round) return false
+    const latest = latestByGroup.get(`${row.delivery_date}|||${row.upload_round}`)
+    return !latest || row.upload_log_id === latest.uploadLogId
+  })
+}
+
+function MakroBranchPivotView({ items, orderRows }: { items: Assignment[]; orderRows: MakroBranchOrder[] }) {
+  const makroItems = items.filter(item => item.channel === 'Makro' && Number(item.target_quantity) > 0)
+  const latestRows = latestMakroBranchRows(orderRows)
+  const orderShare = new Map<string, { total: number; branches: Map<string, number> }>()
+
+  for (const row of latestRows) {
+    const qty = Number(row.quantity ?? 0)
+    if (qty <= 0) continue
+    const sku = normalizeSkuValue(row.sku)
+    const round = row.upload_round || '0800'
+    const key = `${round}|||${sku}`
+    const branch = String(row.period ?? '').trim() || 'Makro'
+    const entry = orderShare.get(key) ?? { total: 0, branches: new Map<string, number>() }
+    entry.total += qty
+    entry.branches.set(branch, (entry.branches.get(branch) ?? 0) + qty)
+    orderShare.set(key, entry)
+  }
+
+  const rowMap = new Map<string, { sku: string; skuName: string; total: number; branches: Map<string, number> }>()
+  const branchTotals = new Map<string, number>()
+
+  for (const item of makroItems) {
+    const sku = normalizeSkuValue(item.sku)
+    const qty = Number(item.target_quantity ?? 0)
+    if (qty <= 0) continue
+    const row = rowMap.get(sku) ?? { sku, skuName: item.sku_name || sku, total: 0, branches: new Map<string, number>() }
+    row.total += qty
+
+    const share = orderShare.get(`${makroRoundForPeriod(item.period)}|||${sku}`)
+    if (share && share.total > 0 && share.branches.size > 0) {
+      for (const [branch, branchQty] of share.branches) {
+        const allocated = qty * (branchQty / share.total)
+        row.branches.set(branch, (row.branches.get(branch) ?? 0) + allocated)
+        branchTotals.set(branch, (branchTotals.get(branch) ?? 0) + allocated)
+      }
+    } else {
+      row.branches.set('Makro', (row.branches.get('Makro') ?? 0) + qty)
+      branchTotals.set('Makro', (branchTotals.get('Makro') ?? 0) + qty)
+    }
+    rowMap.set(sku, row)
+  }
+
+  const rows = Array.from(rowMap.values()).sort((a, b) => b.total - a.total || a.sku.localeCompare(b.sku))
+  const branches = Array.from(branchTotals.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([branch]) => branch)
+  const grandTotal = rows.reduce((sum, row) => sum + row.total, 0)
+  const fmt = (value: number) => value > 0 ? Number(value.toFixed(1)).toLocaleString() : ''
+
+  if (!makroItems.length) {
+    return (
+      <div className="card text-center py-16 text-gray-400">
+        <p className="font-medium">ยังไม่มีแผนผลิต Makro ในช่วงที่เลือก</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">รายสาขา (Makro)</h2>
+          <p className="text-xs text-gray-500 mt-0.5">กระจายยอดผลิต Makro ตามสัดส่วนออเดอร์รายสาขา</p>
+        </div>
+        <div className="text-xs sm:text-sm text-gray-600">
+          {rows.length.toLocaleString()} SKU · {Number(grandTotal.toFixed(1)).toLocaleString()} กก.
+        </div>
+      </div>
+      <div className="overflow-auto max-h-[70vh]">
+        <table className="min-w-full text-xs sm:text-sm">
+          <thead className="sticky top-0 z-10 bg-gray-50 text-gray-500">
+            <tr className="border-b border-gray-200">
+              <th className="sticky left-0 z-20 bg-gray-50 px-3 py-2 text-left font-medium min-w-[220px]">SKU</th>
+              {branches.map(branch => (
+                <th key={branch} className="px-3 py-2 text-right font-medium whitespace-nowrap min-w-[96px]">{branch}</th>
+              ))}
+              <th className="sticky right-0 z-20 bg-gray-50 px-3 py-2 text-right font-semibold min-w-[96px]">รวม</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map(row => (
+              <tr key={row.sku} className="hover:bg-gray-50">
+                <td className="sticky left-0 z-10 bg-white px-3 py-2 align-top">
+                  <div className="font-semibold text-gray-900">{row.sku}</div>
+                  <div className="text-xs text-gray-500 truncate max-w-[260px]" title={row.skuName}>{row.skuName}</div>
+                </td>
+                {branches.map(branch => (
+                  <td key={branch} className="px-3 py-2 text-right text-gray-700 whitespace-nowrap">
+                    {fmt(row.branches.get(branch) ?? 0)}
+                  </td>
+                ))}
+                <td className="sticky right-0 z-10 bg-white px-3 py-2 text-right font-semibold text-gray-900 whitespace-nowrap">
+                  {fmt(row.total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="sticky bottom-0 bg-gray-50 border-t border-gray-200 text-gray-900">
+            <tr>
+              <td className="sticky left-0 z-20 bg-gray-50 px-3 py-2 font-semibold">รวม</td>
+              {branches.map(branch => (
+                <td key={branch} className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                  {fmt(branchTotals.get(branch) ?? 0)}
+                </td>
+              ))}
+              <td className="sticky right-0 z-20 bg-gray-50 px-3 py-2 text-right font-bold whitespace-nowrap">{fmt(grandTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 // Bag rounding must round up in every phase, but a Target-only SKU's per-phase amounts
 // still have to add up to no more than its true total across all 3 phases — otherwise
@@ -1862,10 +2010,11 @@ export default function BasicTablePage() {
   const [masYieldRows, setMasYieldRows] = useState<MasYieldRow[]>([])
   const [carcassRate,  setCarcassRate]  = useState<number>(90)
   const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
+  const [makroOrderRows, setMakroOrderRows] = useState<MakroBranchOrder[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
+  const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'makroBranch' | 'time' | 'summary'>('sku')
   const [phase2PromptOpen, setPhase2PromptOpen] = useState(false)
   const [phase3PromptOpen, setPhase3PromptOpen] = useState(false)
   const [subtractPhase1FromPhase2, setSubtractPhase1FromPhase2] = useState(false)
@@ -1955,6 +2104,21 @@ export default function BasicTablePage() {
     const id = setInterval(() => loadData(date, true), 3000)
     return () => clearInterval(id)
   }, [date, cfg?.label])
+
+  useEffect(() => {
+    supabase
+      .from('makro_orders')
+      .select('delivery_date, upload_round, sku, sku_name, quantity, period, upload_log_id, uploaded_at')
+      .eq('delivery_date', date)
+      .in('upload_round', ['0800', '1400'])
+      .then(({ data, error }) => {
+        if (error) {
+          setMakroOrderRows([])
+          return
+        }
+        setMakroOrderRows((data ?? []) as MakroBranchOrder[])
+      })
+  }, [date])
 
   useEffect(() => {
     if (!cfg) return
@@ -2195,6 +2359,7 @@ export default function BasicTablePage() {
           <div className="grid grid-cols-2 sm:flex items-center gap-1.5 sm:gap-2">
             {([
               { mode: 'sku',     icon: BarChart2,     label: 'ภาพรวม' },
+              { mode: 'makroBranch', icon: Store,      label: 'รายสาขา (Makro)' },
               { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
               { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
               { mode: 'summary', icon: ClipboardList, label: 'สรุปแผนผลิต' },
@@ -2221,6 +2386,9 @@ export default function BasicTablePage() {
           )}
           {viewMode === 'sku' && filtered.length > 0 && (
             <SkuScheduleView items={filtered} allPhaseItems={items} phaseStart={viewStartH} phaseEnd={viewEndH} selectedPhase={selectedPhase} bagMap={bagMap} skuColor={skuColor} nameMap={nameMap} groupMap={groupMap} productTypeMap={productTypeMap} carcassThroughputByGroup={carcassThroughputByGroup} lineBreaks={lineBreaks} pigLots={pigLots} masYieldRows={masYieldRows} carcassRate={carcassRate} />
+          )}
+          {viewMode === 'makroBranch' && filtered.length > 0 && (
+            <MakroBranchPivotView items={filtered} orderRows={makroOrderRows} />
           )}
           {viewMode === 'gantt' && filtered.length > 0 && (
             <WorkerCardView items={filtered} phaseStart={viewStartH} nameMap={nameMap} bagMap={bagMap} skuColor={skuColor} />
