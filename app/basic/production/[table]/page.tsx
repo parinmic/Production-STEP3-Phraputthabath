@@ -1864,6 +1864,8 @@ export default function BasicTablePage() {
   const [carcassRate,  setCarcassRate]  = useState<number>(90)
   const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
   const [loading, setLoading]     = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [viewMode, setViewMode]   = useState<'worker' | 'gantt' | 'sku' | 'time' | 'summary'>('sku')
   const [phase2PromptOpen, setPhase2PromptOpen] = useState(false)
   const [phase3PromptOpen, setPhase3PromptOpen] = useState(false)
@@ -1972,21 +1974,56 @@ export default function BasicTablePage() {
 
   if (!cfg) return <p className="text-red-500">ไม่พบ Station</p>
 
+  const generatePhase = async (options?: {
+    subtractPhase1FromPhase2?: boolean
+    subtractPhase1FromPhase3?: boolean
+    subtractPhase2FromPhase3?: boolean
+  }) => {
+    if (selectedPhase === 'all') return
+    setGenerating(true)
+    setGenResult(null)
+    try {
+      const res = await fetch('/api/production/generate-basic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          phase: selectedPhase,
+          ...options,
+        }),
+      })
+      const result = await res.json()
+      setGenResult({ success: Boolean(result.success), message: result.message ?? 'สร้างแผนไม่สำเร็จ' })
+      if (result.success) loadData(date)
+    } catch {
+      setGenResult({ success: false, message: 'เกิดข้อผิดพลาด' })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const handleCreatePhaseClick = () => {
     if (selectedPhase === 2) {
       setPhase2PromptOpen(true)
     } else if (selectedPhase === 3) {
       setPhase3PromptOpen(true)
+    } else if (selectedPhase === 1) {
+      generatePhase()
     }
   }
 
   const handlePhase2SubtractChoice = (subtractPhase1: boolean) => {
     setSubtractPhase1FromPhase2(subtractPhase1)
     setPhase2PromptOpen(false)
+    generatePhase({ subtractPhase1FromPhase2: subtractPhase1 })
   }
 
   const handlePhase3Confirm = () => {
     setPhase3PromptOpen(false)
+    generatePhase({
+      subtractPhase1FromPhase3,
+      subtractPhase2FromPhase3,
+    })
   }
 
   const phaseConfig  = selectedPhase === 'all' ? null : PHASES.find(p => p.phase === selectedPhase)!
@@ -2035,7 +2072,7 @@ export default function BasicTablePage() {
 
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setPhase('all')}
+          onClick={() => { setPhase('all'); setGenResult(null) }}
           className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors border ${selectedPhase === 'all'
             ? 'bg-gray-800 text-white border-gray-800'
             : 'text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
@@ -2044,7 +2081,7 @@ export default function BasicTablePage() {
         </button>
         {PHASES.map(p => (
           <button key={p.phase}
-            onClick={() => setPhase(p.phase)}
+            onClick={() => { setPhase(p.phase); setGenResult(null) }}
             className={`flex-1 sm:flex-none px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${selectedPhase === p.phase ? p.active : p.inactive}`}>
             <span className="block">{p.label}</span>
             <span className="block text-[10px] sm:text-xs font-normal opacity-80">{p.sub}</span>
@@ -2055,18 +2092,29 @@ export default function BasicTablePage() {
           <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-sm text-gray-700">
             <Calendar size={14} className="text-gray-400" />
             <input type="date" value={date}
-              onChange={e => setDate(e.target.value)}
+              onChange={e => { setDate(e.target.value); setGenResult(null) }}
               className="outline-none bg-transparent text-sm" />
           </div>
           {selectedPhase !== 'all' && (
             <button type="button"
               onClick={handleCreatePhaseClick}
+              disabled={generating}
               data-subtract-phase1={subtractPhase1FromPhase2}
               data-subtract-phase1-phase3={subtractPhase1FromPhase3}
               data-subtract-phase2-phase3={subtractPhase2FromPhase3}
-              className="btn-primary flex items-center gap-2 text-sm">
-              <ClipboardList size={15} />สร้าง Phase {selectedPhase}
+              className="btn-primary flex items-center gap-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+              <ClipboardList size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
             </button>
+          )}
+          {genResult && (
+            <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${
+              genResult.success
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : 'bg-red-50 text-red-700 border-red-200'
+            }`}>
+              {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              {genResult.message}
+            </div>
           )}
         </div>
       </div>
