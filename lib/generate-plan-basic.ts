@@ -143,7 +143,7 @@ function shiftDate(isoDate: string, days: number): string {
   return d.toISOString().split('T')[0]
 }
 
-function normalizeSku(sku: string): string {
+export function normalizeSku(sku: string): string {
   return sku.trim().replace(/^0+/, '')
 }
 
@@ -208,7 +208,7 @@ async function fetchSelectedLotsAndRate() {
   }
 }
 
-async function fetchPaged<T>(
+export async function fetchPaged<T>(
   table: string,
   select: string,
   apply: (query: any) => any = query => query,
@@ -229,7 +229,7 @@ async function fetchPaged<T>(
   return all
 }
 
-async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
+export async function fetchProductivityByGroup(): Promise<Map<string, { station: string; skus: BasicProductivitySku[] }>> {
   const data = await fetchPaged<{ row_data: Record<string, unknown> }>(
     'master_logic_calculation',
     'row_data',
@@ -260,7 +260,7 @@ async function fetchProductivityByGroup(): Promise<Map<string, { station: string
   return map
 }
 
-function buildSkuLookup(productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>) {
+export function buildSkuLookup(productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>) {
   const lookup = new Map<string, { sku: string; skuName: string | null; productGroup: string; station: string | null }>()
   for (const [productGroup, group] of productivityByGroup.entries()) {
     for (const sku of group.skus) {
