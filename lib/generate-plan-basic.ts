@@ -45,6 +45,7 @@ export interface BasicSkuTarget {
   channelPriority?: number
   phase1DeductedKg?: number
   phase2DeductedKg?: number
+  openingStockKg?: number
   quantityKg: number
 }
 
@@ -145,6 +146,10 @@ function shiftDate(isoDate: string, days: number): string {
 
 export function normalizeSku(sku: string): string {
   return sku.trim().replace(/^0+/, '')
+}
+
+function normMatName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 }
 
 function findClosestWeight(avg: number, weights: number[]): number {
@@ -289,6 +294,48 @@ async function fetchBagSizeMap(): Promise<Map<string, number>> {
     }
   }
   return map
+}
+
+// Carried-over Wet Market stock (คลัง 0010) nets against demand at every Basic phase before the
+// existing phase1/phase2-produced deduction runs. Subtracting the same full opening balance
+// independently at each phase looks like double-counting but telescopes to exactly one deduction
+// from the day's final order total, since each phase's "already produced" figure already reflects
+// its own stock-adjusted target.
+async function fetchOpeningStock0010(): Promise<{ byCode: Map<string, number>; byName: Map<string, number> }> {
+  const byCode = new Map<string, number>()
+  const byName = new Map<string, number>()
+
+  const { data: latestLog, error: logError } = await supabase
+    .from('upload_log')
+    .select('id')
+    .eq('table_name', 'stock_0010')
+    .order('uploaded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (logError) throw logError
+  if (!latestLog?.id) return { byCode, byName }
+
+  const rows = await fetchPaged<{ material_code: string | null; material_name: string | null; weight_total: number | null }>(
+    'stock_0010',
+    'material_code, material_name, weight_total',
+    query => query.eq('upload_log_id', latestLog.id).gt('weight_total', 0),
+  )
+
+  for (const row of rows) {
+    const qty = Number(row.weight_total ?? 0) || 0
+    if (qty <= 0) continue
+    const code = normalizeSku(String(row.material_code ?? ''))
+    if (code) byCode.set(code, (byCode.get(code) ?? 0) + qty)
+    const name = normMatName(String(row.material_name ?? ''))
+    if (name) byName.set(name, (byName.get(name) ?? 0) + qty)
+  }
+
+  return { byCode, byName }
+}
+
+function lookupOpeningStockKg(stock: { byCode: Map<string, number>; byName: Map<string, number> }, sku: string, skuName: string | null): number {
+  return stock.byCode.get(normalizeSku(sku)) ?? stock.byName.get(normMatName(skuName ?? '')) ?? 0
 }
 
 function roundDownToBag(bagSizeMap: Map<string, number>, sku: string, qty: number): number {
@@ -806,7 +853,22 @@ async function fetchWetMarket1400Targets(
   date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  return fetchLatestRoundUploadTargets('Wet Market', 'wet_market_orders', date, '1400', productivityByGroup)
+  const [targets, openingStock] = await Promise.all([
+    fetchLatestRoundUploadTargets('Wet Market', 'wet_market_orders', date, '1400', productivityByGroup),
+    fetchOpeningStock0010(),
+  ])
+
+  return targets
+    .map(t => {
+      const openingStockKg = lookupOpeningStockKg(openingStock, t.sku, t.skuName)
+      const quantityKg = Math.max(0, t.quantityKg - openingStockKg)
+      return {
+        ...t,
+        openingStockKg: Math.round(openingStockKg * 100) / 100,
+        quantityKg: Math.round(quantityKg * 100) / 100,
+      }
+    })
+    .filter(t => t.quantityKg > 0)
 }
 
 async function fetchLotus1400Targets(
@@ -860,12 +922,19 @@ async function fetchPlan100ChannelTargets(
     targetMap.set(norm, current)
   }
 
+  const openingStock = channel === 'Wet Market' ? await fetchOpeningStock0010() : null
+
   return Array.from(targetMap.values())
-    .map(t => ({
-      ...t,
-      rawOrderKg: Math.round(t.rawOrderKg * 100) / 100,
-      quantityKg: Math.round(t.quantityKg * 100) / 100,
-    }))
+    .map(t => {
+      const openingStockKg = openingStock ? lookupOpeningStockKg(openingStock, t.sku, t.skuName) : 0
+      const quantityKg = Math.max(0, t.quantityKg - openingStockKg)
+      return {
+        ...t,
+        rawOrderKg: Math.round(t.rawOrderKg * 100) / 100,
+        openingStockKg: Math.round(openingStockKg * 100) / 100,
+        quantityKg: Math.round(quantityKg * 100) / 100,
+      }
+    })
     .filter(t => t.quantityKg > 0)
     .sort((a, b) => (a.station ?? '').localeCompare(b.station ?? '') || a.productGroup.localeCompare(b.productGroup) || a.sku.localeCompare(b.sku))
 }
@@ -939,13 +1008,14 @@ async function fetchWetMarket1600AverageTargets(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
-  const [varianceBySku, data] = await Promise.all([
+  const [varianceBySku, data, openingStock] = await Promise.all([
     fetchWetMarketVarianceBasic(),
     fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
       'wet_market_orders',
       'sku, sku_name, quantity',
       query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
     ),
+    fetchOpeningStock0010(),
   ])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
@@ -982,7 +1052,9 @@ async function fetchWetMarket1600AverageTargets(
       const hist1600Kg = t.hist1600Kg ?? 0
       const avgOrderKg = hist1600Kg / histDates.length
       const variance = varianceBySku.get(normalizeSku(t.sku)) ?? 1
-      const quantityKg = avgOrderKg * variance
+      const demandKg = avgOrderKg * variance
+      const openingStockKg = lookupOpeningStockKg(openingStock, t.sku, t.skuName)
+      const quantityKg = Math.max(0, demandKg - openingStockKg)
       return {
         ...t,
         rawOrderKg: Math.round(avgOrderKg * 100) / 100,
@@ -990,6 +1062,7 @@ async function fetchWetMarket1600AverageTargets(
         avgOrderKg: Math.round(avgOrderKg * 100) / 100,
         histDays: histDates.length,
         variance,
+        openingStockKg: Math.round(openingStockKg * 100) / 100,
         quantityKg: Math.round(quantityKg * 100) / 100,
       }
     })
