@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
@@ -518,6 +518,12 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             <ClipboardCheck size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบแผนผลิต</span>
           </NavLink>
+          <Link href="/basic/admin/manual"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p === '/basic/admin/manual' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+            title="คู่มือการใช้งาน">
+            <BookOpen size={18} className="shrink-0" />
+            <span className={labelCls}>คู่มือการใช้งาน</span>
+          </Link>
 
           </div>
 
