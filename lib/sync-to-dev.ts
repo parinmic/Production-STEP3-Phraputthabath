@@ -26,8 +26,17 @@ export async function syncUploadToDev(
   tableName: string,
   sourceFile: string,
   records: Record<string, unknown>[],
+  replaceExisting = false,
 ): Promise<void> {
   await syncToDevAwaited(async (dev) => {
+    // Snapshot tables (e.g. stock_*) replace rather than accumulate — clear
+    // previous batches for this table before inserting the new one so dev
+    // totals don't double-count. Log-style tables (orders, plans, ...) keep
+    // full history and must not pass replaceExisting.
+    if (replaceExisting) {
+      await dev.from('upload_log').delete().eq('table_name', tableName)
+    }
+
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await dev.from('upload_log').insert({
       id: uploadLogId,
