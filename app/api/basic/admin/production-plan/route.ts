@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { fetchOpeningStock0010, lookupOpeningStockKg, fetchPaged, fetchProductivityByGroup, buildSkuLookup, normalizeSku } from '@/lib/generate-plan-basic'
 
 const STATION_ORDER = ['สามชั้นเบสิค', 'สะโพกเบสิค', 'ไหล่เบสิค']
 
+// ลำดับกลุ่มสินค้าตามที่ปรากฏในไฟล์ Mas Yield ล่าสุด (เรียงตาม id/ลำดับแถวที่อัพโหลด ไม่ใช่ตัวอักษร)
+async function fetchMasYieldGroupOrder(): Promise<string[]> {
+  const { data: latestLog } = await supabase
+    .from('upload_log')
+    .select('id')
+    .eq('table_name', 'mas_yield')
+    .order('uploaded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!latestLog?.id) return []
+
+  const { data } = await supabase
+    .from('mas_yield')
+    .select('product_group')
+    .eq('upload_log_id', latestLog.id)
+    .order('id', { ascending: true })
+
+  const seen = new Set<string>()
+  const order: string[] = []
+  for (const row of data ?? []) {
+    const g = String(row.product_group ?? '').trim()
+    if (g && !seen.has(g)) { seen.add(g); order.push(g) }
+  }
+  return order
+}
+
 // GET /api/basic/admin/production-plan?date=2026-05-18&period=เช้า
-// Returns data aggregated by SKU + Channel with 3-day history (เฉพาะ station เบสิค)
+// Returns data aggregated by SKU + Channel with 7-day order history + average (เฉพาะ station เบสิค)
 export async function GET(req: NextRequest) {
   const date   = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
   const period = req.nextUrl.searchParams.get('period')
@@ -21,7 +48,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Calculate 3 prior dates (D-3, D-2, D-1) safely without UTC shift issues
+  // ย้อนหลัง 7 วัน (D-7 ... D-1) เรียงเก่า→ใหม่ ใช้ตรรกะเดียวกับ generate-plan-basic (หารด้วย 7 เสมอ)
   const [yr, mo, dy] = date.split('-').map(Number)
   const getOffsetDate = (offset: number) => {
     const d = new Date(yr, mo - 1, dy)
@@ -31,9 +58,7 @@ export async function GET(req: NextRequest) {
     const r = String(d.getDate()).padStart(2, '0')
     return `${y}-${m}-${r}`
   }
-  const dateD1 = getOffsetDate(1)
-  const dateD2 = getOffsetDate(2)
-  const dateD3 = getOffsetDate(3)
+  const histDates = Array.from({ length: 7 }, (_, i) => getOffsetDate(7 - i))
 
   // Query order history for unique SKUs
   const skus = Array.from(new Set(data?.map(r => r.sku) || []))
@@ -49,31 +74,28 @@ export async function GET(req: NextRequest) {
     }
   }
   const skusList = Array.from(querySkus)
+  const openingStockPromise = fetchOpeningStock0010(date)
+  const groupOrderPromise = fetchMasYieldGroupOrder()
+  const productivityByGroupPromise = fetchProductivityByGroup()
 
-  let makroOrders: any[] = []
-  let wetOrders: any[] = []
-  let lotusOrders: any[] = []
+  type OrderRow = { sku: string; quantity: number; delivery_date: string }
+  let makroOrders: OrderRow[] = []
+  let wetOrders: OrderRow[] = []
+  let lotusOrders: OrderRow[] = []
 
   if (skusList.length > 0) {
-    // Query per-date to avoid server-side row cap (each date ~500 rows, combined 1600+ exceeds default limit)
-    const [mD3, mD2, mD1, wD3, wD2, wD1, lD3, lD2, lD1] = await Promise.all([
-      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1400'),
-      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1400'),
-      supabase.from('makro_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1400'),
-      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('wet_market_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD3).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD2).in('sku', skusList).eq('upload_round', '1600'),
-      supabase.from('lotus_orders').select('sku, quantity, delivery_date').eq('delivery_date', dateD1).in('sku', skusList).eq('upload_round', '1600'),
+    ;[makroOrders, wetOrders, lotusOrders] = await Promise.all([
+      fetchPaged<OrderRow>('makro_orders', 'sku, quantity, delivery_date',
+        q2 => q2.in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1400')),
+      fetchPaged<OrderRow>('wet_market_orders', 'sku, quantity, delivery_date',
+        q2 => q2.in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600')),
+      fetchPaged<OrderRow>('lotus_orders', 'sku, quantity, delivery_date',
+        q2 => q2.in('delivery_date', histDates).in('sku', skusList).eq('upload_round', '1600')),
     ])
-    makroOrders = [...(mD3.data ?? []), ...(mD2.data ?? []), ...(mD1.data ?? [])]
-    wetOrders   = [...(wD3.data ?? []), ...(wD2.data ?? []), ...(wD1.data ?? [])]
-    lotusOrders = [...(lD3.data ?? []), ...(lD2.data ?? []), ...(lD1.data ?? [])]
   }
 
   const orderMap = new Map<string, number>()
-  const addOrders = (rows: any[], channelName: string) => {
+  const addOrders = (rows: OrderRow[], channelName: string) => {
     for (const r of rows) {
       const norm = r.sku.replace(/^0+/, '') || r.sku
       const key = `${channelName}||${norm}||${r.delivery_date}`
@@ -84,11 +106,23 @@ export async function GET(req: NextRequest) {
   addOrders(wetOrders, 'Wet Market')
   addOrders(lotusOrders, 'LOTUS')
 
+  const [openingStock, groupOrder, productivityByGroup] = await Promise.all([
+    openingStockPromise, groupOrderPromise, productivityByGroupPromise,
+  ])
+  const skuLookup = buildSkuLookup(productivityByGroup)
+  const groupIndexOf = (sku: string) => {
+    const productGroup = skuLookup.get(normalizeSku(sku))?.productGroup
+    if (!productGroup) return groupOrder.length
+    const idx = groupOrder.indexOf(productGroup)
+    return idx === -1 ? groupOrder.length : idx
+  }
+
   // Aggregate by channel + table_name + sku (รวมทุก phase)
-  const map = new Map<string, {
+  type AggRow = {
     channel: string | null; table_name: string; sku: string
-    sku_name: string | null; qty_d3: number; qty_d2: number; qty_d1: number; total_qty: number
-  }>()
+    sku_name: string | null; daily_qty: number[]; avg_qty: number; total_qty: number
+  }
+  const map = new Map<string, AggRow>()
 
   for (const r of data ?? []) {
     const normSku = r.sku.replace(/^0+/, '') || r.sku
@@ -103,35 +137,61 @@ export async function GET(req: NextRequest) {
         table_name: r.table_name,
         sku:        normSku,
         sku_name:   r.sku_name ?? null,
-        qty_d3:     0,
-        qty_d2:     0,
-        qty_d1:     0,
+        daily_qty:  new Array(histDates.length).fill(0),
+        avg_qty:    0,
         total_qty:  Number(r.target_quantity),
       })
     }
   }
 
-  // Populate history quantities
+  // Populate 7-day history + average (หารด้วยจำนวนวันเสมอ ตาม logic ของ generate-plan-basic)
   map.forEach((r) => {
     if (r.channel) {
-      r.qty_d3 = orderMap.get(`${r.channel}||${r.sku}||${dateD3}`) || 0
-      r.qty_d2 = orderMap.get(`${r.channel}||${r.sku}||${dateD2}`) || 0
-      r.qty_d1 = orderMap.get(`${r.channel}||${r.sku}||${dateD1}`) || 0
+      r.daily_qty = histDates.map(d => orderMap.get(`${r.channel}||${r.sku}||${d}`) || 0)
+      r.avg_qty = r.daily_qty.reduce((s, v) => s + v, 0) / histDates.length
     }
   })
 
+  // Yield Balance filler เลือก SKU เป้าหมายจาก SKU ที่มียอด Wet Market สูงสุดของกลุ่ม (ดู
+  // fetchWetMarketTopSkuByGroup/buildEnoughYieldBalanceTargets ใน generate-plan-basic.ts) — ถ้า SKU
+  // เดียวกันมีทั้งแถว Wet Market และแถว Yield Balance ในตาราง แปลว่าจับคู่กันได้จริง ให้รวมเป็นแถว
+  // เดียวโดยแสดง "ยอดผลิต" เป็นผลรวมทั้งสอง channel และ "ส่วนต่าง Yield" เป็นยอด Yield Balance
+  // เพียวๆ (ไม่ใช่ผลลบ) ส่วน SKU ที่เป็น Raw เฉพาะ (ไม่มีคู่ Wet Market เพราะลูกค้าไม่สั่ง SKU Raw
+  // ตรงๆ) จะไม่มีคู่ให้จับ จึงยังคงเป็นแถวเดี่ยวตามเดิมโดยอัตโนมัติ
   const CHANNEL_ORDER = ['Makro', 'Wet Market', 'LOTUS']
-  const sorted = Array.from(map.values()).sort((a, b) => {
-    const stationDiff = STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
-    if (stationDiff !== 0) return stationDiff
-    const skuDiff = a.sku.localeCompare(b.sku)
-    if (skuDiff !== 0) return skuDiff
-    return CHANNEL_ORDER.indexOf(a.channel ?? '') - CHANNEL_ORDER.indexOf(b.channel ?? '')
-  })
+  const sorted = Array.from(map.values())
+    .filter(r => {
+      // ตัดแถว Yield Balance ที่จับคู่กับ Wet Market ได้ทิ้ง เพราะจะถูกรวมเข้าไปในแถว Wet Market แทน
+      return !(r.channel === 'Yield Balance' && map.has(`Wet Market||${r.table_name}||${r.sku}`))
+    })
+    .map(r => {
+      const yieldBalancePair = r.channel === 'Wet Market'
+        ? map.get(`Yield Balance||${r.table_name}||${r.sku}`)
+        : undefined
+      return {
+        ...r,
+        total_qty: r.total_qty + (yieldBalancePair?.total_qty ?? 0),
+        opening_stock_kg: lookupOpeningStockKg(openingStock, r.sku, r.sku_name),
+        yield_diff: yieldBalancePair ? yieldBalancePair.total_qty : null,
+        merged: !!yieldBalancePair,
+        parts: yieldBalancePair
+          ? [{ channel: r.channel, total_qty: r.total_qty }, { channel: 'Yield Balance', total_qty: yieldBalancePair.total_qty }]
+          : undefined,
+      }
+    })
+    .sort((a, b) => {
+      const stationDiff = STATION_ORDER.indexOf(a.table_name) - STATION_ORDER.indexOf(b.table_name)
+      if (stationDiff !== 0) return stationDiff
+      const groupDiff = groupIndexOf(a.sku) - groupIndexOf(b.sku)
+      if (groupDiff !== 0) return groupDiff
+      const skuDiff = a.sku.localeCompare(b.sku)
+      if (skuDiff !== 0) return skuDiff
+      return CHANNEL_ORDER.indexOf(a.channel ?? '') - CHANNEL_ORDER.indexOf(b.channel ?? '')
+    })
 
   return NextResponse.json({
     data: sorted,
-    dates: { d3: dateD3, d2: dateD2, d1: dateD1 }
+    dates: histDates,
   })
 }
 
