@@ -70,14 +70,22 @@ interface GroupAcc {
   skills: Record<string, number>
 }
 
-async function runSync() {
+interface SyncResult {
+  success: boolean
+  inserted?: number
+  workDates?: string[]
+  message?: string
+  error?: string
+}
+
+async function runSync(): Promise<SyncResult> {
   try {
     const { data: rows, error: extErr } = await externalSkillsSupabase
       .from('production_user')
       .select('*')
 
     if (extErr) throw new Error(`External fetch: ${extErr.message}`)
-    if (!rows?.length) return NextResponse.json({ success: true, inserted: 0, message: 'ไม่พบข้อมูลพนักงานจากต้นทาง' })
+    if (!rows?.length) return { success: true, inserted: 0, message: 'ไม่พบข้อมูลพนักงานจากต้นทาง' }
 
     // production_user is long-format: one row per (work_date, emp_id, skill).
     // Group into one record per (work_date, emp_id).
@@ -139,11 +147,40 @@ async function runSync() {
       if (insertErr) throw new Error(`Insert: ${insertErr.message}`)
     }
 
-    return NextResponse.json({ success: true, inserted: records.length, workDates })
+    return { success: true, inserted: records.length, workDates }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ success: false, error: msg }, { status: 500 })
+    return { success: false, error: msg }
   }
+}
+
+// Fires right after a successful sync so Phase 1 always reflects the
+// freshest roster for today — this is the only automatic Phase 1 trigger
+// in the system, and it always regenerates rather than skipping if a plan
+// already exists for today.
+async function triggerPhase1Generation(origin: string, authHeader: string | null) {
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
+  try {
+    const res = await fetch(`${origin}/api/production/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader ? { 'Authorization': authHeader } : {}),
+      },
+      body: JSON.stringify({ date: todayStr, phase: 1, deductMode: 'plan' }),
+    })
+    const result = await res.json().catch(() => null)
+    return { date: todayStr, ok: res.ok, result }
+  } catch (e: unknown) {
+    return { date: todayStr, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+async function runSyncAndGenerate(origin: string, authHeader: string | null) {
+  const syncResult = await runSync()
+  if (!syncResult.success) return { ...syncResult, phase1Generation: null }
+  const phase1Generation = await triggerPhase1Generation(origin, authHeader)
+  return { ...syncResult, phase1Generation }
 }
 
 // Called by Vercel cron (requires CRON_SECRET if set)
@@ -153,10 +190,12 @@ export async function GET(req: NextRequest) {
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  return runSync()
+  const result = await runSyncAndGenerate(req.nextUrl.origin, authHeader)
+  return NextResponse.json(result, { status: result.success ? 200 : 500 })
 }
 
 // Called manually from UI (no auth required)
-export async function POST() {
-  return runSync()
+export async function POST(req: NextRequest) {
+  const result = await runSyncAndGenerate(req.nextUrl.origin, req.headers.get('Authorization'))
+  return NextResponse.json(result, { status: result.success ? 200 : 500 })
 }

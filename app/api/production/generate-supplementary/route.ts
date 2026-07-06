@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
     ])
 
     if (!workforce.length)
-      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 18:00' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 7:30' }, { status: 400 })
 
     // Bag size map
     const bagSizeMap = new Map<string, number>()
