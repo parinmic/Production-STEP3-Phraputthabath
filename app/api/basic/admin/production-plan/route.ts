@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-const PERIODS       = ['เช้า', 'บ่าย', 'ค่ำ']
-const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
+const STATION_ORDER = ['สามชั้นเบสิค', 'สะโพกเบสิค', 'ไหล่เบสิค']
 
-// GET /api/admin/production-plan?date=2026-05-18&period=เช้า
-// Returns data aggregated by SKU + Channel with 3-day history
+// GET /api/basic/admin/production-plan?date=2026-05-18&period=เช้า
+// Returns data aggregated by SKU + Channel with 3-day history (เฉพาะ station เบสิค)
 export async function GET(req: NextRequest) {
   const date   = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
   const period = req.nextUrl.searchParams.get('period')
@@ -35,7 +34,6 @@ export async function GET(req: NextRequest) {
   const dateD1 = getOffsetDate(1)
   const dateD2 = getOffsetDate(2)
   const dateD3 = getOffsetDate(3)
-  const histDates = [dateD3, dateD2, dateD1]
 
   // Query order history for unique SKUs
   const skus = Array.from(new Set(data?.map(r => r.sku) || []))
@@ -137,14 +135,14 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// PATCH /api/admin/production-plan
+// PATCH /api/basic/admin/production-plan
 // body: { date, table_name, sku, channel, new_qty }
 export async function PATCH(req: NextRequest) {
   const { date, table_name, sku, channel, new_qty } = await req.json()
   if (!date || !table_name || !sku || new_qty == null)
     return NextResponse.json({ error: 'ต้องระบุ date, table_name, sku, new_qty' }, { status: 400 })
   if (!STATION_ORDER.includes(table_name))
-    return NextResponse.json({ error: 'table_name ไม่ใช่ station ของฝั่งพิเศษ' }, { status: 400 })
+    return NextResponse.json({ error: 'table_name ไม่ใช่ station ของฝั่งเบสิค' }, { status: 400 })
 
   // Fetch all rows for this SKU + station + channel (all phases)
   const normSku = String(sku).replace(/^0+/, '') || sku
@@ -192,8 +190,8 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ success: true, updated: updates.length })
 }
 
-// DELETE /api/admin/production-plan
-// body: { date, period } — delete all rows for that date+period
+// DELETE /api/basic/admin/production-plan
+// body: { date, period } — delete all rows for that date+period (เฉพาะ station เบสิค)
 export async function DELETE(req: NextRequest) {
   const body = await req.json()
 
@@ -211,7 +209,7 @@ export async function DELETE(req: NextRequest) {
   return NextResponse.json({ error: 'ต้องระบุ date และ period' }, { status: 400 })
 }
 
-// POST /api/admin/production-plan
+// POST /api/basic/admin/production-plan
 // body: { production_date, period, table_name, sku, sku_name, target_quantity, channel }
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -223,7 +221,7 @@ export async function POST(req: NextRequest) {
   if (!productionDate || !tableName || !sku || !period)
     return NextResponse.json({ error: 'กรุณากรอก production_date, table_name, sku, period' }, { status: 400 })
   if (!STATION_ORDER.includes(tableName))
-    return NextResponse.json({ error: 'table_name ไม่ใช่ station ของฝั่งพิเศษ' }, { status: 400 })
+    return NextResponse.json({ error: 'table_name ไม่ใช่ station ของฝั่งเบสิค' }, { status: 400 })
 
   const { data: latestRows, error: latestErr } = await supabase
     .from('production_assignments')
