@@ -13,6 +13,13 @@ export const externalSupabase = createClient(
   process.env.EXTERNAL_SUPABASE_ANON_KEY ?? 'placeholder-key',
 )
 
+// Separate external project holding the daily employee_skills roster,
+// synced into our own `employee_skills` table by app/api/cron/sync-employee-skills.
+export const externalSkillsSupabase = createClient(
+  process.env.EXTERNAL_SKILLS_SUPABASE_URL ?? 'https://placeholder.supabase.co',
+  process.env.EXTERNAL_SKILLS_SUPABASE_ANON_KEY ?? 'placeholder-key',
+)
+
 export type TableName = 'สามชั้น' | 'สะโพก' | 'ไหล่' | 'หมูบด' | 'สไลด์' | 'เผาขา' | 'เลาะขา'
 export type Shift = 'เช้า' | 'บ่าย' | 'ค่ำ'
 export type AssignmentStatus = 'รอดำเนินการ' | 'กำลังผลิต' | 'เสร็จแล้ว'
