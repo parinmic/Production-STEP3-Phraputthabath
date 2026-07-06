@@ -102,6 +102,12 @@ export default function PigCarcassWithdrawalPage() {
   const loadedSelectionRef   = useRef(false)
   const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastEditAtRef        = useRef(0)
+  // Set right before loadSelection() applies a server fetch to lotOrder/trimmingQty, so the
+  // persist effects below know to skip: otherwise they'd immediately write that same data back,
+  // and if `rows` hasn't finished loading yet, they'd compute an empty `selected` and overwrite
+  // the real server data with blank.
+  const skipNextLotPersistRef  = useRef(false)
+  const skipNextTrimPersistRef = useRef(false)
 
   async function persistSelection(selected: SelectedLot[], trimming: string) {
     try {
@@ -124,6 +130,8 @@ export default function PigCarcassWithdrawalPage() {
       const sel  = (json.selected ?? []) as SelectedLot[]
       const order: Record<string, string> = {}
       for (const s of sel) order[s.spec_code] = String(s.order)
+      skipNextLotPersistRef.current  = true
+      skipNextTrimPersistRef.current = true
       setLotOrder(order)
       setTrimmingQty(json.trimmingQty ?? '')
     } catch { /* ignore */ } finally {
@@ -184,11 +192,13 @@ export default function PigCarcassWithdrawalPage() {
     localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))
     const selected = computeSelected(rows, lotOrder)
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
+    if (skipNextLotPersistRef.current) { skipNextLotPersistRef.current = false; return }
     if (loadedSelectionRef.current) persistSelection(selected, trimmingQty)
   }, [lotOrder, rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_trimming', trimmingQty)
+    if (skipNextTrimPersistRef.current) { skipNextTrimPersistRef.current = false; return }
     if (!loadedSelectionRef.current) return
     if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current)
     trimmingDebounceRef.current = setTimeout(() => {
