@@ -83,6 +83,15 @@ function fmtSavedTime(iso: string | undefined): string | null {
   return new Date(iso).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
 }
 
+function getAvailableOrderNumbers(rowsLength: number, lotOrder: Record<string, string>, specCode: string): number[] {
+  const currentValue = lotOrder[specCode] ?? ''
+  return Array.from({ length: rowsLength }, (_, k) => k + 1).filter(n => {
+    const value = String(n)
+    const usedByOther = Object.entries(lotOrder).some(([otherSpec, otherValue]) => otherSpec !== specCode && otherValue === value)
+    return !usedByOther || currentValue === value
+  })
+}
+
 // Chars 5-7 of spec_code are the day-of-year (Julian day, 1-365/366) — sort by that to order lots by age.
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
@@ -145,8 +154,14 @@ export default function PigCarcassWithdrawalPage() {
       for (const s of sel) order[s.spec_code] = String(s.order)
       skipNextLotPersistRef.current  = true
       skipNextTrimPersistRef.current = true
-      setLotOrder(order)
-      setTrimmingQty(json.trimmingQty ?? '')
+      setLotOrder(prev => {
+        const mergedOrder = { ...order }
+        Object.entries(prev).forEach(([spec, value]) => {
+          if (value !== '') mergedOrder[spec] = value
+        })
+        return mergedOrder
+      })
+      setTrimmingQty(prev => (prev !== '' ? prev : (json.trimmingQty ?? '')))
     } catch { /* ignore */ } finally {
       setSelectionLoaded(true)
     }
@@ -230,15 +245,6 @@ export default function PigCarcassWithdrawalPage() {
 
   const trimmingNum = parseInt(trimmingQty) || 0
   const diff        = trimmingNum > 0 ? trimmingNum - selQty : null
-
-  // Numbers already assigned to other lots (only active rows — exclude stale localStorage entries)
-  const activeSpecs = new Set(rows.map(r => r.spec_code))
-  const usedOrders  = new Set(
-    Object.entries(lotOrder)
-      .filter(([spec]) => activeSpecs.has(spec))
-      .map(([, v]) => v)
-      .filter(v => v !== '')
-  )
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -336,8 +342,7 @@ export default function PigCarcassWithdrawalPage() {
             const tAvg    = calcAvgTemp(qcTemps[r.spec_code])
             const tStatus = avgTempStatus(tAvg)
 
-            const availableNums = Array.from({ length: rows.length }, (_, k) => k + 1)
-              .filter(n => !usedOrders.has(String(n)) || lotOrder[r.spec_code] === String(n))
+            const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code)
 
             const lead = r.spec_code.slice(-1)
 
@@ -440,8 +445,7 @@ export default function PigCarcassWithdrawalPage() {
                   const tStatus  = avgTempStatus(tAvg)
 
                   // Available order numbers: not used by others (or currently selected by this row)
-                  const availableNums = Array.from({ length: rows.length }, (_, k) => k + 1)
-                    .filter(n => !usedOrders.has(String(n)) || lotOrder[r.spec_code] === String(n))
+                  const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code)
 
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${picked ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
