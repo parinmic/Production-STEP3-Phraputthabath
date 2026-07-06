@@ -2605,7 +2605,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return qty
   }
 
-  const runChannelPass = (passList: SkuTarget[]) => {
+  const runChannelPass = (passList: SkuTarget[], stationOverride?: Map<string, string>) => {
     // Use the full assignList (stock + deficit combined) so getMaxWorkers isn't capped by the
     // small deficit slice when only the deficit portion is being scheduled.
     const globalSkuTotalQty = new Map<string, number>()
@@ -2643,7 +2643,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
         const prod = skuMap.get(String(item.sku)) ?? skuMap.get(String(Number(item.sku) || item.sku))
         if (!prod) continue
-        const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+        const station = stationOverride?.get(normSku) ?? (STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station))
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
 
@@ -2720,6 +2720,38 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // Kept separate so runChannelPass's `handled` set doesn't drop deficit items that share
   // the same channel+SKU as stock items.
   runChannelPass(primaryDeficitList)
+
+  // Secondary (ผลพลอยได้) SKUs must be produced at whichever table their linked primary
+  // actually landed on (per Mas Sku ผลิตพร้อมกัน) — not wherever the secondary's own Mas
+  // Productivity entry says, and not wherever cross-station happens to have free hands.
+  // This constraint overrides both of those: build primary→dominant-table here, so the
+  // secondary pass below is forced onto that table, and secondary SKUs are excluded from
+  // the cross-station catch-all pass further down (they never get a third table).
+  const secondaryStationOverride = new Map<string, string>()
+  if (primarySkuSet.size > 0) {
+    const primaryQtyByTable = new Map<string, Map<string, number>>()
+    for (const a of assignments) {
+      const ns = String(a.sku ?? '').replace(/^0+/, '')
+      if (!primarySkuSet.has(ns)) continue
+      const table = String(a.table_name ?? '')
+      if (!table) continue
+      if (!primaryQtyByTable.has(ns)) primaryQtyByTable.set(ns, new Map())
+      const m = primaryQtyByTable.get(ns)!
+      m.set(table, (m.get(table) ?? 0) + Number(a.target_quantity ?? 0))
+    }
+    const primaryDominantTable = new Map<string, string>()
+    for (const [ns, tableQty] of primaryQtyByTable) {
+      let bestTable = ''; let bestQty = -1
+      for (const [t, q] of tableQty) if (q > bestQty) { bestQty = q; bestTable = t }
+      if (bestTable) primaryDominantTable.set(ns, bestTable)
+    }
+    for (const [secSku, primaries] of Array.from(secondaryToPrimaries.entries())) {
+      for (const pSku of Array.from(primaries)) {
+        const table = primaryDominantTable.get(pSku)
+        if (table) { secondaryStationOverride.set(secSku, table); break }
+      }
+    }
+  }
 
 
   // WIP Plan production: allocate กลุ่ม WIP workers on their respective stations (from mas_productivity)
@@ -3019,8 +3051,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
-    runChannelPass(secStockList)
-    runChannelPass(secDeficitList)
+    runChannelPass(secStockList, secondaryStationOverride)
+    runChannelPass(secDeficitList, secondaryStationOverride)
     // Merge: each worker's true finish = max(primary end, secondary end).
     for (const [nameKey, preMins] of preSecondaryFreeAtMins) {
       const postMins = workerFreeAtMins.get(nameKey) ?? preMins
@@ -3099,6 +3131,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         //        matches the eligible groups of these cross workers.
         const crossTargets: SkuTarget[] = []
         for (const [ns, info] of totalTargetMap) {
+          // Secondary (ผลพลอยได้) SKUs are pinned to their primary's table (see
+          // secondaryStationOverride above) — they never spill to a further cross-station table.
+          if (secondarySkuSet.has(ns)) continue
           const prod = skuMap.get(ns)
           if (!prod) continue
           if (!eligibleGroups.has(prod.product_group)) continue
