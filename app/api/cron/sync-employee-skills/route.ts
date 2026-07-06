@@ -3,61 +3,143 @@ import { supabase, externalSkillsSupabase } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const normalizeStation = (s: string) =>
-  s.replace(/[()]/g, '').replace(/พิเศษ/g, '').replace(/\s+/g, ' ').trim()
+// production_user (external) uses inconsistent job_site labels for the same
+// physical station, plus two labels that mix in a second station/process
+// entirely. Mapping decided with the plant team:
+//   - "ไหล่ / บด (พิเศษ)" workers actually work the หมูบด line, not ไหล่.
+//   - "เผาขา/ต้มเลือด" is kept under เผาขา even though these workers' skills
+//     (ไส้/เลือด/กระเพาะ) don't match the เผาขา product groups.
+const JOB_SITE_MAP: Record<string, string> = {
+  'เผาขา/ต้มเลือด':      'เผาขา',
+  'เลาะขา':              'เลาะขา',
+  'สไลด์ (เบสิ/พิเศษ)':   'สไลด์',
+  'สะโพก(พิเศษ)':        'สะโพก',
+  'สามชั้น(พิเศษ)':       'สามชั้น',
+  'ไหล่ / บด (พิเศษ)':    'หมูบด',
+  'ไหล่(พิเศษ)':         'ไหล่',
+}
 
-function mapShift(raw: string): string {
-  const s = raw.trim()
-  if (s === 'กะ 14:00' || s === 'กะ 12:00') return 'กะ 2'
-  if (s === '' || s === 'กะ 08:00') return 'กะ 1'
-  console.warn(`sync-employee-skills: unrecognized shift value "${raw}", defaulting to กะ 1`)
-  return 'กะ 1'
+function normalizeJobSite(raw: string): string {
+  if (!raw) return ''
+  if (JOB_SITE_MAP[raw]) return JOB_SITE_MAP[raw]
+  const fallback = raw.replace(/[()]/g, '').replace(/พิเศษ/g, '').replace(/\/.*$/, '').replace(/\s+/g, ' ').trim()
+  console.warn(`sync-employee-skills: unrecognized job_site "${raw}", falling back to "${fallback}"`)
+  return fallback
+}
+
+// work_date/shift_start may come back as a Postgres date/time string or as a
+// raw numeric day-fraction (as seen in the reference export) — handle both.
+function parseWorkDate(val: unknown): string | null {
+  if (val == null) return null
+  if (typeof val === 'number') {
+    const ms = Math.round((val - 25569) * 86400 * 1000)
+    return new Date(ms).toISOString().slice(0, 10)
+  }
+  const s = String(val).trim()
+  if (!s) return null
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : s
+}
+
+function parseShiftStartHour(val: unknown): number | null {
+  if (val == null || val === '') return null
+  if (typeof val === 'number') return val <= 1 ? val * 24 : val
+  const s = String(val).trim()
+  const m = s.match(/^(\d{1,2}):(\d{2})/)
+  if (m) return Number(m[1]) + Number(m[2]) / 60
+  const n = Number(s)
+  return isNaN(n) ? null : (n <= 1 ? n * 24 : n)
+}
+
+// กะ 1 = กะเช้า, กะ 2 = กะบ่าย — derived from shift_start (authoritative),
+// since the raw `shift` label alone is inconsistent (e.g. "กะ 1" appears for
+// both 08:00 and 09:00 starts in the source data).
+function deriveShift(shiftStartHour: number | null, rawShiftLabel: string): string {
+  if (shiftStartHour != null) return shiftStartHour < 12 ? 'กะ 1' : 'กะ 2'
+  return rawShiftLabel.includes('2') ? 'กะ 2' : 'กะ 1'
+}
+
+interface GroupAcc {
+  work_date: string
+  emp_id: string
+  name: string
+  dept: string | null
+  raw_job_site: string
+  shift_start_hour: number | null
+  raw_shift: string
+  is_weigher: boolean
+  skills: Record<string, number>
 }
 
 async function runSync() {
   try {
     const { data: rows, error: extErr } = await externalSkillsSupabase
-      .from('employee_skills')
+      .from('production_user')
       .select('*')
 
     if (extErr) throw new Error(`External fetch: ${extErr.message}`)
     if (!rows?.length) return NextResponse.json({ success: true, inserted: 0, message: 'ไม่พบข้อมูลพนักงานจากต้นทาง' })
 
-    const records = rows.map((row: Record<string, unknown>) => {
-      const rawWorkStation = String(row['หน่วยงานย่อย'] ?? '').trim()
-      const rawShift = String(row['กะ'] ?? '').trim()
+    // production_user is long-format: one row per (work_date, emp_id, skill).
+    // Group into one record per (work_date, emp_id).
+    const groups = new Map<string, GroupAcc>()
+    for (const row of rows as Record<string, unknown>[]) {
+      const workDate = parseWorkDate(row['work_date'])
+      const empId = String(row['emp_id'] ?? '').trim()
+      if (!workDate || !empId) continue
 
-      const skills: Record<string, number> = {}
-      for (const [key, val] of Object.entries(row)) {
-        if (!key.startsWith('กลุ่ม')) continue
-        const level = Number(val ?? 0)
-        if (level > 0) skills[key.replace(/_\d+$/, '').trim()] = level
+      const key = `${workDate}|${empId}`
+      let g = groups.get(key)
+      if (!g) {
+        g = {
+          work_date: workDate,
+          emp_id: empId,
+          name: String(row['employee_name'] ?? '').trim(),
+          dept: String(row['dept'] ?? '').trim() || null,
+          raw_job_site: String(row['job_site'] ?? '').trim(),
+          shift_start_hour: parseShiftStartHour(row['shift_start']),
+          raw_shift: String(row['shift'] ?? '').trim(),
+          is_weigher: false,
+          skills: {},
+        }
+        groups.set(key, g)
       }
 
-      return {
-        emp_id:           String(row['Employee ID'] ?? '').trim(),
-        name:             String(row['ชื่อ'] ?? '').trim(),
-        department:       String(row['แผนก'] ?? '').trim() || null,
-        work_station:     normalizeStation(rawWorkStation),
-        shift:            mapShift(rawShift),
-        day_off:          String(row['วันหยุด'] ?? '').trim() || null,
-        is_weigher:       Number(row['ชั่งน้ำหนัก'] ?? 0) > 0,
-        skills,
-        raw_work_station: rawWorkStation || null,
-        raw_shift:        rawShift || null,
-      }
-    }).filter(r => r.emp_id && r.name)
+      const canDo = row['can_do'] === true || row['can_do'] === 'true' || row['can_do'] === 1
+      const skillName = String(row['skill'] ?? '').trim()
+      if (!skillName || !canDo) continue
+      if (skillName === 'ชั่งน้ำหนัก') { g.is_weigher = true; continue }
+      g.skills[skillName] = Number(row['level'] ?? 1)
+    }
 
-    // Full-replace: this table is always a same-day mirror of the external roster.
-    const { error: delErr } = await supabase.from('employee_skills').delete().not('id', 'is', null)
-    if (delErr) throw new Error(`Delete: ${delErr.message}`)
+    const records = [...groups.values()]
+      .filter(g => g.emp_id && g.name)
+      .map(g => ({
+        work_date:        g.work_date,
+        emp_id:           g.emp_id,
+        name:             g.name,
+        department:       g.dept,
+        work_station:     normalizeJobSite(g.raw_job_site),
+        shift:            deriveShift(g.shift_start_hour, g.raw_shift),
+        is_weigher:       g.is_weigher,
+        skills:           g.skills,
+        raw_work_station: g.raw_job_site || null,
+        raw_shift:        g.raw_shift || null,
+      }))
+
+    // Full-replace scoped to whichever work_date(s) this batch covers —
+    // leaves any other already-synced dates untouched.
+    const workDates = [...new Set(records.map(r => r.work_date))]
+    for (const wd of workDates) {
+      const { error: delErr } = await supabase.from('employee_skills').delete().eq('work_date', wd)
+      if (delErr) throw new Error(`Delete (${wd}): ${delErr.message}`)
+    }
 
     if (records.length > 0) {
       const { error: insertErr } = await supabase.from('employee_skills').insert(records)
       if (insertErr) throw new Error(`Insert: ${insertErr.message}`)
     }
 
-    return NextResponse.json({ success: true, inserted: records.length })
+    return NextResponse.json({ success: true, inserted: records.length, workDates })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ success: false, error: msg }, { status: 500 })

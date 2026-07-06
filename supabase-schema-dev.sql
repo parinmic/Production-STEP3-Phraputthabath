@@ -518,12 +518,12 @@ CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection
 -- กำลังคน + ทักษะ รวมทุกวัน (แทน daily_workforce/workforce_weekly/master_logic_manpower ใน plan generation)
 CREATE TABLE IF NOT EXISTS employee_skills (
   id               uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  work_date        date,
   emp_id           text        NOT NULL,
   name             text        NOT NULL,
   department       text,
   work_station     text,
   shift            text,
-  day_off          text,
   is_weigher       boolean     NOT NULL DEFAULT false,
   skills           jsonb       NOT NULL DEFAULT '{}',
   raw_work_station text,
@@ -531,6 +531,7 @@ CREATE TABLE IF NOT EXISTS employee_skills (
   synced_at        timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_employee_skills_emp_id_dev ON employee_skills(emp_id);
+CREATE INDEX IF NOT EXISTS idx_employee_skills_work_date_dev ON employee_skills(work_date);
 ALTER TABLE employee_skills ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_employee_skills" ON employee_skills;
 CREATE POLICY "allow_all_employee_skills" ON employee_skills FOR ALL USING (true) WITH CHECK (true);

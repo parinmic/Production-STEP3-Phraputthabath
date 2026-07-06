@@ -25,39 +25,17 @@ export const normName = (s: string) => {
   return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
 }
 
-// ========== Day-off matching ==========
-// employee_skills.day_off stores a bare Thai weekday abbreviation (จ/อ/พ/พฤ/ศ/ส/อา).
-// Exact-match only — do not use .includes(), since 'พ' is a prefix of 'พฤ'.
-
-export const THAI_DAY_CODE: Record<string, string> = {
-  'อาทิตย์':  'อา',
-  'จันทร์':   'จ',
-  'อังคาร':   'อ',
-  'พุธ':      'พ',
-  'พฤหัสบดี': 'พฤ',
-  'ศุกร์':    'ศ',
-  'เสาร์':    'ส',
-}
-
-const THAI_WEEKDAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
-
-export function isDayOff(dayOffRaw: string | null | undefined, productionDate: string): boolean {
-  if (!dayOffRaw) return false
-  const parts = productionDate.split('-')
-  if (parts.length !== 3) return false
-  const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-  const weekdayName = THAI_WEEKDAY_NAMES[dateObj.getDay()]
-  return dayOffRaw.trim() === THAI_DAY_CODE[weekdayName]
-}
-
 // ========== Fetch ==========
+// employee_skills is a per-date mirror of the external production_user roster
+// (see app/api/cron/sync-employee-skills) — a person simply has no row for a
+// given work_date if they're not scheduled that day, so no separate day-off
+// check is needed here.
 
 interface EmployeeSkillRow {
   emp_id: string
   name: string
   work_station: string | null
   shift: string | null
-  day_off: string | null
   is_weigher: boolean
   skills: Record<string, number> | null
 }
@@ -68,13 +46,14 @@ export async function fetchWorkforceAndSkills(productionDate: string): Promise<{
 }> {
   const { data } = await supabase
     .from('employee_skills')
-    .select('emp_id, name, work_station, shift, day_off, is_weigher, skills')
+    .select('emp_id, name, work_station, shift, is_weigher, skills')
+    .eq('work_date', productionDate)
 
   const workforce: WorkforceRow[] = []
   const jobAssignMap: JobAssignMap = new Map()
 
   for (const row of (data ?? []) as EmployeeSkillRow[]) {
-    if (!row.name || isDayOff(row.day_off, productionDate)) continue
+    if (!row.name) continue
 
     workforce.push({
       emp_id: row.emp_id || row.name,

@@ -528,22 +528,25 @@ ALTER TABLE pig_carcass_lot_selection ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection FOR ALL USING (true) WITH CHECK (true);
 
 -- 25. กำลังคน + ทักษะ รวมทุกวัน (แทน daily_workforce/workforce_weekly/master_logic_manpower ใน plan generation)
--- sync อัตโนมัติทุก 18:00 จาก external Supabase project โดย app/api/cron/sync-employee-skills
+-- sync อัตโนมัติทุก 18:00 จาก external Supabase project (ตาราง production_user, long format
+-- 1 แถวต่อ employee+skill) โดย app/api/cron/sync-employee-skills ซึ่ง group เป็น 1 แถวต่อ
+-- (work_date, emp_id) ก่อน insert — ไม่มีแถวของวันนั้น = ไม่ได้ทำงานวันนั้น (ไม่ต้องเช็ค day_off แยก)
 CREATE TABLE IF NOT EXISTS employee_skills (
   id               uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  work_date        date,
   emp_id           text        NOT NULL,
   name             text        NOT NULL,
   department       text,
   work_station     text,       -- normalize แล้วตอน sync: สามชั้น/สะโพก/ไหล่/หมูบด/สไลด์/เผาขา/เลาะขา
-  shift            text,       -- normalize แล้วตอน sync: 'กะ 1' / 'กะ 2'
-  day_off          text,       -- โค้ดวันหยุดดิบ จ/อ/พ/พฤ/ศ/ส/อา — match วันที่จริงตอนอ่าน
+  shift            text,       -- normalize แล้วตอน sync: 'กะ 1' (เช้า) / 'กะ 2' (บ่าย)
   is_weigher       boolean     NOT NULL DEFAULT false,
-  skills           jsonb       NOT NULL DEFAULT '{}',  -- เฉพาะกลุ่มที่ value > 0
+  skills           jsonb       NOT NULL DEFAULT '{}',  -- เฉพาะกลุ่มที่ can_do = true
   raw_work_station text,
   raw_shift        text,
   synced_at        timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_employee_skills_emp_id ON employee_skills(emp_id);
+CREATE INDEX IF NOT EXISTS idx_employee_skills_work_date ON employee_skills(work_date);
 ALTER TABLE employee_skills ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_employee_skills" ON employee_skills FOR ALL USING (true) WITH CHECK (true);
 
