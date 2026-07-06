@@ -113,6 +113,7 @@ export default function PigCarcassWithdrawalPage() {
   const [selectionLoaded, setSelectionLoaded] = useState(false)
   const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastEditAtRef        = useRef(0)
+  const lastServerUpdatedAtRef = useRef<string | null>(null)
   // Set right before loadSelection() applies a server fetch to lotOrder/trimmingQty, so the
   // persist effects below know to skip: otherwise they'd immediately write that same data back,
   // and if `rows` hasn't finished loading yet, they'd compute an empty `selected` and overwrite
@@ -127,11 +128,13 @@ export default function PigCarcassWithdrawalPage() {
   function persistSelection(selected: SelectedLot[], trimming: string) {
     const run = async () => {
       try {
-        await fetch('/api/pig-carcass-lot-selection', {
+        const res = await fetch('/api/pig-carcass-lot-selection', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ selected, trimmingQty: trimming }),
         })
+        const json = await res.json()
+        if (json.updatedAt) lastServerUpdatedAtRef.current = json.updatedAt
       } catch { /* ignore */ }
     }
     pendingSaveRef.current = pendingSaveRef.current.then(run, run)
@@ -143,25 +146,20 @@ export default function PigCarcassWithdrawalPage() {
     try {
       const res  = await fetch('/api/pig-carcass-lot-selection')
       const json = await res.json()
-      // If the user picked a lot order while this request was in flight, that local edit is
-      // newer than what we just fetched — applying it now would wipe out their selection.
-      // Note we still fall through to the `finally` below so selectionLoaded flips true,
-      // which makes the persist effects re-run and save the user's edit instead of leaving
-      // it stuck in local state only (see selectionLoaded comment above).
-      if (lastEditAtRef.current > fetchStartedAt) return
+      const serverUpdatedAt = typeof json.updatedAt === 'string' ? json.updatedAt : null
+      const serverTime = serverUpdatedAt ? Date.parse(serverUpdatedAt) : null
+      const localTime = lastEditAtRef.current
+      // If the user made a local edit more recently than the server snapshot, keep the local
+      // change and avoid overwriting it with an older server value.
+      if (localTime > 0 && serverTime != null && serverTime < localTime) return
+      if (serverUpdatedAt) lastServerUpdatedAtRef.current = serverUpdatedAt
       const sel  = (json.selected ?? []) as SelectedLot[]
       const order: Record<string, string> = {}
       for (const s of sel) order[s.spec_code] = String(s.order)
       skipNextLotPersistRef.current  = true
       skipNextTrimPersistRef.current = true
-      setLotOrder(prev => {
-        const mergedOrder = { ...order }
-        Object.entries(prev).forEach(([spec, value]) => {
-          if (value !== '') mergedOrder[spec] = value
-        })
-        return mergedOrder
-      })
-      setTrimmingQty(prev => (prev !== '' ? prev : (json.trimmingQty ?? '')))
+      setLotOrder(order)
+      setTrimmingQty(json.trimmingQty ?? '')
     } catch { /* ignore */ } finally {
       setSelectionLoaded(true)
     }
@@ -212,8 +210,23 @@ export default function PigCarcassWithdrawalPage() {
 
   // Re-pull the shared selection periodically so changes made on other machines show up here too.
   useEffect(() => {
-    const id = setInterval(loadSelection, 20_000)
-    return () => clearInterval(id)
+    const id = window.setInterval(loadSelection, 10_000)
+    const handleFocus = () => loadSelection()
+    const handleOnline = () => loadSelection()
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadSelection()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('online', handleOnline)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('online', handleOnline)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [loadSelection])
 
   useEffect(() => {
