@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { fetchWorkforceAndSkills, WorkforceRow, normName } from '@/lib/workforce'
 
 // ── Shared helpers (mirrors generate/route.ts) ──────────────────────────────
 
+interface WorkforceRow { emp_id: string; name: string; work_station: string; shift: string }
 interface ProductivityRow { station: string; product_group: string; sku: string; sku_name: string; rate: number }
 
 const BREAKS: [number, number][] = [[720, 780], [1020, 1080]]
@@ -12,7 +12,140 @@ const STATION_TABLE: Record<string, string> = {
   'เผาขาพิเศษ': 'เผาขา', 'เลาะขาพิเศษ': 'เลาะขา',
 }
 
+const normName       = (s: string) => {
+  if (!s) return ''
+  return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
+}
 const normalizeStation = (s: string) => s.replace(/[()]/g, '').trim()
+
+async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
+  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special', 'pao-kha-special', 'loa-kha-special']
+  const workforce: WorkforceRow[] = []
+
+  const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
+  const DAY_ALIASES: Record<string, string[]> = {
+    'อาทิตย์': ['อาทิตย์', 'อา.'],
+    'จันทร์': ['จันทร์', 'จ.'],
+    'อังคาร': ['อังคาร', 'อ.'],
+    'พุธ': ['พุธ', 'พ.'],
+    'พฤหัสบดี': ['พฤหัสบดี', 'พฤหัส', 'พฤ.'],
+    'ศุกร์': ['ศุกร์', 'ศ.'],
+    'เสาร์': ['เสาร์', 'ส.']
+  }
+
+  const checkIsDayOff = (dayOffVal: string, dateStr: string) => {
+    if (!dayOffVal || !dateStr) return false
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) return false
+    const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+    const dayIndex = dateObj.getDay()
+    const dayName = THAI_DAYS[dayIndex]
+    
+    const normalizedVal = dayOffVal.trim().toLowerCase()
+    const aliases = DAY_ALIASES[dayName] || [dayName]
+    
+    return aliases.some(alias => normalizedVal.includes(alias.toLowerCase()))
+  }
+
+  const getFieldValue = (rowData: Record<string, any>, prefixes: string[]): string => {
+    if (!rowData) return ''
+    for (const prefix of prefixes) {
+      if (rowData[prefix] !== undefined && rowData[prefix] !== null) {
+        return String(rowData[prefix]).trim()
+      }
+    }
+    const keys = Object.keys(rowData)
+    for (const prefix of prefixes) {
+      const foundKey = keys.find(k => k.toLowerCase().includes(prefix.toLowerCase()))
+      if (foundKey && rowData[foundKey] !== undefined && rowData[foundKey] !== null) {
+        return String(rowData[foundKey]).trim()
+      }
+    }
+    return ''
+  }
+
+  const stationMap: Record<string, string> = {
+    'sa-phok-special':  'สะโพกพิเศษ',
+    'sam-chan-special':  'สามชั้นพิเศษ',
+    'lai-special':      'ไหล่พิเศษ',
+    'moo-chod-special': 'หมูบดพิเศษ',
+    'slide-special':    'สไลด์พิเศษ',
+    'pao-kha-special':  'เผาขาพิเศษ',
+    'loa-kha-special':  'เลาะขาพิเศษ',
+  }
+
+  // Fetch status overrides for the production date
+  const { data: statusOverrides } = await supabase
+    .from('workforce_daily_status')
+    .select('weekly_type, worker_name, status')
+    .eq('work_date', productionDate)
+
+  const overrideMap = new Map<string, string>()
+  if (statusOverrides) {
+    for (const item of statusOverrides) {
+      overrideMap.set(`${item.weekly_type}_${item.worker_name}`, item.status)
+    }
+  }
+
+  for (const type of types) {
+    const logTableName = `workforce_weekly_${type.replace(/-/g, '_')}`
+    
+    const { data: latestLog } = await supabase
+      .from('upload_log')
+      .select('source_file')
+      .eq('table_name', logTableName)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!latestLog) continue
+
+    const { data: weeklyData } = await supabase
+      .from('workforce_weekly')
+      .select('row_data')
+      .eq('weekly_type', type)
+      .eq('source_file', latestLog.source_file)
+
+    if (!weeklyData) continue
+
+    for (const row of weeklyData) {
+      const rowData = (row.row_data ?? {}) as Record<string, any>
+      const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
+      if (!name) continue
+      
+      // Determine work status: check override first, then fall back to default day off
+      const overrideStatus = overrideMap.get(`${type}_${name}`)
+      let isWorking = true
+
+      if (overrideStatus) {
+        isWorking = overrideStatus === 'ทำงาน'
+      } else {
+        const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
+        isWorking = !checkIsDayOff(dayOffStr, productionDate)
+      }
+
+      if (!isWorking) {
+        continue
+      }
+
+      const shiftStr = getFieldValue(rowData, ['กะทำงาน', 'กะ', 'กะงาน', 'shift'])
+      let shift = 'กะ 1'
+      const normalizedShift = shiftStr.trim()
+      if (normalizedShift === '2' || normalizedShift.includes('2')) {
+        shift = 'กะ 2'
+      }
+
+      workforce.push({
+        emp_id: name,
+        name: name,
+        work_station: stationMap[type] ?? type,
+        shift: shift
+      })
+    }
+  }
+
+  return workforce
+}
 
 function minsToTimeStr(mins: number): string {
   const h = Math.floor(mins / 60); const m = Math.floor(mins % 60)
@@ -47,6 +180,22 @@ function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
     sku_name:      String(r['ชื่อสินค้า'] ?? '').trim(),
     rate:          Number(r['กำลังการผลิต (กก./ชม./คน)'] ?? 0),
   })).filter(r => r.station && r.sku && r.rate > 0)
+}
+
+function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
+  const map = new Map<string, { isWeigher: boolean; groups: Map<string, number> }>()
+  for (const { row_data: r } of rows) {
+    const fullName = normName(String(r['รายชื่อพนักงาน'] ?? ''))
+    if (!fullName) continue
+    const groups = new Map<string, number>()
+    for (const [key, val] of Object.entries(r)) {
+      if (!key.startsWith('กลุ่ม') || val == null) continue
+      const level = Number(val); const cleanKey = key.replace(/_\d+$/, '')
+      if (!groups.has(cleanKey) || level < (groups.get(cleanKey) ?? 99)) groups.set(cleanKey, level)
+    }
+    map.set(fullName, { isWeigher: Number(r['ชั่งน้ำหนัก'] ?? 0) === 1, groups })
+  }
+  return map
 }
 
 function maxWorkersForQty(qty: number): number {
@@ -252,18 +401,29 @@ export async function POST(req: NextRequest) {
 
     // Load workforce + master data in parallel
     const [
-      { workforce, jobAssignMap },
-      { data: masterProdRaw },
+      { data: wfManual }, { data: wf0930 }, { data: wf1530 },
+      { data: masterProdRaw }, { data: jobAssignRaw },
       { data: pickingUnitRaw }, { data: masterSpecialRaw },
     ] = await Promise.all([
-      fetchWorkforceAndSkills(productionDate),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '0930').neq('work_station', ''),
+      supabase.from('daily_workforce').select('emp_id, name, work_station, shift').eq('work_date', productionDate).eq('upload_round', '1530').neq('work_station', ''),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
+      supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
       supabase.from('picking_unit_master').select('sap, weight_per_bag').limit(5000),
       supabase.from('master_logic_calculation').select('row_data').eq('calculation_type', 'Mas Special').order('uploaded_at', { ascending: false }).limit(5000),
     ])
 
+    const seenWf = new Set<string>()
+    let workforce: WorkforceRow[] = []
+    for (const w of [...(wfManual ?? []), ...(wf1530 ?? []), ...(wf0930 ?? [])] as WorkforceRow[]) {
+      const k = normName(w.name)
+      if (seenWf.has(k)) continue
+      seenWf.add(k); workforce.push(w)
+    }
+    if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
     if (!workforce.length)
-      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 18:00' }, { status: 400 })
+      return NextResponse.json({ success: false, message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly' }, { status: 400 })
 
     // Bag size map
     const bagSizeMap = new Map<string, number>()
@@ -331,6 +491,8 @@ export async function POST(req: NextRequest) {
       if (!skuMap.has(p.sku)) skuMap.set(p.sku, p)
       if (!skuMap.has(p.sku.replace(/^0+/, ''))) skuMap.set(p.sku.replace(/^0+/, ''), p)
     }
+
+    const jobAssignMap = buildJobAssignMap((jobAssignRaw ?? []) as { row_data: Record<string, unknown> }[])
 
     // Workers by station
     const workersByStation: Record<string, WorkforceRow[]> = {}
