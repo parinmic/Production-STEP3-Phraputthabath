@@ -40,7 +40,12 @@ export const specialOverview: ManualOverview = {
   ],
 }
 
-export const specialManualGroups: ManualGroup[] = [
+// Master Logic upload pages get an extra caption clarifying the table shown
+// is example data (captured by loading a sample file into the preview —
+// nothing was ever submitted/saved), not real employee/production data.
+const MASTER_LOGIC_KEYS = ['manpower', 'calculation']
+
+const RAW_SPECIAL_GROUPS: ManualGroup[] = [
   {
     heading: 'หน้าหลัก',
     items: [
@@ -328,3 +333,14 @@ export const specialManualGroups: ManualGroup[] = [
     ],
   },
 ]
+
+export const specialManualGroups: ManualGroup[] = RAW_SPECIAL_GROUPS.map(g => ({
+  ...g,
+  items: g.items.map(i => ({
+    ...i,
+    image: `/manual-screenshots/special/${i.key}.jpg`,
+    imageCaption: MASTER_LOGIC_KEYS.includes(i.key)
+      ? 'ตัวอย่างข้อมูลหลังเลือกไฟล์ (ข้อมูลสมมติ ไม่ใช่ข้อมูลพนักงาน/การผลิตจริง)'
+      : undefined,
+  })),
+}))

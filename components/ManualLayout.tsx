@@ -11,6 +11,8 @@ export interface ManualItem {
   summary: string
   body: string[]
   bullets?: string[]
+  image?: string
+  imageCaption?: string
 }
 
 export interface ManualGroup {
@@ -180,6 +182,16 @@ function ItemPanel({ item }: { item: ManualItem }) {
           <p className="text-sm text-gray-500 mt-1">{item.summary}</p>
         </div>
       </div>
+
+      {item.image && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={item.image} alt={`ตัวอย่างหน้าจอ ${item.label}`} className="w-full h-auto block" />
+          <p className="text-xs text-gray-400 text-center py-1.5 bg-white border-t border-gray-100">
+            {item.imageCaption ?? 'ตัวอย่างหน้าจอ'}
+          </p>
+        </div>
+      )}
 
       <div className="space-y-3 text-sm text-gray-700 leading-relaxed">
         {item.body.map((p, i) => <p key={i}>{p}</p>)}
