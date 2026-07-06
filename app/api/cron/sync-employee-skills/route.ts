@@ -156,8 +156,10 @@ async function runSync(): Promise<SyncResult> {
 
 // Fires right after a successful sync so Phase 1 always reflects the
 // freshest roster for today — this is the only automatic Phase 1 trigger
-// in the system, and it always regenerates rather than skipping if a plan
-// already exists for today.
+// in the system, and it always fully overwrites any existing Phase 1 plan
+// for today (disableMidRecal: true skips generatePlan's mid-day "keep
+// already-started work" merge, which is only meant for manual re-runs
+// during the day, not this from-scratch daily trigger).
 async function triggerPhase1Generation(origin: string, authHeader: string | null) {
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' })
   try {
@@ -167,7 +169,7 @@ async function triggerPhase1Generation(origin: string, authHeader: string | null
         'Content-Type': 'application/json',
         ...(authHeader ? { 'Authorization': authHeader } : {}),
       },
-      body: JSON.stringify({ date: todayStr, phase: 1, deductMode: 'plan' }),
+      body: JSON.stringify({ date: todayStr, phase: 1, deductMode: 'plan', disableMidRecal: true }),
     })
     const result = await res.json().catch(() => null)
     return { date: todayStr, ok: res.ok, result }
