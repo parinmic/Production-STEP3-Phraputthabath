@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { RefreshCw, Package } from 'lucide-react'
+import { RefreshCw, Package, Save } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -108,58 +108,69 @@ export default function PigCarcassWithdrawalPage() {
   const [chillRoom,   setChillRoom]   = useState<Record<string, string>>({})
   const [savedAt,     setSavedAt]     = useState<Record<string, string>>({})
   const [trimmingQty, setTrimmingQty] = useState('')
-  // Real state (not a ref) so that flipping it true forces the persist effects below to
-  // re-run with whatever lotOrder/rows are current — see note above loadSelection().
   const [selectionLoaded, setSelectionLoaded] = useState(false)
-  const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastEditAtRef        = useRef(0)
-  const lastServerUpdatedAtRef = useRef<string | null>(null)
-  // Set right before loadSelection() applies a server fetch to lotOrder/trimmingQty, so the
-  // persist effects below know to skip: otherwise they'd immediately write that same data back,
-  // and if `rows` hasn't finished loading yet, they'd compute an empty `selected` and overwrite
-  // the real server data with blank.
-  const skipNextLotPersistRef  = useRef(false)
-  const skipNextTrimPersistRef = useRef(false)
+  const [saving,     setSaving]     = useState(false)
+  const [saveError,  setSaveError]  = useState('')
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
+  // Snapshot of the lotOrder/trimmingQty that is actually saved on the server. Anything the
+  // user picks that diverges from this is "unsaved" — see `dirty` below.
+  const [savedSnapshot, setSavedSnapshot] = useState<{ lotOrder: Record<string, string>; trimmingQty: string } | null>(null)
   // Chain saves through this so a slow earlier request can never land after (and overwrite)
-  // a later, more complete one — important since picking order numbers for several lots in a
-  // row fires one save per pick in quick succession.
+  // a later, more complete one.
   const pendingSaveRef = useRef<Promise<void>>(Promise.resolve())
+  // Mirrors `dirty` for use inside loadSelection (a stable useCallback) without needing it as a dep.
+  const dirtyRef = useRef(false)
 
-  function persistSelection(selected: SelectedLot[], trimming: string) {
-    const run = async () => {
-      try {
-        const res = await fetch('/api/pig-carcass-lot-selection', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ selected, trimmingQty: trimming }),
-        })
-        const json = await res.json()
-        if (json.updatedAt) lastServerUpdatedAtRef.current = json.updatedAt
-      } catch { /* ignore */ }
+  const dirty = savedSnapshot !== null &&
+    (JSON.stringify(lotOrder) !== JSON.stringify(savedSnapshot.lotOrder) || trimmingQty !== savedSnapshot.trimmingQty)
+
+  useEffect(() => { dirtyRef.current = dirty }, [dirty])
+
+  function persistSelection(selected: SelectedLot[], trimming: string): Promise<string | null> {
+    const run = async (): Promise<string | null> => {
+      const res = await fetch('/api/pig-carcass-lot-selection', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ selected, trimmingQty: trimming }),
+      })
+      const json = await res.json()
+      return typeof json.updatedAt === 'string' ? json.updatedAt : null
     }
-    pendingSaveRef.current = pendingSaveRef.current.then(run, run)
-    return pendingSaveRef.current
+    const result = pendingSaveRef.current.then(run, run)
+    pendingSaveRef.current = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveError('')
+    try {
+      const selected  = computeSelected(rows, lotOrder)
+      const updatedAt = await persistSelection(selected, trimmingQty)
+      setSavedSnapshot({ lotOrder, trimmingQty })
+      setLastSavedAt(updatedAt)
+    } catch {
+      setSaveError('บันทึกไม่สำเร็จ กรุณาลองใหม่')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const loadSelection = useCallback(async () => {
-    const fetchStartedAt = Date.now()
     try {
       const res  = await fetch('/api/pig-carcass-lot-selection')
       const json = await res.json()
+      // Don't clobber a selection the user has picked but not yet saved.
+      if (dirtyRef.current) return
       const serverUpdatedAt = typeof json.updatedAt === 'string' ? json.updatedAt : null
-      const serverTime = serverUpdatedAt ? Date.parse(serverUpdatedAt) : null
-      const localTime = lastEditAtRef.current
-      // If the user made a local edit more recently than the server snapshot, keep the local
-      // change and avoid overwriting it with an older server value.
-      if (localTime > 0 && serverTime != null && serverTime < localTime) return
-      if (serverUpdatedAt) lastServerUpdatedAtRef.current = serverUpdatedAt
       const sel  = (json.selected ?? []) as SelectedLot[]
       const order: Record<string, string> = {}
       for (const s of sel) order[s.spec_code] = String(s.order)
-      skipNextLotPersistRef.current  = true
-      skipNextTrimPersistRef.current = true
+      const trimming = json.trimmingQty ?? ''
       setLotOrder(order)
-      setTrimmingQty(json.trimmingQty ?? '')
+      setTrimmingQty(trimming)
+      setSavedSnapshot({ lotOrder: order, trimmingQty: trimming })
+      setLastSavedAt(serverUpdatedAt)
     } catch { /* ignore */ } finally {
       setSelectionLoaded(true)
     }
@@ -229,24 +240,16 @@ export default function PigCarcassWithdrawalPage() {
     }
   }, [loadSelection])
 
+  // Local-only mirror so a refresh before hitting "บันทึก" doesn't lose the in-progress pick.
+  // Actually saving to the server (so other machines see it) only happens via handleSave().
   useEffect(() => {
     localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))
-    const selected = computeSelected(rows, lotOrder)
-    localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
-    if (skipNextLotPersistRef.current) { skipNextLotPersistRef.current = false; return }
-    if (selectionLoaded) persistSelection(selected, trimmingQty)
-  }, [lotOrder, rows, selectionLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+    localStorage.setItem('pig_carcass_selected', JSON.stringify(computeSelected(rows, lotOrder)))
+  }, [lotOrder, rows])
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_trimming', trimmingQty)
-    if (skipNextTrimPersistRef.current) { skipNextTrimPersistRef.current = false; return }
-    if (!selectionLoaded) return
-    if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current)
-    trimmingDebounceRef.current = setTimeout(() => {
-      persistSelection(computeSelected(rows, lotOrder), trimmingQty)
-    }, 600)
-    return () => { if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current) }
-  }, [trimmingQty, selectionLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trimmingQty])
 
   const totalQty  = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt  = rows.reduce((s, r) => s + r.weight_3, 0)
@@ -291,6 +294,30 @@ export default function PigCarcassWithdrawalPage() {
         </div>
       )}
 
+      {/* Save bar */}
+      {!loading && rows.length > 0 && (
+        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${dirty ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'}`}>
+          <div className="text-sm min-w-0">
+            {dirty ? (
+              <span className="text-amber-700 font-medium">มีการเปลี่ยนแปลงที่ยังไม่บันทึก — กด &quot;บันทึก&quot; เพื่อ sync ให้เครื่องอื่นเห็น</span>
+            ) : lastSavedAt ? (
+              <span className="text-gray-500">บันทึกล่าสุดเมื่อ {fmtSavedAt(lastSavedAt)}</span>
+            ) : (
+              <span className="text-gray-400">ยังไม่มีข้อมูลบันทึก</span>
+            )}
+            {saveError && <span className="block text-red-600 mt-0.5">{saveError}</span>}
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving || !selectionLoaded || !dirty}
+            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-2.5 sm:py-2 rounded-lg text-sm font-semibold transition-colors shrink-0"
+          >
+            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+            บันทึก
+          </button>
+        </div>
+      )}
+
       {/* Summary card */}
       {!loading && rows.length > 0 && (
         <div className={`rounded-xl border px-3 sm:px-5 py-3 sm:py-4 grid grid-cols-3 sm:flex sm:flex-wrap gap-3 sm:gap-6 sm:items-center transition-colors ${selRows.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
@@ -326,7 +353,7 @@ export default function PigCarcassWithdrawalPage() {
               type="text"
               inputMode="numeric"
               value={trimmingQty}
-              onChange={e => { lastEditAtRef.current = Date.now(); setTrimmingQty(e.target.value.replace(/[^0-9]/g, '')) }}
+              onChange={e => setTrimmingQty(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="กรอกจำนวนตัว..."
               className="w-28 sm:w-36 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
@@ -407,7 +434,7 @@ export default function PigCarcassWithdrawalPage() {
 
                 <select
                   value={lotOrder[r.spec_code] ?? ''}
-                  onChange={e => { lastEditAtRef.current = Date.now(); setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value })) }}
+                  onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
                   className={`shrink-0 w-11 h-11 ml-0.5 rounded-xl border text-center text-xl font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
                     picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
                   }`}
@@ -495,7 +522,7 @@ export default function PigCarcassWithdrawalPage() {
                       <td className="px-3 py-2 text-center">
                         <select
                           value={lotOrder[r.spec_code] ?? ''}
-                          onChange={e => { lastEditAtRef.current = Date.now(); setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value })) }}
+                          onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
                           className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
                             picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
                           }`}
