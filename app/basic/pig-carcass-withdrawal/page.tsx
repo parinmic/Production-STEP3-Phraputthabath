@@ -99,7 +99,9 @@ export default function PigCarcassWithdrawalPage() {
   const [chillRoom,   setChillRoom]   = useState<Record<string, string>>({})
   const [savedAt,     setSavedAt]     = useState<Record<string, string>>({})
   const [trimmingQty, setTrimmingQty] = useState('')
-  const loadedSelectionRef   = useRef(false)
+  // Real state (not a ref) so that flipping it true forces the persist effects below to
+  // re-run with whatever lotOrder/rows are current — see note above loadSelection().
+  const [selectionLoaded, setSelectionLoaded] = useState(false)
   const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastEditAtRef        = useRef(0)
   // Set right before loadSelection() applies a server fetch to lotOrder/trimmingQty, so the
@@ -108,15 +110,23 @@ export default function PigCarcassWithdrawalPage() {
   // the real server data with blank.
   const skipNextLotPersistRef  = useRef(false)
   const skipNextTrimPersistRef = useRef(false)
+  // Chain saves through this so a slow earlier request can never land after (and overwrite)
+  // a later, more complete one — important since picking order numbers for several lots in a
+  // row fires one save per pick in quick succession.
+  const pendingSaveRef = useRef<Promise<void>>(Promise.resolve())
 
-  async function persistSelection(selected: SelectedLot[], trimming: string) {
-    try {
-      await fetch('/api/pig-carcass-lot-selection', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ selected, trimmingQty: trimming }),
-      })
-    } catch { /* ignore */ }
+  function persistSelection(selected: SelectedLot[], trimming: string) {
+    const run = async () => {
+      try {
+        await fetch('/api/pig-carcass-lot-selection', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ selected, trimmingQty: trimming }),
+        })
+      } catch { /* ignore */ }
+    }
+    pendingSaveRef.current = pendingSaveRef.current.then(run, run)
+    return pendingSaveRef.current
   }
 
   const loadSelection = useCallback(async () => {
@@ -126,6 +136,9 @@ export default function PigCarcassWithdrawalPage() {
       const json = await res.json()
       // If the user picked a lot order while this request was in flight, that local edit is
       // newer than what we just fetched — applying it now would wipe out their selection.
+      // Note we still fall through to the `finally` below so selectionLoaded flips true,
+      // which makes the persist effects re-run and save the user's edit instead of leaving
+      // it stuck in local state only (see selectionLoaded comment above).
       if (lastEditAtRef.current > fetchStartedAt) return
       const sel  = (json.selected ?? []) as SelectedLot[]
       const order: Record<string, string> = {}
@@ -135,7 +148,7 @@ export default function PigCarcassWithdrawalPage() {
       setLotOrder(order)
       setTrimmingQty(json.trimmingQty ?? '')
     } catch { /* ignore */ } finally {
-      loadedSelectionRef.current = true
+      setSelectionLoaded(true)
     }
   }, [])
 
@@ -193,19 +206,19 @@ export default function PigCarcassWithdrawalPage() {
     const selected = computeSelected(rows, lotOrder)
     localStorage.setItem('pig_carcass_selected', JSON.stringify(selected))
     if (skipNextLotPersistRef.current) { skipNextLotPersistRef.current = false; return }
-    if (loadedSelectionRef.current) persistSelection(selected, trimmingQty)
-  }, [lotOrder, rows]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (selectionLoaded) persistSelection(selected, trimmingQty)
+  }, [lotOrder, rows, selectionLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     localStorage.setItem('pig_carcass_trimming', trimmingQty)
     if (skipNextTrimPersistRef.current) { skipNextTrimPersistRef.current = false; return }
-    if (!loadedSelectionRef.current) return
+    if (!selectionLoaded) return
     if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current)
     trimmingDebounceRef.current = setTimeout(() => {
       persistSelection(computeSelected(rows, lotOrder), trimmingQty)
     }, 600)
     return () => { if (trimmingDebounceRef.current) clearTimeout(trimmingDebounceRef.current) }
-  }, [trimmingQty]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trimmingQty, selectionLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalQty  = rows.reduce((s, r) => s + r.qty_3,    0)
   const totalWgt  = rows.reduce((s, r) => s + r.weight_3, 0)
