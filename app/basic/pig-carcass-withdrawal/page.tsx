@@ -101,6 +101,7 @@ export default function PigCarcassWithdrawalPage() {
   const [trimmingQty, setTrimmingQty] = useState('')
   const loadedSelectionRef   = useRef(false)
   const trimmingDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastEditAtRef        = useRef(0)
 
   async function persistSelection(selected: SelectedLot[], trimming: string) {
     try {
@@ -113,9 +114,13 @@ export default function PigCarcassWithdrawalPage() {
   }
 
   const loadSelection = useCallback(async () => {
+    const fetchStartedAt = Date.now()
     try {
       const res  = await fetch('/api/pig-carcass-lot-selection')
       const json = await res.json()
+      // If the user picked a lot order while this request was in flight, that local edit is
+      // newer than what we just fetched — applying it now would wipe out their selection.
+      if (lastEditAtRef.current > fetchStartedAt) return
       const sel  = (json.selected ?? []) as SelectedLot[]
       const order: Record<string, string> = {}
       for (const s of sel) order[s.spec_code] = String(s.order)
@@ -279,7 +284,7 @@ export default function PigCarcassWithdrawalPage() {
               type="text"
               inputMode="numeric"
               value={trimmingQty}
-              onChange={e => setTrimmingQty(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={e => { lastEditAtRef.current = Date.now(); setTrimmingQty(e.target.value.replace(/[^0-9]/g, '')) }}
               placeholder="กรอกจำนวนตัว..."
               className="w-28 sm:w-36 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
@@ -361,7 +366,7 @@ export default function PigCarcassWithdrawalPage() {
 
                 <select
                   value={lotOrder[r.spec_code] ?? ''}
-                  onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
+                  onChange={e => { lastEditAtRef.current = Date.now(); setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value })) }}
                   className={`shrink-0 w-11 h-11 ml-0.5 rounded-xl border text-center text-xl font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
                     picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
                   }`}
@@ -450,7 +455,7 @@ export default function PigCarcassWithdrawalPage() {
                       <td className="px-3 py-2 text-center">
                         <select
                           value={lotOrder[r.spec_code] ?? ''}
-                          onChange={e => setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value }))}
+                          onChange={e => { lastEditAtRef.current = Date.now(); setLotOrder(prev => ({ ...prev, [r.spec_code]: e.target.value })) }}
                           className={`text-sm border rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
                             picked ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-500'
                           }`}
