@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
 
     if (!records.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่ถูกต้อง' }, { status: 400 })
 
+    // Stock is a point-in-time snapshot, not an accumulating log — clear
+    // previous batches before inserting the new one so totals don't double-count.
+    await supabase.from('upload_log').delete().eq('table_name', 'stock_0010')
+
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await supabase
       .from('upload_log')
@@ -50,7 +54,7 @@ export async function POST(req: NextRequest) {
       throw error
     }
 
-    await syncUploadToDev('stock_0010', filename ?? 'unknown', records)
+    await syncUploadToDev('stock_0010', filename ?? 'unknown', records, true)
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })

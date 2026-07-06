@@ -1,14 +1,8 @@
 import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
+import { fetchWorkforceAndSkills, WorkforceRow, normName } from '@/lib/workforce'
 
 // ========== Types ==========
-
-interface WorkforceRow {
-  emp_id: string
-  name: string
-  work_station: string
-  shift: string
-}
 
 interface OrderRow {
   sku: string
@@ -133,108 +127,6 @@ const STATION_TABLE: Record<string, string> = {
   'เลาะขาพิเศษ':  'เลาะขา',
 }
 
-const normName = (s: string) => {
-  if (!s) return ''
-  return s.replace(/-/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase()
-}
-
-// ========== Workforce ==========
-
-async function fetchWeeklyWorkforce(productionDate: string): Promise<WorkforceRow[]> {
-  const types = ['sa-phok-special', 'lai-special', 'sam-chan-special', 'moo-chod-special', 'slide-special', 'pao-kha-special', 'loa-kha-special']
-  const workforce: WorkforceRow[] = []
-
-  const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์']
-  const DAY_ALIASES: Record<string, string[]> = {
-    'อาทิตย์': ['อาทิตย์', 'อา.'],
-    'จันทร์':  ['จันทร์', 'จ.'],
-    'อังคาร':  ['อังคาร', 'อ.'],
-    'พุธ':     ['พุธ', 'พ.'],
-    'พฤหัสบดี':['พฤหัสบดี', 'พฤหัส', 'พฤ.'],
-    'ศุกร์':   ['ศุกร์', 'ศ.'],
-    'เสาร์':   ['เสาร์', 'ส.'],
-  }
-
-  const checkIsDayOff = (dayOffVal: string, dateStr: string) => {
-    if (!dayOffVal || !dateStr) return false
-    const parts = dateStr.split('-')
-    if (parts.length !== 3) return false
-    const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-    const dayName = THAI_DAYS[dateObj.getDay()]
-    const normalizedVal = dayOffVal.trim().toLowerCase()
-    return (DAY_ALIASES[dayName] || [dayName]).some(a => normalizedVal.includes(a.toLowerCase()))
-  }
-
-  const getFieldValue = (rowData: Record<string, any>, prefixes: string[]): string => {
-    if (!rowData) return ''
-    for (const prefix of prefixes) {
-      if (rowData[prefix] !== undefined && rowData[prefix] !== null)
-        return String(rowData[prefix]).trim()
-    }
-    const keys = Object.keys(rowData)
-    for (const prefix of prefixes) {
-      const foundKey = keys.find(k => k.toLowerCase().includes(prefix.toLowerCase()))
-      if (foundKey && rowData[foundKey] !== undefined && rowData[foundKey] !== null)
-        return String(rowData[foundKey]).trim()
-    }
-    return ''
-  }
-
-  const stationMap: Record<string, string> = {
-    'sa-phok-special':  'สะโพกพิเศษ',
-    'sam-chan-special':  'สามชั้นพิเศษ',
-    'lai-special':      'ไหล่พิเศษ',
-    'moo-chod-special': 'หมูบดพิเศษ',
-    'slide-special':    'สไลด์พิเศษ',
-    'pao-kha-special':  'เผาขาพิเศษ',
-    'loa-kha-special':  'เลาะขาพิเศษ',
-  }
-
-  const { data: statusOverrides } = await supabase
-    .from('workforce_daily_status')
-    .select('weekly_type, worker_name, status')
-    .eq('work_date', productionDate)
-
-  const overrideMap = new Map<string, string>()
-  for (const item of statusOverrides ?? [])
-    overrideMap.set(`${item.weekly_type}_${item.worker_name}`, item.status)
-
-  for (const type of types) {
-    const logTableName = `workforce_weekly_${type.replace(/-/g, '_')}`
-    const { data: latestLog } = await supabase
-      .from('upload_log').select('source_file')
-      .eq('table_name', logTableName)
-      .order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
-    if (!latestLog) continue
-
-    const { data: weeklyData } = await supabase
-      .from('workforce_weekly').select('row_data')
-      .eq('weekly_type', type).eq('source_file', latestLog.source_file)
-    if (!weeklyData) continue
-
-    for (const row of weeklyData) {
-      const rowData = (row.row_data ?? {}) as Record<string, any>
-      const name = getFieldValue(rowData, ['รายชื่อพนักงาน', 'ชื่อจริง', 'ชื่อพนักงาน', 'ชื่อ', 'name', 'full_name'])
-      if (!name) continue
-
-      const overrideStatus = overrideMap.get(`${type}_${name}`)
-      let isWorking = true
-      if (overrideStatus) {
-        isWorking = overrideStatus === 'ทำงาน'
-      } else {
-        const dayOffStr = getFieldValue(rowData, ['วันหยุดประจำสัปดาห์', 'วันหยุดประจำ', 'วันหยุด', 'หยุด', 'dayoff', 'day_off', 'day off'])
-        isWorking = !checkIsDayOff(dayOffStr, productionDate)
-      }
-      if (!isWorking) continue
-
-      const shiftStr = getFieldValue(rowData, ['กะทำงาน', 'กะ', 'กะงาน', 'shift'])
-      const shift = shiftStr.trim() === '2' || shiftStr.includes('2') ? 'กะ 2' : 'กะ 1'
-      workforce.push({ emp_id: name, name, work_station: stationMap[type] ?? type, shift })
-    }
-  }
-  return workforce
-}
-
 // ========== Master Data Parsers ==========
 
 function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
@@ -248,27 +140,6 @@ function parseProductivity(rows: Record<string, unknown>[]): ProductivityRow[] {
       product:       String(n['Product'] ?? '').trim(),
     })})
     .filter(r => r.station && r.sku && r.rate > 0)
-}
-
-function buildJobAssignMap(rows: { row_data: Record<string, unknown> }[]) {
-  const map = new Map<string, { isWeigher: boolean; groups: Map<string, number> }>()
-  for (const row of rows) {
-    const r = normalizeRow(row.row_data)
-    const fullName = normName(String(r['รายชื่อพนักงาน'] ?? ''))
-    if (!fullName) continue
-    const isWeigher = Number(r['ชั่งน้ำหนัก'] ?? 0) === 1
-    const groups = new Map<string, number>()
-    for (const [key, val] of Object.entries(r)) {
-      if (!key.startsWith('กลุ่ม')) continue
-      if (val === null || val === undefined) continue
-      const level = Number(val)
-      const cleanKey = key.replace(/_\d+$/, '').trim()
-      if (!groups.has(cleanKey) || level < (groups.get(cleanKey) ?? 99))
-        groups.set(cleanKey, level)
-    }
-    map.set(fullName, { isWeigher, groups })
-  }
-  return map
 }
 
 // ========== Variance Calculators ==========
@@ -1548,16 +1419,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const orderRound = (isPhase2 || isPhase3) ? '1400' : '0800'
 
   const [
-    { data: workforceRawManual },
-    { data: workforceRaw0930 },
-    { data: workforceRaw1530 },
     wmTodayRaw, wmHistRaw,
     lotusTodayRaw, lotusHistRaw,
     makroTodayRaw, makroHistRaw,
     fsTodayRaw,
     { data: masterProdRaw },
     { data: masterChannelRaw },
-    { data: jobAssignRaw },
     prevAssignedRaw, yieldBagsRaw,
     plan100Raw,
     { data: pickingUnitRaw },
@@ -1571,12 +1438,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     bkpOrdersRaw,
   { data: mooChōdMasterRaw },
   ] = await Promise.all([
-    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', 'manual').neq('work_station', ''),
-    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', '0930').neq('work_station', ''),
-    supabase.from('daily_workforce').select('emp_id, name, work_station, shift')
-      .eq('work_date', productionDate).eq('upload_round', '1530').neq('work_station', ''),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
       [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
     fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
@@ -1596,7 +1457,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Channel').order('uploaded_at', { ascending: false }).limit(5000),
-    supabase.from('master_logic_manpower').select('row_data').order('uploaded_at', { ascending: true }).limit(5000),
     (isPhase2 || isPhase3) && deductMode !== 'yield'
       ? fetchLatestBatchAssignments(productionDate, isPhase3 ? ['เช้า', 'บ่าย'] : ['เช้า'], deductMode)
       : Promise.resolve([] as { sku: string; target_quantity: number; channel: string | null }[]),
@@ -1632,22 +1492,10 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     supabase.from('moo_chod_master').select('sap_code, fat_percent').limit(5000),
   ])
 
-  // Merge: manual overrides > 1530 > 0930; fall back to weekly schedule
-  const seenWf = new Set<string>()
-  let workforce: WorkforceRow[] = []
-  for (const w of [
-    ...(workforceRawManual ?? []),
-    ...(workforceRaw1530   ?? []),
-    ...(workforceRaw0930   ?? []),
-  ] as WorkforceRow[]) {
-    const k = normName(w.name)
-    if (seenWf.has(k)) continue
-    seenWf.add(k); workforce.push(w)
-  }
-  if (workforce.length === 0) workforce = await fetchWeeklyWorkforce(productionDate)
+  const { workforce, jobAssignMap } = await fetchWorkforceAndSkills(productionDate)
   if (!workforce.length) return {
     success: false,
-    message: 'ไม่พบข้อมูลกำลังคนวันนี้ — กรุณารอ Sync รอบ 9:30 หรือตั้งค่า Workforce Weekly',
+    message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 7:30',
   }
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
@@ -1832,8 +1680,6 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       if (nums.length >= 6) { makroVarParams = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]]; break }
     }
   }
-
-  const jobAssignMap = buildJobAssignMap((jobAssignRaw ?? []) as { row_data: Record<string, unknown> }[])
 
   const channelPriority: Record<string, number> = {}
   for (const row of masterChannelRaw ?? []) {
@@ -2759,7 +2605,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     return qty
   }
 
-  const runChannelPass = (passList: SkuTarget[]) => {
+  const runChannelPass = (passList: SkuTarget[], stationOverride?: Map<string, string>) => {
     // Use the full assignList (stock + deficit combined) so getMaxWorkers isn't capped by the
     // small deficit slice when only the deficit portion is being scheduled.
     const globalSkuTotalQty = new Map<string, number>()
@@ -2797,7 +2643,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
         const prod = skuMap.get(String(item.sku)) ?? skuMap.get(String(Number(item.sku) || item.sku))
         if (!prod) continue
-        const station = STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station)
+        const station = stationOverride?.get(normSku) ?? (STATION_TABLE[normalizeStation(prod.station)] ?? normalizeStation(prod.station))
         targetsByStation[station] ??= []
         targetsByStation[station].push({ ...item, targetQty })
 
@@ -2874,6 +2720,38 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   // Kept separate so runChannelPass's `handled` set doesn't drop deficit items that share
   // the same channel+SKU as stock items.
   runChannelPass(primaryDeficitList)
+
+  // Secondary (ผลพลอยได้) SKUs must be produced at whichever table their linked primary
+  // actually landed on (per Mas Sku ผลิตพร้อมกัน) — not wherever the secondary's own Mas
+  // Productivity entry says, and not wherever cross-station happens to have free hands.
+  // This constraint overrides both of those: build primary→dominant-table here, so the
+  // secondary pass below is forced onto that table, and secondary SKUs are excluded from
+  // the cross-station catch-all pass further down (they never get a third table).
+  const secondaryStationOverride = new Map<string, string>()
+  if (primarySkuSet.size > 0) {
+    const primaryQtyByTable = new Map<string, Map<string, number>>()
+    for (const a of assignments) {
+      const ns = String(a.sku ?? '').replace(/^0+/, '')
+      if (!primarySkuSet.has(ns)) continue
+      const table = String(a.table_name ?? '')
+      if (!table) continue
+      if (!primaryQtyByTable.has(ns)) primaryQtyByTable.set(ns, new Map())
+      const m = primaryQtyByTable.get(ns)!
+      m.set(table, (m.get(table) ?? 0) + Number(a.target_quantity ?? 0))
+    }
+    const primaryDominantTable = new Map<string, string>()
+    for (const [ns, tableQty] of primaryQtyByTable) {
+      let bestTable = ''; let bestQty = -1
+      for (const [t, q] of tableQty) if (q > bestQty) { bestQty = q; bestTable = t }
+      if (bestTable) primaryDominantTable.set(ns, bestTable)
+    }
+    for (const [secSku, primaries] of Array.from(secondaryToPrimaries.entries())) {
+      for (const pSku of Array.from(primaries)) {
+        const table = primaryDominantTable.get(pSku)
+        if (table) { secondaryStationOverride.set(secSku, table); break }
+      }
+    }
+  }
 
 
   // WIP Plan production: allocate กลุ่ม WIP workers on their respective stations (from mas_productivity)
@@ -3173,8 +3051,8 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     for (const [k, v] of secWorkerHours) workerHours.set(k, v)
     for (const [k, v] of secWorkerFreeAtMins) workerFreeAtMins.set(k, v)
     for (const [k, v] of secWorkerBusySegments) workerBusySegments.set(k, v.slice())
-    runChannelPass(secStockList)
-    runChannelPass(secDeficitList)
+    runChannelPass(secStockList, secondaryStationOverride)
+    runChannelPass(secDeficitList, secondaryStationOverride)
     // Merge: each worker's true finish = max(primary end, secondary end).
     for (const [nameKey, preMins] of preSecondaryFreeAtMins) {
       const postMins = workerFreeAtMins.get(nameKey) ?? preMins
@@ -3253,6 +3131,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
         //        matches the eligible groups of these cross workers.
         const crossTargets: SkuTarget[] = []
         for (const [ns, info] of totalTargetMap) {
+          // Secondary (ผลพลอยได้) SKUs are pinned to their primary's table (see
+          // secondaryStationOverride above) — they never spill to a further cross-station table.
+          if (secondarySkuSet.has(ns)) continue
           const prod = skuMap.get(ns)
           if (!prod) continue
           if (!eligibleGroups.has(prod.product_group)) continue

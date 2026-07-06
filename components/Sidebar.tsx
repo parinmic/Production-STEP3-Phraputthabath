@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -539,6 +539,12 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             <Users size={18} className="shrink-0" />
             <span className={labelCls}>User ระบบผลิต</span>
           </NavLink>
+          <Link href="/admin/manual"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p === '/admin/manual' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+            title="คู่มือการใช้งาน">
+            <BookOpen size={18} className="shrink-0" />
+            <span className={labelCls}>คู่มือการใช้งาน</span>
+          </Link>
 
           </div>
 
