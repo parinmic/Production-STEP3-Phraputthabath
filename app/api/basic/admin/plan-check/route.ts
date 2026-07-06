@@ -162,6 +162,10 @@ export async function GET(req: NextRequest) {
       return row
     }
 
+    skuLookup.forEach((prod, norm) => {
+      if (prod.station && BASIC_STATIONS.includes(prod.station)) getRow(norm)
+    })
+
     for (const r of plan100Rows) {
       const row = getRow(normalizeSku(String(r.sap ?? '')))
       if (!row) continue
@@ -190,9 +194,6 @@ export async function GET(req: NextRequest) {
     Array.from(rowMap.values()).forEach(row => rebalanceLotusWetProduced(row))
 
     const rows = Array.from(rowMap.values())
-      .filter(r => r.plan100.wetMarket > 0 || r.plan100.lotus > 0 || r.plan100.makro > 0
-        || r.produced.wetMarket > 0 || r.produced.lotus > 0 || r.produced.makro > 0
-        || r.extra.supplementary > 0 || r.extra.raw > 0)
       .map(r => ({
         station: r.station,
         sku: r.sku,
