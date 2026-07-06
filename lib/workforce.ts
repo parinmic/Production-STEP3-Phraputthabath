@@ -40,14 +40,38 @@ interface EmployeeSkillRow {
   skills: Record<string, number> | null
 }
 
-export async function fetchWorkforceAndSkills(productionDate: string): Promise<{
+export async function fetchWorkforceAndSkills(productionDate: string, options?: {
+  // Emergency fallback: if today's roster hasn't been synced yet, fall back to
+  // the most recent prior work_date that does have data instead of failing.
+  fallbackToPreviousDay?: boolean
+}): Promise<{
   workforce: WorkforceRow[]
   jobAssignMap: JobAssignMap
+  workDateUsed: string
 }> {
-  const { data } = await supabase
+  let workDateUsed = productionDate
+  let data = (await supabase
     .from('employee_skills')
     .select('emp_id, name, work_station, shift, is_weigher, skills')
-    .eq('work_date', productionDate)
+    .eq('work_date', productionDate)).data
+
+  if (!data?.length && options?.fallbackToPreviousDay) {
+    const { data: prevDateRow } = await supabase
+      .from('employee_skills')
+      .select('work_date')
+      .lt('work_date', productionDate)
+      .order('work_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (prevDateRow?.work_date) {
+      workDateUsed = prevDateRow.work_date
+      data = (await supabase
+        .from('employee_skills')
+        .select('emp_id, name, work_station, shift, is_weigher, skills')
+        .eq('work_date', workDateUsed)).data
+    }
+  }
 
   const workforce: WorkforceRow[] = []
   const jobAssignMap: JobAssignMap = new Map()
@@ -70,5 +94,5 @@ export async function fetchWorkforceAndSkills(productionDate: string): Promise<{
     jobAssignMap.set(normName(row.name), { isWeigher: row.is_weigher, groups })
   }
 
-  return { workforce, jobAssignMap }
+  return { workforce, jobAssignMap, workDateUsed }
 }
