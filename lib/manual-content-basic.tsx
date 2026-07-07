@@ -68,9 +68,9 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         icon: Thermometer,
         summary: 'บันทึกและดูรายงานผลตรวจอุณหภูมิหมูซีกและชิ้นส่วน',
         body: [
-          '"อุณหภูมิหมูซีก" (/basic/temperature-check) — บันทึกผลตรวจอุณหภูมิของแต่ละ Lot ที่รอผลิต แยกชุดต้น Lot/ชุดท้าย Lot และตัวที่ 1-3 กรอกค่าที่วัดได้ทีละช่อง ระบบคำนวณค่าเฉลี่ยและเทียบเกณฑ์สี (เขียว/เหลือง/แดง) ให้อัตโนมัติ',
-          '"อุณหภูมิชิ้นส่วน" (/basic/temperature-check-parts) — ตรวจอุณหภูมิชิ้นส่วนที่ตัดแต่งแล้ว (สะโพก สันนอก สามชั้น ไหล่ สันคอ) เกณฑ์ผ่านคือ ≤ 10°C',
-          '"รายงานการตรวจอุณหภูมิ" (/basic/temperature-check-report) — สรุปผลตรวจทั้งซีกสุกรและชิ้นส่วนของวันที่เลือก เลือกวันที่แล้ว export เป็น Excel หรือ PDF ได้',
+          '"อุณหภูมิหมูซีก" — บันทึกผลตรวจอุณหภูมิของแต่ละ Lot ที่รอผลิต แยกชุดต้น Lot/ชุดท้าย Lot และตัวที่ 1-3 กรอกค่าที่วัดได้ทีละช่อง ระบบคำนวณค่าเฉลี่ยและเทียบเกณฑ์สี (เขียว/เหลือง/แดง) ให้อัตโนมัติ',
+          '"อุณหภูมิชิ้นส่วน" — ตรวจอุณหภูมิชิ้นส่วนที่ตัดแต่งแล้ว (สะโพก สันนอก สามชั้น ไหล่ สันคอ) เกณฑ์ผ่านคือ ≤ 10°C',
+          '"รายงานการตรวจอุณหภูมิ" — สรุปผลตรวจทั้งซีกสุกรและชิ้นส่วนของวันที่เลือก เลือกวันที่แล้ว export เป็น Excel หรือ PDF ได้',
         ],
       },
       {
@@ -90,7 +90,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         icon: AlertTriangle,
         summary: 'รายการวัตถุดิบที่สต็อกไม่พอสำหรับแผนผลิตของแต่ละ Phase',
         body: ['เลือกวันที่ดูรายการที่ต้องรอ STEP 2 เติมของ แล้วรีโหลดหรือ export เป็นรูปภาพ (PNG) ได้'],
-        bullets: ['Phase 1 — /basic/shortage/1', 'Phase 2 — /basic/shortage/2', 'Phase 3 — /basic/shortage/3'],
+        bullets: ['Phase 1', 'Phase 2', 'Phase 3'],
       },
       {
         key: 'production',
@@ -102,11 +102,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
           'เลือกวันที่และ Phase แล้วกดปุ่ม "สร้าง Phase X" เพื่อให้ระบบคำนวณและจัดสรรงานผลิตอัตโนมัติจากยอดสั่งซื้อ/แผน 100% และกำลังคนที่มี',
           'ดูผลเป็นผังเวลาการทำงานของพนักงานแต่ละคน — ใช้หน้ารูปแบบเดียวกันทั้ง 3 Station',
         ],
-        bullets: [
-          'Station สะโพกเบสิค — /basic/production/sa-phok-basic',
-          'Station ไหล่เบสิค — /basic/production/lai-basic',
-          'Station สามชั้นเบสิค — /basic/production/sam-chan-basic',
-        ],
+        bullets: ['Station สะโพกเบสิค', 'Station ไหล่เบสิค', 'Station สามชั้นเบสิค'],
       },
       {
         key: 'breakline',
@@ -142,11 +138,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         icon: Layers,
         summary: 'ดูแผนผลิตของ Station ที่ปรับตามค่า Yield ที่คำนวณได้',
         body: ['เลือกวันที่และ Phase (หรือดูทั้งหมด) เพื่อดูว่าตามค่า Yield จริงแล้วควรผลิตปริมาณเท่าใด ใช้ view เดียวกับหน้าคำสั่งผลิตราย Station'],
-        bullets: [
-          'สะโพกเบสิค — /basic/yield-plan/sa-phok-basic',
-          'ไหล่เบสิค — /basic/yield-plan/lai-basic',
-          'สามชั้นเบสิค — /basic/yield-plan/sam-chan-basic',
-        ],
+        bullets: ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค'],
       },
       {
         key: 'carcass-cycle',
@@ -232,12 +224,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         icon: UserCog,
         summary: 'อัพโหลด Master Logic กำลังคนแยกตามสถานี — ใช้เป็นฐานคำนวณตอนกด "สร้าง Phase"',
         body: ['เลือกไฟล์ Excel ของสถานีนั้นแล้วอัพโหลด ใช้รูปแบบเดียวกันทุกประเภท'],
-        bullets: [
-          'สะโพกเบสิค — /basic/master-logic/manpower/sa-phok-basic',
-          'ไหล่เบสิค — /basic/master-logic/manpower/lai-basic',
-          'สามชั้นเบสิค — /basic/master-logic/manpower/sam-chan-basic',
-          'เปิดหมู — /basic/master-logic/manpower/perd-moo',
-        ],
+        bullets: ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค', 'เปิดหมู'],
       },
       {
         key: 'calculation',
@@ -253,10 +240,10 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
           'Mas Special Basic — ช่วงเวลาเริ่ม/หยุดผลิต SKU พิเศษ',
           'Mas กลุ่มสินค้าผลิตมากกว่า 1 สายพาน — กำหนด route/split mode/priority',
           'Mas สายพาน — mapping กลุ่มสินค้าไปสายพาน/สถานี',
-          'BOM สินค้า (/basic/bom) — เชื่อม SAP สินค้ากับวัตถุดิบและ % Yield',
-          'Mas หน่วยหยิบสินค้า (/basic/picking-unit) — แปลงน้ำหนักเป็นจำนวนถุง',
-          'Mas Yield (/basic/mas-yield) — Yield % ตามน้ำหนักซาก ใช้โดยหน้า Yield หมูซีก/รอบการลงหมูซีก',
-          'Mas Temp QC (/basic/master-logic/temp-qc) — เกณฑ์สี (เขียว/เหลือง/แดง) ของหน้าตรวจอุณหภูมิ',
+          'BOM สินค้า — เชื่อม SAP สินค้ากับวัตถุดิบและ % Yield',
+          'Mas หน่วยหยิบสินค้า — แปลงน้ำหนักเป็นจำนวนถุง',
+          'Mas Yield — Yield % ตามน้ำหนักซาก ใช้โดยหน้า Yield หมูซีก/รอบการลงหมูซีก',
+          'Mas Temp QC — เกณฑ์สี (เขียว/เหลือง/แดง) ของหน้าตรวจอุณหภูมิ',
         ],
       },
     ],
