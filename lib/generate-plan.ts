@@ -832,7 +832,11 @@ async function fetchAll<T = Record<string, unknown>>(
   return all
 }
 
-// Fetch Phase 1 assignments from the latest batch only (avoids summing stale regenerated batches)
+// Fetch all currently-live assignments for the given period(s), to deduct from Phase 2/3 targets.
+// Mid Recal (partial regen) leaves multiple effective_from batches coexisting on purpose — the
+// "already-started, kept" batch plus the newly-regenerated one are BOTH still live at once — so
+// this must sum every batch for the period, not just the most recent effective_from (that used to
+// silently drop whichever batch wasn't "latest", under-deducting Phase 1's true output).
 async function fetchLatestBatchAssignments(
   productionDate: string,
   periods: string[],
@@ -840,19 +844,9 @@ async function fetchLatestBatchAssignments(
 ): Promise<{ sku: string; target_quantity: number; channel: string | null }[]> {
   const all: { sku: string; target_quantity: number; channel: string | null }[] = []
   for (const period of periods) {
-    const { data: latest } = await supabase
-      .from('production_assignments')
-      .select('effective_from')
-      .eq('production_date', productionDate)
-      .eq('period', period)
-      .order('effective_from', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (!latest?.effective_from) continue
     const filters: { col: string; op: 'eq' | 'in'; val: unknown }[] = [
       { col: 'production_date', op: 'eq', val: productionDate },
       { col: 'period',          op: 'eq', val: period },
-      { col: 'effective_from',  op: 'eq', val: latest.effective_from },
     ]
     if (deductMode === 'actual') filters.push({ col: 'status', op: 'eq', val: 'เสร็จแล้ว' })
     const rows = await fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
