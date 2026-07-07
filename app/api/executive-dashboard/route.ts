@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100, fetchLatestOrders } from '@/lib/supabase'
 
 type ChOrder = { sku?: string | null; sku_name?: string | null; quantity?: number | null; upload_round?: string | number | null }
 
@@ -19,14 +19,14 @@ export async function GET(req: NextRequest) {
 
   const [
     { data: assignments },
-    { data: wmOrders },
-    { data: lotusOrders },
-    { data: makroOrders },
+    wmOrders,
+    lotusOrders,
+    makroOrders,
     plan100Today,
     histPlan100,
-    { data: histMakro },
-    { data: histLotus },
-    { data: histWm },
+    histMakro,
+    histLotus,
+    histWm,
     { data: yieldData },
     { data: pickingUnit },
   ] = await Promise.all([
@@ -35,39 +35,19 @@ export async function GET(req: NextRequest) {
       .select('table_name, sku, sku_name, target_quantity, period')
       .eq('production_date', date)
       .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']),
-    supabase
-      .from('wet_market_orders')
-      .select('sku, sku_name, quantity, upload_round')
-      .eq('delivery_date', date),
-    supabase
-      .from('lotus_orders')
-      .select('sku, sku_name, quantity, upload_round')
-      .eq('delivery_date', date),
-    supabase
-      .from('makro_orders')
-      .select('sku, sku_name, quantity, upload_round')
-      .eq('delivery_date', date),
+    fetchLatestOrders('wet_market_orders', [date]),
+    fetchLatestOrders('lotus_orders', [date]),
+    fetchLatestOrders('makro_orders', [date]),
     // Plan 100% today — used for Phase 3 Order
     fetchLatestPlan100([date]),
     // plan100 ย้อนหลัง 7 วัน (สำหรับ baseline)
     fetchLatestPlan100(histDates),
     // makro ย้อนหลัง 7 วัน (ทุก round เพื่อ fallback 0800)
-    supabase
-      .from('makro_orders')
-      .select('delivery_date, sku, quantity, upload_round')
-      .in('delivery_date', histDates),
+    fetchLatestOrders('makro_orders', histDates),
     // lotus round 1400 ย้อนหลัง 7 วัน
-    supabase
-      .from('lotus_orders')
-      .select('delivery_date, sku, quantity')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1400'),
+    fetchLatestOrders('lotus_orders', histDates, ['1400']),
     // wet market round 1400 ย้อนหลัง 7 วัน
-    supabase
-      .from('wet_market_orders')
-      .select('delivery_date, sku, quantity')
-      .in('delivery_date', histDates)
-      .eq('upload_round', '1400'),
+    fetchLatestOrders('wet_market_orders', histDates, ['1400']),
     supabase
       .from('yield_bags')
       .select('sap_code, bags')
