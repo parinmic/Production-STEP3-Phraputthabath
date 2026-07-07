@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
@@ -52,7 +52,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
   const [open, setOpen]                       = useState(p.startsWith('/basic/production'))
   const [openShortage, setOpenShortage]       = useState(p.startsWith('/basic/shortage'))
-  const [openWorkforce, setOpenWorkforce]     = useState(p.startsWith('/basic/workforce'))
   const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
   const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
@@ -266,13 +265,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             <span className={labelCls}>Breakline</span>
           </NavLink>
 
-          <NavLink href="/basic/workforce-daily-status" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/workforce-daily-status', canAll)}`}
-            title="ตรวจสอบสถานะกำลังคนประจำวัน">
-            <CalendarDays size={18} className="shrink-0" />
-            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
-          </NavLink>
-
           <p className={sectionCls}>Additional</p>
           <div className={dividerCls} />
 
@@ -336,44 +328,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
-
-          {/* กำลังคนประจำวัน */}
-          <button
-            onClick={() => canAll && setOpenWorkforce(!openWorkforce)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/workforce'), canAll)}`}
-            title="กำลังคนประจำวัน"
-          >
-            <Users size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>กำลังคนประจำวัน</span>
-            {canAll && !collapsed && (openWorkforce ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openWorkforce && canAll && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              <Link href="/basic/workforce"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
-              </Link>
-              <Link href="/basic/workforce/weekly"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />แผนเข้างานประจำสัปดาห์
-              </Link>
-            </div>
-          )}
-          {openWorkforce && canAll && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              <Link href="/basic/workforce"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="อัพโหลดกำลังคนประจำวัน">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-              </Link>
-              <Link href="/basic/workforce/weekly"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำสัปดาห์">
-                <span className="w-2 h-2 rounded-full bg-teal-500" />
-              </Link>
-            </div>
-          )}
 
           {[
             { href: '/basic/makro',              icon: ShoppingCart,    label: 'คำสั่งซื้อ Makro',     key: '7.1' },
