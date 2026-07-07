@@ -32,6 +32,7 @@ export default function ManpowerTypePage({ params }: { params: { type: string } 
       historyEndpoint={`/api/upload-master-logic-manpower?type=${params.type}`}
       onUpload={upload}
       downloadTable="master_logic_manpower"
+      menuKey="10.1"
     />
   )
 }

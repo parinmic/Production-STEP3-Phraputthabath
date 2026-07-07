@@ -21,6 +21,7 @@ export default function MasPhlitTorKanPage() {
         onUpload={upload}
         parseFileFn={parseMasBeikKha}
         downloadTable="mas_phlit_tor_kan"
+        menuKey="10.2"
       />
     </div>
   )

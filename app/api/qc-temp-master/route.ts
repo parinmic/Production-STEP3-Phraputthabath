@@ -28,8 +28,17 @@ function numFromText(v: string): number | null {
   return m ? Number(m[0]) : null
 }
 
+const HEX_COLOR_MAP: Record<string, TempColor> = {
+  '006400': 'dark-green',
+  '22C55E': 'green',
+  'EAB308': 'yellow',
+  'EF4444': 'red',
+}
+
 function normalizeColor(v: string): TempColor {
   const s = v.trim()
+  const hex = s.replace('#', '').toUpperCase()
+  if (HEX_COLOR_MAP[hex]) return HEX_COLOR_MAP[hex]
   if (s.includes('เขียวเข้ม')) return 'dark-green'
   if (s.includes('เหลือง')) return 'yellow'
   if (s.includes('แดง')) return 'red'

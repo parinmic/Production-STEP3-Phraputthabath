@@ -1,5 +1,6 @@
 'use client'
 import FileUpload from '@/components/FileUpload'
+import GeneratePlanButtonsBySide from '@/components/GeneratePlanButtonsBySide'
 import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
 
 function makeUpload(round: string) {
@@ -16,9 +17,12 @@ function makeUpload(round: string) {
 export default function LotusPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">อัพโหลดคำสั่งซื้อ LOTUS</h1>
-        <p className="text-gray-500 mt-1">อัพโหลดไฟล์ CSV คำสั่งซื้อจากช่องทาง LOTUS</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">อัพโหลดคำสั่งซื้อ LOTUS</h1>
+          <p className="text-gray-500 mt-1">อัพโหลดไฟล์ CSV คำสั่งซื้อจากช่องทาง LOTUS</p>
+        </div>
+        <GeneratePlanButtonsBySide menuKey="7.2" />
       </div>
       <div className="grid grid-cols-2 gap-6">
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
@@ -29,16 +33,18 @@ export default function LotusPage() {
             onUpload={makeUpload('1400')}
             parseFileFn={parseLotusWetMarketFile}
             downloadTable="lotus_orders"
+            menuKey="7.2"
           />
         </div>
         <div className="border-t-4 border-green-500 pt-4 rounded-t-sm">
           <FileUpload
             title="รอบ 16.00 น."
-            description="ใช้เป็นข้อมูลย้อนหลัง 3 วัน (BL3) สำหรับคำนวณ Phase 1"
+            description="ใช้เป็นข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1"
             historyEndpoint="/api/upload-lotus?round=1600"
             onUpload={makeUpload('1600')}
             parseFileFn={parseLotusWetMarketFile}
             downloadTable="lotus_orders"
+            menuKey="7.2"
           />
         </div>
       </div>

@@ -68,7 +68,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))
   const [openShortage, setOpenShortage]   = useState(p.startsWith('/shortage'))
-  const [openWorkforce, setOpenWorkforce] = useState(p.startsWith('/workforce'))
   const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
   const [collapsed, setCollapsed]         = useState(true)
@@ -241,7 +240,7 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
 
           <NavLink href="/workforce-daily-status" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/workforce-daily-status', canAll)}`}
-            title="ตรวจสอบสถานะกำลังคนประจำวัน">
+            title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
             <CalendarDays size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </NavLink>
@@ -300,44 +299,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
-
-          {/* กำลังคนประจำวัน — dropdown */}
-          <button
-            onClick={() => canAll && setOpenWorkforce(!openWorkforce)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/workforce'), canAll)}`}
-            title="กำลังคนประจำวัน"
-          >
-            <Users size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>กำลังคนประจำวัน</span>
-            {canAll && !collapsed && (openWorkforce ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openWorkforce && canAll && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              <Link href="/workforce"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
-              </Link>
-              <Link href="/workforce/weekly"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />แผนเข้างานประจำสัปดาห์
-              </Link>
-            </div>
-          )}
-          {openWorkforce && canAll && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              <Link href="/workforce"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="อัพโหลดกำลังคนประจำวัน">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-              </Link>
-              <Link href="/workforce/weekly"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำสัปดาห์">
-                <span className="w-2 h-2 rounded-full bg-teal-500" />
-              </Link>
-            </div>
-          )}
 
           {[
             { href: '/makro',              icon: ShoppingCart,   label: 'คำสั่งซื้อ Makro',    key: '7.1' },

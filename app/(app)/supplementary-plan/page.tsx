@@ -32,6 +32,7 @@ export default function SupplementaryPlanPage() {
           onUpload={uploadSupplementary}
           parseFileFn={parseSupplementaryPlanFile}
           downloadTable="production_plan_supplementary"
+          menuKey="7.6"
         />
       </div>
     </div>

@@ -49,6 +49,7 @@ export default function MooChōdWithdrawalPage() {
           onUpload={upload}
           parseFileFn={parseMooChōdWithdrawalMaster}
           downloadTable="moo_chod_withdrawal_master"
+          menuKey="10.2"
         />
       </div>
     </div>

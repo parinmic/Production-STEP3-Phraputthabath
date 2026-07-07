@@ -9,11 +9,13 @@ function subDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
+const round1 = (n: number) => Math.round(n * 10) / 10
+
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date')
   if (!date) return NextResponse.json({ rows: [] })
 
-  const histDates = [1, 2, 3].map(n => subDays(date, n))
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => subDays(date, n))
 
   const [
     { data: assignments },
@@ -47,20 +49,20 @@ export async function GET(req: NextRequest) {
       .eq('delivery_date', date),
     // Plan 100% today — used for Phase 3 Order
     fetchLatestPlan100([date]),
-    // BL3 — plan100 ย้อนหลัง 3 วัน
+    // plan100 ย้อนหลัง 7 วัน (สำหรับ baseline)
     fetchLatestPlan100(histDates),
-    // BL3 — makro ย้อนหลัง 3 วัน (ทุก round เพื่อ fallback 0800)
+    // makro ย้อนหลัง 7 วัน (ทุก round เพื่อ fallback 0800)
     supabase
       .from('makro_orders')
       .select('delivery_date, sku, quantity, upload_round')
       .in('delivery_date', histDates),
-    // BL3 — lotus round 1400 ย้อนหลัง 3 วัน
+    // lotus round 1400 ย้อนหลัง 7 วัน
     supabase
       .from('lotus_orders')
       .select('delivery_date, sku, quantity')
       .in('delivery_date', histDates)
       .eq('upload_round', '1400'),
-    // BL3 — wet market round 1400 ย้อนหลัง 3 วัน
+    // wet market round 1400 ย้อนหลัง 7 วัน
     supabase
       .from('wet_market_orders')
       .select('delivery_date, sku, quantity')
@@ -156,12 +158,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Baseline: avg Order ย้อนหลัง 3 วัน ใช้ logic เดียวกับ Order column (buildPhase3Order)
-  // หาร 3 เสมอ (fixed denominator)
+  // ── Baseline: avg Order ย้อนหลัง 7 วัน ใช้ logic เดียวกับ Order column (buildPhase3Order)
+  // หาร 7 เสมอ (fixed denominator) — เก็บยอดรายวันไว้ด้วยเพื่อแสดง breakdown ตอนคลิก
   type HP = { plan_date: string; sap: string | null; weight_total: number | null }
   type HO = { delivery_date: string; sku: string | null; quantity: number | null; upload_round?: string | number | null }
 
+  const BASELINE_DAYS = histDates.length
   const baselineSumMap = new Map<string, number>()
+  const baselineDailyMap = new Map<string, { date: string; qty: number }[]>()
 
   for (const histDate of histDates) {
     const p100 = (histPlan100 as HP[]   ?? []).filter(r => r.plan_date === histDate)
@@ -193,13 +197,23 @@ export async function GET(req: NextRequest) {
         dayOrder.set(norm, (dayOrder.get(norm) ?? 0) + Number(r.quantity ?? 0))
     }
 
-    for (const [norm, qty] of dayOrder)
+    for (const [norm, qty] of dayOrder) {
       baselineSumMap.set(norm, (baselineSumMap.get(norm) ?? 0) + qty)
+      if (!baselineDailyMap.has(norm)) baselineDailyMap.set(norm, [])
+      baselineDailyMap.get(norm)!.push({ date: histDate, qty })
+    }
   }
 
   const baselineMap = new Map<string, number>()
   for (const [norm, sum] of baselineSumMap)
-    baselineMap.set(norm, sum / 3)
+    baselineMap.set(norm, sum / BASELINE_DAYS)
+
+  // เติมวันที่ไม่มี order เลยให้เป็น 0 กก. (ให้ breakdown ครบ 7 วันเสมอ) แล้วเรียงเก่า→ใหม่
+  const sortedHistDates = [...histDates].sort()
+  for (const norm of baselineDailyMap.keys()) {
+    const existing = new Map(baselineDailyMap.get(norm)!.map(d => [d.date, d.qty]))
+    baselineDailyMap.set(norm, sortedHistDates.map(d => ({ date: d, qty: round1(existing.get(d) ?? 0) })))
+  }
 
   // ── Yield: normSku → bags count
   const yieldMap = new Map<string, number>()
@@ -224,7 +238,6 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Build result rows (sorted by station then sku_name)
-  const round1 = (n: number) => Math.round(n * 10) / 10
   const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
   const rows = Array.from(prodMap.entries()).map(([key, prod]) => {
@@ -242,6 +255,7 @@ export async function GET(req: NextRequest) {
       sku_name: prod.sku_name || orderMap.get(normSku)?.sku_name || normSku,
       order_qty: round1(orderMap.get(normSku)?.qty ?? 0),
       baseline:  round1(baselineMap.get(normSku) ?? 0),
+      baseline_daily: baselineDailyMap.get(normSku) ?? sortedHistDates.map(d => ({ date: d, qty: 0 })),
       ph1,
       ph2,
       ph3,

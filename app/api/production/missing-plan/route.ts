@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date') ?? new Date().toISOString().split('T')[0]
 
   const d = new Date(date)
-  const histDates = [1, 2, 3].map(n => {
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => {
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
     makro0800,
     makro1400,
     wm1400,
-    wmBL3,
+    wm7d,
     lotus1400,
-    lotusBL3,
-    makroBL3,
+    lotus7d,
+    makro7d,
   ] = await Promise.all([
     supabase.from('master_logic_calculation')
       .select('row_data')
@@ -123,8 +123,8 @@ export async function GET(req: NextRequest) {
   const wm1400Map    = agg(wm1400)
   const lotus1400Map = agg(lotus1400)
 
-  // BL3 avg
-  const bl3Avg = (rows: { sku: string; quantity: number; delivery_date: string }[]) => {
+  // 7-day avg
+  const avg7d = (rows: { sku: string; quantity: number; delivery_date: string }[]) => {
     const bySkuDate: Record<string, Record<string, number>> = {}
     for (const r of rows) {
       const sku = r.sku.replace(/^0+/, '')
@@ -139,11 +139,11 @@ export async function GET(req: NextRequest) {
     return result
   }
 
-  const wmBL3Map    = bl3Avg(wmBL3)
-  const lotusBL3Map = bl3Avg(lotusBL3)
-  const makroBL3Map = bl3Avg(makroBL3)
+  const wm7dMap    = avg7d(wm7d)
+  const lotus7dMap = avg7d(lotus7d)
+  const makro7dMap = avg7d(makro7d)
 
-  // ── Build result: SKUs with orders/BL3 but no plan ──
+  // ── Build result: SKUs with orders/7-day hist but no plan ──
   const missing: {
     sku: string
     sku_name: string
@@ -152,8 +152,8 @@ export async function GET(req: NextRequest) {
     assigned: boolean
     orders: {
       makro_0800: number; makro_1400: number
-      wm_1400: number;   wm_bl3_avg: number
-      lotus_1400: number; lotus_bl3_avg: number
+      wm_1400: number;   wm_avg_7d: number
+      lotus_1400: number; lotus_avg_7d: number
     }
     likely_reason: string
   }[] = []
@@ -162,26 +162,26 @@ export async function GET(req: NextRequest) {
     const mk0800  = makro0800Map.get(sku) ?? 0
     const mk1400  = makro1400Map.get(sku) ?? 0
     const wmToday = wm1400Map.get(sku) ?? 0
-    const wmBL3v  = wmBL3Map.get(sku) ?? 0
+    const wm7dV   = wm7dMap.get(sku) ?? 0
     const loToday = lotus1400Map.get(sku) ?? 0
-    const loBL3v  = lotusBL3Map.get(sku) ?? 0
-    const mkBL3v  = makroBL3Map.get(sku) ?? 0
+    const lo7dV   = lotus7dMap.get(sku) ?? 0
+    const mk7dV   = makro7dMap.get(sku) ?? 0
 
     const hasOrder = mk0800 > 0 || mk1400 > 0 || wmToday > 0 || loToday > 0
-    const hasBL3   = wmBL3v > 0 || loBL3v > 0 || mkBL3v > 0
+    const has7dHist = wm7dV > 0 || lo7dV > 0 || mk7dV > 0
     const isAssigned = assignedSkus.has(sku)
 
-    if (!hasOrder && !hasBL3) continue  // ไม่มีทั้ง order และ BL3 → ข้าม
-    if (isAssigned) continue            // มีแผนแล้ว → ข้าม
+    if (!hasOrder && !has7dHist) continue  // ไม่มีทั้ง order และข้อมูลย้อนหลัง 7 วัน → ข้าม
+    if (isAssigned) continue               // มีแผนแล้ว → ข้าม
 
     // Diagnose likely reason
     let reason = ''
-    if (!hasOrder && hasBL3) {
-      reason = 'มี BL3 แต่ไม่มี Order วันนี้ — Phase 1 ควรวางแผน ตรวจสอบว่า Worker station ตรงกันไหม'
-    } else if (hasOrder && !hasBL3) {
-      reason = 'มี Order แต่ไม่มี BL3 — Phase 2 ควรวางแผน (BL3=0 ดังนั้น Phase 1 ข้าม)'
+    if (!hasOrder && has7dHist) {
+      reason = 'มีข้อมูลย้อนหลัง 7 วัน แต่ไม่มี Order วันนี้ — Phase 1 ควรวางแผน ตรวจสอบว่า Worker station ตรงกันไหม'
+    } else if (hasOrder && !has7dHist) {
+      reason = 'มี Order แต่ไม่มีข้อมูลย้อนหลัง 7 วัน — Phase 2 ควรวางแผน (ค่าเฉลี่ย 7 วัน=0 ดังนั้น Phase 1 ข้าม)'
     } else {
-      reason = 'มีทั้ง Order และ BL3 — ตรวจสอบว่า Worker หมดชั่วโมงหรือ station ไม่ตรงกัน'
+      reason = 'มีทั้ง Order และข้อมูลย้อนหลัง 7 วัน — ตรวจสอบว่า Worker หมดชั่วโมงหรือ station ไม่ตรงกัน'
     }
 
     missing.push({
@@ -194,9 +194,9 @@ export async function GET(req: NextRequest) {
         makro_0800: mk0800,
         makro_1400: mk1400,
         wm_1400:    wmToday,
-        wm_bl3_avg: Math.round(wmBL3v),
+        wm_avg_7d: Math.round(wm7dV),
         lotus_1400: loToday,
-        lotus_bl3_avg: Math.round(loBL3v),
+        lotus_avg_7d: Math.round(lo7dV),
       },
       likely_reason: reason,
     })
@@ -210,8 +210,8 @@ export async function GET(req: NextRequest) {
   }
   for (const st of Object.keys(byStation)) {
     byStation[st].sort((a, b) => {
-      const aMax = Math.max(a.orders.makro_0800, a.orders.makro_1400, a.orders.wm_1400, a.orders.lotus_1400, a.orders.wm_bl3_avg, a.orders.lotus_bl3_avg)
-      const bMax = Math.max(b.orders.makro_0800, b.orders.makro_1400, b.orders.wm_1400, b.orders.lotus_1400, b.orders.wm_bl3_avg, b.orders.lotus_bl3_avg)
+      const aMax = Math.max(a.orders.makro_0800, a.orders.makro_1400, a.orders.wm_1400, a.orders.lotus_1400, a.orders.wm_avg_7d, a.orders.lotus_avg_7d)
+      const bMax = Math.max(b.orders.makro_0800, b.orders.makro_1400, b.orders.wm_1400, b.orders.lotus_1400, b.orders.wm_avg_7d, b.orders.lotus_avg_7d)
       return bMax - aMax
     })
   }

@@ -21,6 +21,7 @@ export default function MasSpecialRawPage() {
         onUpload={upload}
         parseFileFn={parseMasSpecialRaw}
         downloadTable="mas_special_raw"
+        menuKey="10.2"
       />
     </div>
   )

@@ -36,6 +36,7 @@ export default function MooChōdMasterPage() {
           onUpload={upload}
           parseFileFn={parseMooChōdMaster}
           downloadTable="moo_chod_master"
+          menuKey="10.2"
         />
       </div>
     </div>

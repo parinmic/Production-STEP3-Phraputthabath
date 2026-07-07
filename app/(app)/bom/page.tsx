@@ -20,6 +20,7 @@ export default function BomPage() {
       onUpload={upload}
       parseFileFn={parseBom}
       downloadTable="bom_items"
+      menuKey="10.2"
     />
   )
 }

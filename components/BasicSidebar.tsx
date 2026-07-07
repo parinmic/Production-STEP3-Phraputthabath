@@ -26,8 +26,6 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance Makro Basic',      slug: 'mas-variance-makro-basic',      dot: 'bg-blue-500' },
   { label: 'Mas %Variance Wet Market Basic', slug: 'mas-variance-wet-market-basic', dot: 'bg-cyan-500' },
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
-  { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
-  { label: 'Mas กลุ่มสินค้าผลิตมากกว่า 1 สายพาน', slug: 'mas-group-station-rule',        dot: 'bg-emerald-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
 ]
 
@@ -52,7 +50,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
   const [open, setOpen]                       = useState(p.startsWith('/basic/production'))
   const [openShortage, setOpenShortage]       = useState(p.startsWith('/basic/shortage'))
-  const [openWorkforce, setOpenWorkforce]     = useState(p.startsWith('/basic/workforce'))
   const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
   const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
@@ -268,7 +265,7 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <NavLink href="/basic/workforce-daily-status" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/workforce-daily-status', canAll)}`}
-            title="ตรวจสอบสถานะกำลังคนประจำวัน">
+            title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
             <CalendarDays size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </NavLink>
@@ -336,44 +333,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
-
-          {/* กำลังคนประจำวัน */}
-          <button
-            onClick={() => canAll && setOpenWorkforce(!openWorkforce)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/workforce'), canAll)}`}
-            title="กำลังคนประจำวัน"
-          >
-            <Users size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>กำลังคนประจำวัน</span>
-            {canAll && !collapsed && (openWorkforce ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openWorkforce && canAll && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              <Link href="/basic/workforce"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500" />อัพโหลดกำลังคนประจำวัน
-              </Link>
-              <Link href="/basic/workforce/weekly"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-teal-500" />แผนเข้างานประจำสัปดาห์
-              </Link>
-            </div>
-          )}
-          {openWorkforce && canAll && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              <Link href="/basic/workforce"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/workforce' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="อัพโหลดกำลังคนประจำวัน">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-              </Link>
-              <Link href="/basic/workforce/weekly"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/workforce/weekly' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="แผนเข้างานประจำสัปดาห์">
-                <span className="w-2 h-2 rounded-full bg-teal-500" />
-              </Link>
-            </div>
-          )}
 
           {[
             { href: '/basic/makro',              icon: ShoppingCart,    label: 'คำสั่งซื้อ Makro',     key: '7.1' },
@@ -447,10 +406,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
                   <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
                 </Link>
               ))}
-              <Link href="/basic/bom"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-rose-500" />BOM สินค้า
-              </Link>
               <Link href="/basic/picking-unit"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-yellow-500" />Mas หน่วยหยิบสินค้า
@@ -484,11 +439,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
                 title="Mas Temp QC">
                 <span className="w-2 h-2 rounded-full bg-cyan-500" />
               </Link>
-              <Link href="/basic/bom"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="BOM สินค้า">
-                <Layers size={14} />
-              </Link>
               <Link href="/basic/picking-unit"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas หน่วยหยิบสินค้า">
@@ -505,18 +455,17 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             <ShieldAlert size={18} className="shrink-0" />
             <span className={labelCls}>จัดการแผนผลิต</span>
           </NavLink>
-          <NavLink href="/basic/admin/users" allowed={has('12')}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', has('12'))}`}
-            title="User ระบบผลิต">
-            <Users size={18} className="shrink-0" />
-            <span className={labelCls}>User ระบบผลิต</span>
-          </NavLink>
-
           <NavLink href="/basic/admin/plan-check" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/plan-check', canAll)}`}
             title="ตรวจสอบแผนผลิต">
             <ClipboardCheck size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบแผนผลิต</span>
+          </NavLink>
+          <NavLink href="/basic/admin/users" allowed={has('12')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', has('12'))}`}
+            title="User ระบบผลิต">
+            <Users size={18} className="shrink-0" />
+            <span className={labelCls}>User ระบบผลิต</span>
           </NavLink>
           <Link href="/basic/admin/manual"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p === '/basic/admin/manual' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}

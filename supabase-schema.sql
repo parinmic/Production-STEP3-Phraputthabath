@@ -528,7 +528,7 @@ ALTER TABLE pig_carcass_lot_selection ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection FOR ALL USING (true) WITH CHECK (true);
 
 -- 25. กำลังคน + ทักษะ รวมทุกวัน (แทน daily_workforce/workforce_weekly/master_logic_manpower ใน plan generation)
--- sync อัตโนมัติทุก 7:30 (แล้วสร้างแผน Phase 1 ต่อทันที) จาก external Supabase project (ตาราง production_user, long format
+-- sync อัตโนมัติทุก 8:05 (แล้วสร้างแผน Phase 1 ต่อทันที) จาก external Supabase project (ตาราง production_user, long format
 -- 1 แถวต่อ employee+skill) โดย app/api/cron/sync-employee-skills ซึ่ง group เป็น 1 แถวต่อ
 -- (work_date, emp_id) ก่อน insert — ไม่มีแถวของวันนั้น = ไม่ได้ทำงานวันนั้น (ไม่ต้องเช็ค day_off แยก)
 CREATE TABLE IF NOT EXISTS employee_skills (

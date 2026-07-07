@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCircle2, PlayCircle, AlertCircle, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw, Store } from 'lucide-react'
+import { CheckCircle2, PlayCircle, AlertCircle, BarChart2, Download, ClipboardList, Calendar, RefreshCw, Store } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
 
@@ -2368,8 +2368,6 @@ export default function BasicTablePage() {
             {([
               { mode: 'sku',     icon: BarChart2,     label: 'ภาพรวม' },
               { mode: 'makroBranch', icon: Store,      label: 'รายสาขา (Makro)' },
-              { mode: 'gantt',   icon: LayoutList,    label: 'รายพนักงาน' },
-              { mode: 'time',    icon: Clock,         label: 'รายเวลา' },
               { mode: 'summary', icon: ClipboardList, label: 'สรุปแผนผลิต' },
             ] as const).map(({ mode, icon: Icon, label }) => (
               <button key={mode}

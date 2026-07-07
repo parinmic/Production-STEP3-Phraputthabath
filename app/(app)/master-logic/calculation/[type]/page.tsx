@@ -36,6 +36,7 @@ export default function CalculationTypePage({ params }: { params: { type: string
         historyEndpoint={`/api/upload-master-logic-calculation?type=${params.type}`}
         onUpload={upload}
         downloadTable="master_logic_calculation"
+        menuKey="10.2"
       />
     </div>
   )

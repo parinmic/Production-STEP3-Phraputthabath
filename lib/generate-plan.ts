@@ -164,23 +164,23 @@ function buildAvgMap(rows: OrderRow[]): Map<string, number> {
 
 // params: [nonSharedHigh, nonSharedLow, sharedHigh, sharedLow]
 function getWetMarketVariance(
-  isShared: boolean, quotaToday: number, avgBL3: number, lotusBL3: number,
+  isShared: boolean, quotaToday: number, avg7d: number, lotus7d: number,
   params: [number, number, number, number] = [0.5, 0.3, 0.5, 0.7],
 ): number {
   const [nsHigh, nsLow, sHigh, sLow] = params
-  if (!isShared) return Math.min(quotaToday, avgBL3) > 100 ? nsHigh : nsLow
-  const ratio = lotusBL3 > 0 ? Math.min(quotaToday, avgBL3) / lotusBL3 : 999
+  if (!isShared) return Math.min(quotaToday, avg7d) > 100 ? nsHigh : nsLow
+  const ratio = lotus7d > 0 ? Math.min(quotaToday, avg7d) / lotus7d : 999
   return ratio > 0.5 ? sHigh : sLow
 }
 
 // params order matches master columns: [propHigh_trendLow, propHigh_trendMid, propHigh_trendHigh, propLow_trendLow, propLow_trendMid, propLow_trendHigh]
-// proportion = SKU order / total Makro order; trend = order / avgBL3
+// proportion = SKU order / total Makro order; trend = order / avg7d
 function getMakroVariance(
-  proportionAbove10pct: boolean, orderQty: number, avgBL3: number,
+  proportionAbove10pct: boolean, orderQty: number, avg7d: number,
   params: [number, number, number, number, number, number] = [0.9, 0.8, 0.6, 0.8, 0.6, 0.4],
 ): number {
   const [phTL, phTM, phTH, plTL, plTM, plTH] = params
-  const trend = avgBL3 > 0 ? orderQty / avgBL3 : 2
+  const trend = avg7d > 0 ? orderQty / avg7d : 2
   if (proportionAbove10pct) {
     if (trend > 1.0) return phTH
     if (trend > 0.8) return phTM
@@ -832,7 +832,45 @@ async function fetchAll<T = Record<string, unknown>>(
   return all
 }
 
-// Fetch Phase 1 assignments from the latest batch only (avoids summing stale regenerated batches)
+// Re-uploading a round never replaces prior rows for that delivery_date+upload_round, so summing
+// raw rows can double-count. Keep only rows from each (delivery_date, upload_round) group's most
+// recent upload_log_id; groups with no upload_log_id on any row are returned unfiltered.
+async function fetchLatestOrders(
+  table: 'makro_orders' | 'lotus_orders' | 'wet_market_orders' | 'fs_orders',
+  dates: string[],
+  rounds: string[],
+): Promise<OrderRow[]> {
+  if (!dates.length || !rounds.length) return []
+
+  type RawRow = OrderRow & { upload_round: string; upload_log_id: string | null; uploaded_at: string | null }
+  const all = await fetchAll<RawRow>(
+    table, 'sku, sku_name, quantity, delivery_date, upload_round, upload_log_id, uploaded_at',
+    [{ col: 'delivery_date', op: 'in', val: dates }, { col: 'upload_round', op: 'in', val: rounds }],
+  )
+
+  const latestByGroup = new Map<string, { uploadedAt: string; uploadLogId: string }>()
+  for (const r of all) {
+    if (!r.uploaded_at || !r.upload_log_id) continue
+    const key = `${r.delivery_date}|||${r.upload_round}`
+    const cur = latestByGroup.get(key)
+    if (!cur || r.uploaded_at > cur.uploadedAt) {
+      latestByGroup.set(key, { uploadedAt: r.uploaded_at, uploadLogId: r.upload_log_id })
+    }
+  }
+
+  return all
+    .filter(r => {
+      const latest = latestByGroup.get(`${r.delivery_date}|||${r.upload_round}`)
+      return !latest || r.upload_log_id === latest.uploadLogId
+    })
+    .map(({ delivery_date, sku, sku_name, quantity }) => ({ delivery_date, sku, sku_name, quantity }))
+}
+
+// Fetch all currently-live assignments for the given period(s), to deduct from Phase 2/3 targets.
+// Mid Recal (partial regen) leaves multiple effective_from batches coexisting on purpose — the
+// "already-started, kept" batch plus the newly-regenerated one are BOTH still live at once — so
+// this must sum every batch for the period, not just the most recent effective_from (that used to
+// silently drop whichever batch wasn't "latest", under-deducting Phase 1's true output).
 async function fetchLatestBatchAssignments(
   productionDate: string,
   periods: string[],
@@ -840,19 +878,9 @@ async function fetchLatestBatchAssignments(
 ): Promise<{ sku: string; target_quantity: number; channel: string | null }[]> {
   const all: { sku: string; target_quantity: number; channel: string | null }[] = []
   for (const period of periods) {
-    const { data: latest } = await supabase
-      .from('production_assignments')
-      .select('effective_from')
-      .eq('production_date', productionDate)
-      .eq('period', period)
-      .order('effective_from', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (!latest?.effective_from) continue
     const filters: { col: string; op: 'eq' | 'in'; val: unknown }[] = [
       { col: 'production_date', op: 'eq', val: productionDate },
       { col: 'period',          op: 'eq', val: period },
-      { col: 'effective_from',  op: 'eq', val: latest.effective_from },
     ]
     if (deductMode === 'actual') filters.push({ col: 'status', op: 'eq', val: 'เสร็จแล้ว' })
     const rows = await fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
@@ -1441,20 +1469,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     bkpOrdersRaw,
   { data: mooChōdMasterRaw },
   ] = await Promise.all([
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: orderRound }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('fs_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }])
+    fetchLatestOrders('wet_market_orders', [productionDate], ['1400']),
+    fetchLatestOrders('wet_market_orders', histDates, ['1600']),
+    fetchLatestOrders('lotus_orders', [productionDate], ['1400']),
+    fetchLatestOrders('lotus_orders', histDates, ['1600']),
+    fetchLatestOrders('makro_orders', [productionDate], [orderRound]),
+    fetchLatestOrders('makro_orders', histDates, ['1400']),
+    fetchLatestOrders('fs_orders', [productionDate], ['0800'])
       .catch(() => [] as OrderRow[]),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
@@ -1500,7 +1521,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   })
   if (!workforce.length) return {
     success: false,
-    message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 7:30',
+    message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 8:05',
   }
   const workforceFallbackNote = workDateUsed !== productionDate
     ? ` (ใช้ข้อมูลกำลังคนของวันที่ ${workDateUsed} แทน เนื่องจากยังไม่มีข้อมูลวันนี้)`
@@ -1530,7 +1551,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       : (wmHist.length  || lotusHist.length  || makroToday.length || hasBkpOrders || fsToday.length)
     if (!hasOrders) return {
       success: false,
-      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP / FS) — กรุณาอัพโหลดก่อน`,
+      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'ย้อนหลัง 7 วันของ Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP / FS) — กรุณาอัพโหลดก่อน`,
     }
   }
 
@@ -1905,11 +1926,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const grp = getSkuGroup(sku)
       const groupQty = groupQtyMap.get(grp) ?? 0
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
-      const avgBL3 = avgMakro.get(sku) ?? 0
+      const avg7d = avgMakro.get(sku) ?? 0
       const baggedOrderQty = roundDownToBag(sku, orderQty)
       // Makro = ยอดล่วงหน้า: SKUs with no historical avg (e.g. new SKUs, by-products) use full order qty
-      if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
-      const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
+      if (avg7d === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
+      const variance = getMakroVariance(proportion > 0.1, orderQty, avg7d, makroVarParams)
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
   }
@@ -2797,12 +2818,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           const [
             wipHistP100,
-            { data: wipHistLotus },
-            { data: wipHistWm },
+            wipHistLotus,
+            wipHistWm,
           ] = await Promise.all([
             fetchLatestPlan100(histDates),
-            supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
-            supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+            fetchLatestOrders('lotus_orders', histDates, ['1400']),
+            fetchLatestOrders('wet_market_orders', histDates, ['1400']),
           ])
 
           const wipKgSum = new Map<string, number>()

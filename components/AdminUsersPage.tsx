@@ -4,6 +4,7 @@ import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload
 import * as XLSX from 'xlsx'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 import { SPECIAL_MENU_LABELS } from '@/lib/special-menu'
+import { useCanEdit } from '@/lib/session-context'
 
 // รูปแบบเก่า (ก่อนเปลี่ยนไฟล์ "User ระบบผลิต.xlsx" เป็นตัวเลข) — เก็บไว้แสดงผลย้อนหลังเผื่อมีข้อมูลเก่าค้าง
 const MENU_LABELS: Record<string, string> = {
@@ -34,13 +35,15 @@ const STEP_LABELS: Record<string, { label: string; cls: string }> = {
   '3': { label: 'พิเศษ',   cls: 'bg-blue-50 text-blue-700' },
 }
 
+interface MenuGrant { key: string; access: 'edit' | 'view' }
+
 interface UserRow {
   id: string
   username: string
   is_active: boolean
   position_id: string
   position_name: string
-  menus: string[]
+  menus: MenuGrant[]
   step: string
   created_at: string
 }
@@ -52,11 +55,17 @@ interface Position {
   step: string
 }
 
-interface PreviewRow { position: string; username: string; password: string; step: string; menu: string }
+interface PreviewRow { position: string; username: string; password: string; step: string; menu: string; access: 'edit' | 'view' }
+
+const ACCESS_LABEL: Record<'edit' | 'view', { label: string; cls: string }> = {
+  edit: { label: 'Edit', cls: 'bg-blue-50 text-blue-700' },
+  view: { label: 'View', cls: 'bg-gray-100 text-gray-600' },
+}
 
 const EMPTY_ADD = { username: '', password: '', position_id: '' }
 
 export default function AdminUsersPage() {
+  const canEdit = useCanEdit('12')
   const [users, setUsers]         = useState<UserRow[]>([])
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading]     = useState(true)
@@ -170,16 +179,22 @@ export default function AdminUsersPage() {
       const wb  = XLSX.read(ev.target!.result, { type: 'array' })
       const ws  = wb.Sheets[wb.SheetNames[0]]
       const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-      // columns: ตำแหน่ง(0), User(1), Password(2), Step(3), Menu(4)
+      // columns: ตำแหน่ง(0), User(1), Password(2), Step(3), Edit(4), View(5)
+      // แต่ละแถว = สิทธิ์ 1 เมนู — กรอกเลขเมนูในช่อง Edit (แก้ไขได้) หรือ View (ดูอย่างเดียว) ช่องใดช่องหนึ่ง
       const rows: PreviewRow[] = raw.slice(1)
         .filter(r => String(r[0] ?? '').trim())
-        .map(r => ({
-          position: String(r[0] ?? '').trim(),
-          username: String(r[1] ?? '').trim(),
-          password: String(r[2] ?? '').trim(),
-          step:     String(r[3] ?? '').trim(),
-          menu:     String(r[4] ?? '').trim(),
-        }))
+        .map(r => {
+          const editVal = String(r[4] ?? '').trim()
+          const viewVal = String(r[5] ?? '').trim()
+          return {
+            position: String(r[0] ?? '').trim(),
+            username: String(r[1] ?? '').trim(),
+            password: String(r[2] ?? '').trim(),
+            step:     String(r[3] ?? '').trim(),
+            menu:     editVal || viewVal,
+            access:   (editVal ? 'edit' : 'view') as 'edit' | 'view',
+          }
+        })
       setPreview(rows)
     }
     reader.readAsArrayBuffer(file)
@@ -215,6 +230,7 @@ export default function AdminUsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">User ระบบผลิต</h1>
           <p className="text-gray-500 mt-1 text-sm">จัดการผู้ใช้งานระบบผลิต (STEP 2 + STEP 3)</p>
         </div>
+        {canEdit && (
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
           <button
@@ -235,6 +251,7 @@ export default function AdminUsersPage() {
             เพิ่ม User
           </button>
         </div>
+        )}
       </div>
 
       {/* Flash */}
@@ -275,6 +292,7 @@ export default function AdminUsersPage() {
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Password</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Step</th>
                   <th className="text-left px-3 py-2 font-medium text-gray-600">Menu</th>
+                  <th className="text-left px-3 py-2 font-medium text-gray-600">สิทธิ์</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -285,6 +303,11 @@ export default function AdminUsersPage() {
                     <td className="px-3 py-1.5 font-mono text-gray-400">{r.password ? '••••' : <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-1.5 text-gray-600">{r.step || '—'}</td>
                     <td className="px-3 py-1.5 text-gray-600">{r.menu}</td>
+                    <td className="px-3 py-1.5">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${ACCESS_LABEL[r.access].cls}`}>
+                        {ACCESS_LABEL[r.access].label}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -400,9 +423,12 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {u.menus.map(k => (
-                          <span key={k} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-                            {menuLabel(k)}
+                        {u.menus.map(m => (
+                          <span key={m.key}
+                            className={`px-2 py-0.5 rounded text-xs ${m.access === 'view' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}
+                            title={m.access === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'}
+                          >
+                            {menuLabel(m.key)}{m.access === 'view' ? ' (View)' : ''}
                           </span>
                         ))}
                       </div>
@@ -413,6 +439,7 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
+                      {!canEdit ? null : (
                       <div className="flex items-center gap-1.5 justify-end">
 
                         {changePwId === u.id ? (
@@ -476,6 +503,7 @@ export default function AdminUsersPage() {
                           </button>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 )

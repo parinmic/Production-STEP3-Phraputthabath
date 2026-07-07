@@ -20,6 +20,7 @@ export default function NoWithdrawalPage() {
       onUpload={upload}
       parseFileFn={parseNoWithdrawalSkus}
       downloadTable="no_withdrawal_skus"
+      menuKey="10.2"
     />
   )
 }
