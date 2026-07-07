@@ -26,8 +26,6 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance Makro Basic',      slug: 'mas-variance-makro-basic',      dot: 'bg-blue-500' },
   { label: 'Mas %Variance Wet Market Basic', slug: 'mas-variance-wet-market-basic', dot: 'bg-cyan-500' },
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
-  { label: 'Mas Special Basic',              slug: 'mas-special-basic',             dot: 'bg-pink-500' },
-  { label: 'Mas กลุ่มสินค้าผลิตมากกว่า 1 สายพาน', slug: 'mas-group-station-rule',        dot: 'bg-emerald-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
 ]
 
@@ -401,10 +399,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
                   <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
                 </Link>
               ))}
-              <Link href="/basic/bom"
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                <span className="w-2 h-2 rounded-full shrink-0 bg-rose-500" />BOM สินค้า
-              </Link>
               <Link href="/basic/picking-unit"
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 bg-yellow-500" />Mas หน่วยหยิบสินค้า
@@ -437,11 +431,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/master-logic/temp-qc' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
                 title="Mas Temp QC">
                 <span className="w-2 h-2 rounded-full bg-cyan-500" />
-              </Link>
-              <Link href="/basic/bom"
-                className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/bom' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                title="BOM สินค้า">
-                <Layers size={14} />
               </Link>
               <Link href="/basic/picking-unit"
                 className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === '/basic/picking-unit' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
