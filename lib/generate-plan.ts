@@ -1,4 +1,4 @@
-import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100, fetchLatestOrders } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 import { fetchWorkforceAndSkills, WorkforceRow, normName } from '@/lib/workforce'
 
@@ -830,40 +830,6 @@ async function fetchAll<T = Record<string, unknown>>(
     from += PAGE
   }
   return all
-}
-
-// Re-uploading a round never replaces prior rows for that delivery_date+upload_round, so summing
-// raw rows can double-count. Keep only rows from each (delivery_date, upload_round) group's most
-// recent upload_log_id; groups with no upload_log_id on any row are returned unfiltered.
-async function fetchLatestOrders(
-  table: 'makro_orders' | 'lotus_orders' | 'wet_market_orders' | 'fs_orders',
-  dates: string[],
-  rounds: string[],
-): Promise<OrderRow[]> {
-  if (!dates.length || !rounds.length) return []
-
-  type RawRow = OrderRow & { upload_round: string; upload_log_id: string | null; uploaded_at: string | null }
-  const all = await fetchAll<RawRow>(
-    table, 'sku, sku_name, quantity, delivery_date, upload_round, upload_log_id, uploaded_at',
-    [{ col: 'delivery_date', op: 'in', val: dates }, { col: 'upload_round', op: 'in', val: rounds }],
-  )
-
-  const latestByGroup = new Map<string, { uploadedAt: string; uploadLogId: string }>()
-  for (const r of all) {
-    if (!r.uploaded_at || !r.upload_log_id) continue
-    const key = `${r.delivery_date}|||${r.upload_round}`
-    const cur = latestByGroup.get(key)
-    if (!cur || r.uploaded_at > cur.uploadedAt) {
-      latestByGroup.set(key, { uploadedAt: r.uploaded_at, uploadLogId: r.upload_log_id })
-    }
-  }
-
-  return all
-    .filter(r => {
-      const latest = latestByGroup.get(`${r.delivery_date}|||${r.upload_round}`)
-      return !latest || r.upload_log_id === latest.uploadLogId
-    })
-    .map(({ delivery_date, sku, sku_name, quantity }) => ({ delivery_date, sku, sku_name, quantity }))
 }
 
 // Fetch all currently-live assignments for the given period(s), to deduct from Phase 2/3 targets.

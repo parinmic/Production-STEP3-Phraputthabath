@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestOrders } from '@/lib/supabase'
 
 const TOTAL_PEOPLE = 36
 
@@ -20,17 +20,13 @@ export async function GET(req: NextRequest) {
   const histDates = [subDays(date, 1), subDays(date, 2), subDays(date, 3)]
 
   // ── 1. Fetch orders from all 3 channels ──────────────────────────────
-  const [makroRes, lotusRes, wetRes] = await Promise.all([
-    supabase.from('makro_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates),
-    supabase.from('lotus_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates),
-    supabase.from('wet_market_orders').select('sku, quantity, delivery_date').in('delivery_date', histDates),
+  const [makroOrders, lotusOrders, wetOrders] = await Promise.all([
+    fetchLatestOrders('makro_orders', histDates),
+    fetchLatestOrders('lotus_orders', histDates),
+    fetchLatestOrders('wet_market_orders', histDates),
   ])
 
-  const allOrders = [
-    ...(makroRes.data ?? []),
-    ...(lotusRes.data ?? []),
-    ...(wetRes.data ?? []),
-  ] as { sku: string; quantity: number; delivery_date: string }[]
+  const allOrders = [...makroOrders, ...lotusOrders, ...wetOrders]
 
   // average qty per SKU across available days
   const bySkuDate: Record<string, Record<string, number>> = {}

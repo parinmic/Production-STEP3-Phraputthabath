@@ -1,5 +1,7 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestOrders } from '@/lib/supabase'
 import { fetchLatestMasYield } from '@/lib/mas-yield'
+
+export { fetchLatestOrders }
 
 export type BasicPhase = 1 | 2 | 3
 
@@ -283,49 +285,6 @@ export async function fetchPaged<T>(
   return all
 }
 
-// Re-uploading a round (or stale rows left over from a template/import predating upload_log_id
-// tracking) never replaces prior rows for that delivery_date+upload_round, so summing raw rows
-// can double-count. Keep only rows from each (delivery_date, upload_round) group's most recent
-// upload_log_id; groups with no upload_log_id on any row are returned unfiltered.
-export async function fetchLatestOrders(
-  table: 'makro_orders' | 'lotus_orders' | 'wet_market_orders',
-  dates: string[],
-  rounds: string[],
-): Promise<Array<{ delivery_date: string; upload_round: string; sku: string; sku_name: string | null; quantity: number }>> {
-  if (!dates.length || !rounds.length) return []
-
-  type RawRow = {
-    delivery_date: string
-    upload_round: string
-    sku: string
-    sku_name: string | null
-    quantity: number
-    upload_log_id: string | null
-    uploaded_at: string | null
-  }
-  const all = await fetchPaged<RawRow>(
-    table,
-    'delivery_date, upload_round, sku, sku_name, quantity, upload_log_id, uploaded_at',
-    query => query.in('delivery_date', dates).in('upload_round', rounds),
-  )
-
-  const latestByGroup = new Map<string, { uploadedAt: string; uploadLogId: string }>()
-  for (const r of all) {
-    if (!r.uploaded_at || !r.upload_log_id) continue
-    const key = `${r.delivery_date}|||${r.upload_round}`
-    const cur = latestByGroup.get(key)
-    if (!cur || r.uploaded_at > cur.uploadedAt) {
-      latestByGroup.set(key, { uploadedAt: r.uploaded_at, uploadLogId: r.upload_log_id })
-    }
-  }
-
-  return all
-    .filter(r => {
-      const latest = latestByGroup.get(`${r.delivery_date}|||${r.upload_round}`)
-      return !latest || r.upload_log_id === latest.uploadLogId
-    })
-    .map(({ delivery_date, upload_round, sku, sku_name, quantity }) => ({ delivery_date, upload_round, sku, sku_name, quantity }))
-}
 
 // Rounds down to the nearest picking-unit (bag) multiple so packed output never exceeds the
 // order/yield target that fed into it — matches roundDownToBag() in lib/generate-plan.ts.

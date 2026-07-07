@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchLatestOrders } from '@/lib/supabase'
 import { Calendar, Save, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
 
 interface WipRow {
@@ -88,14 +88,14 @@ export default function WipPlanPage() {
 
       const [
         { data: histPlan100 },
-        { data: histMakro },
-        { data: histLotus },
-        { data: histWm },
+        histMakro,
+        histLotus,
+        histWm,
       ] = await Promise.all([
         supabase.from('production_plan_100').select('plan_date, sap, weight_total').in('plan_date', histDates),
-        supabase.from('makro_orders').select('delivery_date, sku, quantity, upload_round').in('delivery_date', histDates),
-        supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
-        supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+        fetchLatestOrders('makro_orders', histDates),
+        fetchLatestOrders('lotus_orders', histDates, ['1400']),
+        fetchLatestOrders('wet_market_orders', histDates, ['1400']),
       ])
 
       const wipKgSum = new Map<string, number>()
