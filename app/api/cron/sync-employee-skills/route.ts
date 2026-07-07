@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, externalSkillsSupabase } from '@/lib/supabase'
+import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
 
 export const dynamic = 'force-dynamic'
 
@@ -146,6 +147,15 @@ async function runSync(): Promise<SyncResult> {
       const { error: insertErr } = await supabase.from('employee_skills').insert(records)
       if (insertErr) throw new Error(`Insert: ${insertErr.message}`)
     }
+
+    // Mirror the same batch into dev so it always reflects production's real roster —
+    // best-effort only (syncToDevAwaited swallows errors), never blocks the real sync.
+    await syncToDevAwaited(async (dev) => {
+      for (const wd of workDates) {
+        await dev.from('employee_skills').delete().eq('work_date', wd)
+      }
+      if (records.length > 0) await batchInsert(dev, 'employee_skills', records)
+    })
 
     return { success: true, inserted: records.length, workDates }
   } catch (e: unknown) {

@@ -21,6 +21,7 @@ interface DashRow {
   sku_name:   string
   order_qty:  number
   baseline:   number
+  baseline_daily: { date: string; qty: number }[]
   ph1:        number
   ph2:        number
   ph3:        number
@@ -67,6 +68,7 @@ export default function ExecutiveDashboardPage() {
   const [station, setStation] = useState('ทั้งหมด')
   const [rows,    setRows]    = useState<DashRow[]>([])
   const [loading, setLoading] = useState(false)
+  const [dailyPopup, setDailyPopup] = useState<{ sku_name: string; daily: { date: string; qty: number }[] } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -102,7 +104,7 @@ export default function ExecutiveDashboardPage() {
   const exportExcel = () => {
     const headers = [
       ...(station === 'ทั้งหมด' ? ['Station'] : []),
-      'ชื่อสินค้า', 'Order (กก.)', 'Baseline avg 3 วัน (กก.)',
+      'ชื่อสินค้า', 'Order (กก.)', 'Baseline avg 7 วัน (กก.)',
       'Phase 1 (กก.)', 'Phase 2 (กก.)', 'Phase 3 (กก.)',
       'รวมผลิต (กก.)', 'รับผลได้ (กก.)',
     ]
@@ -224,7 +226,7 @@ export default function ExecutiveDashboardPage() {
                   </th>
                   <th className="px-4 py-3 text-right font-semibold text-purple-700 whitespace-nowrap">
                     <div>Baseline</div>
-                    <div className="font-normal text-purple-400">avg 3 วัน (กก.)</div>
+                    <div className="font-normal text-purple-400">avg 7 วัน (กก.)</div>
                   </th>
                   <th className="px-4 py-3 text-right font-semibold text-sky-700 whitespace-nowrap">
                     <div>Phase 1</div>
@@ -267,7 +269,17 @@ export default function ExecutiveDashboardPage() {
                     )}
                     <td className="px-4 py-2.5 text-gray-800 font-medium">{r.sku_name}</td>
                     <td className="px-4 py-2.5 text-right font-semibold text-blue-700">{fmt(r.order_qty)}</td>
-                    <td className="px-4 py-2.5 text-right text-purple-700">{fmt(r.baseline)}</td>
+                    <td className="px-4 py-2.5 text-right text-purple-700">
+                      {r.baseline > 0 ? (
+                        <button
+                          onClick={() => setDailyPopup({ sku_name: r.sku_name, daily: r.baseline_daily })}
+                          className="underline decoration-dotted underline-offset-2 hover:text-purple-900 transition-colors"
+                          title="ดูยอดสั่งรายวัน"
+                        >
+                          {fmt(r.baseline)}
+                        </button>
+                      ) : fmt(r.baseline)}
+                    </td>
                     <td className="px-4 py-2.5 text-right text-sky-700">{fmt(r.ph1)}</td>
                     <td className="px-4 py-2.5 text-right text-amber-700">{fmt(r.ph2)}</td>
                     <td className="px-4 py-2.5 text-right text-violet-700">{fmt(r.ph3)}</td>
@@ -307,6 +319,38 @@ export default function ExecutiveDashboardPage() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Baseline daily breakdown popup ── */}
+      {dailyPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+             onClick={() => setDailyPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">{dailyPopup.sku_name}</h2>
+                <p className="text-sm text-gray-500 mt-0.5">ยอดสั่งย้อนหลัง 7 วัน (กก.)</p>
+              </div>
+              <button onClick={() => setDailyPopup(null)} className="text-gray-400 hover:text-gray-600 shrink-0">✕</button>
+            </div>
+            <div className="space-y-1.5">
+              {dailyPopup.daily.map(d => (
+                <div key={d.date} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 text-sm">
+                  <span className="text-gray-600">
+                    {new Date(d.date + 'T00:00:00').toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
+                  <span className="font-semibold text-gray-900">{fmt(d.qty)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-3 py-2.5 mt-2 border-t border-gray-200 text-sm font-bold">
+              <span className="text-gray-700">เฉลี่ย/วัน</span>
+              <span className="text-purple-700">
+                {fmt(dailyPopup.daily.reduce((s, d) => s + d.qty, 0) / dailyPopup.daily.length)}
+              </span>
+            </div>
           </div>
         </div>
       )}

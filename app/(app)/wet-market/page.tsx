@@ -39,7 +39,7 @@ export default function WetMarketPage() {
         <div className="border-t-4 border-orange-500 pt-4 rounded-t-sm">
           <FileUpload
             title="รอบ 16.00 น."
-            description="ใช้เป็นข้อมูลย้อนหลัง 3 วัน (BL3) สำหรับคำนวณ Phase 1"
+            description="ใช้เป็นข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1"
             historyEndpoint="/api/upload-wet-market?round=1600"
             onUpload={makeUpload('1600')}
             parseFileFn={parseLotusWetMarketFile}

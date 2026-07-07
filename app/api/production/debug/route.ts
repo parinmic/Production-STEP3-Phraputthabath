@@ -6,9 +6,9 @@ export async function GET(req: NextRequest) {
   const round = req.nextUrl.searchParams.get('round') ?? '0800'
   const skuFilter = req.nextUrl.searchParams.get('sku')
 
-  // Historical dates (BL3)
+  // Historical dates (7-day baseline)
   const d = new Date(date)
-  const histDates = [1, 2, 3].map(n => {
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => {
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
       wet_market: { count: wmToday?.length ?? 0,    skus: agg(wmToday ?? []) },
       lotus:      { count: lotusToday?.length ?? 0, skus: agg(lotusToday ?? []) },
     },
-    bl3_history: {
+    hist_7d: {
       makro:      { days: Array.from(new Set((makroHist ?? []).map(r => r.delivery_date))), skus: agg(makroHist ?? []) },
       wet_market: { days: Array.from(new Set((wmHist ?? []).map(r => r.delivery_date))),   skus: agg(wmHist ?? []) },
       lotus:      { days: Array.from(new Set((lotusHist ?? []).map(r => r.delivery_date))), skus: agg(lotusHist ?? []) },
