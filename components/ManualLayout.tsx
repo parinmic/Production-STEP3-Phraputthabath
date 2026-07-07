@@ -178,7 +178,6 @@ function ItemPanel({ item }: { item: ManualItem }) {
         </div>
         <div>
           <h2 className="text-lg font-semibold text-gray-900">{item.label}</h2>
-          {item.href && <p className="text-xs text-gray-400 font-mono mt-0.5">{item.href}</p>}
           <p className="text-sm text-gray-500 mt-1">{item.summary}</p>
         </div>
       </div>

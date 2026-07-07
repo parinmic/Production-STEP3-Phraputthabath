@@ -87,7 +87,10 @@ export default function WithdrawalPage() {
   const [basketMap, setBasketMap]         = useState<Map<string, number>>(new Map())
   const [popupItem, setPopupItem]         = useState<PopupItem>(null)
   const [selectedStation, setSelectedStation] = useState<string | null>(null)
+  const [printedAt, setPrintedAt] = useState('')
   const printRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setPrintedAt(new Date().toLocaleString('th-TH')) }, [])
 
   const cfg    = PHASE_CONFIG[phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG['1']
   const rounds = PHASE_ROUNDS[phase] ?? PHASE_ROUNDS['1']
@@ -456,7 +459,7 @@ export default function WithdrawalPage() {
                 <p className="text-sm text-gray-600 mt-0.5">วันที่ผลิต: {date} · เวลา: {cfg.time}</p>
               </div>
               <div className="text-right text-sm text-gray-600">
-                <p>พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}</p>
+                <p>พิมพ์เมื่อ: {printedAt}</p>
               </div>
             </div>
           </div>

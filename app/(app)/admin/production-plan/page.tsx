@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check } from 'lucide-react'
+import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -60,6 +60,8 @@ export default function AdminProductionPlanPage() {
   const [confirmBulk, setConfirmBulk] = useState<string | null>(null)
   const [editKey, setEditKey]     = useState<string | null>(null)
   const [editVal, setEditVal]     = useState<string>('')
+  const [confirmEmergency, setConfirmEmergency] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   const rowKey = (r: SkuRow) => `${r.channel ?? ''}||${r.table_name}||${r.sku}`
 
@@ -116,6 +118,31 @@ export default function AdminProductionPlanPage() {
     flash(true, `ลบ ${PERIOD_PHASE[period]} (${period}) ทั้งหมด ${j.deleted} รายการแล้ว`)
     setConfirmBulk(null)
     load()
+  }
+
+  const generateEmergencyPlan = async () => {
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/production/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          phase: 1,
+          deductMode: 'plan',
+          disableMidRecal: true,
+          useFallbackWorkforce: true,
+        }),
+      })
+      const j = await res.json()
+      flash(!!j.success, j.message ?? (j.success ? 'สร้างแผนสำเร็จ' : 'สร้างแผนไม่สำเร็จ'))
+      if (j.success) load()
+    } catch (e) {
+      flash(false, e instanceof Error ? e.message : String(e))
+    } finally {
+      setGenerating(false)
+      setConfirmEmergency(false)
+    }
   }
 
   const handleAdd = async () => {
@@ -176,8 +203,13 @@ export default function AdminProductionPlanPage() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีโหลด
         </button>
 
+        <button onClick={() => setConfirmEmergency(true)}
+          className="ml-auto flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <Zap size={16} />สร้างแผนฉุกเฉิน (Phase 1)
+        </button>
+
         <button onClick={() => { setForm({ ...EMPTY_FORM, production_date: date, period: period || 'เช้า' }); setShowAdd(true) }}
-          className="ml-auto flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
           <Plus size={16} />เพิ่ม SKU
         </button>
       </div>
@@ -313,6 +345,35 @@ export default function AdminProductionPlanPage() {
               <button onClick={() => deletePeriod(confirmBulk)}
                 className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
                 ลบทั้งหมด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm emergency plan generation */}
+      {confirmEmergency && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3 text-amber-600">
+              <Zap size={24} />
+              <h2 className="text-lg font-bold">สร้างแผนฉุกเฉิน?</h2>
+            </div>
+            <p className="text-gray-600 text-sm">
+              สร้างแผนผลิต <strong>Phase 1 (เช้า)</strong> วันที่ {date} ทันที
+              โดยไม่ต้องรอ Sync ข้อมูลพนักงาน 7:30 — ถ้ายังไม่มีข้อมูลกำลังคนของวันนี้
+              จะใช้ข้อมูลของวันก่อนหน้าล่าสุดแทน
+              <br /><br />
+              <span className="text-red-600 font-medium">คำเตือน:</span> จะเขียนทับแผน Phase 1 เดิมของวันนี้ทั้งหมด
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmEmergency(false)} disabled={generating}
+                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                ยกเลิก
+              </button>
+              <button onClick={generateEmergencyPlan} disabled={generating}
+                className="px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium disabled:opacity-50">
+                {generating ? 'กำลังสร้าง...' : 'สร้างแผนฉุกเฉิน'}
               </button>
             </div>
           </div>

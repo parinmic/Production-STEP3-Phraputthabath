@@ -27,6 +27,9 @@ export interface GeneratePlanParams {
   phase?: number
   deductMode?: 'plan' | 'actual' | 'yield'
   disableMidRecal?: boolean
+  // Emergency override: generate even if today's employee_skills roster
+  // hasn't synced yet, using the most recent prior day's roster instead.
+  useFallbackWorkforce?: boolean
 }
 
 export interface GeneratePlanResult {
@@ -1492,11 +1495,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     supabase.from('moo_chod_master').select('sap_code, fat_percent').limit(5000),
   ])
 
-  const { workforce, jobAssignMap } = await fetchWorkforceAndSkills(productionDate)
+  const { workforce, jobAssignMap, workDateUsed } = await fetchWorkforceAndSkills(productionDate, {
+    fallbackToPreviousDay: params.useFallbackWorkforce,
+  })
   if (!workforce.length) return {
     success: false,
     message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 7:30',
   }
+  const workforceFallbackNote = workDateUsed !== productionDate
+    ? ` (ใช้ข้อมูลกำลังคนของวันที่ ${workDateUsed} แทน เนื่องจากยังไม่มีข้อมูลวันนี้)`
+    : ''
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
   const wmHist     = (wmHistRaw     ?? []) as OrderRow[]
@@ -3586,9 +3594,9 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     success: true,
     isScheduled,
     effectiveFrom: effectiveTimeStr,
-    message: isScheduled
+    message: (isScheduled
       ? `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — มีผลตั้งแต่ ${effectiveTimeStr} น. (${channelSummary})`
-      : `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`,
+      : `Phase ${selectedPhase} (${phaseCfg.period}) สร้างสำเร็จ ${assignments.length} รายการ — ${channelSummary}`) + workforceFallbackNote,
     count: assignments.length,
     debug_targets: Object.entries(debugChannelTargets)
       .map(([sku, v]) => ({ sku, ...v }))
