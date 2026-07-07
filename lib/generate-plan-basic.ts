@@ -287,7 +287,8 @@ export async function fetchPaged<T>(
 // tracking) never replaces prior rows for that delivery_date+upload_round, so summing raw rows
 // can double-count. Keep only rows from each (delivery_date, upload_round) group's most recent
 // upload_log_id; groups with no upload_log_id on any row are returned unfiltered.
-export async function fetchLatestMakroOrders(
+export async function fetchLatestOrders(
+  table: 'makro_orders' | 'lotus_orders' | 'wet_market_orders',
   dates: string[],
   rounds: string[],
 ): Promise<Array<{ delivery_date: string; upload_round: string; sku: string; sku_name: string | null; quantity: number }>> {
@@ -303,7 +304,7 @@ export async function fetchLatestMakroOrders(
     uploaded_at: string | null
   }
   const all = await fetchPaged<RawRow>(
-    'makro_orders',
+    table,
     'delivery_date, upload_round, sku, sku_name, quantity, upload_log_id, uploaded_at',
     query => query.in('delivery_date', dates).in('upload_round', rounds),
   )
@@ -1095,7 +1096,7 @@ async function fetchLatestMakro0800Targets(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
   const [data, varianceByGroupTrend, histSums] = await Promise.all([
-    fetchLatestMakroOrders([date], ['0800']),
+    fetchLatestOrders('makro_orders', [date], ['0800']),
     fetchMakroVarianceBasic(),
     fetchMakroHistorySums(date),
   ])
@@ -1150,7 +1151,7 @@ async function fetchMakro1400Targets(
   date: string,
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const data = await fetchLatestMakroOrders([date], ['1400'])
+  const data = await fetchLatestOrders('makro_orders', [date], ['1400'])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
@@ -1195,11 +1196,7 @@ async function fetchLatestRoundUploadTargets(
   uploadRound: '1400',
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<BasicSkuTarget[]> {
-  const data = await fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
-    ordersTable,
-    'sku, sku_name, quantity',
-    query => query.eq('delivery_date', date).eq('upload_round', uploadRound),
-  )
+  const data = await fetchLatestOrders(ordersTable, [date], [uploadRound])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const targetMap = new Map<string, BasicSkuTarget>()
@@ -1345,7 +1342,7 @@ async function fetchPlan100WetMarketTargets(
 
 async function fetchMakroHistorySums(date: string): Promise<Map<string, { hist0800Kg: number; hist1400Kg: number }>> {
   const histDates = [shiftDate(date, -7), shiftDate(date, -14)]
-  const data = await fetchLatestMakroOrders(histDates, ['0800', '1400'])
+  const data = await fetchLatestOrders('makro_orders', histDates, ['0800', '1400'])
 
   const map = new Map<string, { hist0800Kg: number; hist1400Kg: number }>()
   for (const row of data) {
@@ -1400,11 +1397,7 @@ async function fetchWetMarket1600AverageTargets(
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
   const [varianceBySku, data, openingStock] = await Promise.all([
     fetchWetMarketVarianceBasic(),
-    fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
-      'wet_market_orders',
-      'sku, sku_name, quantity',
-      query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
-    ),
+    fetchLatestOrders('wet_market_orders', histDates, ['1600']),
     fetchOpeningStock0010(date),
   ])
 
@@ -1500,11 +1493,7 @@ async function fetchLotus1600AverageTargets(
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
   const [varianceBySku, data] = await Promise.all([
     fetchLotusVarianceBasic(),
-    fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
-      'lotus_orders',
-      'sku, sku_name, quantity',
-      query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
-    ),
+    fetchLatestOrders('lotus_orders', histDates, ['1600']),
   ])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
@@ -1593,11 +1582,7 @@ async function fetchWetMarketTopSkuByGroup(
   productivityByGroup: Map<string, { station: string; skus: BasicProductivitySku[] }>,
 ): Promise<Map<string, { sku: string; skuName: string | null; station: string | null; quantityKg: number }>> {
   const histDates = Array.from({ length: 7 }, (_, i) => shiftDate(date, -(i + 1)))
-  const data = await fetchPaged<{ sku: string; sku_name: string | null; quantity: number }>(
-    'wet_market_orders',
-    'sku, sku_name, quantity',
-    query => query.in('delivery_date', histDates).eq('upload_round', '1600'),
-  )
+  const data = await fetchLatestOrders('wet_market_orders', histDates, ['1600'])
 
   const skuLookup = buildSkuLookup(productivityByGroup)
   const sumByGroupSku = new Map<string, { sku: string; skuName: string | null; station: string | null; quantityKg: number }>()

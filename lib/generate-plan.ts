@@ -832,6 +832,40 @@ async function fetchAll<T = Record<string, unknown>>(
   return all
 }
 
+// Re-uploading a round never replaces prior rows for that delivery_date+upload_round, so summing
+// raw rows can double-count. Keep only rows from each (delivery_date, upload_round) group's most
+// recent upload_log_id; groups with no upload_log_id on any row are returned unfiltered.
+async function fetchLatestOrders(
+  table: 'makro_orders' | 'lotus_orders' | 'wet_market_orders' | 'fs_orders',
+  dates: string[],
+  rounds: string[],
+): Promise<OrderRow[]> {
+  if (!dates.length || !rounds.length) return []
+
+  type RawRow = OrderRow & { upload_round: string; upload_log_id: string | null; uploaded_at: string | null }
+  const all = await fetchAll<RawRow>(
+    table, 'sku, sku_name, quantity, delivery_date, upload_round, upload_log_id, uploaded_at',
+    [{ col: 'delivery_date', op: 'in', val: dates }, { col: 'upload_round', op: 'in', val: rounds }],
+  )
+
+  const latestByGroup = new Map<string, { uploadedAt: string; uploadLogId: string }>()
+  for (const r of all) {
+    if (!r.uploaded_at || !r.upload_log_id) continue
+    const key = `${r.delivery_date}|||${r.upload_round}`
+    const cur = latestByGroup.get(key)
+    if (!cur || r.uploaded_at > cur.uploadedAt) {
+      latestByGroup.set(key, { uploadedAt: r.uploaded_at, uploadLogId: r.upload_log_id })
+    }
+  }
+
+  return all
+    .filter(r => {
+      const latest = latestByGroup.get(`${r.delivery_date}|||${r.upload_round}`)
+      return !latest || r.upload_log_id === latest.uploadLogId
+    })
+    .map(({ delivery_date, sku, sku_name, quantity }) => ({ delivery_date, sku, sku_name, quantity }))
+}
+
 // Fetch all currently-live assignments for the given period(s), to deduct from Phase 2/3 targets.
 // Mid Recal (partial regen) leaves multiple effective_from batches coexisting on purpose — the
 // "already-started, kept" batch plus the newly-regenerated one are BOTH still live at once — so
@@ -1435,20 +1469,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     bkpOrdersRaw,
   { data: mooChōdMasterRaw },
   ] = await Promise.all([
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: orderRound }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('fs_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }])
+    fetchLatestOrders('wet_market_orders', [productionDate], ['1400']),
+    fetchLatestOrders('wet_market_orders', histDates, ['1600']),
+    fetchLatestOrders('lotus_orders', [productionDate], ['1400']),
+    fetchLatestOrders('lotus_orders', histDates, ['1600']),
+    fetchLatestOrders('makro_orders', [productionDate], [orderRound]),
+    fetchLatestOrders('makro_orders', histDates, ['1400']),
+    fetchLatestOrders('fs_orders', [productionDate], ['0800'])
       .catch(() => [] as OrderRow[]),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
@@ -2791,12 +2818,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           const [
             wipHistP100,
-            { data: wipHistLotus },
-            { data: wipHistWm },
+            wipHistLotus,
+            wipHistWm,
           ] = await Promise.all([
             fetchLatestPlan100(histDates),
-            supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
-            supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+            fetchLatestOrders('lotus_orders', histDates, ['1400']),
+            fetchLatestOrders('wet_market_orders', histDates, ['1400']),
           ])
 
           const wipKgSum = new Map<string, number>()
