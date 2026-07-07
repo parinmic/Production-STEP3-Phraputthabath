@@ -448,18 +448,17 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             <ShieldAlert size={18} className="shrink-0" />
             <span className={labelCls}>จัดการแผนผลิต</span>
           </NavLink>
-          <NavLink href="/basic/admin/users" allowed={has('12')}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', has('12'))}`}
-            title="User ระบบผลิต">
-            <Users size={18} className="shrink-0" />
-            <span className={labelCls}>User ระบบผลิต</span>
-          </NavLink>
-
           <NavLink href="/basic/admin/plan-check" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/plan-check', canAll)}`}
             title="ตรวจสอบแผนผลิต">
             <ClipboardCheck size={18} className="shrink-0" />
             <span className={labelCls}>ตรวจสอบแผนผลิต</span>
+          </NavLink>
+          <NavLink href="/basic/admin/users" allowed={has('12')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/admin/users', has('12'))}`}
+            title="User ระบบผลิต">
+            <Users size={18} className="shrink-0" />
+            <span className={labelCls}>User ระบบผลิต</span>
           </NavLink>
           <Link href="/basic/admin/manual"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${p === '/basic/admin/manual' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
