@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -93,6 +93,7 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
   const canProduction = TABLES.some((t) => canAccessSpecialStation(user?.menus, t.slug))
   const canSawMachine  = has('3')
   const canShortage    = has('4')
+  const canAll         = has('all')
 
   return (
     <>
@@ -235,6 +236,13 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             title="แผนการใช้เครื่องเลื่อย">
             <Scissors size={18} className="shrink-0" />
             <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
+          </NavLink>
+
+          <NavLink href="/workforce-daily-status" allowed={canAll}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/workforce-daily-status', canAll)}`}
+            title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
+            <CalendarDays size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </NavLink>
 
           <NavLink href="/wip-plan" allowed={has('5')}

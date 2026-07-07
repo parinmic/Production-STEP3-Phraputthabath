@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
+import { useCanEdit } from '@/lib/session-context'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -47,6 +48,7 @@ const EMPTY_FORM = {
 }
 
 export default function AdminProductionPlanPage() {
+  const canEdit = useCanEdit('11')
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]           = useState(today)
   const [period, setPeriod]       = useState<string>('')
@@ -203,18 +205,23 @@ export default function AdminProductionPlanPage() {
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีโหลด
         </button>
 
+        {canEdit && (
         <button onClick={() => setConfirmEmergency(true)}
           className="ml-auto flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
           <Zap size={16} />สร้างแผนฉุกเฉิน (Phase 1)
         </button>
+        )}
 
+        {canEdit && (
         <button onClick={() => { setForm({ ...EMPTY_FORM, production_date: date, period: period || 'เช้า' }); setShowAdd(true) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
           <Plus size={16} />เพิ่ม SKU
         </button>
+        )}
       </div>
 
       {/* Delete phase buttons */}
+      {canEdit && (
       <div className="flex flex-wrap gap-3">
         {PERIODS.map(p => (
           <button key={p} onClick={() => setConfirmBulk(p)}
@@ -223,6 +230,7 @@ export default function AdminProductionPlanPage() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -289,7 +297,7 @@ export default function AdminProductionPlanPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      {isEditing ? (
+                      {!canEdit ? null : isEditing ? (
                         <div className="flex items-center gap-1 justify-center">
                           <button onClick={() => saveEdit(r)}
                             className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors">
@@ -361,7 +369,7 @@ export default function AdminProductionPlanPage() {
             </div>
             <p className="text-gray-600 text-sm">
               สร้างแผนผลิต <strong>Phase 1 (เช้า)</strong> วันที่ {date} ทันที
-              โดยไม่ต้องรอ Sync ข้อมูลพนักงาน 7:30 — ถ้ายังไม่มีข้อมูลกำลังคนของวันนี้
+              โดยไม่ต้องรอ Sync ข้อมูลพนักงาน 8:05 — ถ้ายังไม่มีข้อมูลกำลังคนของวันนี้
               จะใช้ข้อมูลของวันก่อนหน้าล่าสุดแทน
               <br /><br />
               <span className="text-red-600 font-medium">คำเตือน:</span> จะเขียนทับแผน Phase 1 เดิมของวันนี้ทั้งหมด

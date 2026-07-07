@@ -1,5 +1,6 @@
 'use client'
 import FileUpload from '@/components/FileUpload'
+import GenerateSpecialPlanButtons from '@/components/GenerateSpecialPlanButtons'
 import { ParsedRow, parseLotusWetMarketFile } from '@/lib/parser'
 
 async function uploadFsOrders(rows: ParsedRow[], filename: string) {
@@ -14,9 +15,12 @@ async function uploadFsOrders(rows: ParsedRow[], filename: string) {
 export default function FsPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">อัพโหลดคำสั่งซื้อ FS</h1>
-        <p className="text-gray-500 mt-1">อัพโหลดไฟล์คำสั่งซื้อช่องทาง Food Service (rBst_code=924 / rOper_code=4903)</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">อัพโหลดคำสั่งซื้อ FS</h1>
+          <p className="text-gray-500 mt-1">อัพโหลดไฟล์คำสั่งซื้อช่องทาง Food Service (rBst_code=924 / rOper_code=4903)</p>
+        </div>
+        <GenerateSpecialPlanButtons menuKey="7.4" />
       </div>
 
       <div className="max-w-xl">
@@ -28,6 +32,7 @@ export default function FsPage() {
             onUpload={uploadFsOrders}
             parseFileFn={parseLotusWetMarketFile}
             downloadTable="fs_orders"
+            menuKey="7.4"
           />
         </div>
       </div>

@@ -21,6 +21,7 @@ export default function SawMachineMasterPage() {
         onUpload={upload}
         parseFileFn={parseSawMachineSku}
         downloadTable="mas_saw_machine_sku"
+        menuKey="10.2"
       />
     </div>
   )

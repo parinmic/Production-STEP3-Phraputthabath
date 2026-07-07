@@ -21,6 +21,7 @@ export default function BasicTempQcMasterPage() {
         historyEndpoint="/api/qc-temp-master"
         onUpload={upload}
         downloadTable="master_logic_calculation"
+        menuKey="10.2"
       />
     </div>
   )

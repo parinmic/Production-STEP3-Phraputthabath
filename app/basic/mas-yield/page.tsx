@@ -20,6 +20,7 @@ export default function MasYieldPage() {
         historyEndpoint="/api/upload-mas-yield"
         onUpload={upload}
         downloadTable="mas_yield"
+        menuKey="10.2"
       />
     </div>
   )

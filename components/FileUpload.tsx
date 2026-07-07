@@ -1,8 +1,9 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Upload, AlertCircle, CheckCircle2, X, Download } from 'lucide-react'
+import { Upload, AlertCircle, CheckCircle2, X, Download, Eye } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { parseFile, ParsedRow } from '@/lib/parser'
+import { useCanEdit } from '@/lib/session-context'
 
 interface UploadRecord {
   id?: string
@@ -19,9 +20,12 @@ interface Props {
   parseFileFn?: (file: File) => Promise<ParsedRow[]>
   downloadTable?: string
   downloadSlot?: string
+  // เลขเมนู (ตรงกับ SPECIAL_MENU_LABELS) — ถ้า user มีสิทธิ์แค่ "View" จะซ่อนปุ่มอัพโหลด/ลบ เหลือแค่ดูประวัติ/ดาวน์โหลด
+  menuKey?: string
 }
 
-export default function FileUpload({ title, description, historyEndpoint, onUpload, parseFileFn, downloadTable, downloadSlot }: Props) {
+export default function FileUpload({ title, description, historyEndpoint, onUpload, parseFileFn, downloadTable, downloadSlot, menuKey }: Props) {
+  const canEdit = useCanEdit(menuKey)
   const [status, setStatus] = useState<'idle'|'parsing'|'uploading'|'success'|'error'>('idle')
   const [message, setMessage] = useState('')
   const [preview, setPreview] = useState<ParsedRow[]>([])
@@ -113,19 +117,36 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
   const cols = preview.length ? Object.keys(preview[0]) : []
   return (
     <div className="space-y-5">
-      <div><h1 className="text-xl sm:text-2xl font-bold text-gray-900">{title}</h1><p className="text-gray-500 mt-1 text-sm sm:text-base">{description}</p></div>
-      <div className="card border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors cursor-pointer text-center"
-        onDrop={(e)=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f)}}
-        onDragOver={e=>e.preventDefault()} onClick={()=>inputRef.current?.click()}>
-        <Upload className="mx-auto text-gray-400 mb-3" size={40}/>
-        <p className="font-medium text-gray-700">{filename||'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
-        <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv</p>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-          onChange={e=>{if(e.target.files?.[0])handleFile(e.target.files[0])}}/>
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="text-gray-500 mt-1 text-sm sm:text-base">{description}</p>
+        </div>
+        {!canEdit && (
+          <span className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">
+            <Eye size={12} />ดูอย่างเดียว
+          </span>
+        )}
       </div>
+      {canEdit ? (
+        <div className="card border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors cursor-pointer text-center"
+          onDrop={(e)=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f)}}
+          onDragOver={e=>e.preventDefault()} onClick={()=>inputRef.current?.click()}>
+          <Upload className="mx-auto text-gray-400 mb-3" size={40}/>
+          <p className="font-medium text-gray-700">{filename||'ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์'}</p>
+          <p className="text-sm text-gray-400 mt-1">รองรับ .xlsx, .xls, .csv</p>
+          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+            onChange={e=>{if(e.target.files?.[0])handleFile(e.target.files[0])}}/>
+        </div>
+      ) : (
+        <div className="card border-2 border-dashed border-gray-200 text-center bg-gray-50">
+          <Eye className="mx-auto text-gray-300 mb-3" size={40}/>
+          <p className="font-medium text-gray-400">คุณมีสิทธิ์ดูข้อมูลเท่านั้น ไม่สามารถอัพโหลดได้</p>
+        </div>
+      )}
       {status==='error'&&<div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700"><AlertCircle size={20}/>{message}</div>}
       {status==='success'&&<div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4 text-green-700"><CheckCircle2 size={20}/>{message}</div>}
-      {preview.length>0&&(
+      {canEdit && preview.length>0&&(
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <p className="font-semibold text-gray-800">ตัวอย่างข้อมูล (5 แถวแรก)</p>
@@ -165,14 +186,16 @@ export default function FileUpload({ title, description, historyEndpoint, onUplo
                     <Download size={14} />
                   </button>
                 )}
-                <button
-                  onClick={() => handleDelete(h)}
-                  disabled={deleting === h.source_file}
-                  className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
-                  title="ลบ"
-                >
-                  <X size={14} />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => handleDelete(h)}
+                    disabled={deleting === h.source_file}
+                    className="shrink-0 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40 p-1"
+                    title="ลบ"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

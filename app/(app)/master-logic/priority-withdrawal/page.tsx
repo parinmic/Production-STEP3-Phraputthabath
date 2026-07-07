@@ -20,6 +20,7 @@ export default function MasPriorityWithdrawalPage() {
       onUpload={upload}
       parseFileFn={parseMasPriorityWithdrawal}
       downloadTable="mas_priority_withdrawal"
+      menuKey="10.2"
     />
   )
 }

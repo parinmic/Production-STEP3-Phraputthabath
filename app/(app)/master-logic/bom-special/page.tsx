@@ -21,6 +21,7 @@ export default function BomSpecialPage() {
         onUpload={upload}
         parseFileFn={parseBomSpecial}
         downloadTable="bom_special"
+        menuKey="10.2"
       />
     </div>
   )

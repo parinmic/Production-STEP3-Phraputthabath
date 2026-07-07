@@ -20,6 +20,7 @@ export default function BasicPickingUnitPage() {
       onUpload={upload}
       parseFileFn={parsePickingUnit}
       downloadTable="picking_unit_master_basic"
+      menuKey="10.2"
     />
   )
 }

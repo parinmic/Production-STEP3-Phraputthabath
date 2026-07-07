@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
@@ -263,6 +263,13 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             title="Breakline">
             <Slice size={18} className="shrink-0" />
             <span className={labelCls}>Breakline</span>
+          </NavLink>
+
+          <NavLink href="/basic/workforce-daily-status" allowed={canAll}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/workforce-daily-status', canAll)}`}
+            title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
+            <CalendarDays size={18} className="shrink-0" />
+            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
           </NavLink>
 
           <p className={sectionCls}>Additional</p>

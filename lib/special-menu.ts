@@ -74,3 +74,23 @@ export function canAccessBasicStation(menus: string[] | null | undefined, slug: 
   if (!num) return false
   return hasSpecialMenu(menus, num)
 }
+
+// เมนูที่ user เห็นแบบ "View" เท่านั้น (ไม่อยู่ใน editMenus) จะดูข้อมูล/ตารางได้ปกติ
+// แต่ปุ่ม/ฟอร์มที่แก้ไขข้อมูลได้ (อัพโหลด, สร้าง Phase, แก้ตัวเลข, ลบ ฯลฯ) ต้องถูกซ่อน/ปิด
+// editMenus คือ subset ของ menus ที่ sys_position_menus.access = 'edit' (ดู fn_login)
+export function canEditSpecialMenu(editMenus: string[] | null | undefined, key: string): boolean {
+  if (!editMenus) return true
+  return editMenus.includes('all') || editMenus.includes(key)
+}
+
+export function canEditSpecialStation(editMenus: string[] | null | undefined, slug: string): boolean {
+  const num = SPECIAL_STATION_MENU_NUMBER[slug]
+  if (!num) return false
+  return canEditSpecialMenu(editMenus, num)
+}
+
+export function canEditBasicStation(editMenus: string[] | null | undefined, slug: string): boolean {
+  const num = BASIC_STATION_MENU_NUMBER[slug]
+  if (!num) return false
+  return canEditSpecialMenu(editMenus, num)
+}

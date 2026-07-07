@@ -6,6 +6,7 @@ export async function POST() {
     username: 'Admin',
     position: 'ผู้ดูแลระบบ',
     menus: ['all'],
+    editMenus: ['all'],
     step: 'all',
   }
 
@@ -14,7 +15,7 @@ export async function POST() {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60 * 10, // 10 ชั่วโมง
+    maxAge: 60 * 60 * 24 * 7, // 7 วัน
   })
   return res
 }

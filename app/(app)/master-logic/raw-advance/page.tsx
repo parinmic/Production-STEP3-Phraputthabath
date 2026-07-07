@@ -39,6 +39,7 @@ export default function MasRawAdvancePage() {
           historyEndpoint="/api/upload-mas-raw-advance"
           onUpload={upload}
           downloadTable="mas_raw_production_advance"
+          menuKey="10.2"
         />
       </div>
     </div>

@@ -50,6 +50,7 @@ export default function StockRawMaterialPage() {
             onUpload={uploadStock0010}
             parseFileFn={parseStockRawMaterial}
             downloadTable="stock_0010"
+            menuKey="8"
           />
         </div>
 
@@ -65,6 +66,7 @@ export default function StockRawMaterialPage() {
             onUpload={uploadStock20}
             parseFileFn={parseStockRawMaterial}
             downloadTable="stock_20"
+            menuKey="8"
           />
         </div>
 
@@ -80,6 +82,7 @@ export default function StockRawMaterialPage() {
             onUpload={uploadStock100}
             parseFileFn={parseStockRawMaterial}
             downloadTable="stock_100"
+            menuKey="8"
           />
         </div>
       </div>

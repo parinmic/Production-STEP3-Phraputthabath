@@ -1624,9 +1624,9 @@ export default function TablePage() {
     try {
       const res    = await fetch('/api/production/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          date, 
-          phase: selectedPhase, 
+        body: JSON.stringify({
+          date,
+          phase: selectedPhase,
           deductMode,
           disableMidRecal: !midRecal
         }),

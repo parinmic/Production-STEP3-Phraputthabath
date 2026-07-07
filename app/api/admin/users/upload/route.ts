@@ -46,6 +46,7 @@ interface RawRow {
   password: string
   step: string | number
   menu: string
+  access?: 'edit' | 'view'
 }
 
 export async function POST(req: NextRequest) {
@@ -54,21 +55,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'ไม่มีข้อมูลในไฟล์' }, { status: 400 })
   }
 
-  const posMap = new Map<string, { users: Map<string, string>; menus: Set<string>; step: string }>()
+  const posMap = new Map<string, { users: Map<string, string>; menus: Map<string, 'edit' | 'view'>; step: string }>()
 
   for (const r of rows) {
     const posName  = String(r.position ?? '').trim()
     const username = String(r.username ?? '').trim()
     const password = String(r.password ?? '').trim()
     const menuKeys = toMenuKeys(String(r.menu ?? ''))
+    const access   = r.access === 'view' ? 'view' : 'edit'
     const step     = toStepKey(r.step)
 
     if (!posName) continue
 
-    if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Set(), step })
+    if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Map(), step })
     const entry = posMap.get(posName)!
 
-    for (const k of menuKeys) if (k) entry.menus.add(k)
+    // ถ้าเลขเมนูเดียวกันโผล่ซ้ำ (จากคนละแถว) และแถวไหนให้สิทธิ์ 'edit' ให้ edit ชนะ 'view' เสมอ
+    for (const k of menuKeys) {
+      if (!k) continue
+      if (entry.menus.get(k) === 'edit') continue
+      entry.menus.set(k, access)
+    }
     if (username) entry.users.set(username, password)
   }
 
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
   const positions = Array.from(posMap.entries()).map(([name, { users, menus, step }]) => ({
     name,
     step,
-    menus: Array.from(menus),
+    menus: Array.from(menus.entries()).map(([key, access]) => ({ key, access })),
     users: Array.from(users.entries()).map(([username, password]) => ({ username, password })),
   }))
 

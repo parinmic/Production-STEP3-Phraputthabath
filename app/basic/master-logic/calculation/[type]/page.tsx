@@ -97,6 +97,7 @@ export default function BasicCalculationTypePage({ params }: { params: { type: s
         historyEndpoint={apiEndpoint}
         onUpload={upload}
         downloadTable={downloadTable}
+        menuKey="10.2"
       />
     </div>
   )

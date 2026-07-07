@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice,
+  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice, CalendarDays,
   FlaskConical, Layers, Timer, Users, ShoppingCart, Leaf, Store, FileSpreadsheet, CalendarPlus,
   TrendingUp, UserCog, Calculator, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
@@ -113,6 +113,17 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         body: [
           'ระบุ Station ช่วงเวลาที่หยุด และสาเหตุ (เลือกจากรายการหรือพิมพ์เอง) เพื่อบันทึกแต่ละครั้งที่เกิดปัญหา',
           'ดูสรุป/ส่งออกรายงานเป็น Excel แยกตามสาเหตุและตาม Station ได้',
+        ],
+      },
+      {
+        key: 'workforce-daily-status',
+        label: 'ตรวจสอบสถานะกำลังคน',
+        href: '/basic/workforce-daily-status',
+        icon: CalendarDays,
+        summary: 'ดูรายชื่อ/สถานีของพนักงานที่ทำงานวันนั้น (ดูอย่างเดียว)',
+        body: [
+          'ดึงข้อมูลจากตารางกำลังคนกลาง (Sync อัตโนมัติ) — เลือกวันที่ ดูรายชื่อพนักงานแยกตาม Station/กะ ค้นหาชื่อได้',
+          'หน้านี้ดูอย่างเดียว ไม่มีการแก้ไขสถานะพนักงานแล้ว — ปัจจุบัน Sync อัตโนมัติยังครอบคลุมเฉพาะฝั่งพิเศษ หน้านี้ฝั่งเบสิคจึงอาจยังไม่มีข้อมูลแสดง',
         ],
       },
     ],
