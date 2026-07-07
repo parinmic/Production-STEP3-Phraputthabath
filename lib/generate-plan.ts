@@ -679,13 +679,15 @@ function allocateBalanced(params: {
     }
   }
 
-  // 4b. Deficit blocks whose remainder never got bound to a real worker within available
-  // time (e.g. all eligible workers were already booked) — still queue them onto a real
-  // eligible worker (for whenever raw material/time frees up) instead of dropping the row,
-  // so the shortfall stays visible in the Raw รอผลิต shortage report. Doesn't touch
-  // workerFreeAtMins/workerBusySegments — this is backlog, not a real timeslot.
+  // 4b. Any block (deficit or not) whose remainder never got bound to a real worker within
+  // available time — e.g. all eligible workers were already booked by the time an LPT-sorted
+  // block this small got its turn (section 4 sorts longest-processing-time first, so a
+  // low-qty/short-duration block can reach the front of the queue only after every eligible
+  // worker's time is already spoken for) — still queue it onto a real eligible worker instead
+  // of silently dropping the row, so the shortfall stays visible in the Raw รอผลิต shortage
+  // report. Doesn't touch workerFreeAtMins/workerBusySegments — this is backlog, not a real
+  // timeslot.
   for (const block of skuBlocks) {
-    if (!block.isDeficit) continue
     const normSku = block.normSku
     let scheduledQty = 0
     for (const w of workers) {
@@ -2592,7 +2594,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     let qty = roundDownToBag(item.sku, item.targetQty)
     if (isPhase3) {
       const planItem = planMap.get(item.sku.replace(/^0+/, ''))
-      if (planItem) {
+      // Only cap against plan100's remaining when plan100 actually carries demand for this
+      // SKU (qty > 0). A plan100 row with weight_total=0 is just a template stub — treating
+      // it as "0 remaining" would zero out unrelated appendRemaining (Makro/LOTUS/WM/FS)
+      // targets for SKUs plan100 has nothing to say about.
+      if (planItem && planItem.qty > 0) {
         const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(item.sku.replace(/^0+/, '')) ?? 0))
         if (qty > remaining) qty = remaining
       }
