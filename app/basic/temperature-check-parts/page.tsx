@@ -26,6 +26,19 @@ interface TempRecord {
   end:   AnimalSet // ชุดท้าย Lot
 }
 
+type TempStatus = 'dark-green' | 'green' | 'yellow' | 'red' | 'none'
+
+interface TempRule {
+  product_type: string
+  condition: string
+  color_label: string
+  color: Exclude<TempStatus, 'none'>
+  min_value: number | null
+  max_value: number | null
+  min_inclusive: boolean
+  max_inclusive: boolean
+}
+
 const POINTS: { key: keyof PointTemps; label: string }[] = [
   { key: 'hip',      label: 'สะโพก' },
   { key: 'outerLoin', label: 'สันนอก' },
@@ -67,10 +80,31 @@ function hasAnyValue(t: TempRecord | undefined): boolean {
   return allValues(t).some(v => v !== '')
 }
 
-// Standard for parts: ≤ 10 °C
-function tempStatus(avg: number | null): 'green' | 'red' | 'none' {
+// Falls back to ≤ 10 °C when the Mas Temp QC master has no rule for 'ชิ้นส่วน'
+function tempStatus(avg: number | null, rules: TempRule[]): TempStatus {
   if (avg === null) return 'none'
+  const matched = rules.find(rule => {
+    const minOk = rule.min_value === null || (rule.min_inclusive ? avg >= rule.min_value : avg > rule.min_value)
+    const maxOk = rule.max_value === null || (rule.max_inclusive ? avg <= rule.max_value : avg < rule.max_value)
+    return minOk && maxOk
+  })
+  if (matched) return matched.color
   return avg <= 10 ? 'green' : 'red'
+}
+
+function statusClasses(status: TempStatus) {
+  switch (status) {
+    case 'dark-green':
+      return { bg: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-700', mark: '✓' }
+    case 'green':
+      return { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-600', mark: '✓' }
+    case 'yellow':
+      return { bg: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-700', mark: '!' }
+    case 'red':
+      return { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-500', mark: '✗' }
+    default:
+      return { bg: 'bg-white', border: 'border-gray-200', text: 'text-gray-500', mark: '' }
+  }
 }
 
 function lotAgeKey(spec: string): number {
@@ -142,6 +176,7 @@ export default function TemperatureCheckPartsPage() {
   const [isCurrent,  setIsCurrent]  = useState(true)
   const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
   const [recorderName,  setRecorderName]  = useState('')
+  const [tempRules,     setTempRules]     = useState<TempRule[]>([])
   const liveRoundRef  = useRef<number | null>(null)
   const followLiveRef = useRef(true)
 
@@ -182,6 +217,13 @@ export default function TemperatureCheckPartsPage() {
     } catch { /* ignore */ }
 
     fetchRound()
+    fetch('/api/qc-temp-master?rules=1')
+      .then(res => res.json())
+      .then(json => {
+        const rules = Array.isArray(json.rules) ? json.rules as TempRule[] : []
+        setTempRules(rules.filter(r => r.product_type === 'ชิ้นส่วน'))
+      })
+      .catch(() => { /* keep fallback threshold */ })
     const interval = setInterval(() => { if (followLiveRef.current) fetchRound() }, 60_000)
     return () => clearInterval(interval)
   }, [])
@@ -276,8 +318,9 @@ export default function TemperatureCheckPartsPage() {
   }
 
   const filledRows = rows.filter(r => hasAnyValue(temps[r.spec_code]))
-  const goodCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'green').length
-  const badCount   = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP)) === 'red').length
+  const goodCount  = filledRows.filter(r => ['dark-green', 'green'].includes(tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP), tempRules))).length
+  const warnCount  = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP), tempRules) === 'yellow').length
+  const badCount   = filledRows.filter(r => tempStatus(calcAvg(temps[r.spec_code] ?? EMPTY_TEMP), tempRules) === 'red').length
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -288,7 +331,6 @@ export default function TemperatureCheckPartsPage() {
             <Thermometer size={24} className="text-blue-500" />
             อุณหภูมิชิ้นส่วน (QC)
           </h1>
-          <p className="text-xs text-gray-400 mt-0.5">มาตรฐาน ≤ 10 °C</p>
         </div>
         <div className="flex flex-col items-stretch sm:items-end gap-2 sm:shrink-0">
           {rounds.length > 0 && (
@@ -359,12 +401,23 @@ export default function TemperatureCheckPartsPage() {
           <div className="flex items-center gap-1.5">
             <CheckCircle2 size={18} className={goodCount > 0 ? 'text-green-500' : 'text-gray-300'} />
             <div>
-              <p className="text-xs text-gray-500">เหมาะสม (≤ 10 °C)</p>
+              <p className="text-xs text-gray-500">ผ่านเกณฑ์</p>
               <p className={`text-xl font-bold leading-tight ${goodCount > 0 ? 'text-green-600' : 'text-gray-300'}`}>
                 {goodCount} <span className="text-sm font-normal">ล็อต</span>
               </p>
             </div>
           </div>
+          {warnCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-yellow-600 font-bold text-lg">!</span>
+              <div>
+                <p className="text-xs text-gray-500">เฝ้าระวัง</p>
+                <p className="text-xl font-bold leading-tight text-yellow-700">
+                  {warnCount} <span className="text-sm font-normal">ล็อต</span>
+                </p>
+              </div>
+            </div>
+          )}
           {badCount > 0 && (
             <div className="flex items-center gap-1.5">
               <XCircle size={18} className="text-red-400" />
@@ -386,12 +439,11 @@ export default function TemperatureCheckPartsPage() {
             const t      = temps[r.spec_code] ?? EMPTY_TEMP
             const draftT = draftTemps[r.spec_code] ?? t
             const tAvg   = calcAvg(t)
-            const status = tempStatus(tAvg)
+            const status = tempStatus(tAvg, tempRules)
+            const cls = statusClasses(status)
             const isOpen = !!expanded[r.spec_code]
-            const cardBorder = status === 'green' ? 'border-green-300' : status === 'red' ? 'border-red-300' : 'border-gray-200'
-            const cardBg     = status === 'green' ? 'bg-green-50'  : status === 'red' ? 'bg-red-50'  : 'bg-white'
             return (
-              <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cardBorder} ${cardBg}`}>
+              <div key={r.spec_code} className={`border rounded-lg overflow-hidden ${cls.border} ${cls.bg}`}>
                 <div onClick={() => toggleExpanded(r.spec_code)} role="button" tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleExpanded(r.spec_code) }}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer active:bg-gray-100 transition-colors">
@@ -399,10 +451,9 @@ export default function TemperatureCheckPartsPage() {
                   <span className="ml-auto shrink-0 text-right">
                     {tAvg !== null ? (
                       <>
-                        <span className={`font-bold text-xs ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
+                        <span className={`font-bold text-xs ${cls.text}`}>
                           {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}°C
-                          {status === 'green' && <span className="ml-0.5">✓</span>}
-                          {status === 'red'   && <span className="ml-0.5">✗</span>}
+                          {cls.mark && <span className="ml-0.5">{cls.mark}</span>}
                         </span>
                         {fmtSavedAt(savedAt[r.spec_code]) && (
                           <span className="block text-[10px] text-gray-400 leading-tight">
@@ -470,8 +521,9 @@ export default function TemperatureCheckPartsPage() {
                   const t       = temps[r.spec_code] ?? EMPTY_TEMP
                   const draftT  = draftTemps[r.spec_code] ?? t
                   const tAvg    = calcAvg(t)
-                  const status  = tempStatus(tAvg)
-                  const rowBg   = status === 'green' ? 'bg-green-50' : status === 'red' ? 'bg-red-50' : 'hover:bg-gray-50'
+                  const status  = tempStatus(tAvg, tempRules)
+                  const cls     = statusClasses(status)
+                  const rowBg   = status === 'none' ? 'hover:bg-gray-50' : cls.bg
                   const isOpen  = !!expanded[r.spec_code]
                   return (
                     <Fragment key={r.spec_code}>
@@ -507,10 +559,9 @@ export default function TemperatureCheckPartsPage() {
                         <td className="px-4 py-2.5 text-center">
                           {tAvg !== null ? (
                             <>
-                              <span className={`font-bold text-sm ${status === 'green' ? 'text-green-600' : status === 'red' ? 'text-red-500' : 'text-gray-500'}`}>
+                              <span className={`font-bold text-sm ${cls.text}`}>
                                 {tAvg.toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                {status === 'green' && <span className="ml-1 text-xs font-normal">✓</span>}
-                                {status === 'red'   && <span className="ml-1 text-xs font-normal">✗</span>}
+                                {cls.mark && <span className="ml-1 text-xs font-normal">{cls.mark}</span>}
                               </span>
                               {fmtSavedAt(savedAt[r.spec_code]) && (
                                 <span className="block text-[11px] text-gray-400">
