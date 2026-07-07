@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice, CalendarDays,
+  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice,
   FlaskConical, Layers, Timer, Users, ShoppingCart, Leaf, Store, FileSpreadsheet, CalendarPlus,
   TrendingUp, UserCog, Calculator, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
@@ -35,7 +35,6 @@ export const basicOverview: ManualOverview = {
     },
   ],
   notes: [
-    'เมนู "อัพโหลดกำลังคนประจำวัน" (/basic/workforce) ยังอยู่ระหว่างพัฒนา ใช้ "แผนเข้างานประจำสัปดาห์" แทนได้',
     'ปุ่ม/เมนูที่เห็นเป็นสีจางกดไม่ได้ หมายถึงบัญชีผู้ใช้ของคุณไม่มีสิทธิ์เข้าหน้านั้น ติดต่อ Admin เพื่อขอสิทธิ์เพิ่มที่หน้า "User ระบบผลิต"',
   ],
 }
@@ -120,16 +119,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
           'ดูสรุป/ส่งออกรายงานเป็น Excel แยกตามสาเหตุและตาม Station ได้',
         ],
       },
-      {
-        key: 'workforce-daily-status',
-        label: 'ตรวจสอบสถานะกำลังคน',
-        href: '/basic/workforce-daily-status',
-        icon: CalendarDays,
-        summary: 'ตรวจสอบและปรับสถานะพนักงานประจำวันของแต่ละ Station',
-        body: [
-          'ดึงแผนเข้างานประจำสัปดาห์มาเป็นฐาน เลือกวันที่และ Station ค้นหาพนักงาน แล้วคลิกเปลี่ยนสถานะ (ทำงาน/วันหยุด/ลาป่วย/ลากิจ/ลาพักร้อน) ของแต่ละคนผ่านป๊อปอัพ',
-        ],
-      },
     ],
   },
   {
@@ -175,17 +164,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
   {
     heading: 'อัพโหลดข้อมูล',
     items: [
-      {
-        key: 'workforce',
-        label: 'กำลังคนประจำวัน',
-        href: '/basic/workforce/weekly',
-        icon: Users,
-        summary: 'อัพโหลดแผนเข้างานประจำสัปดาห์ของพนักงานแต่ละ Station',
-        body: [
-          'เลือกไฟล์ Excel ระบบแสดงตัวอย่างข้อมูล (preview) ก่อนยืนยันอัพโหลด และดูประวัติ/ดาวน์โหลดกลับ/ลบไฟล์ที่เคยอัพโหลดได้',
-          '(เมนู "อัพโหลดกำลังคนประจำวัน" /basic/workforce ยังอยู่ระหว่างพัฒนา)',
-        ],
-      },
       {
         key: 'makro',
         label: 'คำสั่งซื้อ Makro',

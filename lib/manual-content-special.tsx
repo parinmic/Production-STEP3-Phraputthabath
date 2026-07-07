@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, BarChart3, PackageOpen, ClipboardList, Scissors, CalendarDays, Layers,
+  LayoutDashboard, BarChart3, PackageOpen, ClipboardList, Scissors, Layers,
   AlertTriangle, Beef, Users, ShoppingCart, Leaf, Store, Slice, FileSpreadsheet, CalendarPlus,
   Package, TrendingUp, UserCog, Calculator, ShieldAlert,
 } from 'lucide-react'
@@ -20,8 +20,8 @@ export const specialOverview: ManualOverview = {
     },
     {
       title: 'กำลังคน',
-      description: 'ตรวจสอบว่าข้อมูลกำลังคนของวันนั้น sync เข้ามาแล้ว และปรับสถานะพนักงาน (ลา/ขาด) ให้ตรงกับความเป็นจริง',
-      hint: 'ตรวจสอบสถานะกำลังคน',
+      description: 'ระบบดึงข้อมูลกำลังคนจากภายนอกและสร้างแผน Phase 1 ให้อัตโนมัติทุกวัน 07:30 ไม่ต้องทำอะไรเพิ่ม ถ้าข้อมูลยังไม่มาหรือแผนไม่ขึ้น ใช้ปุ่ม "สร้างแผนฉุกเฉิน" ที่หน้า Admin — จัดการแผนผลิต แทนได้',
+      hint: 'จัดการแผนผลิต',
     },
     {
       title: 'สร้างคำสั่งผลิต',
@@ -130,17 +130,6 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
         ],
       },
       {
-        key: 'workforce-daily-status',
-        label: 'ตรวจสอบสถานะกำลังคน',
-        href: '/workforce-daily-status',
-        icon: CalendarDays,
-        summary: 'ตรวจสอบและปรับสถานะพนักงานรายวัน (ทำงาน/ลา/ขาด) แยกตาม Station และกะ',
-        body: [
-          'แสดงสถานะพนักงานแยกตาม Station พิเศษทั้ง 7 และตามกะ (กะ 1 / กะ 2) ของวันที่เลือก',
-          'เลือกวันที่และ Station แล้วค้นหาชื่อพนักงาน คลิกเปลี่ยนสถานะ (ทำงาน/วันหยุด/ลาป่วย/ลากิจ/ลาพักร้อน) ผ่านป๊อปอัพได้ — สถานะที่ปรับจะบันทึกทับแผนที่ sync มา',
-        ],
-      },
-      {
         key: 'wip-plan',
         label: 'แผนผลิต WIP',
         href: '/wip-plan',
@@ -179,17 +168,6 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
   {
     heading: 'อัพโหลดข้อมูล',
     items: [
-      {
-        key: 'workforce',
-        label: 'กำลังคนประจำวัน',
-        href: '/workforce',
-        icon: Users,
-        summary: 'ดูข้อมูลสแกนเข้างานจริง และอัพโหลดแผนเข้างานประจำสัปดาห์',
-        body: [
-          '"อัพโหลดกำลังคนประจำวัน" (/workforce) แสดงข้อมูลสแกนเข้างานจริง (มา/มาสาย/ขาด) เทียบกับแผนที่วางไว้ แยกตาม Station/กะ/สถานะ — เลือกวันที่ ดูสรุปจำนวนคน แก้ไขข้อมูลรายบุคคลได้ และกดปุ่มซิงค์จากระบบสแกนนิ้วภายนอกได้',
-          '"แผนเข้างานประจำสัปดาห์" (/workforce/weekly) ใช้อัพโหลดไฟล์รายชื่อ+ตารางวันหยุดของพนักงาน — เลือกไฟล์ ระบบพรีวิว 5 แถวแรกก่อนยืนยัน มีประวัติไฟล์ที่เคยอัพโหลดให้ดาวน์โหลด/ลบย้อนหลังได้',
-        ],
-      },
       {
         key: 'makro',
         label: 'คำสั่งซื้อ Makro',
@@ -313,10 +291,11 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
         label: 'จัดการแผนผลิต',
         href: '/admin/production-plan',
         icon: ShieldAlert,
-        summary: 'แก้ไขแผนผลิตราย SKU โดยตรง',
+        summary: 'แก้ไขแผนผลิตราย SKU โดยตรง และสร้างแผน Phase 1 แบบฉุกเฉิน',
         body: [
           'เลือกวันที่และ Phase แล้วดูตารางยอดผลิตแยกตาม Channel/Station/SKU',
           'แก้ไขยอด (target quantity) ของแต่ละ SKU, เพิ่ม SKU ใหม่เข้าแผน, หรือลบข้อมูลทั้ง Phase ได้',
+          'ปุ่ม "สร้างแผนฉุกเฉิน (Phase 1)" ใช้เมื่อข้อมูลกำลังคนของวันนี้ยังไม่ sync เข้ามา (เช่น ยังไม่ถึง 07:30 หรือต้นทางข้อมูลยังไม่อัพเดท) — กดแล้วระบบจะสร้าง Phase 1 ทันทีโดยใช้ข้อมูลกำลังคนของวันก่อนหน้าล่าสุดแทน และเขียนทับแผน Phase 1 เดิมของวันนั้นทั้งหมด',
         ],
       },
       {
