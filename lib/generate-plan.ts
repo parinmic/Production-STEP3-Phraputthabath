@@ -2594,7 +2594,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     let qty = roundDownToBag(item.sku, item.targetQty)
     if (isPhase3) {
       const planItem = planMap.get(item.sku.replace(/^0+/, ''))
-      if (planItem) {
+      // Only cap against plan100's remaining when plan100 actually carries demand for this
+      // SKU (qty > 0). A plan100 row with weight_total=0 is just a template stub — treating
+      // it as "0 remaining" would zero out unrelated appendRemaining (Makro/LOTUS/WM/FS)
+      // targets for SKUs plan100 has nothing to say about.
+      if (planItem && planItem.qty > 0) {
         const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(item.sku.replace(/^0+/, '')) ?? 0))
         if (qty > remaining) qty = remaining
       }
