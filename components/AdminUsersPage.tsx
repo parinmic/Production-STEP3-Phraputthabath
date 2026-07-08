@@ -64,6 +64,8 @@ const ACCESS_LABEL: Record<'edit' | 'view', { label: string; cls: string }> = {
 
 const EMPTY_ADD = { username: '', password: '', position_id: '' }
 
+const MENU_CHECKLIST: [string, string][] = Object.entries(SPECIAL_MENU_LABELS)
+
 export default function AdminUsersPage() {
   const canEdit = useCanEdit('12')
   const [users, setUsers]         = useState<UserRow[]>([])
@@ -75,6 +77,11 @@ export default function AdminUsersPage() {
   const [addForm, setAddForm]     = useState({ ...EMPTY_ADD })
   const [showAddPw, setShowAddPw] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
+
+  const [newPosMode, setNewPosMode] = useState(false)
+  const [newPosName, setNewPosName] = useState('')
+  const [newPosStep, setNewPosStep] = useState('3')
+  const [newPosMenus, setNewPosMenus] = useState<Set<string>>(new Set())
 
   const [changePwId, setChangePwId] = useState<string | null>(null)
   const [newPw, setNewPw]           = useState('')
@@ -104,6 +111,36 @@ export default function AdminUsersPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+
+    if (newPosMode) {
+      const name = newPosName.trim()
+      if (!name) { flash(false, 'กรอกชื่อตำแหน่งใหม่'); return }
+      const dup = positions.some(p => p.name.trim().toLowerCase() === name.toLowerCase())
+      if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว — เลือกจากรายการ "ตำแหน่งเดิม" แทน`); return }
+
+      setAddLoading(true)
+      const menuKeys = newPosMenus.has('all') ? ['all'] : Array.from(newPosMenus)
+      const rows: PreviewRow[] = [
+        ...menuKeys.map(key => ({ position: name, username: '', password: '', step: newPosStep, menu: key, access: 'edit' as const })),
+        { position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: '', access: 'edit' as const },
+      ]
+      const res  = await fetch('/api/admin/users/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        flash(true, `สร้างตำแหน่ง "${name}" และเพิ่ม User สำเร็จ`)
+        closeAddForm()
+        load()
+      } else {
+        flash(false, data.message ?? 'เกิดข้อผิดพลาด')
+      }
+      setAddLoading(false)
+      return
+    }
+
     setAddLoading(true)
     const res  = await fetch('/api/admin/users', {
       method: 'POST',
@@ -113,13 +150,34 @@ export default function AdminUsersPage() {
     const data = await res.json()
     if (data.success) {
       flash(true, 'เพิ่ม User สำเร็จ')
-      setShowAdd(false)
-      setAddForm({ ...EMPTY_ADD })
+      closeAddForm()
       load()
     } else {
       flash(false, data.message ?? 'เกิดข้อผิดพลาด')
     }
     setAddLoading(false)
+  }
+
+  function closeAddForm() {
+    setShowAdd(false)
+    setAddForm({ ...EMPTY_ADD })
+    setNewPosMode(false)
+    setNewPosName('')
+    setNewPosStep('3')
+    setNewPosMenus(new Set())
+  }
+
+  function toggleNewPosMenu(key: string) {
+    setNewPosMenus(prev => {
+      const next = new Set(prev)
+      if (key === 'all') {
+        return next.has('all') ? new Set() : new Set(['all'])
+      }
+      next.delete('all')
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   async function handleToggleActive(u: UserRow) {
@@ -211,7 +269,8 @@ export default function AdminUsersPage() {
     })
     const data = await res.json()
     if (data.success) {
-      flash(true, `อัพโหลดสำเร็จ — สร้างใหม่ ${data.created} รายการ, อัปเดต ${data.updated} รายการ`)
+      const deletedTxt = data.deleted > 0 ? `, ลบ ${data.deleted} รายการ` : ''
+      flash(true, `อัพโหลดสำเร็จ — สร้างใหม่ ${data.created} รายการ, อัปเดต ${data.updated} รายการ${deletedTxt}`)
       setPreview(null)
       load()
     } else {
@@ -220,37 +279,35 @@ export default function AdminUsersPage() {
     setUploadLoading(false)
   }
 
+  // username ที่มีอยู่แล้วในระบบ แต่ไม่ปรากฏในไฟล์ที่กำลังจะอัพโหลดเลย — จะถูกลบทิ้งจริง
+  // (ไฟล์ที่อัพโหลดคือ source of truth ทั้งหมด ดู fn_admin_bulk_upload_users)
+  function usersToBeDeleted(rows: PreviewRow[]): string[] {
+    const inFile = new Set(rows.map(r => r.username).filter(Boolean))
+    if (inFile.size === 0) return []
+    return users.map(u => u.username).filter(name => !inFile.has(name))
+  }
+
   // Export ตำแหน่ง/เมนู/User ปัจจุบันเป็น Excel รูปแบบเดียวกับที่ "อัพโหลด Excel" อ่านได้
   // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — ช่อง Password เว้นว่างเสมอ
   // เพราะระบบเก็บเฉพาะ hash ไม่มีรหัสผ่านจริงให้ export; อัพโหลดไฟล์นี้กลับเข้าไปโดยไม่กรอก
   // Password จะไม่ไปเขียนทับรหัสผ่านเดิมของ user ที่มีอยู่แล้ว (ดู fn_admin_bulk_upload_users)
   function handleExport() {
-    if (users.length === 0 && positions.length === 0) {
+    if (users.length === 0) {
       flash(false, 'ยังไม่มีข้อมูลให้ดาวน์โหลด — รอโหลดข้อมูลให้เสร็จก่อน')
       return
     }
-    const posInfo = new Map<string, { name: string; step: string; menus: MenuGrant[] }>()
 
-    for (const u of users) {
-      if (!posInfo.has(u.position_id)) {
-        posInfo.set(u.position_id, { name: u.position_name, step: u.step, menus: u.menus })
-      }
-    }
-    // ตำแหน่งที่ยังไม่มี user เลย — ใช้รายการเมนูจาก positions (ไม่มีแยก edit/view ให้ถือเป็น edit)
-    for (const p of positions) {
-      if (!posInfo.has(p.id)) {
-        posInfo.set(p.id, { name: p.name, step: p.step, menus: p.menus.map(key => ({ key, access: 'edit' as const })) })
-      }
-    }
-
+    // 1 แถว = 1 (ตำแหน่ง, user, เมนู) — ตรงกับรูปแบบไฟล์ "User ระบบผลิต.xlsx" ต้นฉบับ
+    // (username ซ้ำทุกแถวของ user คนนั้น ไม่ได้สรุปแยกเป็นบล็อกตำแหน่ง)
     const mainRows: (string | number)[][] = [['ตำแหน่ง', 'User', 'Password', 'Step', 'Edit', 'View']]
-    for (const { name, step, menus } of Array.from(posInfo.values())) {
-      for (const m of menus) {
-        mainRows.push([name, '', '', step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
-      }
-    }
     for (const u of users) {
-      mainRows.push([u.position_name, u.username, '', u.step, '', ''])
+      if (u.menus.length === 0) {
+        mainRows.push([u.position_name, u.username, '', u.step, '', ''])
+        continue
+      }
+      for (const m of u.menus) {
+        mainRows.push([u.position_name, u.username, '', u.step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
+      }
     }
 
     const detailRows: (string | number)[][] = [['หมายเลข', 'เมนู'], ...Object.entries(SPECIAL_MENU_LABELS)]
@@ -294,6 +351,10 @@ export default function AdminUsersPage() {
             onClick={() => {
               setShowAdd(true)
               setAddForm({ ...EMPTY_ADD, position_id: positions[0]?.id ?? '' })
+              setNewPosMode(false)
+              setNewPosName('')
+              setNewPosStep('3')
+              setNewPosMenus(new Set())
             }}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
@@ -333,6 +394,15 @@ export default function AdminUsersPage() {
               </button>
             </div>
           </div>
+          {(() => {
+            const toDelete = usersToBeDeleted(preview)
+            return toDelete.length > 0 && (
+              <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm text-red-700">
+                <p className="font-medium">⚠ ไฟล์นี้ไม่มี {toDelete.length} user ต่อไปนี้ — จะถูกลบออกจากระบบทันทีที่ยืนยันอัพโหลด:</p>
+                <p className="mt-1 font-mono text-xs">{toDelete.join(', ')}</p>
+              </div>
+            )
+          })()}
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
@@ -369,21 +439,45 @@ export default function AdminUsersPage() {
       {/* Add form */}
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
-          <p className="font-semibold text-gray-800">เพิ่ม User ใหม่</p>
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-gray-800">เพิ่ม User ใหม่</p>
+            <div className="flex gap-1 bg-gray-200/70 rounded-lg p-1 text-xs font-medium">
+              <button type="button" onClick={() => setNewPosMode(false)}
+                className={`px-3 py-1.5 rounded-md transition-colors ${!newPosMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                ตำแหน่งเดิม
+              </button>
+              <button type="button" onClick={() => setNewPosMode(true)}
+                className={`px-3 py-1.5 rounded-md transition-colors ${newPosMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                + สร้างตำแหน่งใหม่
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">ตำแหน่ง</label>
-              <select
-                value={addForm.position_id}
-                onChange={e => setAddForm(f => ({ ...f, position_id: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                required
-              >
-                <option value="">-- เลือกตำแหน่ง --</option>
-                {positions.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              {newPosMode ? (
+                <input
+                  type="text"
+                  value={newPosName}
+                  onChange={e => setNewPosName(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="ชื่อตำแหน่งใหม่"
+                  required
+                />
+              ) : (
+                <select
+                  value={addForm.position_id}
+                  onChange={e => setAddForm(f => ({ ...f, position_id: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  required
+                >
+                  <option value="">-- เลือกตำแหน่ง --</option>
+                  {positions.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">Username</label>
@@ -414,7 +508,44 @@ export default function AdminUsersPage() {
               </div>
             </div>
           </div>
-          {selectedPos && (
+
+          {newPosMode ? (
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Step</label>
+                <select
+                  value={newPosStep}
+                  onChange={e => setNewPosStep(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="3">พิเศษ (STEP 3)</option>
+                  <option value="2">เบสิค (STEP 2)</option>
+                  <option value="all">ทั้งคู่</option>
+                </select>
+              </div>
+              <label className="text-xs font-medium text-gray-600 block">เมนูที่เข้าถึงได้</label>
+              <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-y-auto">
+                <label className="flex items-center gap-2 text-sm py-1 font-medium text-blue-700 cursor-pointer">
+                  <input type="checkbox" checked={newPosMenus.has('all')} onChange={() => toggleNewPosMenu('all')} />
+                  ทุกเมนู (all)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                  {MENU_CHECKLIST.map(([key, label]) => (
+                    <label key={key}
+                      className={`flex items-center gap-2 text-sm py-1 cursor-pointer ${newPosMenus.has('all') ? 'opacity-40' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={newPosMenus.has(key)}
+                        disabled={newPosMenus.has('all')}
+                        onChange={() => toggleNewPosMenu(key)}
+                      />
+                      <span className="text-gray-700">[{key}] {label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : selectedPos && (
             <p className="text-xs text-gray-500">
               เมนู: <span className="text-gray-700 font-medium">
                 {selectedPos.menus.map(menuLabel).join(', ') || '—'}
@@ -423,13 +554,14 @@ export default function AdminUsersPage() {
               Step: <span className="text-gray-700 font-medium">{STEP_LABELS[selectedPos.step]?.label ?? selectedPos.step}</span>
             </p>
           )}
+
           <div className="flex gap-2">
             <button type="submit" disabled={addLoading}
               className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
               <Check size={15} />
               {addLoading ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
-            <button type="button" onClick={() => setShowAdd(false)}
+            <button type="button" onClick={closeAddForm}
               className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
               <X size={15} />
               ยกเลิก

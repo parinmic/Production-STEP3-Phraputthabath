@@ -1,7 +1,11 @@
 'use client'
-import { useMemo, useState } from 'react'
-import { Search, BookOpen, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Search, BookOpen, ChevronRight, Upload, Download, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+
+const SLIDE_BUCKET = 'manual-slides'
+const SLIDE_FOLDER = 'slide'
 
 export interface ManualItem {
   key: string
@@ -42,6 +46,49 @@ export default function ManualLayout({
 }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string>('__overview__')
+  const [slideFile, setSlideFile] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.storage.from(SLIDE_BUCKET).list(SLIDE_FOLDER).then(({ data }) => {
+      setSlideFile(data?.[0]?.name ?? null)
+    })
+  }, [])
+
+  async function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert('อัปโหลดได้เฉพาะไฟล์ PDF เท่านั้น')
+      return
+    }
+    setUploading(true)
+    try {
+      const { data: existing } = await supabase.storage.from(SLIDE_BUCKET).list(SLIDE_FOLDER)
+      if (existing?.length) {
+        await supabase.storage.from(SLIDE_BUCKET).remove(existing.map(f => `${SLIDE_FOLDER}/${f.name}`))
+      }
+      const { error } = await supabase.storage.from(SLIDE_BUCKET).upload(`${SLIDE_FOLDER}/${file.name}`, file, { upsert: true })
+      if (error) throw error
+      setSlideFile(file.name)
+      alert('อัปโหลด PDF เรียบร้อยแล้ว')
+    } catch (err) {
+      alert('อัปโหลดไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleDownload() {
+    if (!slideFile) return
+    const { data } = supabase.storage.from(SLIDE_BUCKET).getPublicUrl(`${SLIDE_FOLDER}/${slideFile}`)
+    const a = document.createElement('a')
+    a.href = data.publicUrl
+    a.download = slideFile
+    a.click()
+  }
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -55,9 +102,32 @@ export default function ManualLayout({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleUploadChange} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            อัปโหลด PDF คู่มือ
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={!slideFile}
+            title={slideFile ?? 'ยังไม่มี PDF'}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} />
+            ดาวน์โหลด PDF คู่มือ
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
