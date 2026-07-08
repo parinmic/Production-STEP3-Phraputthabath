@@ -55,10 +55,8 @@ function aggregateBysku(rows: DashRow[]): DashRow[] {
       skuPrimStation.set(r.sku, r.station)
   }
   return Array.from(map.values()).sort((a, b) => {
-    const rawA = STATION_ORDER.indexOf(skuPrimStation.get(a.sku) ?? '')
-    const rawB = STATION_ORDER.indexOf(skuPrimStation.get(b.sku) ?? '')
-    const stA = rawA === -1 ? STATION_ORDER.length : rawA
-    const stB = rawB === -1 ? STATION_ORDER.length : rawB
+    const stA = STATION_ORDER.indexOf(skuPrimStation.get(a.sku) ?? '')
+    const stB = STATION_ORDER.indexOf(skuPrimStation.get(b.sku) ?? '')
     if (stA !== stB) return stA - stB
     return a.sku_name.localeCompare(b.sku_name, 'th')
   })
@@ -112,7 +110,7 @@ export default function ExecutiveDashboardPage() {
     ]
     const dataRows = displayed.map(r => [
       ...(station === 'ทั้งหมด'
-        ? [rows.filter(rr => rr.sku === r.sku && rr.station).map(rr => rr.station).join(', ') || 'ยังไม่มีแผนผลิต']
+        ? [rows.filter(rr => rr.sku === r.sku).map(rr => rr.station).join(', ')]
         : []),
       r.sku_name,
       r.order_qty || '',
@@ -261,14 +259,11 @@ export default function ExecutiveDashboardPage() {
                       <td className="px-4 py-2.5">
                         {/* Show all station badges for this SKU when "ทั้งหมด" */}
                         <div className="flex flex-wrap gap-1">
-                          {rows.filter(rr => rr.sku === r.sku && rr.station).length > 0
-                            ? rows.filter(rr => rr.sku === r.sku && rr.station).map(rr => (
-                                <span key={rr.station} className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[rr.station] ?? 'bg-gray-100 text-gray-600'}`}>
-                                  {rr.station}
-                                </span>
-                              ))
-                            : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">ยังไม่มีแผนผลิต</span>
-                          }
+                          {rows.filter(rr => rr.sku === r.sku).map(rr => (
+                            <span key={rr.station} className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATION_COLORS[rr.station] ?? 'bg-gray-100 text-gray-600'}`}>
+                              {rr.station}
+                            </span>
+                          ))}
                         </div>
                       </td>
                     )}
@@ -301,9 +296,7 @@ export default function ExecutiveDashboardPage() {
                           ? <span className="text-red-600 text-xs font-medium">ผลิต &gt; order</span>
                           : r.total_prod > r.order_qty
                             ? <span className="text-amber-600 text-xs font-medium">แผน &gt; order</span>
-                            : r.total_prod === 0
-                              ? <span className="text-orange-600 text-xs font-medium">ยังไม่มีแผนผลิต</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                            : <span className="text-gray-300 text-xs">—</span>}
                     </td>
                   </tr>
                 ))}

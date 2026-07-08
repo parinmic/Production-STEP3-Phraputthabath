@@ -220,9 +220,7 @@ export async function GET(req: NextRequest) {
   // ── Build result rows (sorted by station then sku_name)
   const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
-  const plannedSkuSet = new Set(Array.from(prodMap.keys()).map(k => k.slice(k.indexOf('|||') + 3)))
-
-  const plannedRows = Array.from(prodMap.entries()).map(([key, prod]) => {
+  const rows = Array.from(prodMap.entries()).map(([key, prod]) => {
     const sep = key.indexOf('|||')
     const station = key.slice(0, sep)
     const normSku = key.slice(sep + 3)
@@ -245,36 +243,9 @@ export async function GET(req: NextRequest) {
       yield_bags: yieldBags,
       yield_kg: wpb && wpb > 0 ? round1(yieldBags * wpb) : null,
     }
-  })
-
-  // SKU ที่มี order แต่ไม่มีแผนผลิตในสถานีไหนเลย — โชว์เป็นแถว (station ว่าง) แทนที่จะหายไปเงียบๆ
-  const unplannedRows = Array.from(orderMap.entries())
-    .filter(([normSku, o]) => o.qty > 0 && !plannedSkuSet.has(normSku))
-    .map(([normSku, o]) => {
-      const yieldBags = yieldMap.get(normSku) ?? 0
-      const wpb = wpbMap.get(normSku)
-      return {
-        station: '',
-        sku: normSku,
-        sku_name: o.sku_name || normSku,
-        order_qty: round1(o.qty),
-        baseline:  round1(baselineMap.get(normSku) ?? 0),
-        baseline_daily: baselineDailyMap.get(normSku) ?? sortedHistDates.map(d => ({ date: d, qty: 0 })),
-        ph1: 0,
-        ph2: 0,
-        ph3: 0,
-        total_prod: 0,
-        yield_bags: yieldBags,
-        yield_kg: wpb && wpb > 0 ? round1(yieldBags * wpb) : null,
-      }
-    })
-
-  const rows = [...plannedRows, ...unplannedRows].sort((a, b) => {
-    const ia = STATION_ORDER.indexOf(a.station)
-    const ib = STATION_ORDER.indexOf(b.station)
-    const sa = ia === -1 ? STATION_ORDER.length : ia
-    const sb = ib === -1 ? STATION_ORDER.length : ib
-    return sa !== sb ? sa - sb : a.sku_name.localeCompare(b.sku_name, 'th')
+  }).sort((a, b) => {
+    const si = STATION_ORDER.indexOf(a.station) - STATION_ORDER.indexOf(b.station)
+    return si !== 0 ? si : a.sku_name.localeCompare(b.sku_name, 'th')
   })
 
   return NextResponse.json({ rows })
