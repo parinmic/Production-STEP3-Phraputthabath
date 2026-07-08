@@ -9,6 +9,15 @@ function shiftDate(iso: string | null, days: number): string | null {
   return d.toISOString().split('T')[0]
 }
 
+function pickDataDate(dates: (string | null)[]): string | null {
+  const counts = new Map<string, number>()
+  for (const d of dates) if (d) counts.set(d, (counts.get(d) ?? 0) + 1)
+  let best: string | null = null
+  let bestCount = 0
+  for (const [d, c] of counts) if (c > bestCount) { best = d; bestCount = c }
+  return best
+}
+
 function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
@@ -35,7 +44,7 @@ export async function GET(req: NextRequest) {
   const tableName = round ? `lotus_orders_${round}` : 'lotus_orders'
   const { data } = await supabase
     .from('upload_log')
-    .select('id, source_file, record_count, uploaded_at')
+    .select('id, source_file, record_count, uploaded_at, data_date')
     .eq('table_name', tableName)
     .order('uploaded_at', { ascending: false })
   return NextResponse.json({ uploads: data ?? [] })
@@ -135,10 +144,12 @@ export async function POST(req: NextRequest) {
       .eq('table_name', tableName)
       .eq('source_file', filename ?? 'unknown')
 
+    const dataDate = pickDataDate(records.map((r: Record<string, unknown>) => r.delivery_date as string | null))
+
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ id: uploadLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
+      .insert({ id: uploadLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length, data_date: dataDate })
     if (logErr) throw logErr
 
     const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
@@ -166,7 +177,7 @@ export async function POST(req: NextRequest) {
       const devLogId = crypto.randomUUID()
       const { error: devLogErr } = await dev
         .from('upload_log')
-        .insert({ id: devLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length })
+        .insert({ id: devLogId, table_name: tableName, source_file: filename ?? 'unknown', record_count: records.length, data_date: dataDate })
       if (devLogErr) throw devLogErr
       await batchInsert(dev, 'lotus_orders', records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: devLogId })))
     })

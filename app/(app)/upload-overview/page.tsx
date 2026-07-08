@@ -14,6 +14,7 @@ interface UploadRecord {
   source_file: string
   record_count: number
   uploaded_at: string
+  data_date: string | null
 }
 
 interface PendingUpload {
@@ -195,8 +196,11 @@ export default function UploadOverviewPage() {
       const sep = cfg.historyEndpoint.includes('?') ? '&' : '?'
       const res = await fetch(`${cfg.historyEndpoint}${sep}id=${encodeURIComponent(record.id)}`, { method: 'DELETE' })
       const data = await res.json()
-      if (data.success) await fetchHistory(id)
-      else alert(data.message ?? 'ลบไม่สำเร็จ')
+      if (data.success) {
+        setHistory(prev => ({ ...prev, [id]: (prev[id] ?? []).filter(r => r.id !== record.id) }))
+      } else {
+        alert(data.message ?? 'ลบไม่สำเร็จ')
+      }
     } catch { alert('เกิดข้อผิดพลาด') }
   }
 
@@ -347,7 +351,9 @@ export default function UploadOverviewPage() {
                   const active = ACTIVE[ch.key][slot.key]
                   const id = cellId(ch.key, slot.key)
                   const cfg = CELL_CONFIGS[id]
-                  const latest = history[id]?.[0]
+                  // กล่องนับว่า "มีไฟล์แล้ว" เฉพาะไฟล์ที่ข้อมูลข้างในเป็นของ phaseDate เท่านั้น
+                  // ไม่ใช่ไฟล์ล่าสุดที่เคยอัพโหลด — ของเก่าของวันอื่นไม่ทำให้กล่องติดค้างเป็นสีเขียว
+                  const latest = history[id]?.find(r => r.data_date === phaseDate)
                   const canEditCell = cfg ? editableByKey[cfg.menuKey] : false
                   const boxHeight = isMergedPlan100 ? 'h-[118px]' : 'h-14'
 
@@ -451,10 +457,16 @@ export default function UploadOverviewPage() {
                     <p className="text-xs font-mono text-gray-700 truncate">{item.source_file}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {CHANNELS.find(c => c.key === item.channel)?.label} · {SLOTS.find(s => s.key === item.slot)?.label}
+                      {item.data_date && (
+                        <>
+                          <span className="mx-1.5">·</span>
+                          ข้อมูลวันที่ {new Date(item.data_date).toLocaleDateString('th-TH', { dateStyle: 'short' })}
+                        </>
+                      )}
                       <span className="mx-1.5">·</span>
                       {item.record_count.toLocaleString()} รายการ
                       <span className="mx-1.5">·</span>
-                      {new Date(item.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                      อัพโหลดเมื่อ {new Date(item.uploaded_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>
                   </div>
                   {canEditItem && (

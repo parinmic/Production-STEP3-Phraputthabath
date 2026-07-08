@@ -5,7 +5,7 @@ import { syncUploadToDev } from '@/lib/sync-to-dev'
 export async function GET() {
   const { data } = await supabase
     .from('upload_log')
-    .select('id, source_file, record_count, uploaded_at')
+    .select('id, source_file, record_count, uploaded_at, data_date')
     .eq('table_name', 'production_plan_100')
     .order('uploaded_at', { ascending: false })
     .limit(20)
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ id: uploadLogId, table_name: 'production_plan_100', source_file: filename ?? 'unknown', record_count: records.length })
+      .insert({ id: uploadLogId, table_name: 'production_plan_100', source_file: filename ?? 'unknown', record_count: records.length, data_date: planDate })
     if (logErr) throw logErr
 
     const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       throw error
     }
 
-    await syncUploadToDev('production_plan_100', filename ?? 'unknown', records)
+    await syncUploadToDev('production_plan_100', filename ?? 'unknown', records, false, planDate)
 
     // Fire-and-forget Phase 3 auto-gen (runs in its own serverless function to avoid timeout)
     if (planDate) {

@@ -9,6 +9,15 @@ function shiftDate(iso: string | null, days: number): string | null {
   return d.toISOString().split('T')[0]
 }
 
+function pickDataDate(dates: (string | null)[]): string | null {
+  const counts = new Map<string, number>()
+  for (const d of dates) if (d) counts.set(d, (counts.get(d) ?? 0) + 1)
+  let best: string | null = null
+  let bestCount = 0
+  for (const [d, c] of counts) if (c > bestCount) { best = d; bestCount = c }
+  return best
+}
+
 function toISODate(val: unknown): string | null {
   if (!val) return null
   const s = String(val).trim()
@@ -33,7 +42,7 @@ function toISODate(val: unknown): string | null {
 export async function GET() {
   const { data } = await supabase
     .from('upload_log')
-    .select('id, source_file, record_count, uploaded_at')
+    .select('id, source_file, record_count, uploaded_at, data_date')
     .eq('table_name', 'fs_orders')
     .order('uploaded_at', { ascending: false })
     .limit(20)
@@ -118,10 +127,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'ไม่พบรายการ FS (rBst_code=924 หรือ rOper_code=4903) ที่มี SKU และปริมาณ > 0' }, { status: 400 })
     }
 
+    const dataDate = pickDataDate(records.map((r: Record<string, unknown>) => r.delivery_date as string | null))
+
     const uploadLogId = crypto.randomUUID()
     const { error: logErr } = await supabase
       .from('upload_log')
-      .insert({ id: uploadLogId, table_name: 'fs_orders', source_file: filename ?? 'unknown', record_count: records.length })
+      .insert({ id: uploadLogId, table_name: 'fs_orders', source_file: filename ?? 'unknown', record_count: records.length, data_date: dataDate })
     if (logErr) throw logErr
 
     const recordsWithId = records.map((r: Record<string, unknown>) => ({ ...r, upload_log_id: uploadLogId }))
@@ -131,7 +142,7 @@ export async function POST(req: NextRequest) {
       throw error
     }
 
-    await syncUploadToDev('fs_orders', filename ?? 'unknown', records)
+    await syncUploadToDev('fs_orders', filename ?? 'unknown', records, false, dataDate)
 
     return NextResponse.json({ success: true, message: `บันทึกสำเร็จ ${records.length} รายการ` })
   } catch (e: unknown) {

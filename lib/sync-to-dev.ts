@@ -27,6 +27,7 @@ export async function syncUploadToDev(
   sourceFile: string,
   records: Record<string, unknown>[],
   replaceExisting = false,
+  dataDate: string | null = null,
 ): Promise<void> {
   await syncToDevAwaited(async (dev) => {
     // Snapshot tables (e.g. stock_*) replace rather than accumulate — clear
@@ -43,6 +44,7 @@ export async function syncUploadToDev(
       table_name: tableName,
       source_file: sourceFile,
       record_count: records.length,
+      data_date: dataDate,
     })
     if (logErr) throw logErr
     await batchInsert(dev, tableName, records.map(r => ({ ...r, upload_log_id: uploadLogId })))
