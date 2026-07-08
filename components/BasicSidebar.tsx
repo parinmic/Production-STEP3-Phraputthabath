@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, Layers, Menu, Scale, TrendingUp, CalendarPlus, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
@@ -11,13 +11,6 @@ const BASIC_STATIONS = [
   { label: 'Station สะโพกเบสิค',  slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
   { label: 'Station ไหล่เบสิค',   slug: 'lai-basic',      dot: 'bg-green-500' },
   { label: 'Station สามชั้นเบสิค', slug: 'sam-chan-basic', dot: 'bg-blue-500' },
-]
-
-const MANPOWER_TYPES = [
-  { label: 'สะโพกเบสิค',   slug: 'sa-phok-basic',  dot: 'bg-orange-500' },
-  { label: 'ไหล่เบสิค',    slug: 'lai-basic',      dot: 'bg-green-500' },
-  { label: 'สามชั้นเบสิค', slug: 'sam-chan-basic',  dot: 'bg-blue-500' },
-  { label: 'เปิดหมู',      slug: 'perd-moo',       dot: 'bg-slate-500' },
 ]
 
 const CALCULATION_TYPES = [
@@ -50,7 +43,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
   const [open, setOpen]                       = useState(p.startsWith('/basic/production'))
   const [openShortage, setOpenShortage]       = useState(p.startsWith('/basic/shortage'))
-  const [openManpower, setOpenManpower]       = useState(p.startsWith('/basic/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/basic/master-logic/calculation'))
   const [openYieldPlan,   setOpenYieldPlan]   = useState(p.startsWith('/basic/yield-plan'))
   const [openQc,          setOpenQc]          = useState(p.startsWith('/basic/temperature-check'))
@@ -263,13 +255,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
             <span className={labelCls}>Breakline</span>
           </NavLink>
 
-          <NavLink href="/basic/workforce-daily-status" allowed={canAll}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/workforce-daily-status', canAll)}`}
-            title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
-            <CalendarDays size={18} className="shrink-0" />
-            <span className={labelCls}>ตรวจสอบสถานะกำลังคน</span>
-          </NavLink>
-
           <p className={sectionCls}>Additional</p>
           <div className={dividerCls} />
 
@@ -356,39 +341,6 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>Master Logic การสร้างแผนผลิต</p>
           <div className={dividerCls} />
-
-          {/* กำลังคน */}
-          <button
-            onClick={() => has('10.1') && setOpenManpower(!openManpower)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/basic/master-logic/manpower'), has('10.1'))}`}
-            title="กำลังคน"
-          >
-            <UserCog size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>กำลังคน</span>
-            {has('10.1') && !collapsed && (openManpower ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openManpower && has('10.1') && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {MANPOWER_TYPES.map((t) => (
-                <Link key={t.slug} href={`/basic/master-logic/manpower/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/basic/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {openManpower && has('10.1') && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {MANPOWER_TYPES.map((t) => (
-                <Link key={t.slug} href={`/basic/master-logic/manpower/${t.slug}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/basic/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={t.label}>
-                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                </Link>
-              ))}
-            </div>
-          )}
 
           {/* Master Calculation */}
           <button

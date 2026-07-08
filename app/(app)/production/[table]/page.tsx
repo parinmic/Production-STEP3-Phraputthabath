@@ -1594,7 +1594,7 @@ export default function TablePage() {
     fetch('/api/master/picking-unit')
       .then(r => r.json())
       .then(data => setBagMap(data.bagMap ?? {}))
-    fetch('/api/master/job-assign')
+    fetch('/api/master/job-assign?source=skills')
       .then(r => r.json())
       .then(data => {
         const map: Record<string, string> = {}

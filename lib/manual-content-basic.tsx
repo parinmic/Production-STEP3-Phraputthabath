@@ -1,7 +1,7 @@
 import {
-  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice, CalendarDays,
-  FlaskConical, Layers, Timer, Users, ShoppingCart, Leaf, Store, FileSpreadsheet, CalendarPlus,
-  TrendingUp, UserCog, Calculator, ShieldAlert, ClipboardCheck,
+  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice,
+  FlaskConical, Layers, Timer, Users, CalendarPlus,
+  TrendingUp, Calculator, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
 import type { ManualGroup, ManualOverview } from '@/components/ManualLayout'
 
@@ -10,7 +10,7 @@ export const basicOverview: ManualOverview = {
   steps: [
     {
       title: 'Master Logic',
-      description: 'อัพโหลดกำลังคนแต่ละสถานี, Master Calculation, BOM, Mas Yield และ Mas Temp QC ให้ครบก่อน',
+      description: 'อัพโหลด Master Calculation, BOM, Mas Yield และ Mas Temp QC ให้ครบก่อน',
       hint: 'Master Logic การสร้างแผนผลิต',
     },
     {
@@ -42,7 +42,7 @@ export const basicOverview: ManualOverview = {
 // Master Logic upload pages get an extra caption clarifying the table shown
 // is example data (captured by loading a sample file into the preview —
 // nothing was ever submitted/saved), not real employee/production data.
-const MASTER_LOGIC_KEYS = ['manpower', 'calculation']
+const MASTER_LOGIC_KEYS = ['calculation']
 
 const RAW_BASIC_GROUPS: ManualGroup[] = [
   {
@@ -99,7 +99,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         icon: ClipboardList,
         summary: 'ตาราง Gantt คำสั่งผลิต (งาน/พนักงาน/SKU/เป้าหมาย) ของแต่ละ Station',
         body: [
-          'เลือกวันที่และ Phase แล้วกดปุ่ม "สร้าง Phase X" เพื่อให้ระบบคำนวณและจัดสรรงานผลิตอัตโนมัติจากยอดสั่งซื้อ/แผน 100% และกำลังคนที่มี',
+          'เลือกวันที่และ Phase แล้วกดปุ่ม "สร้าง Phase X" เพื่อให้ระบบคำนวณและจัดสรรงานผลิตอัตโนมัติจากยอดสั่งซื้อ/แผน 100%',
           'ดูผลเป็นผังเวลาการทำงานของพนักงานแต่ละคน — ใช้หน้ารูปแบบเดียวกันทั้ง 3 Station',
         ],
         bullets: ['Station สะโพกเบสิค', 'Station ไหล่เบสิค', 'Station สามชั้นเบสิค'],
@@ -113,17 +113,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         body: [
           'ระบุ Station ช่วงเวลาที่หยุด และสาเหตุ (เลือกจากรายการหรือพิมพ์เอง) เพื่อบันทึกแต่ละครั้งที่เกิดปัญหา',
           'ดูสรุป/ส่งออกรายงานเป็น Excel แยกตามสาเหตุและตาม Station ได้',
-        ],
-      },
-      {
-        key: 'workforce-daily-status',
-        label: 'ตรวจสอบสถานะกำลังคน',
-        href: '/basic/workforce-daily-status',
-        icon: CalendarDays,
-        summary: 'ดูรายชื่อ/สถานีของพนักงานที่ทำงานวันนั้น (ดูอย่างเดียว)',
-        body: [
-          'ดึงข้อมูลจากตารางกำลังคนกลาง (Sync อัตโนมัติ) — เลือกวันที่ ดูรายชื่อพนักงานแยกตาม Station/กะ ค้นหาชื่อได้',
-          'หน้านี้ดูอย่างเดียว ไม่มีการแก้ไขสถานะพนักงานแล้ว — ปัจจุบัน Sync อัตโนมัติยังครอบคลุมเฉพาะฝั่งพิเศษ หน้านี้ฝั่งเบสิคจึงอาจยังไม่มีข้อมูลแสดง',
         ],
       },
     ],
@@ -168,36 +157,21 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
     heading: 'อัพโหลดข้อมูล',
     items: [
       {
-        key: 'makro',
-        label: 'คำสั่งซื้อ Makro',
-        href: '/basic/makro',
-        icon: ShoppingCart,
-        summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง Makro แบ่ง 2 รอบ',
-        body: ['รอบ 8:00 น. (คำสั่งซื้อรอบเช้า) และรอบ 14:00 น. (คำสั่งซื้อรอบบ่าย หรือไฟล์แผนผลิต Makro 100%)'],
-      },
-      {
-        key: 'lotus',
-        label: 'คำสั่งซื้อ LOTUS',
-        href: '/basic/lotus',
-        icon: Leaf,
-        summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง LOTUS แบ่ง 2 รอบ',
-        body: ['รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1)'],
-      },
-      {
-        key: 'wet-market',
-        label: 'คำสั่งซื้อ Wet Market',
-        href: '/basic/wet-market',
-        icon: Store,
-        summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง Wet Market โครงสร้างเดียวกับ LOTUS',
-        body: ['รอบ 14:00 น. (รอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับ Phase 1)'],
-      },
-      {
-        key: 'plan-100',
-        label: 'แผนผลิต 100%',
-        href: '/basic/plan-100',
-        icon: FileSpreadsheet,
-        summary: 'อัพโหลดไฟล์ Template แผนผลิต 100% ใช้เป็นฐานคำนวณ Phase 3',
-        body: ['ระบบอ่านชีท "แผน 100%" — Phase 3 คำนวณจาก แผน 100% ลบ Phase 1 ลบ Phase 2'],
+        key: 'upload-overview',
+        label: 'อัพโหลดคำสั่งซื้อ',
+        href: '/basic/upload-overview',
+        icon: Layers,
+        summary: 'รวมหน้าอัพโหลดคำสั่งซื้อ Makro/LOTUS/Wet Market และแผนผลิต 100% ไว้หน้าเดียว เป็นตารางช่องทาง × รอบเวลา',
+        body: [
+          'แต่ละแถวคือช่องทาง (Makro, LOTUS, Wet Market) แต่ละคอลัมน์คือรอบเวลา (8:00, 14:00, 16:00, แผน 100%) — ช่องที่ไม่ต้องใช้จะทึบเทาไว้ คลิกช่องว่างเพื่อเลือกไฟล์ ดูพรีวิว แล้วกดยืนยันอัพโหลด',
+          'ปุ่ม "สร้าง Phase 1/2/3" อยู่เหนือคอลัมน์รอบที่ตรงกัน กดเพื่อสั่งสร้างแผนผลิตจากไฟล์ที่อัพโหลดของวันที่เลือกได้ทันที',
+          'กดปุ่ม "แก้ไข" เพื่อเปิดโหมดลบไฟล์ที่อัพโหลดไปแล้วในแต่ละช่อง ส่วนด้านล่างมีตารางประวัติการอัพโหลดทั้งหมด กรองตามช่องทาง/รอบได้',
+        ],
+        bullets: [
+          'Makro — รอบ 8:00 น. (คำสั่งซื้อรอบเช้า) และ 14:00 น. (คำสั่งซื้อรอบบ่าย หรือไฟล์แผนผลิต Makro 100%)',
+          'LOTUS / Wet Market — รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย), รอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1) และแผน 100%',
+          'ช่อง "แผน 100%" ของ LOTUS กับ Wet Market ใช้ไฟล์เดียวกัน ระบบจึงรวมเป็นกล่องเดียวคร่อม 2 แถว',
+        ],
       },
       {
         key: 'supplementary-plan',
@@ -228,15 +202,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
   {
     heading: 'Master Logic การสร้างแผนผลิต',
     items: [
-      {
-        key: 'manpower',
-        label: 'กำลังคน (Master Logic)',
-        href: '/basic/master-logic/manpower/sa-phok-basic',
-        icon: UserCog,
-        summary: 'อัพโหลด Master Logic กำลังคนแยกตามสถานี — ใช้เป็นฐานคำนวณตอนกด "สร้าง Phase"',
-        body: ['เลือกไฟล์ Excel ของสถานีนั้นแล้วอัพโหลด ใช้รูปแบบเดียวกันทุกประเภท'],
-        bullets: ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค', 'เปิดหมู'],
-      },
       {
         key: 'calculation',
         label: 'Master Calculation',

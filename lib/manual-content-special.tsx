@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, BarChart3, PackageOpen, ClipboardList, Scissors, Layers, CalendarDays,
-  AlertTriangle, Beef, Users, ShoppingCart, Leaf, Store, Slice, FileSpreadsheet, CalendarPlus,
-  Package, TrendingUp, UserCog, Calculator, ShieldAlert,
+  AlertTriangle, Beef, Users, CalendarPlus,
+  Package, TrendingUp, Calculator, ShieldAlert,
 } from 'lucide-react'
 import type { ManualGroup, ManualOverview } from '@/components/ManualLayout'
 
@@ -10,7 +10,7 @@ export const specialOverview: ManualOverview = {
   steps: [
     {
       title: 'Master Logic',
-      description: 'อัพโหลดกำลังคน (Master กำลังคน) และ Master Calculation ทุกประเภท (Productivity, BOM, หน่วยหยิบ ฯลฯ) ให้ครบก่อน',
+      description: 'อัพโหลด Master Calculation ทุกประเภท (Productivity, BOM, หน่วยหยิบ ฯลฯ) ให้ครบก่อน',
       hint: 'Master Logic การสร้างแผนผลิต',
     },
     {
@@ -43,7 +43,7 @@ export const specialOverview: ManualOverview = {
 // Master Logic upload pages get an extra caption clarifying the table shown
 // is example data (captured by loading a sample file into the preview —
 // nothing was ever submitted/saved), not real employee/production data.
-const MASTER_LOGIC_KEYS = ['manpower', 'calculation']
+const MASTER_LOGIC_KEYS = ['calculation']
 
 const RAW_SPECIAL_GROUPS: ManualGroup[] = [
   {
@@ -91,9 +91,9 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
           'เลือกวันที่แล้วดูรายการของแต่ละรอบ จากนั้นพิมพ์/ดาวน์โหลดใบเบิกเป็น PDF ได้',
         ],
         bullets: [
-          'Phase 1 (รอบเช้า 08:30) — /withdrawal/1',
-          'Phase 2 (รอบบ่าย 14:30) — /withdrawal/2',
-          'Phase 3 (แผน 100% 16:30) — /withdrawal/3',
+          'Phase 1 (รอบเช้า 08:30)',
+          'Phase 2 (รอบบ่าย 14:30)',
+          'Phase 3 (แผน 100% 16:30)',
         ],
       },
       {
@@ -108,13 +108,13 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
           'ทุก Station ใช้หน้ารูปแบบเดียวกัน ต่างกันแค่ข้อมูล',
         ],
         bullets: [
-          'Station สามชั้น — /production/sam-chan',
-          'Station สะโพก — /production/sa-phok',
-          'Station ไหล่ — /production/lai',
-          'Station หมูบด — /production/moo-chod',
-          'Station สไลด์ — /production/slide',
-          'Station เผาขา — /production/pao-kha',
-          'Station เลาะขา — /production/loa-kha',
+          'Station สามชั้น',
+          'Station สะโพก',
+          'Station ไหล่',
+          'Station หมูบด',
+          'Station สไลด์',
+          'Station เผาขา',
+          'Station เลาะขา',
           'สามารถ export/พิมพ์ตารางงานได้',
         ],
       },
@@ -161,7 +161,7 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
           'ดึงจากงานมอบหมายที่ติด flag "ขาด" (deficit) แล้วแปลงจากปริมาณสินค้าสำเร็จรูปเป็นปริมาณวัตถุดิบผ่าน BOM',
           'เลือกวันที่ดูรายการวัตถุดิบขาด/ที่รอผลิตต่อ Station และ export ข้อมูลได้',
         ],
-        bullets: ['Phase 1 — /shortage/1', 'Phase 2 — /shortage/2', 'Phase 3 — /shortage/3'],
+        bullets: ['Phase 1', 'Phase 2', 'Phase 3'],
       },
       {
         key: 'rm-allocation',
@@ -180,47 +180,22 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
     heading: 'อัพโหลดข้อมูล',
     items: [
       {
-        key: 'makro',
-        label: 'คำสั่งซื้อ Makro',
-        href: '/makro',
-        icon: ShoppingCart,
-        summary: 'อัพโหลดไฟล์ CSV คำสั่งซื้อช่องทาง Makro แบ่ง 2 รอบ',
+        key: 'upload-overview',
+        label: 'อัพโหลดคำสั่งซื้อ',
+        href: '/upload-overview',
+        icon: Layers,
+        summary: 'รวมหน้าอัพโหลดคำสั่งซื้อ Makro/LOTUS/Wet Market/FS และแผนผลิต 100% ไว้หน้าเดียว เป็นตารางช่องทาง × รอบเวลา',
         body: [
-          'รอบ 8:00 น. (พาร์สแบบ Lotus/Wet Market) และรอบ 14:00 น. (พาร์สอัตโนมัติ ใช้ได้ทั้งคำสั่งซื้อปกติหรือไฟล์แผนผลิต Makro 100%)',
-          'เลือกไฟล์ ดูพรีวิว แล้วกดอัพโหลดในแต่ละช่องของตนเอง',
+          'แต่ละแถวคือช่องทาง (Makro, LOTUS, Wet Market, FS) แต่ละคอลัมน์คือรอบเวลา (8:00, 14:00, 16:00, แผน 100%) — ช่องที่ไม่ต้องใช้จะทึบเทาไว้ คลิกช่องว่างเพื่อเลือกไฟล์ ดูพรีวิว แล้วกดยืนยันอัพโหลด',
+          'ปุ่ม "สร้าง Phase 1/2/3" อยู่เหนือคอลัมน์รอบที่ตรงกัน กดเพื่อสั่งสร้างแผนผลิตจากไฟล์ที่อัพโหลดของวันที่เลือกได้ทันที (Phase 2/3 มีให้เลือกยอดที่ใช้หักลบจากเป้าหมาย)',
+          'กดปุ่ม "แก้ไข" เพื่อเปิดโหมดลบไฟล์ที่อัพโหลดไปแล้วในแต่ละช่อง ส่วนด้านล่างมีตารางประวัติการอัพโหลดทั้งหมด กรองตามช่องทาง/รอบได้',
         ],
-      },
-      {
-        key: 'lotus',
-        label: 'คำสั่งซื้อ LOTUS',
-        href: '/lotus',
-        icon: Leaf,
-        summary: 'อัพโหลดไฟล์ CSV คำสั่งซื้อช่องทาง LOTUS แบ่ง 2 รอบ',
-        body: ['รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1) — เลือกไฟล์และอัพโหลดแยกตามรอบ'],
-      },
-      {
-        key: 'wet-market',
-        label: 'คำสั่งซื้อ Wet Market',
-        href: '/wet-market',
-        icon: Store,
-        summary: 'อัพโหลดไฟล์ CSV คำสั่งซื้อช่องทาง Wet Market โครงสร้างเดียวกับ LOTUS',
-        body: ['รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 3 วันสำหรับคำนวณ Phase 1)'],
-      },
-      {
-        key: 'fs',
-        label: 'คำสั่งซื้อ FS',
-        href: '/fs',
-        icon: Slice,
-        summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง Food Service เป็นไฟล์รอบเดียวต่อวัน',
-        body: ['หลังอัพโหลด ระบบจะแบ่งจัดสรรลง Phase ให้อัตโนมัติ'],
-      },
-      {
-        key: 'plan-100',
-        label: 'แผนผลิต 100%',
-        href: '/plan-100',
-        icon: FileSpreadsheet,
-        summary: 'อัพโหลดไฟล์ Template แผนผลิต ใช้เป็นฐานคำนวณ Phase 3',
-        body: ['ระบบอ่านชีท "แผน 100%" ในไฟล์ — Phase 3 คำนวณจาก แผน 100% ลบ Phase 1 ลบ Phase 2 เลือกไฟล์และอัพโหลดเพียงจุดเดียว'],
+        bullets: [
+          'Makro — รอบ 8:00 น. และ 14:00 น. (รอบ 14:00 พาร์สอัตโนมัติ ใช้ได้ทั้งคำสั่งซื้อปกติหรือไฟล์แผนผลิต Makro 100%)',
+          'LOTUS / Wet Market — รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย), รอบ 16:00 น. (ข้อมูลย้อนหลังสำหรับคำนวณ Phase 1) และแผน 100%',
+          'ช่อง "แผน 100%" ของ LOTUS กับ Wet Market ใช้ไฟล์เดียวกัน ระบบจึงรวมเป็นกล่องเดียวคร่อม 2 แถว',
+          'FS — รอบ 16:00 น. เท่านั้น หลังอัพโหลดระบบแบ่งจัดสรรลง Phase ให้อัตโนมัติ',
+        ],
       },
       {
         key: 'supplementary-plan',
@@ -258,17 +233,6 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
     heading: 'Master Logic การสร้างแผนผลิต',
     items: [
       {
-        key: 'manpower',
-        label: 'กำลังคน (Master Logic)',
-        href: '/master-logic/manpower/sa-phok-special',
-        icon: UserCog,
-        summary: 'อัพโหลด Master Logic กำลังคน (อัตรากำลังคนมาตรฐาน) ต่อกลุ่มผลิตภัณฑ์พิเศษ',
-        body: ['เป็นฟอร์มอัพโหลดไฟล์แบบเดียว มีประวัติไฟล์ที่เคยอัพโหลด — ใช้รูปแบบเดียวกันทุกประเภท ต่างกันแค่ข้อมูล'],
-        bullets: [
-          'สะโพกพิเศษ, ไหล่พิเศษ, สามชั้นพิเศษ, หมูบดพิเศษ, สไลด์พิเศษ, เผาขาพิเศษ, เลาะขาพิเศษ',
-        ],
-      },
-      {
         key: 'calculation',
         label: 'Master Calculation',
         href: '/master-logic/calculation/mas-productivity',
@@ -279,17 +243,17 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
           '9 ประเภทหลัก: Mas Productivity, Mas %Variance Makro/Wet Market/LOTUS, Mas LOTUS, Mas Channel, Mas ตระกร้า, Mas Special, Mas Sku ผลิตพร้อมกัน',
         ],
         bullets: [
-          'BOM สินค้า (/bom) — เชื่อม SAP สินค้ากับวัตถุดิบและ % Yield',
-          'Mas หน่วยหยิบสินค้า (/picking-unit) — แปลงน้ำหนัก (กก.) เป็นจำนวนถุงต่อ SKU',
-          'Mas SKU ไม่ต้องเบิก (/no-withdrawal) — SKU ที่มีแผนผลิตแต่ไม่ต้องออกใบเบิก',
-          'Mas หมูบด %ไขมัน (/master-logic/moo-chod) — สัดส่วนเนื้อ:มันที่ต้องผสม',
-          'Mas เบิกหมูบด (/master-logic/moo-chod-withdrawal) — ลำดับเบิกวัตถุดิบหมูบด',
-          'Mas Priority เบิก RM (/master-logic/priority-withdrawal) — ลำดับความสำคัญเบิกวัตถุดิบ',
-          'Mas ผลิต Raw ล่วงหน้า (/master-logic/raw-advance) — ปริมาณ Raw ที่ต้องผลิตล่วงหน้า',
-          'Mas SKU ใช้เครื่องเลื่อย (/master-logic/saw-machine) — ฐานคำนวณของหน้าแผนเครื่องเลื่อย',
-          'Mas ผลิตต่อกัน (/master-logic/phlit-tor-kan) — สินค้า WIP ที่ผลิตต่อเนื่องกัน',
-          'Mas Special Raw (/master-logic/special-raw) — ตำแหน่ง Lot ที่ดึงมาใช้ก่อน FIFO ปกติ',
-          'BOM พิเศษ (/master-logic/bom-special) — BOM เฉพาะกลุ่มสินค้าพิเศษ',
+          'BOM สินค้า — เชื่อม SAP สินค้ากับวัตถุดิบและ % Yield',
+          'Mas หน่วยหยิบสินค้า — แปลงน้ำหนัก (กก.) เป็นจำนวนถุงต่อ SKU',
+          'Mas SKU ไม่ต้องเบิก — SKU ที่มีแผนผลิตแต่ไม่ต้องออกใบเบิก',
+          'Mas หมูบด %ไขมัน — สัดส่วนเนื้อ:มันที่ต้องผสม',
+          'Mas เบิกหมูบด — ลำดับเบิกวัตถุดิบหมูบด',
+          'Mas Priority เบิก RM — ลำดับความสำคัญเบิกวัตถุดิบ',
+          'Mas ผลิต Raw ล่วงหน้า — ปริมาณ Raw ที่ต้องผลิตล่วงหน้า',
+          'Mas SKU ใช้เครื่องเลื่อย — ฐานคำนวณของหน้าแผนเครื่องเลื่อย',
+          'Mas ผลิตต่อกัน — สินค้า WIP ที่ผลิตต่อเนื่องกัน',
+          'Mas Special Raw — ตำแหน่ง Lot ที่ดึงมาใช้ก่อน FIFO ปกติ',
+          'BOM พิเศษ — BOM เฉพาะกลุ่มสินค้าพิเศษ',
         ],
       },
     ],
