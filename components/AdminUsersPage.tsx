@@ -29,6 +29,52 @@ function menuLabel(key: string): string {
   return MENU_LABELS[key] ?? key
 }
 
+// เมนูย่อยรายสถานี (2.x = พิเศษ, 15.x = เบสิค) มักถูกให้สิทธิ์ทั้งกลุ่มพร้อมกัน
+// รวมเป็นชิปเดียวต่อกลุ่มแทนการแสดงแยกทีละสถานี จะได้ไม่รกและอ่านง่ายขึ้น
+const STATION_GROUP_SHORT_LABEL: Record<string, string> = {
+  '2.1': 'สะโพก', '2.2': 'สามชั้น', '2.3': 'ไหล่', '2.4': 'หมูบด', '2.5': 'สไลด์', '2.6': 'เผาขา', '2.7': 'เลาะขา',
+  '15.1': 'สะโพก', '15.2': 'สามชั้น', '15.3': 'ไหล่',
+}
+const STATION_GROUP_TITLE: Record<'2' | '15', string> = {
+  '2': 'Station พิเศษ',
+  '15': 'Station เบสิค',
+}
+
+function menuSortValue(key: string): number {
+  if (key === 'all') return -1
+  const n = parseFloat(key)
+  return Number.isNaN(n) ? 1000 : n
+}
+
+type MenuChip =
+  | { kind: 'single'; key: string; label: string; access: 'edit' | 'view' }
+  | { kind: 'group'; key: string; title: string; members: { label: string; access: 'edit' | 'view' }[] }
+
+// จัดเรียงเมนูตามลำดับเลข และรวมกลุ่ม Station (2.x / 15.x) ให้อยู่ในชิปเดียวกัน
+function buildMenuChips(menus: MenuGrant[]): MenuChip[] {
+  const sorted = [...menus].sort((a, b) => menuSortValue(a.key) - menuSortValue(b.key))
+  const seen = new Set<string>()
+  const chips: MenuChip[] = []
+  for (const m of sorted) {
+    if (seen.has(m.key)) continue
+    const family = m.key.startsWith('2.') ? '2' : m.key.startsWith('15.') ? '15' : null
+    if (family) {
+      const members = sorted.filter(x => x.key.startsWith(`${family}.`))
+      members.forEach(x => seen.add(x.key))
+      chips.push({
+        kind: 'group',
+        key: family,
+        title: STATION_GROUP_TITLE[family as '2' | '15'],
+        members: members.map(x => ({ label: STATION_GROUP_SHORT_LABEL[x.key] ?? x.key, access: x.access })),
+      })
+      continue
+    }
+    seen.add(m.key)
+    chips.push({ kind: 'single', key: m.key, label: menuLabel(m.key), access: m.access })
+  }
+  return chips
+}
+
 const STEP_LABELS: Record<string, { label: string; cls: string }> = {
   all: { label: 'ทั้งคู่',  cls: 'bg-violet-50 text-violet-700' },
   '2': { label: 'เบสิค',   cls: 'bg-sky-50 text-sky-700' },
@@ -46,6 +92,7 @@ interface UserRow {
   menus: MenuGrant[]
   step: string
   created_at: string
+  password_plain: string | null
 }
 
 interface Position {
@@ -62,7 +109,9 @@ const ACCESS_LABEL: Record<'edit' | 'view', { label: string; cls: string }> = {
   view: { label: 'View', cls: 'bg-gray-100 text-gray-600' },
 }
 
-const EMPTY_ADD = { username: '', password: '', position_id: '' }
+const EMPTY_ADD = { username: '', password: '' }
+
+const MENU_CHECKLIST: [string, string][] = Object.entries(SPECIAL_MENU_LABELS)
 
 export default function AdminUsersPage() {
   const canEdit = useCanEdit('12')
@@ -75,6 +124,10 @@ export default function AdminUsersPage() {
   const [addForm, setAddForm]     = useState({ ...EMPTY_ADD })
   const [showAddPw, setShowAddPw] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
+
+  const [newPosName, setNewPosName] = useState('')
+  const [newPosStep, setNewPosStep] = useState('3')
+  const [newPosMenus, setNewPosMenus] = useState<Set<string>>(new Set())
 
   const [changePwId, setChangePwId] = useState<string | null>(null)
   const [newPw, setNewPw]           = useState('')
@@ -104,22 +157,52 @@ export default function AdminUsersPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+
+    const name = newPosName.trim()
+    if (!name) { flash(false, 'กรอกชื่อตำแหน่งใหม่'); return }
+    const dup = positions.some(p => p.name.trim().toLowerCase() === name.toLowerCase())
+    if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว`); return }
+
     setAddLoading(true)
-    const res  = await fetch('/api/admin/users', {
+    const menuKeys = newPosMenus.has('all') ? ['all'] : Array.from(newPosMenus)
+    const rows: PreviewRow[] = menuKeys.length > 0
+      ? menuKeys.map(key => ({ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: key, access: 'edit' as const }))
+      : [{ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: '', access: 'edit' as const }]
+    const res  = await fetch('/api/admin/users/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addForm),
+      body: JSON.stringify({ rows }),
     })
     const data = await res.json()
     if (data.success) {
-      flash(true, 'เพิ่ม User สำเร็จ')
-      setShowAdd(false)
-      setAddForm({ ...EMPTY_ADD })
+      flash(true, `สร้างตำแหน่ง "${name}" และเพิ่ม User สำเร็จ`)
+      closeAddForm()
       load()
     } else {
       flash(false, data.message ?? 'เกิดข้อผิดพลาด')
     }
     setAddLoading(false)
+  }
+
+  function closeAddForm() {
+    setShowAdd(false)
+    setAddForm({ ...EMPTY_ADD })
+    setNewPosName('')
+    setNewPosStep('3')
+    setNewPosMenus(new Set())
+  }
+
+  function toggleNewPosMenu(key: string) {
+    setNewPosMenus(prev => {
+      const next = new Set(prev)
+      if (key === 'all') {
+        return next.has('all') ? new Set() : new Set(['all'])
+      }
+      next.delete('all')
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   async function handleToggleActive(u: UserRow) {
@@ -211,7 +294,8 @@ export default function AdminUsersPage() {
     })
     const data = await res.json()
     if (data.success) {
-      flash(true, `อัพโหลดสำเร็จ — สร้างใหม่ ${data.created} รายการ, อัปเดต ${data.updated} รายการ`)
+      const deletedTxt = data.deleted > 0 ? `, ลบ ${data.deleted} รายการ` : ''
+      flash(true, `อัพโหลดสำเร็จ — สร้างใหม่ ${data.created} รายการ, อัปเดต ${data.updated} รายการ${deletedTxt}`)
       setPreview(null)
       load()
     } else {
@@ -220,37 +304,35 @@ export default function AdminUsersPage() {
     setUploadLoading(false)
   }
 
+  // username ที่มีอยู่แล้วในระบบ แต่ไม่ปรากฏในไฟล์ที่กำลังจะอัพโหลดเลย — จะถูกลบทิ้งจริง
+  // (ไฟล์ที่อัพโหลดคือ source of truth ทั้งหมด ดู fn_admin_bulk_upload_users)
+  function usersToBeDeleted(rows: PreviewRow[]): string[] {
+    const inFile = new Set(rows.map(r => r.username).filter(Boolean))
+    if (inFile.size === 0) return []
+    return users.map(u => u.username).filter(name => !inFile.has(name))
+  }
+
   // Export ตำแหน่ง/เมนู/User ปัจจุบันเป็น Excel รูปแบบเดียวกับที่ "อัพโหลด Excel" อ่านได้
-  // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — ช่อง Password เว้นว่างเสมอ
-  // เพราะระบบเก็บเฉพาะ hash ไม่มีรหัสผ่านจริงให้ export; อัพโหลดไฟล์นี้กลับเข้าไปโดยไม่กรอก
-  // Password จะไม่ไปเขียนทับรหัสผ่านเดิมของ user ที่มีอยู่แล้ว (ดู fn_admin_bulk_upload_users)
+  // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — สิทธิ์ Edit/View มาจาก
+  // sys_user_menus ของ user แต่ละคนโดยตรง (ไม่ได้ผูกกับตำแหน่งแล้ว) ดู fn_admin_list_users
   function handleExport() {
-    if (users.length === 0 && positions.length === 0) {
+    if (users.length === 0) {
       flash(false, 'ยังไม่มีข้อมูลให้ดาวน์โหลด — รอโหลดข้อมูลให้เสร็จก่อน')
       return
     }
-    const posInfo = new Map<string, { name: string; step: string; menus: MenuGrant[] }>()
 
-    for (const u of users) {
-      if (!posInfo.has(u.position_id)) {
-        posInfo.set(u.position_id, { name: u.position_name, step: u.step, menus: u.menus })
-      }
-    }
-    // ตำแหน่งที่ยังไม่มี user เลย — ใช้รายการเมนูจาก positions (ไม่มีแยก edit/view ให้ถือเป็น edit)
-    for (const p of positions) {
-      if (!posInfo.has(p.id)) {
-        posInfo.set(p.id, { name: p.name, step: p.step, menus: p.menus.map(key => ({ key, access: 'edit' as const })) })
-      }
-    }
-
+    // 1 แถว = 1 (ตำแหน่ง, user, เมนู) — ตรงกับรูปแบบไฟล์ "User ระบบผลิต.xlsx" ต้นฉบับ
+    // (username ซ้ำทุกแถวของ user คนนั้น ไม่ได้สรุปแยกเป็นบล็อกตำแหน่ง)
     const mainRows: (string | number)[][] = [['ตำแหน่ง', 'User', 'Password', 'Step', 'Edit', 'View']]
-    for (const { name, step, menus } of Array.from(posInfo.values())) {
-      for (const m of menus) {
-        mainRows.push([name, '', '', step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
-      }
-    }
     for (const u of users) {
-      mainRows.push([u.position_name, u.username, '', u.step, '', ''])
+      const pw = u.password_plain ?? ''
+      if (u.menus.length === 0) {
+        mainRows.push([u.position_name, u.username, pw, u.step, '', ''])
+        continue
+      }
+      for (const m of u.menus) {
+        mainRows.push([u.position_name, u.username, pw, u.step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
+      }
     }
 
     const detailRows: (string | number)[][] = [['หมายเลข', 'เมนู'], ...Object.entries(SPECIAL_MENU_LABELS)]
@@ -261,8 +343,6 @@ export default function AdminUsersPage() {
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
     XLSX.writeFile(wb, `User ระบบผลิต ${today}.xlsx`)
   }
-
-  const selectedPos = positions.find(p => p.id === addForm.position_id)
 
   return (
     <div className="space-y-6">
@@ -293,7 +373,10 @@ export default function AdminUsersPage() {
           <button
             onClick={() => {
               setShowAdd(true)
-              setAddForm({ ...EMPTY_ADD, position_id: positions[0]?.id ?? '' })
+              setAddForm({ ...EMPTY_ADD })
+              setNewPosName('')
+              setNewPosStep('3')
+              setNewPosMenus(new Set())
             }}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
@@ -333,6 +416,15 @@ export default function AdminUsersPage() {
               </button>
             </div>
           </div>
+          {(() => {
+            const toDelete = usersToBeDeleted(preview)
+            return toDelete.length > 0 && (
+              <div className="bg-red-50 border-b border-red-200 px-4 py-3 text-sm text-red-700">
+                <p className="font-medium">⚠ ไฟล์นี้ไม่มี {toDelete.length} user ต่อไปนี้ — จะถูกลบออกจากระบบทันทีที่ยืนยันอัพโหลด:</p>
+                <p className="mt-1 font-mono text-xs">{toDelete.join(', ')}</p>
+              </div>
+            )
+          })()}
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
@@ -369,21 +461,21 @@ export default function AdminUsersPage() {
       {/* Add form */}
       {showAdd && (
         <form onSubmit={handleAdd} className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
-          <p className="font-semibold text-gray-800">เพิ่ม User ใหม่</p>
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-gray-800">เพิ่ม User ใหม่</p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">ตำแหน่ง</label>
-              <select
-                value={addForm.position_id}
-                onChange={e => setAddForm(f => ({ ...f, position_id: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              <input
+                type="text"
+                value={newPosName}
+                onChange={e => setNewPosName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="ชื่อตำแหน่งใหม่"
                 required
-              >
-                <option value="">-- เลือกตำแหน่ง --</option>
-                {positions.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">Username</label>
@@ -414,22 +506,50 @@ export default function AdminUsersPage() {
               </div>
             </div>
           </div>
-          {selectedPos && (
-            <p className="text-xs text-gray-500">
-              เมนู: <span className="text-gray-700 font-medium">
-                {selectedPos.menus.map(menuLabel).join(', ') || '—'}
-              </span>
-              {' · '}
-              Step: <span className="text-gray-700 font-medium">{STEP_LABELS[selectedPos.step]?.label ?? selectedPos.step}</span>
-            </p>
-          )}
+
+          <div className="space-y-2">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Step</label>
+                <select
+                  value={newPosStep}
+                  onChange={e => setNewPosStep(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="3">พิเศษ (STEP 3)</option>
+                  <option value="2">เบสิค (STEP 2)</option>
+                  <option value="all">ทั้งคู่</option>
+                </select>
+              </div>
+              <label className="text-xs font-medium text-gray-600 block">เมนูที่เข้าถึงได้</label>
+              <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-y-auto">
+                <label className="flex items-center gap-2 text-sm py-1 font-medium text-blue-700 cursor-pointer">
+                  <input type="checkbox" checked={newPosMenus.has('all')} onChange={() => toggleNewPosMenu('all')} />
+                  ทุกเมนู (all)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                  {MENU_CHECKLIST.map(([key, label]) => (
+                    <label key={key}
+                      className={`flex items-center gap-2 text-sm py-1 cursor-pointer ${newPosMenus.has('all') ? 'opacity-40' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={newPosMenus.has(key)}
+                        disabled={newPosMenus.has('all')}
+                        onChange={() => toggleNewPosMenu(key)}
+                      />
+                      <span className="text-gray-700">[{key}] {label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
           <div className="flex gap-2">
             <button type="submit" disabled={addLoading}
               className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
               <Check size={15} />
               {addLoading ? 'กำลังบันทึก...' : 'บันทึก'}
             </button>
-            <button type="button" onClick={() => setShowAdd(false)}
+            <button type="button" onClick={closeAddForm}
               className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
               <X size={15} />
               ยกเลิก
@@ -472,13 +592,24 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {u.menus.map(m => (
-                          <span key={m.key}
-                            className={`px-2 py-0.5 rounded text-xs ${m.access === 'view' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}
-                            title={m.access === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'}
+                      <div className="flex flex-wrap gap-1.5 max-w-md">
+                        {buildMenuChips(u.menus).map(chip => chip.kind === 'single' ? (
+                          <span key={chip.key}
+                            className={`px-2 py-0.5 rounded text-xs whitespace-nowrap ${chip.access === 'view' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}
+                            title={chip.access === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'}
                           >
-                            {menuLabel(m.key)}{m.access === 'view' ? ' (View)' : ''}
+                            {chip.label}{chip.access === 'view' ? ' (View)' : ''}
+                          </span>
+                        ) : (
+                          <span key={chip.key}
+                            className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700"
+                            title="ตัวเอียง/จาง = ดูอย่างเดียว"
+                          >
+                            {chip.title}: {chip.members.map((mm, i) => (
+                              <span key={i} className={mm.access === 'view' ? 'text-gray-400 italic' : ''}>
+                                {i > 0 ? ', ' : ''}{mm.label}
+                              </span>
+                            ))}
                           </span>
                         ))}
                       </div>

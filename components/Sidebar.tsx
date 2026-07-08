@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -15,16 +15,6 @@ const TABLES = [
   { label: 'Station สไลด์',   slug: 'slide',    dot: 'bg-purple-500' },
   { label: 'Station เผาขา',   slug: 'pao-kha',  dot: 'bg-fuchsia-500' },
   { label: 'Station เลาะขา',  slug: 'loa-kha',  dot: 'bg-teal-500' },
-]
-
-const MANPOWER_TYPES = [
-  { label: 'สะโพกพิเศษ',   slug: 'sa-phok-special',  dot: 'bg-orange-500' },
-  { label: 'ไหล่พิเศษ',    slug: 'lai-special',      dot: 'bg-green-500' },
-  { label: 'สามชั้นพิเศษ', slug: 'sam-chan-special',  dot: 'bg-blue-500' },
-  { label: 'หมูบดพิเศษ',   slug: 'moo-chod-special', dot: 'bg-red-500' },
-  { label: 'สไลด์พิเศษ',   slug: 'slide-special',    dot: 'bg-purple-500' },
-  { label: 'เผาขาพิเศษ',   slug: 'pao-kha-special',  dot: 'bg-fuchsia-500' },
-  { label: 'เลาะขาพิเศษ',  slug: 'loa-kha-special',  dot: 'bg-teal-500' },
 ]
 
 const CALCULATION_TYPES = [
@@ -68,7 +58,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
   const [open, setOpen]                   = useState(p.startsWith('/production'))
   const [openWithdrawal, setOpenWithdrawal] = useState(p.startsWith('/withdrawal'))
   const [openShortage, setOpenShortage]   = useState(p.startsWith('/shortage'))
-  const [openManpower, setOpenManpower]   = useState(p.startsWith('/master-logic/manpower'))
   const [openCalculation, setOpenCalculation] = useState(p.startsWith('/master-logic/calculation'))
   const [collapsed, setCollapsed]         = useState(true)
   const [mobileOpen, setMobileOpen]       = useState(false)
@@ -322,39 +311,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>Master Logic การสร้างแผนผลิต</p>
           <div className={dividerCls} />
-
-          {/* กำลังคน */}
-          <button
-            onClick={() => has('10.1') && setOpenManpower(!openManpower)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${groupCls(p.startsWith('/master-logic/manpower'), has('10.1'))}`}
-            title="กำลังคน"
-          >
-            <UserCog size={18} className="shrink-0" />
-            <span className={`flex-1 text-left ${labelCls}`}>กำลังคน</span>
-            {has('10.1') && !collapsed && (openManpower ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
-          </button>
-
-          {openManpower && has('10.1') && (
-            <div className={`ml-4 space-y-1 ${collapsed ? 'md:hidden' : ''}`}>
-              {MANPOWER_TYPES.map((t) => (
-                <Link key={t.slug} href={`/master-logic/manpower/${t.slug}`}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${p === `/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${t.dot}`} />{t.label}
-                </Link>
-              ))}
-            </div>
-          )}
-          {openManpower && has('10.1') && collapsed && (
-            <div className="space-y-1 hidden md:block">
-              {MANPOWER_TYPES.map((t) => (
-                <Link key={t.slug} href={`/master-logic/manpower/${t.slug}`}
-                  className={`flex items-center justify-center px-2 py-2 rounded-lg transition-colors ${p === `/master-logic/manpower/${t.slug}` ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                  title={t.label}>
-                  <span className={`w-2 h-2 rounded-full ${t.dot}`} />
-                </Link>
-              ))}
-            </div>
-          )}
 
           {/* Master Calculation */}
           <button

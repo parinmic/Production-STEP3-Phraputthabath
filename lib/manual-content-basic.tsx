@@ -1,7 +1,7 @@
 import {
-  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice, CalendarDays,
+  LayoutDashboard, Thermometer, Package, AlertTriangle, ClipboardList, Slice,
   FlaskConical, Layers, Timer, Users, CalendarPlus,
-  TrendingUp, UserCog, Calculator, ShieldAlert, ClipboardCheck,
+  TrendingUp, Calculator, ShieldAlert, ClipboardCheck,
 } from 'lucide-react'
 import type { ManualGroup, ManualOverview } from '@/components/ManualLayout'
 
@@ -10,7 +10,7 @@ export const basicOverview: ManualOverview = {
   steps: [
     {
       title: 'Master Logic',
-      description: 'อัพโหลดกำลังคนแต่ละสถานี, Master Calculation, BOM, Mas Yield และ Mas Temp QC ให้ครบก่อน',
+      description: 'อัพโหลด Master Calculation, BOM, Mas Yield และ Mas Temp QC ให้ครบก่อน',
       hint: 'Master Logic การสร้างแผนผลิต',
     },
     {
@@ -42,7 +42,7 @@ export const basicOverview: ManualOverview = {
 // Master Logic upload pages get an extra caption clarifying the table shown
 // is example data (captured by loading a sample file into the preview —
 // nothing was ever submitted/saved), not real employee/production data.
-const MASTER_LOGIC_KEYS = ['manpower', 'calculation']
+const MASTER_LOGIC_KEYS = ['calculation']
 
 const RAW_BASIC_GROUPS: ManualGroup[] = [
   {
@@ -213,6 +213,20 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         summary: 'ตาราง Gantt คำสั่งผลิต (งาน/พนักงาน/SKU/เป้าหมาย) ของแต่ละ Station',
         body: [],
         bullets: ['ใช้หน้ารูปแบบเดียวกันทั้ง 3 Station: สะโพกเบสิค, ไหล่เบสิค, สามชั้นเบสิค'],
+        subTabs: [
+          {
+            label: 'ภาพรวม',
+            description: 'ผังเวลาการผลิต (Gantt) แยกตาม SKU แต่ละแท่งคือช่วงเวลาที่ผลิต SKU นั้น พร้อมปริมาณและชื่อพนักงานที่รับผิดชอบ ใช้ดูภาพรวมทั้ง Station ว่าวันนี้ต้องผลิตอะไรบ้าง เรียงลำดับตามคิวการผลิต',
+          },
+          {
+            label: 'รายสาขา (Makro)',
+            description: 'แจกแจงยอดผลิตของแต่ละ SKU ออกเป็นสัดส่วนตามสาขา Makro โดยอิงจากสัดส่วนคำสั่งซื้อจริงของแต่ละสาขาในรอบนั้น ใช้ดูว่าของที่ผลิตจะกระจายไปสาขาไหนบ้าง (แสดงเฉพาะช่องทาง Makro เท่านั้น)',
+          },
+          {
+            label: 'สรุปแผนผลิต',
+            description: 'ตารางเทียบยอดต่อ SKU ระหว่าง "แผน" (ยอดที่วางแผนไว้), "ผลิต" (ยอดที่กรอกบันทึกจริงระหว่างวัน อัพเดทเรียลไทม์), "รับผลได้" (จำนวนถุงจากไฟล์ที่อัพโหลดในเมนู รับผลได้) และ "ผลิตได้" (น้ำหนักที่แปลงจากยอดรับผลได้) ใช้กรอกยอดผลิตจริงระหว่างกะและตรวจว่าผลิตครบตามแผนหรือไม่',
+          },
+        ],
         mobileSections: [
           {
             title: 'คำสั่งผลิตราย Station',
@@ -278,39 +292,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
               'Dropdown "เวลาสิ้นสุด" — เลือกเวลาที่กลับมาทำงานต่อ (เลือกเวลาเริ่มก่อน)',
               'Dropdown "สาเหตุ" — เลือกสาเหตุจากรายการ หรือพิมพ์เหตุผลเองได้',
               'ปุ่ม "บันทึก Breakline" — บันทึกเหตุการณ์ครั้งนี้เข้าระบบ จะไปแสดงบน Gantt คำสั่งผลิตราย Station ด้วย',
-            ],
-          },
-        ],
-      },
-      {
-        key: 'workforce-daily-status',
-        label: 'ตรวจสอบสถานะกำลังคน',
-        href: '/basic/workforce-daily-status',
-        icon: CalendarDays,
-        summary: 'ดูรายชื่อ/สถานีของพนักงานที่ทำงานวันนั้น (ดูอย่างเดียว)',
-        body: [
-          'หน้านี้ดูอย่างเดียว (read-only) ไม่มีการแก้ไขสถานะพนักงานในหน้านี้แล้ว ดึงข้อมูลจากตาราง employee_skills กลาง (Sync อัตโนมัติทุกวัน 08:05 น.)',
-          'ข้อควรระวัง: ชื่อ Station อย่าง "สะโพก/สามชั้น/ไหล่" ใช้ชื่อเดียวกันทั้งฝั่งเบสิคและฝั่งพิเศษในข้อมูลต้นทาง ตัวเลขที่เห็นจึงอาจรวมพนักงานอีกฝั่งที่ทำ Station ชื่อเดียวกันปนมาด้วย ไม่ใช่ยอดเฉพาะฝั่งเบสิคล้วนๆ',
-        ],
-        mobileSections: [
-          {
-            title: 'ตรวจสอบสถานะกำลังคน',
-            images: [
-              {
-                src: '/manual-screenshots/basic/mobile/workforce-daily-status-mobile.jpg', caption: 'ตรวจสอบสถานะกำลังคน',
-                markers: [
-                  { n: 1, x: '36.8%', y: '39.9%' },
-                  { n: 2, x: '74.5%', y: '39.9%' },
-                  { n: 3, x: '19.6%', y: '46%' },
-                  { n: 4, x: '61.7%', y: '46%' },
-                ],
-              },
-            ],
-            description: [
-              'ช่องเลือกวันที่ — ดูกำลังคนของวันที่ต้องการ',
-              'Dropdown "ทุก Station" — กรองดูเฉพาะ Station ที่ต้องการ',
-              'Dropdown "ทุกกะ" — กรองดูเฉพาะกะ 1 หรือกะ 2',
-              'ช่องค้นหาชื่อ — พิมพ์ชื่อพนักงานเพื่อกรองรายชื่อ',
             ],
           },
         ],
@@ -442,6 +423,10 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
           'ตารางแถว = ช่องทาง (Makro/LOTUS/Wet Market), คอลัมน์ = รอบเวลา (8:00, 14:00, 16:00, แผน 100%) — คลิกกล่องที่ยังว่าง (มีไอคอนลากไฟล์) เพื่อเลือกหรือลากไฟล์ Excel/CSV เข้าไปวาง กล่องที่มีไฟล์แล้วของวันที่เลือกจะเป็นสีเขียว กล่องสีเทาทึบคือรอบที่ไม่ต้องอัพโหลดในระบบปัจจุบัน',
           'แผน 100% ของ LOTUS และ Wet Market ใช้ไฟล์เดียวกัน จึงรวมเป็นกล่องใหญ่กล่องเดียวคร่อม 2 แถว',
         ],
+        bullets: [
+          'Makro — รอบ 8:00 น. (คำสั่งซื้อรอบเช้า) และ 14:00 น. (คำสั่งซื้อรอบบ่าย หรือไฟล์แผนผลิต Makro 100%)',
+          'LOTUS / Wet Market — รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย), รอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1) และแผน 100%',
+        ],
         imageMarkers: [
           { n: 1, x: '92.5%', y: '11.6%' },
           { n: 2, x: '11.3%', y: '27.6%' },
@@ -518,17 +503,6 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
   {
     heading: 'Master Logic การสร้างแผนผลิต',
     items: [
-      {
-        key: 'manpower',
-        label: 'กำลังคน (Master Logic)',
-        href: '/basic/master-logic/manpower/sa-phok-basic',
-        icon: UserCog,
-        summary: 'อัพโหลด Master Logic กำลังคนแยกตามสถานี — ใช้เป็นฐานคำนวณตอนกด "สร้าง Phase"',
-        body: [],
-        bullets: ['ใช้รูปแบบฟอร์มเดียวกันทุกประเภท เปลี่ยนแค่ปลายทางที่บันทึก: สะโพกเบสิค, ไหล่เบสิค, สามชั้นเบสิค, เปิดหมู'],
-        imageMarkers: [{ n: 1, x: '52.3%', y: '29.1%' }],
-        imageDescription: ['ช่องลากไฟล์/คลิกเพื่อเลือกไฟล์ — เลือกไฟล์ Excel กำลังคนของสถานีนั้น (เลือกสถานีจากเมนูด้านซ้ายก่อน)'],
-      },
       {
         key: 'calculation',
         label: 'Master Calculation',

@@ -1,7 +1,16 @@
 'use client'
-import { useMemo, useState } from 'react'
-import { Search, BookOpen, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Search, BookOpen, ChevronRight, Upload, Download, Loader2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+
+const SLIDE_BUCKET = 'manual-slides'
+const SLIDE_FOLDER = 'slide'
+
+export interface ManualSubTab {
+  label: string
+  description: string
+}
 
 export interface ManualMarker {
   x: string // CSS left, e.g. "72%"
@@ -43,6 +52,7 @@ export interface ManualItem {
   // Grouped mobile view: images on the left, per-submenu description on the right,
   // with a divider between each submenu. Takes priority over mobileImages when set.
   mobileSections?: ManualMobileSection[]
+  subTabs?: ManualSubTab[]
 }
 
 export interface ManualGroup {
@@ -72,6 +82,49 @@ export default function ManualLayout({
 }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string>('__overview__')
+  const [slideFile, setSlideFile] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.storage.from(SLIDE_BUCKET).list(SLIDE_FOLDER).then(({ data }) => {
+      setSlideFile(data?.[0]?.name ?? null)
+    })
+  }, [])
+
+  async function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert('อัปโหลดได้เฉพาะไฟล์ PDF เท่านั้น')
+      return
+    }
+    setUploading(true)
+    try {
+      const { data: existing } = await supabase.storage.from(SLIDE_BUCKET).list(SLIDE_FOLDER)
+      if (existing?.length) {
+        await supabase.storage.from(SLIDE_BUCKET).remove(existing.map(f => `${SLIDE_FOLDER}/${f.name}`))
+      }
+      const { error } = await supabase.storage.from(SLIDE_BUCKET).upload(`${SLIDE_FOLDER}/${file.name}`, file, { upsert: true })
+      if (error) throw error
+      setSlideFile(file.name)
+      alert('อัปโหลด PDF เรียบร้อยแล้ว')
+    } catch (err) {
+      alert('อัปโหลดไม่สำเร็จ: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleDownload() {
+    if (!slideFile) return
+    const { data } = supabase.storage.from(SLIDE_BUCKET).getPublicUrl(`${SLIDE_FOLDER}/${slideFile}`)
+    const a = document.createElement('a')
+    a.href = data.publicUrl
+    a.download = slideFile
+    a.click()
+  }
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -85,9 +138,32 @@ export default function ManualLayout({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleUploadChange} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            อัปโหลด PDF คู่มือ
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={!slideFile}
+            title={slideFile ?? 'ยังไม่มี PDF'}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} />
+            ดาวน์โหลด PDF คู่มือ
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -200,6 +276,8 @@ function OverviewPanel({ overview }: { overview: ManualOverview }) {
 }
 
 function ItemPanel({ item }: { item: ManualItem }) {
+  const [imageError, setImageError] = useState(false)
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
       <div className="flex items-start gap-3">
@@ -212,11 +290,16 @@ function ItemPanel({ item }: { item: ManualItem }) {
         </div>
       </div>
 
-      {item.image && (
+      {item.image && !imageError && (
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={item.image} alt={`ตัวอย่างหน้าจอ ${item.label}`} className="w-full h-auto block" />
+            <img
+              src={item.image}
+              alt={`ตัวอย่างหน้าจอ ${item.label}`}
+              className="w-full h-auto block"
+              onError={() => setImageError(true)}
+            />
             {item.imageMarkers?.map((mk, mi) => (
               <span
                 key={mi}
@@ -313,6 +396,8 @@ function ItemPanel({ item }: { item: ManualItem }) {
         </ul>
       ) : null}
 
+      {item.subTabs?.length ? <SubTabsPanel subTabs={item.subTabs} /> : null}
+
       {item.href && (
         <a
           href={item.href}
@@ -321,6 +406,34 @@ function ItemPanel({ item }: { item: ManualItem }) {
           ไปที่หน้านี้ <ChevronRight size={14} />
         </a>
       )}
+    </div>
+  )
+}
+
+function SubTabsPanel({ subTabs }: { subTabs: ManualSubTab[] }) {
+  const [active, setActive] = useState(0)
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-4 pt-3">มุมมองย่อยในหน้านี้</p>
+      <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-3">
+        {subTabs.map((tab, i) => (
+          <button
+            key={tab.label}
+            onClick={() => setActive(i)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              active === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="px-4 pb-4">
+        <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 border border-gray-100 rounded-lg p-3">
+          {subTabs[active].description}
+        </p>
+      </div>
     </div>
   )
 }

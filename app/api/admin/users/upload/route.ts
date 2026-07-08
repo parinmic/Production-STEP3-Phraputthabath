@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
+import { hasSpecialMenu } from '@/lib/special-menu'
 
 // รูปแบบไฟล์ "User ระบบผลิต.xlsx" ชีท Main: คอลัมน์ Menu เป็นตัวเลขตามชีท Detail
 // (เช่น 2.1 = คำสั่งผลิต Station สะโพกพิเศษ) หรือ "All" — 1 แถว = 1 สิทธิ์ ต่อ position
@@ -50,12 +51,21 @@ interface RawRow {
 }
 
 export async function POST(req: NextRequest) {
+  const raw = req.cookies.get('step3_session')?.value
+  const sessionUser = raw ? JSON.parse(raw) : null
+  if (!hasSpecialMenu(sessionUser?.menus, '12')) {
+    return NextResponse.json({ success: false, message: 'ไม่มีสิทธิ์เข้าถึงข้อมูลนี้' }, { status: 403 })
+  }
+
   const { rows }: { rows: RawRow[] } = await req.json()
   if (!rows?.length) {
     return NextResponse.json({ success: false, message: 'ไม่มีข้อมูลในไฟล์' }, { status: 400 })
   }
 
-  const posMap = new Map<string, { users: Map<string, string>; menus: Map<string, 'edit' | 'view'>; step: string }>()
+  const userMap = new Map<string, { password: string; position: string; step: string; menus: Map<string, 'edit' | 'view'> }>()
+  // username เป็น unique key ของ sys_users — ถ้าไฟล์ใช้ username เดียวกันซ้ำกันคนละตำแหน่ง
+  // แถวหลังๆ จะแย่ง user คนนั้นไปจากตำแหน่งของแถวแรกแบบเงียบๆ ถ้าไม่เช็ค กันข้อมูลหาย
+  const positionConflicts = new Map<string, Set<string>>()
 
   for (const r of rows) {
     const posName  = String(r.position ?? '').trim()
@@ -65,10 +75,14 @@ export async function POST(req: NextRequest) {
     const access   = r.access === 'view' ? 'view' : 'edit'
     const step     = toStepKey(r.step)
 
-    if (!posName) continue
+    if (!posName || !username) continue
 
-    if (!posMap.has(posName)) posMap.set(posName, { users: new Map(), menus: new Map(), step })
-    const entry = posMap.get(posName)!
+    if (!userMap.has(username)) userMap.set(username, { password, position: posName, step, menus: new Map() })
+    const entry = userMap.get(username)!
+    if (password) entry.password = password
+
+    if (!positionConflicts.has(username)) positionConflicts.set(username, new Set())
+    positionConflicts.get(username)!.add(posName)
 
     // ถ้าเลขเมนูเดียวกันโผล่ซ้ำ (จากคนละแถว) และแถวไหนให้สิทธิ์ 'edit' ให้ edit ชนะ 'view' เสมอ
     for (const k of menuKeys) {
@@ -76,20 +90,9 @@ export async function POST(req: NextRequest) {
       if (entry.menus.get(k) === 'edit') continue
       entry.menus.set(k, access)
     }
-    if (username) entry.users.set(username, password)
   }
 
-  // username เป็น unique key ของ sys_users — ถ้าไฟล์ใช้ username เดียวกันซ้ำกันคนละตำแหน่ง
-  // ตำแหน่งที่ upsert ทีหลังจะแย่ง user คนนั้นไปจากตำแหน่งก่อนหน้าแบบเงียบๆ (position_id ถูกทับ)
-  // เช็คก่อนอัพโหลดจริง กันข้อมูลหาย
-  const usernameToPositions = new Map<string, Set<string>>()
-  for (const [name, { users }] of Array.from(posMap.entries())) {
-    for (const username of Array.from(users.keys())) {
-      if (!usernameToPositions.has(username)) usernameToPositions.set(username, new Set())
-      usernameToPositions.get(username)!.add(name)
-    }
-  }
-  const duplicates = Array.from(usernameToPositions.entries()).filter(([, positions]) => positions.size > 1)
+  const duplicates = Array.from(positionConflicts.entries()).filter(([, positions]) => positions.size > 1)
   if (duplicates.length > 0) {
     const detail = duplicates.map(([username, positions]) => `${username} (${Array.from(positions).join(', ')})`).join('; ')
     return NextResponse.json(
@@ -98,15 +101,16 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const positions = Array.from(posMap.entries()).map(([name, { users, menus, step }]) => ({
-    name,
+  const users = Array.from(userMap.entries()).map(([username, { password, position, step, menus }]) => ({
+    username,
+    password,
+    position,
     step,
     menus: Array.from(menus.entries()).map(([key, access]) => ({ key, access })),
-    users: Array.from(users.entries()).map(([username, password]) => ({ username, password })),
   }))
 
   const { data, error } = await supabase.rpc('fn_admin_bulk_upload_users', {
-    p_positions: positions,
+    p_users: users,
   })
 
   if (error) {
