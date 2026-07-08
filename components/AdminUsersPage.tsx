@@ -29,6 +29,52 @@ function menuLabel(key: string): string {
   return MENU_LABELS[key] ?? key
 }
 
+// เมนูย่อยรายสถานี (2.x = พิเศษ, 15.x = เบสิค) มักถูกให้สิทธิ์ทั้งกลุ่มพร้อมกัน
+// รวมเป็นชิปเดียวต่อกลุ่มแทนการแสดงแยกทีละสถานี จะได้ไม่รกและอ่านง่ายขึ้น
+const STATION_GROUP_SHORT_LABEL: Record<string, string> = {
+  '2.1': 'สะโพก', '2.2': 'สามชั้น', '2.3': 'ไหล่', '2.4': 'หมูบด', '2.5': 'สไลด์', '2.6': 'เผาขา', '2.7': 'เลาะขา',
+  '15.1': 'สะโพก', '15.2': 'สามชั้น', '15.3': 'ไหล่',
+}
+const STATION_GROUP_TITLE: Record<'2' | '15', string> = {
+  '2': 'Station พิเศษ',
+  '15': 'Station เบสิค',
+}
+
+function menuSortValue(key: string): number {
+  if (key === 'all') return -1
+  const n = parseFloat(key)
+  return Number.isNaN(n) ? 1000 : n
+}
+
+type MenuChip =
+  | { kind: 'single'; key: string; label: string; access: 'edit' | 'view' }
+  | { kind: 'group'; key: string; title: string; members: { label: string; access: 'edit' | 'view' }[] }
+
+// จัดเรียงเมนูตามลำดับเลข และรวมกลุ่ม Station (2.x / 15.x) ให้อยู่ในชิปเดียวกัน
+function buildMenuChips(menus: MenuGrant[]): MenuChip[] {
+  const sorted = [...menus].sort((a, b) => menuSortValue(a.key) - menuSortValue(b.key))
+  const seen = new Set<string>()
+  const chips: MenuChip[] = []
+  for (const m of sorted) {
+    if (seen.has(m.key)) continue
+    const family = m.key.startsWith('2.') ? '2' : m.key.startsWith('15.') ? '15' : null
+    if (family) {
+      const members = sorted.filter(x => x.key.startsWith(`${family}.`))
+      members.forEach(x => seen.add(x.key))
+      chips.push({
+        kind: 'group',
+        key: family,
+        title: STATION_GROUP_TITLE[family as '2' | '15'],
+        members: members.map(x => ({ label: STATION_GROUP_SHORT_LABEL[x.key] ?? x.key, access: x.access })),
+      })
+      continue
+    }
+    seen.add(m.key)
+    chips.push({ kind: 'single', key: m.key, label: menuLabel(m.key), access: m.access })
+  }
+  return chips
+}
+
 const STEP_LABELS: Record<string, { label: string; cls: string }> = {
   all: { label: 'ทั้งคู่',  cls: 'bg-violet-50 text-violet-700' },
   '2': { label: 'เบสิค',   cls: 'bg-sky-50 text-sky-700' },
@@ -546,13 +592,24 @@ export default function AdminUsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {u.menus.map(m => (
-                          <span key={m.key}
-                            className={`px-2 py-0.5 rounded text-xs ${m.access === 'view' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}
-                            title={m.access === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'}
+                      <div className="flex flex-wrap gap-1.5 max-w-md">
+                        {buildMenuChips(u.menus).map(chip => chip.kind === 'single' ? (
+                          <span key={chip.key}
+                            className={`px-2 py-0.5 rounded text-xs whitespace-nowrap ${chip.access === 'view' ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}
+                            title={chip.access === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'}
                           >
-                            {menuLabel(m.key)}{m.access === 'view' ? ' (View)' : ''}
+                            {chip.label}{chip.access === 'view' ? ' (View)' : ''}
+                          </span>
+                        ) : (
+                          <span key={chip.key}
+                            className="px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700"
+                            title="ตัวเอียง/จาง = ดูอย่างเดียว"
+                          >
+                            {chip.title}: {chip.members.map((mm, i) => (
+                              <span key={i} className={mm.access === 'view' ? 'text-gray-400 italic' : ''}>
+                                {i > 0 ? ', ' : ''}{mm.label}
+                              </span>
+                            ))}
                           </span>
                         ))}
                       </div>
