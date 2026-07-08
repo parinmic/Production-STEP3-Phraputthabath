@@ -181,7 +181,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         href: '/basic/lotus',
         icon: Leaf,
         summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง LOTUS แบ่ง 2 รอบ',
-        body: ['รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 3 วัน/BL3 สำหรับคำนวณ Phase 1)'],
+        body: ['รอบ 14:00 น. (คำสั่งซื้อรอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับคำนวณ Phase 1)'],
       },
       {
         key: 'wet-market',
@@ -189,7 +189,7 @@ const RAW_BASIC_GROUPS: ManualGroup[] = [
         href: '/basic/wet-market',
         icon: Store,
         summary: 'อัพโหลดไฟล์คำสั่งซื้อช่องทาง Wet Market โครงสร้างเดียวกับ LOTUS',
-        body: ['รอบ 14:00 น. (รอบบ่าย) และรอบ 16:00 น. (ข้อมูล BL3 สำหรับ Phase 1)'],
+        body: ['รอบ 14:00 น. (รอบบ่าย) และรอบ 16:00 น. (ข้อมูลย้อนหลัง 7 วัน สำหรับ Phase 1)'],
       },
       {
         key: 'plan-100',

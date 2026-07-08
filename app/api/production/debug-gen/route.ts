@@ -15,9 +15,9 @@ export async function GET(req: NextRequest) {
   const isPhase2 = phase === 2
   const isPhase3 = phase === 3
 
-  // Historical BL3 dates
+  // Historical dates (7-day baseline)
   const d = new Date(date)
-  const histDates = [1, 2, 3].map(n => {
+  const histDates = [1, 2, 3, 4, 5, 6, 7].map(n => {
     const h = new Date(d); h.setDate(d.getDate() - n)
     return h.toISOString().split('T')[0]
   })
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     // Order today (filtered by SKU — format usually consistent for today)
     supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).eq('delivery_date', date).eq('upload_round', orderRound),
-    // BL3: filter by SKU directly to avoid hitting PostgREST row limit
+    // 7-day hist: filter by SKU directly to avoid hitting PostgREST row limit
     supabase.from('wet_market_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
       .or(`sku.eq.${sku},sku.eq.${skuPad}`).in('delivery_date', histDates).eq('upload_round', '1600'),
     supabase.from('lotus_orders').select('sku, sku_name, quantity, delivery_date, upload_round')
@@ -122,15 +122,15 @@ export async function GET(req: NextRequest) {
     eligibleWorkers.some(e => e.replace(/\s+/g, ' ').trim() === w.name.replace(/\s+/g, ' ').trim())
   )
 
-  // ── 5. Orders & BL3 averages ────────────────────────────────────────
+  // ── 5. Orders & 7-day averages ────────────────────────────────────────
   const sumQty = (rows: { quantity: number }[]) => rows.reduce((s, r) => s + r.quantity, 0)
 
-  // Filter broad BL3 rows in memory using normalized SKU (mirrors generate route)
+  // Filter broad 7-day hist rows in memory using normalized SKU (mirrors generate route)
   type OrderRow = { sku: string; sku_name: string | null; quantity: number; delivery_date: string; upload_round?: string }
   const filterBySku = (rows: OrderRow[]) =>
     rows.filter(r => r.sku.replace(/^0+/, '') === sku)
 
-  const avgBL3 = (rows: OrderRow[]) => {
+  const avg7d = (rows: OrderRow[]) => {
     const byDate: Record<string, number> = {}
     for (const r of rows) byDate[r.delivery_date] = (byDate[r.delivery_date] ?? 0) + r.quantity
     const vals = Object.values(byDate)
@@ -146,15 +146,15 @@ export async function GET(req: NextRequest) {
   const makroHistForSku = filterBySku(allMakroHist)
 
   const wmOrderQty    = sumQty((wmToday?.data    ?? []) as OrderRow[])
-  const wmAvgBL3      = avgBL3(wmHistForSku)
+  const wmAvg7d       = avg7d(wmHistForSku)
   const lotusOrderQty = sumQty((lotusToday?.data ?? []) as OrderRow[])
-  const lotusAvgBL3   = avgBL3(lotusHistForSku)
+  const lotusAvg7d    = avg7d(lotusHistForSku)
   // Initial value from direct query; corrected below via allMakroToday (handles long leading-zero SKU format)
   let makroOrderQty = sumQty((makroToday?.data ?? []) as OrderRow[])
-  const makroAvgBL3   = avgBL3(makroHistForSku)
+  const makroAvg7d    = avg7d(makroHistForSku)
 
-  // Raw SKU values found in BL3 tables (to detect leading-zero mismatch)
-  const skusFoundInBL3 = {
+  // Raw SKU values found in 7-day hist tables (to detect leading-zero mismatch)
+  const skusFoundIn7d = {
     wet_market: Array.from(new Set(allWmHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
     lotus:      Array.from(new Set(allLotusHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
     makro:      Array.from(new Set(allMakroHist.filter(r => r.sku.replace(/^0+/, '') === sku).map(r => r.sku))),
@@ -180,15 +180,15 @@ export async function GET(req: NextRequest) {
 
   // Wet Market
   if (phase === 1) {
-    const base = wmAvgBL3
+    const base = wmAvg7d
     const excluded = excludedByMakroSet
     targets['Wet Market'] = {
       channel: 'Wet Market', rawBase: base,
       afterDeduct: excluded ? 0 : base,
-      reason: excluded ? 'ถูกข้ามเพราะ SKU นี้มีใน Makro order วันนี้' : (base <= 0 ? 'BL3 avg = 0 (ไม่มีประวัติ)' : 'ผ่าน'),
+      reason: excluded ? 'ถูกข้ามเพราะ SKU นี้มีใน Makro order วันนี้' : (base <= 0 ? 'ค่าเฉลี่ย 7 วัน = 0 (ไม่มีประวัติ)' : 'ผ่าน'),
     }
   } else if (phase === 2) {
-    const base = wmAvgBL3 > 0 ? Math.min(wmAvgBL3, wmOrderQty) : wmOrderQty
+    const base = wmAvg7d > 0 ? Math.min(wmAvg7d, wmOrderQty) : wmOrderQty
     const deduct = (prevAssigned ?? []).filter((r: { channel: string | null }) => r.channel === 'Wet Market').reduce((s: number, r: { target_quantity: number }) => s + Number(r.target_quantity), 0)
     targets['Wet Market'] = { channel: 'Wet Market', rawBase: base, afterDeduct: Math.max(0, base - deduct), reason: wmOrderQty <= 0 ? 'ไม่มี Order Wet Market วันนี้' : 'ผ่าน' }
   }
@@ -203,11 +203,11 @@ export async function GET(req: NextRequest) {
 
   // LOTUS
   if (phase === 1) {
-    const base = lotusAvgBL3
+    const base = lotusAvg7d
     const excluded = excludedByMakroSet
-    targets['LOTUS'] = { channel: 'LOTUS', rawBase: base, afterDeduct: excluded ? 0 : base, reason: excluded ? 'ถูกข้ามเพราะ SKU นี้มีใน Makro order วันนี้' : (base <= 0 ? 'BL3 avg = 0 (ไม่มีประวัติ)' : 'ผ่าน') }
+    targets['LOTUS'] = { channel: 'LOTUS', rawBase: base, afterDeduct: excluded ? 0 : base, reason: excluded ? 'ถูกข้ามเพราะ SKU นี้มีใน Makro order วันนี้' : (base <= 0 ? 'ค่าเฉลี่ย 7 วัน = 0 (ไม่มีประวัติ)' : 'ผ่าน') }
   } else if (phase === 2) {
-    const base = lotusAvgBL3 > 0 ? Math.min(lotusAvgBL3, lotusOrderQty) : lotusOrderQty
+    const base = lotusAvg7d > 0 ? Math.min(lotusAvg7d, lotusOrderQty) : lotusOrderQty
     const deduct = (prevAssigned ?? []).filter((r: { channel: string | null }) => r.channel === 'LOTUS').reduce((s: number, r: { target_quantity: number }) => s + Number(r.target_quantity), 0)
     targets['LOTUS'] = { channel: 'LOTUS', rawBase: base, afterDeduct: Math.max(0, base - deduct), reason: lotusOrderQty <= 0 ? 'ไม่มี Order LOTUS วันนี้' : 'ผ่าน' }
   }
@@ -251,26 +251,26 @@ export async function GET(req: NextRequest) {
         active_channels: activeChannels,
         note: activeChannels.length === 0 ? 'ไม่มี channel master สำหรับ phase นี้ — ใช้ default [WM, Makro, LOTUS]' : '',
       },
-      '3_orders_and_bl3': {
+      '3_orders_and_7d_avg': {
         wet_market:  {
           order_today: wmOrderQty,
-          bl3_avg: Math.round(wmAvgBL3),
-          bl3_rows: wmHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+          avg_7d: Math.round(wmAvg7d),
+          hist_7d_rows: wmHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
         },
         lotus: {
           order_today: lotusOrderQty,
-          bl3_avg: Math.round(lotusAvgBL3),
-          bl3_rows: lotusHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+          avg_7d: Math.round(lotusAvg7d),
+          hist_7d_rows: lotusHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
         },
         makro: {
           order_today: makroOrderQty,
-          bl3_avg: Math.round(makroAvgBL3),
-          bl3_rows: makroHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
+          avg_7d: Math.round(makroAvg7d),
+          hist_7d_rows: makroHistForSku.map(r => ({ date: r.delivery_date, qty: r.quantity, sku_as_stored: r.sku })),
         },
-        skus_found_in_bl3_tables: skusFoundInBL3,
+        skus_found_in_7d_hist: skusFoundIn7d,
         excluded_from_wm_lotus_because_in_makro: excludedByMakroSet,
-        note: (wmAvgBL3 === 0 && lotusAvgBL3 === 0 && makroAvgBL3 === 0)
-          ? `ไม่พบ BL3 ใน 3 วัน (${histDates.join(', ')}) ทั้ง WM+LOTUS+Makro — ตรวจสอบว่ามีการ upload round 1600 วันเหล่านั้นหรือไม่`
+        note: (wmAvg7d === 0 && lotusAvg7d === 0 && makroAvg7d === 0)
+          ? `ไม่พบข้อมูลย้อนหลัง 7 วัน (${histDates.join(', ')}) ทั้ง WM+LOTUS+Makro — ตรวจสอบว่ามีการ upload round 1600 วันเหล่านั้นหรือไม่`
           : '',
       },
       '4_target_per_channel': targets,

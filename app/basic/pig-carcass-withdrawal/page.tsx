@@ -83,11 +83,14 @@ function fmtSavedTime(iso: string | undefined): string | null {
   return new Date(iso).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
 }
 
-function getAvailableOrderNumbers(rowsLength: number, lotOrder: Record<string, string>, specCode: string): number[] {
+function getAvailableOrderNumbers(rowsLength: number, lotOrder: Record<string, string>, specCode: string, validSpecCodes: Set<string>): number[] {
   const currentValue = lotOrder[specCode] ?? ''
   return Array.from({ length: rowsLength }, (_, k) => k + 1).filter(n => {
     const value = String(n)
-    const usedByOther = Object.entries(lotOrder).some(([otherSpec, otherValue]) => otherSpec !== specCode && otherValue === value)
+    // Only consider spec_codes that belong to today's rows — otherwise stale order picks
+    // left over from a previous day (different spec_codes) would keep blocking 1, 2, 3...
+    const usedByOther = Object.entries(lotOrder).some(([otherSpec, otherValue]) =>
+      otherSpec !== specCode && otherValue === value && validSpecCodes.has(otherSpec))
     return !usedByOther || currentValue === value
   })
 }
@@ -261,6 +264,7 @@ export default function PigCarcassWithdrawalPage() {
 
   const trimmingNum = parseInt(trimmingQty) || 0
   const diff        = trimmingNum > 0 ? trimmingNum - selQty : null
+  const validSpecCodes = new Set(rows.map(r => r.spec_code))
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -382,7 +386,7 @@ export default function PigCarcassWithdrawalPage() {
             const tAvg    = calcAvgTemp(qcTemps[r.spec_code])
             const tStatus = avgTempStatus(tAvg)
 
-            const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code)
+            const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code, validSpecCodes)
 
             const lead = r.spec_code.slice(-1)
 
@@ -485,7 +489,7 @@ export default function PigCarcassWithdrawalPage() {
                   const tStatus  = avgTempStatus(tAvg)
 
                   // Available order numbers: not used by others (or currently selected by this row)
-                  const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code)
+                  const availableNums = getAvailableOrderNumbers(rows.length, lotOrder, r.spec_code, validSpecCodes)
 
                   return (
                     <tr key={r.spec_code} className={`transition-colors ${picked ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>

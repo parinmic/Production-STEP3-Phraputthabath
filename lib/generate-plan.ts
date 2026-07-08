@@ -1,4 +1,4 @@
-import { supabase, fetchLatestPlan100 } from '@/lib/supabase'
+import { supabase, fetchLatestPlan100, fetchLatestOrders } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 import { fetchWorkforceAndSkills, WorkforceRow, normName } from '@/lib/workforce'
 
@@ -164,23 +164,23 @@ function buildAvgMap(rows: OrderRow[]): Map<string, number> {
 
 // params: [nonSharedHigh, nonSharedLow, sharedHigh, sharedLow]
 function getWetMarketVariance(
-  isShared: boolean, quotaToday: number, avgBL3: number, lotusBL3: number,
+  isShared: boolean, quotaToday: number, avg7d: number, lotus7d: number,
   params: [number, number, number, number] = [0.5, 0.3, 0.5, 0.7],
 ): number {
   const [nsHigh, nsLow, sHigh, sLow] = params
-  if (!isShared) return Math.min(quotaToday, avgBL3) > 100 ? nsHigh : nsLow
-  const ratio = lotusBL3 > 0 ? Math.min(quotaToday, avgBL3) / lotusBL3 : 999
+  if (!isShared) return Math.min(quotaToday, avg7d) > 100 ? nsHigh : nsLow
+  const ratio = lotus7d > 0 ? Math.min(quotaToday, avg7d) / lotus7d : 999
   return ratio > 0.5 ? sHigh : sLow
 }
 
 // params order matches master columns: [propHigh_trendLow, propHigh_trendMid, propHigh_trendHigh, propLow_trendLow, propLow_trendMid, propLow_trendHigh]
-// proportion = SKU order / total Makro order; trend = order / avgBL3
+// proportion = SKU order / total Makro order; trend = order / avg7d
 function getMakroVariance(
-  proportionAbove10pct: boolean, orderQty: number, avgBL3: number,
+  proportionAbove10pct: boolean, orderQty: number, avg7d: number,
   params: [number, number, number, number, number, number] = [0.9, 0.8, 0.6, 0.8, 0.6, 0.4],
 ): number {
   const [phTL, phTM, phTH, plTL, plTM, plTH] = params
-  const trend = avgBL3 > 0 ? orderQty / avgBL3 : 2
+  const trend = avg7d > 0 ? orderQty / avg7d : 2
   if (proportionAbove10pct) {
     if (trend > 1.0) return phTH
     if (trend > 0.8) return phTM
@@ -679,13 +679,15 @@ function allocateBalanced(params: {
     }
   }
 
-  // 4b. Deficit blocks whose remainder never got bound to a real worker within available
-  // time (e.g. all eligible workers were already booked) — still queue them onto a real
-  // eligible worker (for whenever raw material/time frees up) instead of dropping the row,
-  // so the shortfall stays visible in the Raw รอผลิต shortage report. Doesn't touch
-  // workerFreeAtMins/workerBusySegments — this is backlog, not a real timeslot.
+  // 4b. Any block (deficit or not) whose remainder never got bound to a real worker within
+  // available time — e.g. all eligible workers were already booked by the time an LPT-sorted
+  // block this small got its turn (section 4 sorts longest-processing-time first, so a
+  // low-qty/short-duration block can reach the front of the queue only after every eligible
+  // worker's time is already spoken for) — still queue it onto a real eligible worker instead
+  // of silently dropping the row, so the shortfall stays visible in the Raw รอผลิต shortage
+  // report. Doesn't touch workerFreeAtMins/workerBusySegments — this is backlog, not a real
+  // timeslot.
   for (const block of skuBlocks) {
-    if (!block.isDeficit) continue
     const normSku = block.normSku
     let scheduledQty = 0
     for (const w of workers) {
@@ -1441,20 +1443,13 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     bkpOrdersRaw,
   { data: mooChōdMasterRaw },
   ] = await Promise.all([
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('wet_market_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('lotus_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1600' }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }, { col: 'upload_round', op: 'eq', val: orderRound }]),
-    fetchAll<OrderRow>('makro_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'in', val: histDates }, { col: 'upload_round', op: 'eq', val: '1400' }]),
-    fetchAll<OrderRow>('fs_orders', 'sku, sku_name, quantity, delivery_date',
-      [{ col: 'delivery_date', op: 'eq', val: productionDate }])
+    fetchLatestOrders('wet_market_orders', [productionDate], ['1400']),
+    fetchLatestOrders('wet_market_orders', histDates, ['1600']),
+    fetchLatestOrders('lotus_orders', [productionDate], ['1400']),
+    fetchLatestOrders('lotus_orders', histDates, ['1600']),
+    fetchLatestOrders('makro_orders', [productionDate], [orderRound]),
+    fetchLatestOrders('makro_orders', histDates, ['1400']),
+    fetchLatestOrders('fs_orders', [productionDate], ['0800'])
       .catch(() => [] as OrderRow[]),
     supabase.from('master_logic_calculation').select('row_data')
       .eq('calculation_type', 'Mas Productivity').order('uploaded_at', { ascending: false }).limit(5000),
@@ -1531,7 +1526,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       : (wmHist.length  || lotusHist.length  || makroToday.length || hasBkpOrders || fsToday.length)
     if (!hasOrders) return {
       success: false,
-      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'BL3 Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP / FS) — กรุณาอัพโหลดก่อน`,
+      message: `ไม่พบข้อมูล${isPhase2 ? `Order รอบ ${orderRound}` : 'ย้อนหลัง 7 วันของ Wet Market หรือ Order'} วันนี้ (Wet Market / LOTUS / Makro / BKP / FS) — กรุณาอัพโหลดก่อน`,
     }
   }
 
@@ -1906,11 +1901,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
       const grp = getSkuGroup(sku)
       const groupQty = groupQtyMap.get(grp) ?? 0
       const proportion = makroTotal > 0 ? groupQty / makroTotal : 0
-      const avgBL3 = avgMakro.get(sku) ?? 0
+      const avg7d = avgMakro.get(sku) ?? 0
       const baggedOrderQty = roundDownToBag(sku, orderQty)
       // Makro = ยอดล่วงหน้า: SKUs with no historical avg (e.g. new SKUs, by-products) use full order qty
-      if (avgBL3 === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
-      const variance = getMakroVariance(proportion > 0.1, orderQty, avgBL3, makroVarParams)
+      if (avg7d === 0) return { sku, skuName: name, targetQty: baggedOrderQty, channel: ch }
+      const variance = getMakroVariance(proportion > 0.1, orderQty, avg7d, makroVarParams)
       return { sku, skuName: name, targetQty: Math.min(baggedOrderQty * variance, baggedOrderQty), channel: ch }
     }).filter(s => s.targetQty > 0)
   }
@@ -2606,7 +2601,11 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     let qty = roundDownToBag(item.sku, item.targetQty)
     if (isPhase3) {
       const planItem = planMap.get(item.sku.replace(/^0+/, ''))
-      if (planItem) {
+      // Only cap against plan100's remaining when plan100 actually carries demand for this
+      // SKU (qty > 0). A plan100 row with weight_total=0 is just a template stub — treating
+      // it as "0 remaining" would zero out unrelated appendRemaining (Makro/LOTUS/WM/FS)
+      // targets for SKUs plan100 has nothing to say about.
+      if (planItem && planItem.qty > 0) {
         const remaining = Math.max(0, planItem.qty - (phase1Assigned.get(item.sku.replace(/^0+/, '')) ?? 0))
         if (qty > remaining) qty = remaining
       }
@@ -2798,12 +2797,12 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
 
           const [
             wipHistP100,
-            { data: wipHistLotus },
-            { data: wipHistWm },
+            wipHistLotus,
+            wipHistWm,
           ] = await Promise.all([
             fetchLatestPlan100(histDates),
-            supabase.from('lotus_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
-            supabase.from('wet_market_orders').select('delivery_date, sku, quantity').in('delivery_date', histDates).eq('upload_round', '1400'),
+            fetchLatestOrders('lotus_orders', histDates, ['1400']),
+            fetchLatestOrders('wet_market_orders', histDates, ['1400']),
           ])
 
           const wipKgSum = new Map<string, number>()
