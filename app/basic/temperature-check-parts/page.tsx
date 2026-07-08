@@ -139,28 +139,30 @@ function AnimalSetGrid({ title, value, onChange, disabled }: {
   return (
     <div className="bg-white border border-gray-200 rounded-md p-2.5">
       <p className="text-xs font-semibold text-gray-600 mb-1.5">{title}</p>
-      <table className="w-full text-xs">
-        <thead>
-          <tr>
-            <th className="text-left text-gray-400 font-normal pb-1.5 w-16"></th>
-            {POINTS.map(p => (
-              <th key={p.key} className="text-center text-blue-600 font-semibold pb-1.5">{p.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {ANIMALS.map(a => (
-            <tr key={a.key}>
-              <td className="text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[420px]">
+          <thead>
+            <tr>
+              <th className="text-left text-gray-400 font-normal pb-1.5 w-16"></th>
               {POINTS.map(p => (
-                <td key={p.key} className="py-1 px-1">
-                  <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} />
-                </td>
+                <th key={p.key} className="text-center text-blue-600 font-semibold pb-1.5">{p.label}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {ANIMALS.map(a => (
+              <tr key={a.key}>
+                <td className="text-gray-500 pr-2 py-1 whitespace-nowrap">{a.label}</td>
+                {POINTS.map(p => (
+                  <td key={p.key} className="py-1 px-1">
+                    <PointInput value={value[a.key][p.key]} onChange={v => onChange(a.key, p.key, v)} disabled={disabled} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

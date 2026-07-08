@@ -3,6 +3,28 @@ import { useMemo, useState } from 'react'
 import { Search, BookOpen, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+export interface ManualMarker {
+  x: string // CSS left, e.g. "72%"
+  y: string // CSS top, e.g. "18%"
+  n: number // matches the 1-based position of the description line it points to
+}
+
+export interface ManualMobileSection {
+  title: string
+  images: { src: string; caption: string; markers?: ManualMarker[] }[]
+  description: string[]
+}
+
+function MarkerBadge({ n, className = '' }: { n: number; className?: string }) {
+  return (
+    <span
+      className={`flex items-center justify-center rounded-full bg-yellow-400 border-2 border-black text-black font-bold leading-none ${className}`}
+    >
+      {n}
+    </span>
+  )
+}
+
 export interface ManualItem {
   key: string
   label: string
@@ -13,6 +35,14 @@ export interface ManualItem {
   bullets?: string[]
   image?: string
   imageCaption?: string
+  // Numbered markers overlaid on `image`, paired 1:1 with `imageDescription` lines.
+  imageMarkers?: ManualMarker[]
+  imageDescription?: string[]
+  // Mobile screenshots — one per sub-view when the menu has a dropdown/tabs to open.
+  mobileImages?: { src: string; caption: string }[]
+  // Grouped mobile view: images on the left, per-submenu description on the right,
+  // with a divider between each submenu. Takes priority over mobileImages when set.
+  mobileSections?: ManualMobileSection[]
 }
 
 export interface ManualGroup {
@@ -184,13 +214,89 @@ function ItemPanel({ item }: { item: ManualItem }) {
 
       {item.image && (
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.image} alt={`ตัวอย่างหน้าจอ ${item.label}`} className="w-full h-auto block" />
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={item.image} alt={`ตัวอย่างหน้าจอ ${item.label}`} className="w-full h-auto block" />
+            {item.imageMarkers?.map((mk, mi) => (
+              <span
+                key={mi}
+                style={{ position: 'absolute', left: mk.x, top: mk.y, transform: 'translate(-50%, -50%)' }}
+              >
+                <MarkerBadge n={mk.n} className="w-6 h-6 text-xs shadow" />
+              </span>
+            ))}
+          </div>
           <p className="text-xs text-gray-400 text-center py-1.5 bg-white border-t border-gray-100">
             {item.imageCaption ?? 'ตัวอย่างหน้าจอ'}
           </p>
         </div>
       )}
+
+      {item.imageDescription?.length ? (
+        <div className="space-y-2 text-sm text-gray-700 leading-relaxed">
+          {item.imageDescription.map((d, k) => (
+            <p key={k} className="flex items-start gap-2">
+              <MarkerBadge n={k + 1} className="shrink-0 w-5 h-5 text-[11px] mt-0.5" />
+              <span>{d}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {item.mobileSections?.length ? (
+        <div className="divide-y divide-gray-200 border-t border-gray-200">
+          {item.mobileSections.map((sec, i) => (
+            <div key={i} className="py-4 first:pt-2">
+              <p className="text-sm font-semibold text-gray-800 mb-2.5">{sec.title}</p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex gap-3 shrink-0 overflow-x-auto pb-1 sm:pb-0">
+                  {sec.images.map((m, j) => (
+                    <div key={j} className="shrink-0 w-36 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                      <div className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={m.src} alt={`มุมมองมือถือ ${item.label} — ${sec.title} — ${m.caption}`} className="w-full h-auto block" />
+                        {m.markers?.map((mk, mi) => (
+                          <span
+                            key={mi}
+                            style={{ position: 'absolute', left: mk.x, top: mk.y, transform: 'translate(-50%, -50%)' }}
+                          >
+                            <MarkerBadge n={mk.n} className="w-3.5 h-3.5 text-[8px] shadow" />
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-gray-500 text-center py-1 bg-white border-t border-gray-100">
+                        {m.caption}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-1 min-w-0 space-y-2 text-sm text-gray-700 leading-relaxed">
+                  {sec.description.map((d, k) => (
+                    <p key={k} className="flex items-start gap-2">
+                      <MarkerBadge n={k + 1} className="shrink-0 w-5 h-5 text-[11px] mt-0.5" />
+                      <span>{d}</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : item.mobileImages?.length ? (
+        <div>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {item.mobileImages.map((m, i) => (
+              <div key={i} className="shrink-0 w-40 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={m.src} alt={`มุมมองมือถือ ${item.label} — ${m.caption}`} className="w-full h-auto block" />
+                <p className="text-[11px] text-gray-500 text-center py-1 bg-white border-t border-gray-100">
+                  {m.caption}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-3 text-sm text-gray-700 leading-relaxed">
         {item.body.map((p, i) => <p key={i}>{p}</p>)}

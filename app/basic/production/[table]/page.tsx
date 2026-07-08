@@ -2290,6 +2290,37 @@ export default function BasicTablePage() {
         </div>
       </div>
 
+      {/* Mobile: date picker + create button (desktop toolbar above is sm:flex only) */}
+      <div className="flex sm:hidden flex-col gap-2">
+        <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-3 py-2 bg-white text-sm text-gray-700">
+          <Calendar size={14} className="text-gray-400 shrink-0" />
+          <input type="date" value={date}
+            onChange={e => { setDate(e.target.value); setGenResult(null) }}
+            className="outline-none bg-transparent text-sm flex-1 min-w-0" />
+        </div>
+        {selectedPhase !== 'all' && (
+          <button type="button"
+            onClick={handleCreatePhaseClick}
+            disabled={generating}
+            data-subtract-phase1={subtractPhase1FromPhase2}
+            data-subtract-phase1-phase3={subtractPhase1FromPhase3}
+            data-subtract-phase2-phase3={subtractPhase2FromPhase3}
+            className="btn-primary flex items-center justify-center gap-2 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed">
+            <ClipboardList size={15} />{generating ? 'กำลังสร้าง...' : `สร้าง Phase ${selectedPhase}`}
+          </button>
+        )}
+        {genResult && (
+          <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${
+            genResult.success
+              ? 'bg-green-50 text-green-700 border-green-200'
+              : 'bg-red-50 text-red-700 border-red-200'
+          }`}>
+            {genResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            {genResult.message}
+          </div>
+        )}
+      </div>
+
       {phase2PromptOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">

@@ -208,11 +208,17 @@ export default function CarcassYieldPlanView({
   return (
     <div className="rounded-2xl border border-gray-200 overflow-hidden">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-slate-700 to-slate-600">
-        <div>
-          <span className="text-white font-bold text-sm">แผนตาม Yield — Phase {selectedPhase}</span>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-5 py-3 bg-gradient-to-r from-slate-700 to-slate-600">
+        <div className="min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-white font-bold text-sm">แผนตาม Yield — Phase {selectedPhase}</span>
+            <button onClick={loadData} disabled={loading}
+              className="sm:hidden shrink-0 text-slate-300 hover:text-white text-xs flex items-center gap-1 transition-colors">
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />รีโหลด
+            </button>
+          </div>
           {totalLots > 0 && (
-            <span className="text-slate-300 text-xs ml-3">
+            <span className="text-slate-300 text-xs block sm:inline sm:ml-3 mt-0.5 sm:mt-0">
               <span className="text-white font-semibold">{phasePigs.toLocaleString('th-TH')} ตัว</span>
               <span className="opacity-60"> / {totalLots.toLocaleString('th-TH')} ตัว รวม 3 Phase</span>
               {` · อัตรา ${rate} วิ/ตัว`}
@@ -221,7 +227,7 @@ export default function CarcassYieldPlanView({
           )}
         </div>
         <button onClick={loadData} disabled={loading}
-          className="text-slate-300 hover:text-white text-xs flex items-center gap-1 transition-colors">
+          className="hidden sm:flex shrink-0 text-slate-300 hover:text-white text-xs items-center gap-1 transition-colors">
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />รีโหลด
         </button>
       </div>
@@ -267,28 +273,30 @@ export default function CarcassYieldPlanView({
                 return (
                   <div key={grp}>
                     {/* ── Group header ── */}
-                    <div className={`flex items-center gap-3 px-4 py-2.5 ${gi % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}>
+                    <div className={`flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 px-4 py-2.5 ${gi % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}>
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-bold text-slate-800">{grp}</span>
                         {yieldKg > 0 && (
-                          <span className="ml-2 text-xs text-slate-500">Yield {fmt(yieldKg)} กก.</span>
+                          <span className="ml-2 text-xs text-slate-500 whitespace-nowrap">Yield {fmt(yieldKg)} กก.</span>
                         )}
                       </div>
-                      {yieldKg > 0 && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${assignedKg > yieldKg ? 'bg-red-500' : 'bg-emerald-500'}`}
-                              style={{ width: `${usedPct}%` }} />
+                      <div className="flex items-center gap-3 sm:contents">
+                        {yieldKg > 0 && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${assignedKg > yieldKg ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${usedPct}%` }} />
+                            </div>
+                            <span className={`text-[10px] w-8 text-right ${assignedKg > yieldKg ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>
+                              {Math.round(usedPct)}%
+                            </span>
                           </div>
-                          <span className={`text-[10px] w-8 text-right ${assignedKg > yieldKg ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>
-                            {Math.round(usedPct)}%
-                          </span>
-                        </div>
-                      )}
-                      <span className={`text-xs font-bold w-20 text-right shrink-0 ${assignedKg > yieldKg ? 'text-red-600' : 'text-emerald-700'}`}>
-                        {assignedKg > 0 ? `${fmt(assignedKg)} กก.` : '—'}
-                        {assignedKg > yieldKg && <span className="block text-[9px] font-normal text-red-400">เกิน Yield</span>}
-                      </span>
+                        )}
+                        <span className={`text-xs font-bold sm:w-20 text-right shrink-0 ml-auto sm:ml-0 ${assignedKg > yieldKg ? 'text-red-600' : 'text-emerald-700'}`}>
+                          {assignedKg > 0 ? `${fmt(assignedKg)} กก.` : '—'}
+                          {assignedKg > yieldKg && <span className="block text-[9px] font-normal text-red-400">เกิน Yield</span>}
+                        </span>
+                      </div>
                     </div>
 
                     {/* ── SKU sub-items ── */}

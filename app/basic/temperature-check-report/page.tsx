@@ -356,8 +356,8 @@ export default function TemperatureCheckReportPage() {
             <p className="text-xs text-gray-500 pt-1">วันที่ {fmtDateLong(selectedDate)}</p>
           </div>
 
-          {/* ซีกสุกร + ชิ้นส่วน side by side */}
-          <div className="grid grid-cols-2 gap-4 items-start">
+          {/* ซีกสุกร + ชิ้นส่วน side by side (stacked on mobile) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
             <div className="min-w-0">
               <CarcassTable groups={carcassGroups} />
             </div>
@@ -372,8 +372,7 @@ export default function TemperatureCheckReportPage() {
               <span className="font-semibold">หมายเหตุ:</span>{' '}
               ตรวจสอบอุณหภูมิห้อง Chill และอุณหภูมิซีกสุกรก่อนเบิกผลิต โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก มาตรฐานอุณหภูมิเนื้อก่อนผลิต ≤ 7 °C
             </p>
-            <p className="leading-relaxed mt-0.5 whitespace-nowrap">
-              <span className="opacity-0 select-none">หมายเหตุ: </span>
+            <p className="leading-relaxed mt-0.5 pl-[3.6em] -indent-[3.6em]">
               ตรวจสอบอุณหภูมิชิ้นส่วนระหว่างผลิตตัดแต่ง โดยใช้เทอร์มิเตอร์ชนิด Prove แทงเข้าบริเวณใจกลางเนื้อสะโพก สันนอก สามชั้น สันคอ เนื้อไหล่ (ตัวแทนกลุ่มชิ้นส่วนที่มีความหนามากที่สุด) มาตรฐานอุณหภูมิเนื้อระหว่างผลิต ≤ 10 °C
             </p>
           </div>
