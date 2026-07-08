@@ -225,6 +225,10 @@ export default function AdminUsersPage() {
   // เพราะระบบเก็บเฉพาะ hash ไม่มีรหัสผ่านจริงให้ export; อัพโหลดไฟล์นี้กลับเข้าไปโดยไม่กรอก
   // Password จะไม่ไปเขียนทับรหัสผ่านเดิมของ user ที่มีอยู่แล้ว (ดู fn_admin_bulk_upload_users)
   function handleExport() {
+    if (users.length === 0 && positions.length === 0) {
+      flash(false, 'ยังไม่มีข้อมูลให้ดาวน์โหลด — รอโหลดข้อมูลให้เสร็จก่อน')
+      return
+    }
     const posInfo = new Map<string, { name: string; step: string; menus: MenuGrant[] }>()
 
     for (const u of users) {
@@ -273,7 +277,8 @@ export default function AdminUsersPage() {
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            disabled={loading}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             <Download size={16} />
             ดาวน์โหลด Excel
