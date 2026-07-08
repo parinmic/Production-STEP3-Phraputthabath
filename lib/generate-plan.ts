@@ -1382,7 +1382,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const selectedPhase: number = params.phase ? Number(params.phase) : 1
   const deductMode: 'plan' | 'actual' | 'yield' =
     params.deductMode === 'actual' || params.deductMode === 'yield' ? params.deductMode : 'plan'
-  const disableMidRecal = params.disableMidRecal ?? false
+  const disableMidRecal = params.disableMidRecal ?? true
 
   const isPhase2 = selectedPhase === 2
   const isPhase3 = selectedPhase === 3

@@ -24,13 +24,14 @@ export default function GenerateSpecialPlanButtons({ menuKey }: { menuKey: strin
   const [generating, setGenerating] = useState<number | null>(null)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [modalPhase, setModalPhase] = useState<number | null>(null)
+  // v2: key เปลี่ยนชื่อเพื่อ force reset default เป็น "สร้างใหม่ทั้งหมด" ให้ทุกเบราว์เซอร์พร้อมกัน
   const [midRecal, setMidRecal]   = useState(() => {
-    if (typeof window === 'undefined') return true
-    return localStorage.getItem('midRecalEnabled') !== 'false'
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('midRecalEnabled_v2') === 'true'
   })
 
   useEffect(() => {
-    localStorage.setItem('midRecalEnabled', String(midRecal))
+    localStorage.setItem('midRecalEnabled_v2', String(midRecal))
   }, [midRecal])
 
   const generate = async (phase: number, deductMode: 'plan' | 'actual' | 'yield' = 'plan') => {
