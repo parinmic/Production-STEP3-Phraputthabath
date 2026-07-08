@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Store, Leaf, FileSpreadsheet, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, Slice, LogOut, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -300,12 +300,14 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
+          <NavLink href="/upload-overview" allowed={has('7.1') || has('7.2') || has('7.3') || has('7.4') || has('7.5')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/upload-overview', has('7.1') || has('7.2') || has('7.3') || has('7.4') || has('7.5'))}`}
+            title="อัพโหลดคำสั่งซื้อ">
+            <Layers size={18} className="shrink-0" />
+            <span className={labelCls}>อัพโหลดคำสั่งซื้อ</span>
+          </NavLink>
+
           {[
-            { href: '/makro',              icon: ShoppingCart,   label: 'คำสั่งซื้อ Makro',    key: '7.1' },
-            { href: '/lotus',              icon: Leaf,           label: 'คำสั่งซื้อ LOTUS',    key: '7.2' },
-            { href: '/wet-market',         icon: Store,          label: 'คำสั่งซื้อ Wet Market', key: '7.3' },
-            { href: '/fs',                 icon: Slice,          label: 'คำสั่งซื้อ FS',        key: '7.4' },
-            { href: '/plan-100',           icon: FileSpreadsheet,label: 'แผนผลิต 100%',        key: '7.5' },
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม',         key: '7.6' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material',  key: '8'   },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้',            key: '9'   },
