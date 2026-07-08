@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
+import { Calendar, RefreshCw, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
 import { useCanEdit } from '@/lib/session-context'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
@@ -59,7 +59,6 @@ export default function AdminProductionPlanPage() {
   const [form, setForm]           = useState({ ...EMPTY_FORM, production_date: today })
   const [saving, setSaving]       = useState(false)
   const [msg, setMsg]             = useState<{ ok: boolean; text: string } | null>(null)
-  const [confirmBulk, setConfirmBulk] = useState<string | null>(null)
   const [editKey, setEditKey]     = useState<string | null>(null)
   const [editVal, setEditVal]     = useState<string>('')
   const [confirmEmergency, setConfirmEmergency] = useState(false)
@@ -106,19 +105,6 @@ export default function AdminProductionPlanPage() {
     if (j.error) { flash(false, j.error); return }
     flash(true, `อัพเดท ${r.sku_name ?? r.sku} (${r.channel ?? '—'}) → ${new_qty.toLocaleString()} กก.`)
     setEditKey(null)
-    load()
-  }
-
-  const deletePeriod = async (period: string) => {
-    const res = await fetch('/api/admin/production-plan', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, period }),
-    })
-    const j = await res.json()
-    if (j.error) { flash(false, j.error); return }
-    flash(true, `ลบ ${PERIOD_PHASE[period]} (${period}) ทั้งหมด ${j.deleted} รายการแล้ว`)
-    setConfirmBulk(null)
     load()
   }
 
@@ -174,7 +160,7 @@ export default function AdminProductionPlanPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Admin — แผนผลิต</h1>
-        <p className="text-gray-500 mt-1">แก้ไขยอดผลิตราย SKU / ลบทั้ง Phase / เพิ่ม SKU</p>
+        <p className="text-gray-500 mt-1">แก้ไขยอดผลิตราย SKU / เพิ่ม SKU</p>
       </div>
 
       {msg && (
@@ -208,7 +194,7 @@ export default function AdminProductionPlanPage() {
         {canEdit && (
         <button onClick={() => setConfirmEmergency(true)}
           className="ml-auto flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
-          <Zap size={16} />สร้างแผนฉุกเฉิน (Phase 1)
+          <Zap size={16} />สร้าง phase 1 โดยใช้กำลังคนวันก่อนหน้า
         </button>
         )}
 
@@ -219,18 +205,6 @@ export default function AdminProductionPlanPage() {
         </button>
         )}
       </div>
-
-      {/* Delete phase buttons */}
-      {canEdit && (
-      <div className="flex flex-wrap gap-3">
-        {PERIODS.map(p => (
-          <button key={p} onClick={() => setConfirmBulk(p)}
-            className="flex items-center gap-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg text-sm font-medium">
-            <Trash2 size={14} />ลบ {PERIOD_PHASE[p]} ทั้งหมด
-          </button>
-        ))}
-      </div>
-      )}
 
       {/* Table */}
       {loading ? (
@@ -331,31 +305,6 @@ export default function AdminProductionPlanPage() {
               </tr>
             </tfoot>
           </table>
-        </div>
-      )}
-
-      {/* Confirm bulk delete */}
-      {confirmBulk && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-            <div className="flex items-center gap-3 text-red-600">
-              <AlertTriangle size={24} />
-              <h2 className="text-lg font-bold">ยืนยันการลบ?</h2>
-            </div>
-            <p className="text-gray-600 text-sm">
-              ลบแผนผลิต <strong>{PERIOD_PHASE[confirmBulk]} ({confirmBulk})</strong> วันที่ {date} ทั้งหมด
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmBulk(null)}
-                className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
-                ยกเลิก
-              </button>
-              <button onClick={() => deletePeriod(confirmBulk)}
-                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-                ลบทั้งหมด
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
