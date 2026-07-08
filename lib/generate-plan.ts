@@ -837,6 +837,10 @@ async function fetchAll<T = Record<string, unknown>>(
 // "already-started, kept" batch plus the newly-regenerated one are BOTH still live at once — so
 // this must sum every batch for the period, not just the most recent effective_from (that used to
 // silently drop whichever batch wasn't "latest", under-deducting Phase 1's true output).
+// Scoped to this Special-line's own stations (STATION_TABLE) so a Basic-line generation (which
+// writes its own table_name into the same production_assignments table) can't get summed in here.
+const SPECIAL_STATIONS = Object.values(STATION_TABLE)
+
 async function fetchLatestBatchAssignments(
   productionDate: string,
   periods: string[],
@@ -847,6 +851,7 @@ async function fetchLatestBatchAssignments(
     const filters: { col: string; op: 'eq' | 'in'; val: unknown }[] = [
       { col: 'production_date', op: 'eq', val: productionDate },
       { col: 'period',          op: 'eq', val: period },
+      { col: 'table_name',      op: 'in', val: SPECIAL_STATIONS },
     ]
     if (deductMode === 'actual') filters.push({ col: 'status', op: 'eq', val: 'เสร็จแล้ว' })
     const rows = await fetchAll<{ sku: string; target_quantity: number; channel: string | null }>(
@@ -1392,6 +1397,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   const { data: latestAssign } = await supabase
     .from('production_assignments').select('effective_from')
     .eq('production_date', productionDate).eq('period', phaseCfg.period)
+    .in('table_name', SPECIAL_STATIONS)
     .lte('effective_from', now.toISOString())
     .order('effective_from', { ascending: false }).limit(1).maybeSingle()
 
@@ -1476,6 +1482,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     useRegen
       ? supabase.from('production_assignments').select('*')
           .eq('production_date', productionDate).eq('period', phaseCfg.period)
+          .in('table_name', SPECIAL_STATIONS)
           .eq('effective_from', latestAssign.effective_from)
       : Promise.resolve({ data: [] as any[], error: null }),
     supabase.from('channel_quotas').select('sku, quantity')
@@ -3190,14 +3197,17 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     }
   }
 
-  // Delete superseded batch
+  // Delete superseded batch — scoped to this Special-line's own stations so a Basic-line
+  // batch sharing the same production_date/period isn't wiped out by this generation.
   if (useRegen) {
     await supabase.from('production_assignments').delete()
       .eq('production_date', productionDate).eq('period', phaseCfg.period)
+      .in('table_name', SPECIAL_STATIONS)
       .eq('effective_from', latestAssign.effective_from)
   } else {
     await supabase.from('production_assignments').delete()
       .eq('production_date', productionDate).eq('period', phaseCfg.period)
+      .in('table_name', SPECIAL_STATIONS)
   }
 
   // Resequence wall-clock start times per worker
