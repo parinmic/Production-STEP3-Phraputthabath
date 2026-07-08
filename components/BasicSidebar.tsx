@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, ShoppingCart, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Store, Leaf, FileSpreadsheet, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, UserCog, Calculator, Layers, Menu, Scale, TrendingUp, CalendarPlus, CalendarDays, AlertTriangle, ArrowLeft, FlaskConical, Thermometer, Timer, Slice, ClipboardCheck, ShieldAlert, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessBasicStation } from '@/lib/special-menu'
 
@@ -334,11 +334,14 @@ export default function BasicSidebar({ user }: { user: SessionUser | null }) {
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
           <div className={dividerCls} />
 
+          <NavLink href="/basic/upload-overview" allowed={has('7.1') || has('7.2') || has('7.3') || has('7.5')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/basic/upload-overview', has('7.1') || has('7.2') || has('7.3') || has('7.5'))}`}
+            title="อัพโหลดคำสั่งซื้อ">
+            <Layers size={18} className="shrink-0" />
+            <span className={labelCls}>อัพโหลดคำสั่งซื้อ</span>
+          </NavLink>
+
           {[
-            { href: '/basic/makro',              icon: ShoppingCart,    label: 'คำสั่งซื้อ Makro',     key: '7.1' },
-            { href: '/basic/lotus',              icon: Leaf,            label: 'คำสั่งซื้อ LOTUS',     key: '7.2' },
-            { href: '/basic/wet-market',         icon: Store,           label: 'คำสั่งซื้อ Wet Market', key: '7.3' },
-            { href: '/basic/plan-100',           icon: FileSpreadsheet, label: 'แผนผลิต 100%',        key: '7.5' },
             { href: '/basic/supplementary-plan', icon: CalendarPlus,    label: 'แผนรอบเสริม',         key: '7.6' },
             { href: '/basic/stock-raw-material', icon: Package,         label: 'Stock Raw Material',  key: '8'   },
             { href: '/basic/yield',              icon: TrendingUp,      label: 'รับผลได้',            key: '9'   },

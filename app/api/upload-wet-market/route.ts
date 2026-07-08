@@ -188,7 +188,9 @@ export async function DELETE(req: NextRequest) {
     const uploadLogId = req.nextUrl.searchParams.get('id')
     if (!uploadLogId) return NextResponse.json({ success: false, message: 'missing id' }, { status: 400 })
     // ON DELETE CASCADE removes wet_market_orders rows automatically
-    await supabase.from('upload_log').delete().eq('id', uploadLogId)
+    const { error, data } = await supabase.from('upload_log').delete().eq('id', uploadLogId).select('id')
+    if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+    if (!data?.length) return NextResponse.json({ success: false, message: 'ไม่พบรายการที่จะลบ หรือลบไม่สำเร็จ ลองใหม่อีกครั้ง' }, { status: 404 })
     return NextResponse.json({ success: true })
   } catch (e: unknown) {
     return NextResponse.json({ success: false, message: e instanceof Error ? e.message : 'เกิดข้อผิดพลาด' }, { status: 500 })

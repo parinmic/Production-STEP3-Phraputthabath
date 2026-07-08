@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { CheckCircle2, Upload, X, AlertCircle, Pencil, Check, Eye, Calendar } from 'lucide-react'
 import ExcelIcon from '@/components/icons/ExcelIcon'
 import { ParsedRow, parseLotusWetMarketFile, parseMakroAuto, parsePlan100 } from '@/lib/parser'
@@ -79,6 +80,10 @@ const DEDUCT_OPTIONS: { mode: 'plan' | 'actual' | 'yield'; label: string; desc: 
 ]
 
 export default function UploadOverviewPage() {
+  const pathname = usePathname()
+  const isBasic = pathname?.startsWith('/basic') ?? false
+  const channels = isBasic ? CHANNELS.filter(c => c.key !== 'fs') : CHANNELS
+
   const canEdit71 = useCanEdit('7.1')
   const canEdit72 = useCanEdit('7.2')
   const canEdit73 = useCanEdit('7.3')
@@ -97,14 +102,19 @@ export default function UploadOverviewPage() {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [phaseDate, setPhaseDate] = useState(today)
   const [midRecal, setMidRecal] = useState(() => {
-    if (typeof window === 'undefined') return true
-    return localStorage.getItem('midRecalEnabled') !== 'false'
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('midRecalEnabled_v2') === 'true'
   })
   const [generatingPhase, setGeneratingPhase] = useState<number | null>(null)
   const [genResult, setGenResult] = useState<{ success: boolean; message: string } | null>(null)
   const [modalPhase, setModalPhase] = useState<number | null>(null)
+  // เฉพาะฝั่งเบสิค (STEP 2) — /api/production/generate-basic มี UX ยืนยันคนละแบบกับฝั่งพิเศษ
+  const [basicPhase2PromptOpen, setBasicPhase2PromptOpen] = useState(false)
+  const [basicPhase3PromptOpen, setBasicPhase3PromptOpen] = useState(false)
+  const [basicSubtractP1FromP3, setBasicSubtractP1FromP3] = useState(false)
+  const [basicSubtractP2FromP3, setBasicSubtractP2FromP3] = useState(false)
 
-  useEffect(() => { localStorage.setItem('midRecalEnabled', String(midRecal)) }, [midRecal])
+  useEffect(() => { localStorage.setItem('midRecalEnabled_v2', String(midRecal)) }, [midRecal])
 
   const cellId = (channel: ChannelKey, slot: SlotKey) => `${channel}:${slot}`
 
@@ -119,7 +129,9 @@ export default function UploadOverviewPage() {
   }
 
   useEffect(() => {
-    Object.keys(CELL_CONFIGS).forEach(id => { fetchHistory(id) })
+    Object.keys(CELL_CONFIGS)
+      .filter(id => !isBasic || !id.startsWith('fs:'))
+      .forEach(id => { fetchHistory(id) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -201,9 +213,40 @@ export default function UploadOverviewPage() {
     setGeneratingPhase(null)
   }
 
+  const generatePhaseBasic = async (phase: number, options?: {
+    subtractPhase1FromPhase2?: boolean
+    subtractPhase1FromPhase3?: boolean
+    subtractPhase2FromPhase3?: boolean
+  }) => {
+    setGeneratingPhase(phase); setGenResult(null); setBasicPhase2PromptOpen(false); setBasicPhase3PromptOpen(false)
+    try {
+      const res = await fetch('/api/production/generate-basic', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: phaseDate, phase, ...options }),
+      })
+      const result = await res.json()
+      setGenResult({ success: !!result.success, message: result.message ?? 'สร้างแผนไม่สำเร็จ' })
+    } catch { setGenResult({ success: false, message: 'เกิดข้อผิดพลาด' }) }
+    setGeneratingPhase(null)
+  }
+
   const handlePhaseClick = (phase: number) => {
+    if (isBasic) {
+      if (phase === 2) { setBasicPhase2PromptOpen(true); return }
+      if (phase === 3) { setBasicPhase3PromptOpen(true); return }
+      generatePhaseBasic(1)
+      return
+    }
     if (phase === 1) { generatePhase(1); return }
     setModalPhase(phase)
+  }
+
+  const handleBasicPhase2Choice = (subtractPhase1: boolean) => {
+    generatePhaseBasic(2, { subtractPhase1FromPhase2: subtractPhase1 })
+  }
+
+  const handleBasicPhase3Confirm = () => {
+    generatePhaseBasic(3, { subtractPhase1FromPhase3: basicSubtractP1FromP3, subtractPhase2FromPhase3: basicSubtractP2FromP3 })
   }
 
   const historyList = Object.entries(history)
@@ -211,6 +254,7 @@ export default function UploadOverviewPage() {
       const [channel, slot] = id.split(':') as [ChannelKey, SlotKey]
       return records.map(r => ({ ...r, channel, slot, cellIdKey: id }))
     })
+    .filter(item => !isBasic || item.channel !== 'fs')
     .filter(item => historyChannel === 'all' || item.channel === historyChannel)
     .filter(item => historySlot === 'all' || item.slot === historySlot)
     .sort((a, b) => (a.uploaded_at < b.uploaded_at ? 1 : -1))
@@ -226,15 +270,17 @@ export default function UploadOverviewPage() {
               <input type="date" value={phaseDate} onChange={e => { setPhaseDate(e.target.value); setGenResult(null) }}
                 className="outline-none bg-transparent text-sm" />
             </div>
-            <label className="inline-flex items-center cursor-pointer select-none gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-100 transition-colors">
-              <span className="text-xs font-semibold text-gray-600">
-                {midRecal ? 'ค้างแผนเก่า (Mid Recal)' : 'สร้างใหม่ทั้งหมด'}
-              </span>
-              <div className="relative">
-                <input type="checkbox" checked={midRecal} onChange={e => setMidRecal(e.target.checked)} className="sr-only peer" />
-                <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-              </div>
-            </label>
+            {!isBasic && (
+              <label className="inline-flex items-center cursor-pointer select-none gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-100 transition-colors">
+                <span className="text-xs font-semibold text-gray-600">
+                  {midRecal ? 'ค้างแผนเก่า (Mid Recal)' : 'สร้างใหม่ทั้งหมด'}
+                </span>
+                <div className="relative">
+                  <input type="checkbox" checked={midRecal} onChange={e => setMidRecal(e.target.checked)} className="sr-only peer" />
+                  <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </div>
+              </label>
+            )}
             {genResult && (
               <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm border ${
                 genResult.success ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
@@ -288,7 +334,7 @@ export default function UploadOverviewPage() {
             </tr>
           </thead>
           <tbody>
-            {CHANNELS.map(ch => (
+            {channels.map(ch => (
               <tr key={ch.key}>
                 <td className="text-base text-gray-900 px-3 align-middle whitespace-nowrap">{ch.label}</td>
                 {SLOTS.map(slot => {
@@ -377,7 +423,7 @@ export default function UploadOverviewPage() {
               className="text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 outline-none"
             >
               <option value="all">ทุกช่องทาง</option>
-              {CHANNELS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {channels.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
             <select
               value={historySlot}
@@ -444,6 +490,62 @@ export default function UploadOverviewPage() {
               className="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors">
               ยกเลิก
             </button>
+          </div>
+        </div>
+      )}
+
+      {basicPhase2PromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">สร้าง Phase 2</h2>
+              <p className="mt-1 text-sm text-gray-500">ต้องการหักยอด Phase 1 ออกจากยอด Phase 2 ก่อนสร้างแผนหรือไม่</p>
+            </div>
+            <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:justify-end">
+              <button type="button" onClick={() => handleBasicPhase2Choice(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ไม่หัก Phase 1
+              </button>
+              <button type="button" onClick={() => handleBasicPhase2Choice(true)}
+                className="px-4 py-2 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700">
+                หัก Phase 1
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {basicPhase3PromptOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">สร้าง Phase 3</h2>
+              <p className="mt-1 text-sm text-gray-500">เลือกแผนก่อนหน้าที่ต้องการหักออกก่อนสร้าง Phase 3</p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+                <input type="checkbox" checked={basicSubtractP1FromP3}
+                  onChange={e => setBasicSubtractP1FromP3(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                หักแผน Phase 1
+              </label>
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+                <input type="checkbox" checked={basicSubtractP2FromP3}
+                  onChange={e => setBasicSubtractP2FromP3(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                หักแผน Phase 2
+              </label>
+            </div>
+            <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:justify-end border-t border-gray-100">
+              <button type="button" onClick={() => setBasicPhase3PromptOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ยกเลิก
+              </button>
+              <button type="button" onClick={handleBasicPhase3Confirm}
+                className="px-4 py-2 rounded-lg bg-gray-900 text-sm font-semibold text-white hover:bg-gray-800">
+                ยืนยัน
+              </button>
+            </div>
           </div>
         </div>
       )}
