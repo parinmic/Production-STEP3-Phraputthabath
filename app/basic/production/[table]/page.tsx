@@ -2045,14 +2045,14 @@ export default function BasicTablePage() {
   }
 
   const loadPigLots = useCallback(() => {
-    fetch('/api/pig-carcass-lot-selection')
+    fetch(`/api/pig-carcass-lot-selection?date=${date}`)
       .then(r => r.json())
       .then(json => {
         if (json.selected) setPigLots(json.selected as PigLot[])
         if (json.rate != null) setCarcassRate(parseFloat(json.rate) || 90)
       })
       .catch(() => {})
-  }, [])
+  }, [date])
 
   useEffect(() => {
     loadPigLots()

@@ -104,14 +104,14 @@ export default function CarcassYieldPlanView({
   }, [selectedPhase, date, stationName])
 
   const loadSelectedLots = useCallback(() => {
-    fetch('/api/pig-carcass-lot-selection')
+    fetch(`/api/pig-carcass-lot-selection?date=${date}`)
       .then(r => r.json())
       .then(json => {
         if (json.selected) setLots(json.selected as CarcassLot[])
         if (json.rate != null) setRate(parseFloat(json.rate) || 90)
       })
       .catch(() => {})
-  }, [])
+  }, [date])
 
   useEffect(() => {
     loadSelectedLots()

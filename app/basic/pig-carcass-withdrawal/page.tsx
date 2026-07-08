@@ -101,6 +101,10 @@ function lotAgeKey(spec: string): number {
   return isNaN(day) ? Infinity : day
 }
 
+function todayBangkok(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+}
+
 export default function PigCarcassWithdrawalPage() {
   const [rows,        setRows]        = useState<LotRow[]>([])
   const [loading,     setLoading]     = useState(false)
@@ -134,7 +138,7 @@ export default function PigCarcassWithdrawalPage() {
       const res = await fetch('/api/pig-carcass-lot-selection', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ selected, trimmingQty: trimming }),
+        body:    JSON.stringify({ date: todayBangkok(), selected, trimmingQty: trimming }),
       })
       const json = await res.json()
       return typeof json.updatedAt === 'string' ? json.updatedAt : null
@@ -161,8 +165,11 @@ export default function PigCarcassWithdrawalPage() {
 
   const loadSelection = useCallback(async () => {
     try {
-      const res  = await fetch('/api/pig-carcass-lot-selection')
+      const res  = await fetch(`/api/pig-carcass-lot-selection?date=${todayBangkok()}`)
       const json = await res.json()
+      // A failed fetch (network blip, DB error) returns no `selected` field — treating that as
+      // "empty" would blank the on-screen selection even though the saved DB row is untouched.
+      if (json.error) return
       // Don't clobber a selection the user has picked but not yet saved.
       if (dirtyRef.current) return
       const serverUpdatedAt = typeof json.updatedAt === 'string' ? json.updatedAt : null
@@ -213,10 +220,20 @@ export default function PigCarcassWithdrawalPage() {
 
   useEffect(() => {
     try {
-      const savedOrder    = localStorage.getItem('pig_carcass_lot_order')
-      const savedTrimming = localStorage.getItem('pig_carcass_trimming')
-      if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
-      if (savedTrimming) setTrimmingQty(savedTrimming)
+      // The local cache isn't scoped to a production day — a lot that carries over
+      // unfinished from yesterday must still start with a blank order today, so only
+      // apply the cache when it was actually written for today.
+      if (localStorage.getItem('pig_carcass_lot_order_date') === todayBangkok()) {
+        const savedOrder    = localStorage.getItem('pig_carcass_lot_order')
+        const savedTrimming = localStorage.getItem('pig_carcass_trimming')
+        if (savedOrder)    setLotOrder(JSON.parse(savedOrder))
+        if (savedTrimming) setTrimmingQty(savedTrimming)
+      } else {
+        localStorage.removeItem('pig_carcass_lot_order')
+        localStorage.removeItem('pig_carcass_selected')
+        localStorage.removeItem('pig_carcass_trimming')
+        localStorage.removeItem('pig_carcass_lot_order_date')
+      }
     } catch { /* ignore */ }
     loadSelection()
     load()
@@ -248,6 +265,7 @@ export default function PigCarcassWithdrawalPage() {
   useEffect(() => {
     localStorage.setItem('pig_carcass_lot_order', JSON.stringify(lotOrder))
     localStorage.setItem('pig_carcass_selected', JSON.stringify(computeSelected(rows, lotOrder)))
+    localStorage.setItem('pig_carcass_lot_order_date', todayBangkok())
   }, [lotOrder, rows])
 
   useEffect(() => {

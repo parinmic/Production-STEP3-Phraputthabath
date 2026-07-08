@@ -504,13 +504,12 @@ DROP POLICY IF EXISTS "allow_all_mas_yield" ON mas_yield;
 CREATE POLICY "allow_all_mas_yield" ON mas_yield FOR ALL USING (true) WITH CHECK (true);
 
 CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
-  id           smallint    PRIMARY KEY DEFAULT 1,
-  selected     jsonb       NOT NULL DEFAULT '[]',
-  trimming_qty text,
-  updated_at   timestamptz DEFAULT now(),
-  CONSTRAINT pig_carcass_lot_selection_singleton CHECK (id = 1)
+  production_date date        PRIMARY KEY,
+  selected         jsonb       NOT NULL DEFAULT '[]',
+  trimming_qty     text,
+  rate             numeric     DEFAULT 90,
+  updated_at       timestamptz DEFAULT now()
 );
-INSERT INTO pig_carcass_lot_selection (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE pig_carcass_lot_selection ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection;
 CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection FOR ALL USING (true) WITH CHECK (true);

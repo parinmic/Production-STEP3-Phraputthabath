@@ -250,11 +250,11 @@ function consumeLotsForPhase(
   return result
 }
 
-async function fetchSelectedLotsAndRate() {
+async function fetchSelectedLotsAndRate(date: string) {
   const { data, error } = await supabase
     .from('pig_carcass_lot_selection')
     .select('selected, rate')
-    .eq('id', 1)
+    .eq('production_date', date)
     .maybeSingle()
 
   if (error) throw error
@@ -1634,7 +1634,7 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   const date = params.date || todayBangkok()
   const phaseCfg = BASIC_PHASES[phase]
   const [{ lots, rateSecPerPig }, masYield, productivityByGroup, bagSizeMap, dynamicBreaks] = await Promise.all([
-    fetchSelectedLotsAndRate(),
+    fetchSelectedLotsAndRate(date),
     fetchLatestMasYield(supabase),
     fetchProductivityByGroup(),
     fetchBagSizeMap(),

@@ -85,7 +85,7 @@ async function main() {
     fetchAll('lotus_orders', 'sku,sku_name,quantity,delivery_date,upload_round', q => q.eq('delivery_date', date).eq('upload_round', '1400')),
     fetchAll('makro_orders', 'sku,sku_name,quantity,delivery_date,upload_round', q => q.eq('delivery_date', date)),
     fetchAll('production_plan_100', 'plan_date,sap,product_name,weight_total,upload_log_id,uploaded_at', q => q.eq('plan_date', date)),
-    supabase.from('pig_carcass_lot_selection').select('*').eq('id', 1).maybeSingle().then(({ data, error }) => {
+    supabase.from('pig_carcass_lot_selection').select('*').eq('production_date', date).maybeSingle().then(({ data, error }) => {
       if (error) throw new Error(`pig_carcass_lot_selection: ${error.message}`)
       return data || {}
     }),

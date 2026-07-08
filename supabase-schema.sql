@@ -515,15 +515,14 @@ CREATE INDEX IF NOT EXISTS idx_basic_line_breaks_date ON basic_line_breaks(produ
 ALTER TABLE basic_line_breaks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_basic_line_breaks" ON basic_line_breaks FOR ALL USING (true) WITH CHECK (true);
 
--- 24. เบิกหมูซีก — ลำดับตัดแต่งที่เลือก (1 แถวเดียว, สถานะกลางให้ทุกเครื่องเห็นตรงกัน)
+-- 24. เบิกหมูซีก — ลำดับตัดแต่งที่เลือก (1 แถวต่อ production_date, สถานะกลางให้ทุกเครื่องเห็นตรงกัน)
 CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
-  id           smallint    PRIMARY KEY DEFAULT 1,
-  selected     jsonb       NOT NULL DEFAULT '[]',
-  trimming_qty text,
-  updated_at   timestamptz DEFAULT now(),
-  CONSTRAINT pig_carcass_lot_selection_singleton CHECK (id = 1)
+  production_date date        PRIMARY KEY,
+  selected         jsonb       NOT NULL DEFAULT '[]',
+  trimming_qty     text,
+  rate             numeric     DEFAULT 90,
+  updated_at       timestamptz DEFAULT now()
 );
-INSERT INTO pig_carcass_lot_selection (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE pig_carcass_lot_selection ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_pig_carcass_lot_selection" ON pig_carcass_lot_selection FOR ALL USING (true) WITH CHECK (true);
 
