@@ -258,6 +258,7 @@ export default function UploadOverviewPage() {
     .filter(item => historyChannel === 'all' || item.channel === historyChannel)
     .filter(item => historySlot === 'all' || item.slot === historySlot)
     .sort((a, b) => (a.uploaded_at < b.uploaded_at ? 1 : -1))
+    .slice(0, 10)
 
   return (
     <div className="space-y-4">
