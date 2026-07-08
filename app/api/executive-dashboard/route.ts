@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     histWm,
     { data: yieldData },
     { data: pickingUnit },
+    { data: prodMasterRows },
   ] = await Promise.all([
     supabase
       .from('production_assignments')
@@ -56,7 +57,19 @@ export async function GET(req: NextRequest) {
       .from('picking_unit_master')
       .select('sap, weight_per_bag')
       .limit(5000),
+    // สินค้าที่จัดอยู่ในงานพิเศษ (ไม่รวมเบสิค) — ใช้กรองตารางท้ายสุด
+    supabase
+      .from('master_logic_calculation')
+      .select('row_data')
+      .eq('calculation_type', 'Mas Productivity'),
   ])
+
+  const specialSkuSet = new Set<string>()
+  for (const row of prodMasterRows ?? []) {
+    const r = row.row_data as Record<string, unknown>
+    const sku = String(r['SAP'] ?? '').trim()
+    if (sku) specialSkuSet.add(sku.replace(/^0+/, ''))
+  }
 
   // ── Picking unit: sap → weight_per_bag (kg/bag)
   const wpbMap = new Map<string, number>()
@@ -220,30 +233,32 @@ export async function GET(req: NextRequest) {
   // ── Build result rows (sorted by station then sku_name)
   const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 
-  const rows = Array.from(prodMap.entries()).map(([key, prod]) => {
-    const sep = key.indexOf('|||')
-    const station = key.slice(0, sep)
-    const normSku = key.slice(sep + 3)
-    const ph1 = round1(prod.ph1)
-    const ph2 = round1(prod.ph2)
-    const ph3 = round1(prod.ph3)
-    const yieldBags = yieldMap.get(normSku) ?? 0
-    const wpb = wpbMap.get(normSku)
-    return {
-      station,
-      sku: normSku,
-      sku_name: prod.sku_name || orderMap.get(normSku)?.sku_name || normSku,
-      order_qty: round1(orderMap.get(normSku)?.qty ?? 0),
-      baseline:  round1(baselineMap.get(normSku) ?? 0),
-      baseline_daily: baselineDailyMap.get(normSku) ?? sortedHistDates.map(d => ({ date: d, qty: 0 })),
-      ph1,
-      ph2,
-      ph3,
-      total_prod: round1(prod.ph1 + prod.ph2 + prod.ph3),
-      yield_bags: yieldBags,
-      yield_kg: wpb && wpb > 0 ? round1(yieldBags * wpb) : null,
-    }
-  }).sort((a, b) => {
+  const rows = Array.from(prodMap.entries())
+    .filter(([key]) => specialSkuSet.has(key.slice(key.indexOf('|||') + 3)))
+    .map(([key, prod]) => {
+      const sep = key.indexOf('|||')
+      const station = key.slice(0, sep)
+      const normSku = key.slice(sep + 3)
+      const ph1 = round1(prod.ph1)
+      const ph2 = round1(prod.ph2)
+      const ph3 = round1(prod.ph3)
+      const yieldBags = yieldMap.get(normSku) ?? 0
+      const wpb = wpbMap.get(normSku)
+      return {
+        station,
+        sku: normSku,
+        sku_name: prod.sku_name || orderMap.get(normSku)?.sku_name || normSku,
+        order_qty: round1(orderMap.get(normSku)?.qty ?? 0),
+        baseline:  round1(baselineMap.get(normSku) ?? 0),
+        baseline_daily: baselineDailyMap.get(normSku) ?? sortedHistDates.map(d => ({ date: d, qty: 0 })),
+        ph1,
+        ph2,
+        ph3,
+        total_prod: round1(prod.ph1 + prod.ph2 + prod.ph3),
+        yield_bags: yieldBags,
+        yield_kg: wpb && wpb > 0 ? round1(yieldBags * wpb) : null,
+      }
+    }).sort((a, b) => {
     const si = STATION_ORDER.indexOf(a.station) - STATION_ORDER.indexOf(b.station)
     return si !== 0 ? si : a.sku_name.localeCompare(b.sku_name, 'th')
   })
