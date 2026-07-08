@@ -7,6 +7,11 @@ import { supabase } from '@/lib/supabase'
 const SLIDE_BUCKET = 'manual-slides'
 const SLIDE_FOLDER = 'slide'
 
+export interface ManualSubTab {
+  label: string
+  description: string
+}
+
 export interface ManualItem {
   key: string
   label: string
@@ -17,6 +22,7 @@ export interface ManualItem {
   bullets?: string[]
   image?: string
   imageCaption?: string
+  subTabs?: ManualSubTab[]
 }
 
 export interface ManualGroup {
@@ -240,6 +246,8 @@ function OverviewPanel({ overview }: { overview: ManualOverview }) {
 }
 
 function ItemPanel({ item }: { item: ManualItem }) {
+  const [imageError, setImageError] = useState(false)
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
       <div className="flex items-start gap-3">
@@ -252,10 +260,15 @@ function ItemPanel({ item }: { item: ManualItem }) {
         </div>
       </div>
 
-      {item.image && (
+      {item.image && !imageError && (
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.image} alt={`ตัวอย่างหน้าจอ ${item.label}`} className="w-full h-auto block" />
+          <img
+            src={item.image}
+            alt={`ตัวอย่างหน้าจอ ${item.label}`}
+            className="w-full h-auto block"
+            onError={() => setImageError(true)}
+          />
           <p className="text-xs text-gray-400 text-center py-1.5 bg-white border-t border-gray-100">
             {item.imageCaption ?? 'ตัวอย่างหน้าจอ'}
           </p>
@@ -277,6 +290,8 @@ function ItemPanel({ item }: { item: ManualItem }) {
         </ul>
       ) : null}
 
+      {item.subTabs?.length ? <SubTabsPanel subTabs={item.subTabs} /> : null}
+
       {item.href && (
         <a
           href={item.href}
@@ -285,6 +300,34 @@ function ItemPanel({ item }: { item: ManualItem }) {
           ไปที่หน้านี้ <ChevronRight size={14} />
         </a>
       )}
+    </div>
+  )
+}
+
+function SubTabsPanel({ subTabs }: { subTabs: ManualSubTab[] }) {
+  const [active, setActive] = useState(0)
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 px-4 pt-3">มุมมองย่อยในหน้านี้</p>
+      <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-3">
+        {subTabs.map((tab, i) => (
+          <button
+            key={tab.label}
+            onClick={() => setActive(i)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              active === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="px-4 pb-4">
+        <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 border border-gray-100 rounded-lg p-3">
+          {subTabs[active].description}
+        </p>
+      </div>
     </div>
   )
 }

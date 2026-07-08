@@ -46,6 +46,7 @@ interface UserRow {
   menus: MenuGrant[]
   step: string
   created_at: string
+  password_plain: string | null
 }
 
 interface Position {
@@ -62,7 +63,7 @@ const ACCESS_LABEL: Record<'edit' | 'view', { label: string; cls: string }> = {
   view: { label: 'View', cls: 'bg-gray-100 text-gray-600' },
 }
 
-const EMPTY_ADD = { username: '', password: '', position_id: '' }
+const EMPTY_ADD = { username: '', password: '' }
 
 const MENU_CHECKLIST: [string, string][] = Object.entries(SPECIAL_MENU_LABELS)
 
@@ -78,7 +79,6 @@ export default function AdminUsersPage() {
   const [showAddPw, setShowAddPw] = useState(false)
   const [addLoading, setAddLoading] = useState(false)
 
-  const [newPosMode, setNewPosMode] = useState(false)
   const [newPosName, setNewPosName] = useState('')
   const [newPosStep, setNewPosStep] = useState('3')
   const [newPosMenus, setNewPosMenus] = useState<Set<string>>(new Set())
@@ -112,44 +112,24 @@ export default function AdminUsersPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
 
-    if (newPosMode) {
-      const name = newPosName.trim()
-      if (!name) { flash(false, 'กรอกชื่อตำแหน่งใหม่'); return }
-      const dup = positions.some(p => p.name.trim().toLowerCase() === name.toLowerCase())
-      if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว — เลือกจากรายการ "ตำแหน่งเดิม" แทน`); return }
-
-      setAddLoading(true)
-      const menuKeys = newPosMenus.has('all') ? ['all'] : Array.from(newPosMenus)
-      const rows: PreviewRow[] = [
-        ...menuKeys.map(key => ({ position: name, username: '', password: '', step: newPosStep, menu: key, access: 'edit' as const })),
-        { position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: '', access: 'edit' as const },
-      ]
-      const res  = await fetch('/api/admin/users/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        flash(true, `สร้างตำแหน่ง "${name}" และเพิ่ม User สำเร็จ`)
-        closeAddForm()
-        load()
-      } else {
-        flash(false, data.message ?? 'เกิดข้อผิดพลาด')
-      }
-      setAddLoading(false)
-      return
-    }
+    const name = newPosName.trim()
+    if (!name) { flash(false, 'กรอกชื่อตำแหน่งใหม่'); return }
+    const dup = positions.some(p => p.name.trim().toLowerCase() === name.toLowerCase())
+    if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว`); return }
 
     setAddLoading(true)
-    const res  = await fetch('/api/admin/users', {
+    const menuKeys = newPosMenus.has('all') ? ['all'] : Array.from(newPosMenus)
+    const rows: PreviewRow[] = menuKeys.length > 0
+      ? menuKeys.map(key => ({ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: key, access: 'edit' as const }))
+      : [{ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: '', access: 'edit' as const }]
+    const res  = await fetch('/api/admin/users/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addForm),
+      body: JSON.stringify({ rows }),
     })
     const data = await res.json()
     if (data.success) {
-      flash(true, 'เพิ่ม User สำเร็จ')
+      flash(true, `สร้างตำแหน่ง "${name}" และเพิ่ม User สำเร็จ`)
       closeAddForm()
       load()
     } else {
@@ -161,7 +141,6 @@ export default function AdminUsersPage() {
   function closeAddForm() {
     setShowAdd(false)
     setAddForm({ ...EMPTY_ADD })
-    setNewPosMode(false)
     setNewPosName('')
     setNewPosStep('3')
     setNewPosMenus(new Set())
@@ -288,9 +267,8 @@ export default function AdminUsersPage() {
   }
 
   // Export ตำแหน่ง/เมนู/User ปัจจุบันเป็น Excel รูปแบบเดียวกับที่ "อัพโหลด Excel" อ่านได้
-  // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — ช่อง Password เว้นว่างเสมอ
-  // เพราะระบบเก็บเฉพาะ hash ไม่มีรหัสผ่านจริงให้ export; อัพโหลดไฟล์นี้กลับเข้าไปโดยไม่กรอก
-  // Password จะไม่ไปเขียนทับรหัสผ่านเดิมของ user ที่มีอยู่แล้ว (ดู fn_admin_bulk_upload_users)
+  // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — สิทธิ์ Edit/View มาจาก
+  // sys_user_menus ของ user แต่ละคนโดยตรง (ไม่ได้ผูกกับตำแหน่งแล้ว) ดู fn_admin_list_users
   function handleExport() {
     if (users.length === 0) {
       flash(false, 'ยังไม่มีข้อมูลให้ดาวน์โหลด — รอโหลดข้อมูลให้เสร็จก่อน')
@@ -301,12 +279,13 @@ export default function AdminUsersPage() {
     // (username ซ้ำทุกแถวของ user คนนั้น ไม่ได้สรุปแยกเป็นบล็อกตำแหน่ง)
     const mainRows: (string | number)[][] = [['ตำแหน่ง', 'User', 'Password', 'Step', 'Edit', 'View']]
     for (const u of users) {
+      const pw = u.password_plain ?? ''
       if (u.menus.length === 0) {
-        mainRows.push([u.position_name, u.username, '', u.step, '', ''])
+        mainRows.push([u.position_name, u.username, pw, u.step, '', ''])
         continue
       }
       for (const m of u.menus) {
-        mainRows.push([u.position_name, u.username, '', u.step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
+        mainRows.push([u.position_name, u.username, pw, u.step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
       }
     }
 
@@ -318,8 +297,6 @@ export default function AdminUsersPage() {
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
     XLSX.writeFile(wb, `User ระบบผลิต ${today}.xlsx`)
   }
-
-  const selectedPos = positions.find(p => p.id === addForm.position_id)
 
   return (
     <div className="space-y-6">
@@ -350,8 +327,7 @@ export default function AdminUsersPage() {
           <button
             onClick={() => {
               setShowAdd(true)
-              setAddForm({ ...EMPTY_ADD, position_id: positions[0]?.id ?? '' })
-              setNewPosMode(false)
+              setAddForm({ ...EMPTY_ADD })
               setNewPosName('')
               setNewPosStep('3')
               setNewPosMenus(new Set())
@@ -441,43 +417,19 @@ export default function AdminUsersPage() {
         <form onSubmit={handleAdd} className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <p className="font-semibold text-gray-800">เพิ่ม User ใหม่</p>
-            <div className="flex gap-1 bg-gray-200/70 rounded-lg p-1 text-xs font-medium">
-              <button type="button" onClick={() => setNewPosMode(false)}
-                className={`px-3 py-1.5 rounded-md transition-colors ${!newPosMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                ตำแหน่งเดิม
-              </button>
-              <button type="button" onClick={() => setNewPosMode(true)}
-                className={`px-3 py-1.5 rounded-md transition-colors ${newPosMode ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                + สร้างตำแหน่งใหม่
-              </button>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">ตำแหน่ง</label>
-              {newPosMode ? (
-                <input
-                  type="text"
-                  value={newPosName}
-                  onChange={e => setNewPosName(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="ชื่อตำแหน่งใหม่"
-                  required
-                />
-              ) : (
-                <select
-                  value={addForm.position_id}
-                  onChange={e => setAddForm(f => ({ ...f, position_id: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  required
-                >
-                  <option value="">-- เลือกตำแหน่ง --</option>
-                  {positions.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              )}
+              <input
+                type="text"
+                value={newPosName}
+                onChange={e => setNewPosName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="ชื่อตำแหน่งใหม่"
+                required
+              />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">Username</label>
@@ -509,8 +461,7 @@ export default function AdminUsersPage() {
             </div>
           </div>
 
-          {newPosMode ? (
-            <div className="space-y-2">
+          <div className="space-y-2">
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Step</label>
                 <select
@@ -545,15 +496,6 @@ export default function AdminUsersPage() {
                 </div>
               </div>
             </div>
-          ) : selectedPos && (
-            <p className="text-xs text-gray-500">
-              เมนู: <span className="text-gray-700 font-medium">
-                {selectedPos.menus.map(menuLabel).join(', ') || '—'}
-              </span>
-              {' · '}
-              Step: <span className="text-gray-700 font-medium">{STEP_LABELS[selectedPos.step]?.label ?? selectedPos.step}</span>
-            </p>
-          )}
 
           <div className="flex gap-2">
             <button type="submit" disabled={addLoading}
