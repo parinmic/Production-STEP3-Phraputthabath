@@ -404,7 +404,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       // avgKg = wip_initial / (3×1.2) = wip_initial / 3.6
       // crisis = avgKg×1.2 − stock = wip_initial/3 − stock
       const items: RmRawNeed[] = []
-      for (const wip of wipRows) {
+      for (const wip of wipRows ?? []) {
         const productionQty = Number(wip.quantity)
         if (productionQty < 0.005) continue
         const wipInit      = Number(wip.wip_initial ?? 0)
@@ -426,7 +426,7 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
       // P4: top up WIP so total (P1 crisis + P4) ≤ 25% of Final Plan.
       // If P1 crisis already ≥ 25% of Final Plan, skip entirely.
       const items: RmRawNeed[] = []
-      for (const wip of wipRows) {
+      for (const wip of wipRows ?? []) {
         const p1Qty      = wipFinalPlanByWip.get(wip.sap_code) ?? 0
         const fullPlan   = wipFullPlan.get(wip.sap_code) ?? Number(wip.quantity)
         const cap25      = fullPlan * 0.25

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet } from 'lucide-react'
+import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 import { SPECIAL_MENU_LABELS } from '@/lib/special-menu'
@@ -220,6 +220,44 @@ export default function AdminUsersPage() {
     setUploadLoading(false)
   }
 
+  // Export ตำแหน่ง/เมนู/User ปัจจุบันเป็น Excel รูปแบบเดียวกับที่ "อัพโหลด Excel" อ่านได้
+  // (ชีท Main + Detail ตรงกับไฟล์ต้นแบบ "User ระบบผลิต.xlsx") — ช่อง Password เว้นว่างเสมอ
+  // เพราะระบบเก็บเฉพาะ hash ไม่มีรหัสผ่านจริงให้ export; อัพโหลดไฟล์นี้กลับเข้าไปโดยไม่กรอก
+  // Password จะไม่ไปเขียนทับรหัสผ่านเดิมของ user ที่มีอยู่แล้ว (ดู fn_admin_bulk_upload_users)
+  function handleExport() {
+    const posInfo = new Map<string, { name: string; step: string; menus: MenuGrant[] }>()
+
+    for (const u of users) {
+      if (!posInfo.has(u.position_id)) {
+        posInfo.set(u.position_id, { name: u.position_name, step: u.step, menus: u.menus })
+      }
+    }
+    // ตำแหน่งที่ยังไม่มี user เลย — ใช้รายการเมนูจาก positions (ไม่มีแยก edit/view ให้ถือเป็น edit)
+    for (const p of positions) {
+      if (!posInfo.has(p.id)) {
+        posInfo.set(p.id, { name: p.name, step: p.step, menus: p.menus.map(key => ({ key, access: 'edit' as const })) })
+      }
+    }
+
+    const mainRows: (string | number)[][] = [['ตำแหน่ง', 'User', 'Password', 'Step', 'Edit', 'View']]
+    for (const { name, step, menus } of Array.from(posInfo.values())) {
+      for (const m of menus) {
+        mainRows.push([name, '', '', step, m.access === 'edit' ? m.key : '', m.access === 'view' ? m.key : ''])
+      }
+    }
+    for (const u of users) {
+      mainRows.push([u.position_name, u.username, '', u.step, '', ''])
+    }
+
+    const detailRows: (string | number)[][] = [['หมายเลข', 'เมนู'], ...Object.entries(SPECIAL_MENU_LABELS)]
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mainRows), 'Main')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailRows), 'Detail')
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+    XLSX.writeFile(wb, `User ระบบผลิต ${today}.xlsx`)
+  }
+
   const selectedPos = positions.find(p => p.id === addForm.position_id)
 
   return (
@@ -233,6 +271,13 @@ export default function AdminUsersPage() {
         {canEdit && (
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            <Download size={16} />
+            ดาวน์โหลด Excel
+          </button>
           <button
             onClick={() => fileRef.current?.click()}
             className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
