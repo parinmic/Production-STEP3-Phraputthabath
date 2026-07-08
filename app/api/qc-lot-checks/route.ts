@@ -40,6 +40,17 @@ function getTodayStart(): Date {
   return new Date(Date.UTC(y, mo, d + dayOffset, 6, 0, 0) - BANGKOK_OFFSET_MS)
 }
 
+function todayDateStr(): string {
+  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+// Work-day start (06:00 Asia/Bangkok) for an explicit 'YYYY-MM-DD' date, or today's if omitted.
+function getWorkDayStart(dateStr?: string | null): Date {
+  if (!dateStr) return getTodayStart()
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, mo - 1, d, 6, 0, 0) - BANGKOK_OFFSET_MS)
+}
+
 // Latest round on record (all-time), or null.
 async function getLatestRound(): Promise<RoundRow | null> {
   const { data } = await supabase
@@ -157,30 +168,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ lotRows, sourceFile, round: firstRound.round_number, roundStartedAt: firstRound.started_at })
   }
 
-  const current    = await getCurrentRound()
-  const todayStart = getTodayStart()
+  const dateParam       = req.nextUrl.searchParams.get('date')
+  const current         = await getCurrentRound()
+  const isViewingToday  = !dateParam || dateParam === todayDateStr()
+  const dayStart        = getWorkDayStart(dateParam)
+  const dayEnd          = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
 
-  // Dropdown shows only today's rounds (since 06:00 Bangkok).
+  // Dropdown shows only the viewed day's rounds (since 06:00 Bangkok that day).
   const { data: history } = await supabase
     .from('qc_check_rounds')
     .select('round_number, started_at')
-    .gte('started_at', todayStart.toISOString())
+    .gte('started_at', dayStart.toISOString())
+    .lt('started_at', dayEnd.toISOString())
     .order('round_number', { ascending: false })
 
-  // The live round always appears in the dropdown even before it's been saved.
-  const todayRoundsAsc: RoundRow[] = [...(history ?? [])]
+  // The live round only belongs in today's dropdown, even before it's been saved.
+  const dayRoundsAsc: RoundRow[] = [...(history ?? [])]
     .sort((a, b) => a.round_number - b.round_number)
-  if (current.isNew) todayRoundsAsc.push({ round_number: current.round_number, started_at: current.started_at })
+  if (isViewingToday && current.isNew) dayRoundsAsc.push({ round_number: current.round_number, started_at: current.started_at })
 
-  // Assign display rank (1, 2, 3…) within the current work-day.
-  const withDayRank: RoundRow[] = todayRoundsAsc
+  // Assign display rank (1, 2, 3…) within the viewed work-day.
+  const withDayRank: RoundRow[] = dayRoundsAsc
     .map((r, i) => ({ ...r, day_round_number: i + 1 }))
     .reverse() // dropdown: latest first
 
   const rounds = withDayRank
 
-  const viewRound = roundParam ? parseInt(roundParam, 10) : current.round_number
-  const isCurrent = viewRound === current.round_number
+  if (!rounds.length) {
+    return NextResponse.json({
+      temps: {}, chillRoom: {}, savedAt: {}, recordedBy: {},
+      lotRows: [], sourceFile: '', round: null, roundStartedAt: null,
+      isCurrent: false, liveRound: current.round_number, rounds: [],
+    })
+  }
+
+  const viewRound = roundParam ? parseInt(roundParam, 10) : rounds[0].round_number
+  const isCurrent = isViewingToday && viewRound === current.round_number
   const viewMeta  = rounds.find(r => r.round_number === viewRound)
 
   const { data, error } = await supabase

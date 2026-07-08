@@ -20,6 +20,17 @@ function getTodayStart(): Date {
   return new Date(Date.UTC(y, mo, d + dayOffset, 6, 0, 0) - BANGKOK_OFFSET_MS)
 }
 
+function todayDateStr(): string {
+  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+// Work-day start (06:00 Asia/Bangkok) for an explicit 'YYYY-MM-DD' date, or today's if omitted.
+function getWorkDayStart(dateStr?: string | null): Date {
+  if (!dateStr) return getTodayStart()
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, mo - 1, d, 6, 0, 0) - BANGKOK_OFFSET_MS)
+}
+
 async function getLatestRound(): Promise<RoundRow | null> {
   const { data } = await supabase
     .from('qc_check_rounds')
@@ -60,25 +71,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ records: data ?? [] })
   }
 
-  const current    = await getCurrentRound()
-  const todayStart = getTodayStart()
+  const dateParam      = req.nextUrl.searchParams.get('date')
+  const current        = await getCurrentRound()
+  const isViewingToday = !dateParam || dateParam === todayDateStr()
+  const dayStart       = getWorkDayStart(dateParam)
+  const dayEnd         = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
 
   const { data: history } = await supabase
     .from('qc_check_rounds')
     .select('round_number, started_at')
-    .gte('started_at', todayStart.toISOString())
+    .gte('started_at', dayStart.toISOString())
+    .lt('started_at', dayEnd.toISOString())
     .order('round_number', { ascending: false })
 
-  const todayRoundsAsc: RoundRow[] = [...(history ?? [])]
+  const dayRoundsAsc: RoundRow[] = [...(history ?? [])]
     .sort((a, b) => a.round_number - b.round_number)
-  if (current.isNew) todayRoundsAsc.push({ round_number: current.round_number, started_at: current.started_at })
+  if (isViewingToday && current.isNew) dayRoundsAsc.push({ round_number: current.round_number, started_at: current.started_at })
 
-  const rounds: RoundRow[] = todayRoundsAsc
+  const rounds: RoundRow[] = dayRoundsAsc
     .map((r, i) => ({ ...r, day_round_number: i + 1 }))
     .reverse()
 
-  const viewRound = roundParam ? parseInt(roundParam, 10) : current.round_number
-  const isCurrent = viewRound === current.round_number
+  if (!rounds.length) {
+    return NextResponse.json({
+      temps: {}, savedAt: {}, recordedBy: {},
+      round: null, roundStartedAt: null, isCurrent: false,
+      liveRound: current.round_number, rounds: [],
+    })
+  }
+
+  const viewRound = roundParam ? parseInt(roundParam, 10) : rounds[0].round_number
+  const isCurrent = isViewingToday && viewRound === current.round_number
   const viewMeta  = rounds.find(r => r.round_number === viewRound)
 
   const { data, error } = await supabase

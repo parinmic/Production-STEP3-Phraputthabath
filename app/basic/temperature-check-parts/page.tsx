@@ -1,6 +1,6 @@
 'use client'
 import { Fragment, useState, useEffect, useRef } from 'react'
-import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown, X } from 'lucide-react'
+import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown, X, Calendar } from 'lucide-react'
 
 interface LotRow {
   spec_code: string
@@ -112,6 +112,10 @@ function lotAgeKey(spec: string): number {
   return isNaN(day) ? Infinity : day
 }
 
+function todayBangkok(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+}
+
 function PointInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return (
     <input
@@ -174,6 +178,7 @@ export default function TemperatureCheckPartsPage() {
   const [rounds,     setRounds]     = useState<{ round_number: number; started_at: string; day_round_number?: number }[]>([])
   const [viewRound,  setViewRound]  = useState<number | null>(null)
   const [isCurrent,  setIsCurrent]  = useState(true)
+  const [date,       setDate]       = useState(todayBangkok())
   const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
   const [recorderName,  setRecorderName]  = useState('')
   const [tempRules,     setTempRules]     = useState<TempRule[]>([])
@@ -181,8 +186,11 @@ export default function TemperatureCheckPartsPage() {
   const followLiveRef = useRef(true)
 
   function fetchRound(explicitRound?: number) {
-    const qs = explicitRound != null ? `?round=${explicitRound}` : ''
-    fetch(`/api/qc-parts-checks${qs}`)
+    const params = new URLSearchParams()
+    if (explicitRound != null) params.set('round', String(explicitRound))
+    if (date !== todayBangkok()) params.set('date', date)
+    const qs = params.toString()
+    fetch(`/api/qc-parts-checks${qs ? `?${qs}` : ''}`)
       .then(res => res.json())
       .then(json => {
         setTemps(json.temps ?? {})
@@ -224,9 +232,24 @@ export default function TemperatureCheckPartsPage() {
         setTempRules(rules.filter(r => r.product_type === 'ชิ้นส่วน'))
       })
       .catch(() => { /* keep fallback threshold */ })
+  }, [])
+
+  // Re-fetch when the viewed date changes (skip the very first render — the effect above
+  // already fetched today's data). Browsing a past date stops following the live round.
+  const skipDateEffectRef = useRef(true)
+  useEffect(() => {
+    if (skipDateEffectRef.current) { skipDateEffectRef.current = false; return }
+    followLiveRef.current = date === todayBangkok()
+    setViewRound(null)
+    fetchRound()
+  }, [date])
+
+  // Poll for live updates while following live — recreated whenever `date` changes so the
+  // closure always fetches the currently viewed date instead of a stale one from mount.
+  useEffect(() => {
     const interval = setInterval(() => { if (followLiveRef.current) fetchRound() }, 60_000)
     return () => clearInterval(interval)
-  }, [])
+  }, [date])
 
   useEffect(() => { localStorage.setItem('qc_parts_rows', JSON.stringify(rows)) }, [rows])
 
@@ -255,6 +278,7 @@ export default function TemperatureCheckPartsPage() {
   }
 
   async function generate() {
+    if (!isCurrent) return
     setLoading(true)
     setError('')
     try {
@@ -333,29 +357,41 @@ export default function TemperatureCheckPartsPage() {
           </h1>
         </div>
         <div className="flex flex-col items-stretch sm:items-end gap-2 sm:shrink-0">
-          {rounds.length > 0 && (
-            <select
-              value={viewRound ?? ''}
-              onChange={e => selectRound(Number(e.target.value))}
-              className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 self-end"
-            >
-              {rounds.map(r => (
-                <option key={r.round_number} value={r.round_number}>
-                  รอบที่ {r.day_round_number ?? r.round_number} ({new Date(r.started_at).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)
-                  {r.round_number === liveRoundRef.current ? ' ปัจจุบัน' : ''}
-                </option>
-              ))}
-            </select>
-          )}
+          <div className="flex items-center gap-2 self-end">
+            <div className="flex items-center gap-1.5 border border-gray-300 rounded-lg px-2.5 py-1.5 bg-white text-xs text-gray-700">
+              <Calendar size={14} className="text-gray-400" />
+              <input
+                type="date"
+                value={date}
+                max={todayBangkok()}
+                onChange={e => setDate(e.target.value || todayBangkok())}
+                className="outline-none bg-transparent text-xs"
+              />
+            </div>
+            {rounds.length > 0 && (
+              <select
+                value={viewRound ?? ''}
+                onChange={e => selectRound(Number(e.target.value))}
+                className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {rounds.map(r => (
+                  <option key={r.round_number} value={r.round_number}>
+                    รอบที่ {r.day_round_number ?? r.round_number} ({new Date(r.started_at).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.)
+                    {r.round_number === liveRoundRef.current ? ' ปัจจุบัน' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {generated && (
-              <button onClick={generate} disabled={loading}
+              <button onClick={generate} disabled={loading || !isCurrent}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-2 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-4 py-2.5 sm:py-2 rounded text-sm font-medium transition-colors disabled:opacity-50">
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 รีโหลด
               </button>
             )}
-            <button onClick={generate} disabled={loading}
+            <button onClick={generate} disabled={loading || !isCurrent}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 sm:py-2 rounded text-sm font-semibold transition-colors disabled:opacity-50">
               <PlayCircle size={16} />
               Generate
