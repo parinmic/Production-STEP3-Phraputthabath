@@ -318,7 +318,7 @@ export default function AdminProductionPlanPage() {
             </div>
             <p className="text-gray-600 text-sm">
               สร้างแผนผลิต <strong>Phase 1 (เช้า)</strong> วันที่ {date} ทันที
-              โดยไม่ต้องรอ Sync ข้อมูลพนักงาน 8:05 — ถ้ายังไม่มีข้อมูลกำลังคนของวันนี้
+              พร้อม sync ข้อมูลกำลังคนล่าสุดก่อนสร้าง — ถ้ายังไม่มีข้อมูลกำลังคนของวันนี้
               จะใช้ข้อมูลของวันก่อนหน้าล่าสุดแทน
               <br /><br />
               <span className="text-red-600 font-medium">คำเตือน:</span> จะเขียนทับแผน Phase 1 เดิมของวันนี้ทั้งหมด

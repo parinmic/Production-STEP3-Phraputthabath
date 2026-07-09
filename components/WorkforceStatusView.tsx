@@ -19,7 +19,7 @@ interface Props {
   note?: string
 }
 
-// อ่านอย่างเดียว — ข้อมูลมาจาก employee_skills (sync จากภายนอกทุกวัน 08:05) ไม่มีการแก้ไขสถานะในหน้านี้แล้ว
+// อ่านอย่างเดียว — ข้อมูลมาจาก employee_skills (sync จากภายนอกทุกครั้งที่กดสร้าง Phase 1) ไม่มีการแก้ไขสถานะในหน้านี้แล้ว
 export default function WorkforceStatusView({ title, stations, note }: Props) {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const [date, setDate]       = useState(today)

@@ -1496,7 +1496,7 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
   })
   if (!workforce.length) return {
     success: false,
-    message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบ Sync ข้อมูลพนักงาน 8:05',
+    message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบข้อมูลกำลังคนจากต้นทาง',
   }
   const workforceFallbackNote = workDateUsed !== productionDate
     ? ` (ใช้ข้อมูลกำลังคนของวันที่ ${workDateUsed} แทน เนื่องจากยังไม่มีข้อมูลวันนี้)`
