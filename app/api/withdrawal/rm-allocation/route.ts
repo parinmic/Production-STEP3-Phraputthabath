@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, latestStockLogId } from '@/lib/supabase'
 import { computeRmAllocation } from '@/lib/compute-rm-allocation'
 
 export type { RmRawNeed as RawNeed, RmGroup as AllocationGroup } from '@/lib/compute-rm-allocation'
@@ -82,17 +82,19 @@ async function computeSlideNeeds(
   const stockSapSet  = new Set<string>()
   const stockNameSet = new Set<string>()
 
+  const [slideId0010, slideId20] = await Promise.all([latestStockLogId('stock_0010'), latestStockLogId('stock_20')])
+
   const stockProms: Promise<{ data: { material_code?: string | null; material_name?: string | null }[] | null }>[] = []
   if (allRawSaps.length) {
     stockProms.push(
-      supabase.from('stock_0010').select('material_code').in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
-      supabase.from('stock_20').select('material_code').in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
+      supabase.from('stock_0010').select('material_code').eq('upload_log_id', slideId0010).in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
+      supabase.from('stock_20').select('material_code').eq('upload_log_id', slideId20).in('material_code', allRawSaps).limit(500) as Promise<{ data: { material_code?: string | null }[] | null }>,
     )
   }
   if (expandedRawNames.length) {
     stockProms.push(
-      supabase.from('stock_0010').select('material_name').in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
-      supabase.from('stock_20').select('material_name').in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
+      supabase.from('stock_0010').select('material_name').eq('upload_log_id', slideId0010).in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
+      supabase.from('stock_20').select('material_name').eq('upload_log_id', slideId20).in('material_name', expandedRawNames).gt('weight_total', 0).limit(500) as Promise<{ data: { material_name?: string | null }[] | null }>,
     )
   }
   if (stockProms.length) {
@@ -203,9 +205,10 @@ export async function GET(req: NextRequest) {
     const expandedNames = Array.from(new Set(rawNames.flatMap(n => [n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - ')])))
     const totalStockMap = new Map<string, number>()
     if (expandedNames.length) {
+      const [sumId0010, sumId20] = await Promise.all([latestStockLogId('stock_0010'), latestStockLogId('stock_20')])
       const [r0010, r20] = await Promise.all([
-        supabase.from('stock_0010').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-        supabase.from('stock_20').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+        supabase.from('stock_0010').select('material_name, weight_total').eq('upload_log_id', sumId0010).in('material_name', expandedNames).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_name, weight_total').eq('upload_log_id', sumId20).in('material_name', expandedNames).gt('weight_total', 0),
       ])
       for (const r of [...(r0010.data ?? []), ...(r20.data ?? [])]) {
         if (!r.material_name) continue

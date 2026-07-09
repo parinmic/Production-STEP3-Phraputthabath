@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, latestStockLogId } from '@/lib/supabase'
 
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 const round2   = (n: number) => Math.round(n * 100) / 100
@@ -103,7 +103,8 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   const wipNames = wipSaps.map(s => wipSkuNameBySap.get(s)).filter(Boolean) as string[]
   const wipStockMap = new Map<string, number>()
   if (wipNames.length) {
-    const { data: rows } = await supabase.from('stock_20').select('material_name, weight_total').in('material_name', wipNames)
+    const wipStockId20 = await latestStockLogId('stock_20')
+    const { data: rows } = await supabase.from('stock_20').select('material_name, weight_total').eq('upload_log_id', wipStockId20).in('material_name', wipNames)
     for (const r of rows ?? []) {
       const skuName = String(r.material_name ?? '').trim()
       for (const [sap, name] of Array.from(wipSkuNameBySap.entries())) {
@@ -179,9 +180,10 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
 
   let rawStockRows: StockRow[] = []
   if (expandedNames.length > 0) {
+    const [rmId0010, rmId20] = await Promise.all([latestStockLogId('stock_0010'), latestStockLogId('stock_20')])
     const [r0010, r20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, weight_total').eq('upload_log_id', rmId0010).in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, weight_total').eq('upload_log_id', rmId20).in('material_name', expandedNames).gt('weight_total', 0),
     ])
     rawStockRows = [...((r0010.data ?? []) as StockRow[]), ...((r20.data ?? []) as StockRow[])]
   }
@@ -246,16 +248,17 @@ export async function computeRmAllocation(date: string): Promise<RmGroup[]> {
   const mooOwnStockByNorm = new Map<string, number>()
   const mooOwnStockBySap  = new Map<string, number>()
   {
+    const [mooOwnId0010, mooOwnId20] = await Promise.all([latestStockLogId('stock_0010'), latestStockLogId('stock_20')])
     const proms: Promise<{ data: StockRow[] | null }>[] = []
     if (nonSharedMooSaps.length)
       proms.push(
-        supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
-        supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_0010').select('material_code, material_name, weight_total').eq('upload_log_id', mooOwnId0010).in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_20').select('material_code, material_name, weight_total').eq('upload_log_id', mooOwnId20).in('material_code', nonSharedMooSaps).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
       )
     if (nonSharedExpanded.length)
       proms.push(
-        supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
-        supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_0010').select('material_code, material_name, weight_total').eq('upload_log_id', mooOwnId0010).in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
+        supabase.from('stock_20').select('material_code, material_name, weight_total').eq('upload_log_id', mooOwnId20).in('material_name', nonSharedExpanded).gt('weight_total', 0) as Promise<{ data: StockRow[] | null }>,
       )
     const results = await Promise.all(proms)
     for (const r of results) {

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase, fetchLatestOrders } from '@/lib/supabase'
+import { supabase, fetchLatestOrders, latestStockLogId } from '@/lib/supabase'
 import { Calendar, Save, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
 
 interface WipRow {
@@ -151,9 +151,11 @@ export default function WipPlanPage() {
       }
 
       const wipNames = wipSkus.map(s => s.sku_name).filter(Boolean)
+      const wipPlanId20 = await latestStockLogId('stock_20')
       const { data: stockData } = await supabase
         .from('stock_20')
         .select('material_name, weight_total')
+        .eq('upload_log_id', wipPlanId20)
         .in('material_name', wipNames)
 
       const stockKgByName = new Map<string, number>()

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, latestStockLogId } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule, SpecialRawRule } from '@/lib/withdrawal-rules'
 import { computeRmAllocation, buildRmAllocMap } from '@/lib/compute-rm-allocation'
 
@@ -385,11 +385,15 @@ export async function POST(req: NextRequest) {
   const rawSaps = Array.from(new Set(Array.from(rawMap.values()).map(v => v.raw_sap)))
   const regularStockRows: StockRow[] = []
 
+  const [id0010, id20, id100] = await Promise.all([
+    latestStockLogId('stock_0010'), latestStockLogId('stock_20'), latestStockLogId('stock_100'),
+  ])
+
   if (rawSaps.length > 0) {
     const [res0010, res20, res100] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
-      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id0010).in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id20).in('material_code', rawSaps).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id100).in('material_code', rawSaps).gt('weight_total', 0),
     ])
     regularStockRows.push(...(res0010.data ?? []) as StockRow[], ...(res20.data ?? []) as StockRow[], ...(res100.data ?? []) as StockRow[])
   }
@@ -406,9 +410,9 @@ export async function POST(req: NextRequest) {
       n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
     ])))
     const [res0010n, res20n, res100n] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id0010).in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id20).in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id100).in('material_name', expandedNames).gt('weight_total', 0),
     ])
     regularStockRows.push(...(res0010n.data ?? []) as StockRow[], ...(res20n.data ?? []) as StockRow[], ...(res100n.data ?? []) as StockRow[])
   }
@@ -617,16 +621,16 @@ export async function POST(req: NextRequest) {
     const mooStockPromises = []
     if (mooAllSaps.length > 0) {
       mooStockPromises.push(
-        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
-        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
-        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id0010).in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id20).in('material_code', mooAllSaps).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id100).in('material_code', mooAllSaps).gt('weight_total', 0),
       )
     }
     if (mooAllNames.length > 0) {
       mooStockPromises.push(
-        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
-        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
-        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_0010').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id0010).in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_20').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id20).in('material_name', mooAllNames).gt('weight_total', 0),
+        supabase.from('stock_100').select('material_code, material_name, spec_code, qty_total, weight_total').eq('upload_log_id', id100).in('material_name', mooAllNames).gt('weight_total', 0),
       )
     }
     const mooStockResults = await Promise.all(mooStockPromises)

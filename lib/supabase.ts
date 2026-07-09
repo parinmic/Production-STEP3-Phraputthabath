@@ -95,6 +95,38 @@ export async function fetchLatestPlan100(dates: string[]): Promise<Plan100Row[]>
     }))
 }
 
+export type StockTableName = 'stock_0010' | 'stock_20' | 'stock_100'
+
+// stock_0010/stock_20/stock_100 are point-in-time snapshots — each upload is supposed to
+// replace the previous one (see upload-stock-*/route.ts: delete upload_log then cascade-delete
+// the rows). Rows inserted before upload_log_id was tracked never cascade-delete and linger as
+// orphaned stale stock (upload_log_id = null). Scope every read to the latest upload_log_id per
+// table so those orphaned rows never leak into withdrawal/planning calculations. Returns a nil
+// UUID (matches no real row) if a table has no upload_log entry at all, so `.eq('upload_log_id', id)`
+// is always safe to chain without a null branch at the call site.
+const NIL_UPLOAD_LOG_ID = '00000000-0000-0000-0000-000000000000'
+const latestStockLogIdCache = new Map<StockTableName, Promise<string>>()
+
+export async function latestStockLogId(table: StockTableName): Promise<string> {
+  let p = latestStockLogIdCache.get(table)
+  if (!p) {
+    p = supabase
+      .from('upload_log')
+      .select('id')
+      .eq('table_name', table)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => data?.id ?? NIL_UPLOAD_LOG_ID)
+    latestStockLogIdCache.set(table, p)
+    // Cache is only useful within a single request's lifetime (serverless — module state
+    // doesn't persist reliably across invocations), so drop it shortly after so a later
+    // request in the same warm instance doesn't read a stale id after a new upload.
+    p.finally(() => setTimeout(() => latestStockLogIdCache.delete(table), 5000))
+  }
+  return p
+}
+
 export type OrdersTable = 'makro_orders' | 'lotus_orders' | 'wet_market_orders' | 'fs_orders'
 
 export interface OrderRow {

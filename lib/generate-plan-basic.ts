@@ -1,4 +1,4 @@
-import { supabase, fetchLatestOrders } from '@/lib/supabase'
+import { supabase, fetchLatestOrders, latestStockLogId } from '@/lib/supabase'
 import { fetchLatestMasYield } from '@/lib/mas-yield'
 
 export { fetchLatestOrders }
@@ -546,10 +546,13 @@ export async function fetchRawQueueTargets(
 
   const stockByName = new Map<string, number>()
   if (expandedNames.length > 0) {
+    const [bpId0010, bpId20, bpId100] = await Promise.all([
+      latestStockLogId('stock_0010'), latestStockLogId('stock_20'), latestStockLogId('stock_100'),
+    ])
     const [s0010, s20, s100] = await Promise.all([
-      supabase.from('stock_0010').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-      supabase.from('stock_100').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_name, weight_total').eq('upload_log_id', bpId0010).in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_name, weight_total').eq('upload_log_id', bpId20).in('material_name', expandedNames).gt('weight_total', 0),
+      supabase.from('stock_100').select('material_name, weight_total').eq('upload_log_id', bpId100).in('material_name', expandedNames).gt('weight_total', 0),
     ])
     for (const row of [...(s0010.data ?? []), ...(s20.data ?? []), ...(s100.data ?? [])]) {
       const k = normMatName(row.material_name ?? '')

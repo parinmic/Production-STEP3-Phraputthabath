@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, latestStockLogId } from '@/lib/supabase'
 
 // GET /api/production/detailed-report?date=YYYY-MM-DD&phase=1
 export async function GET(req: NextRequest) {
@@ -125,9 +125,10 @@ export async function GET(req: NextRequest) {
   const stockRows: StockRow[] = []
 
   if (allRawSaps.length > 0) {
+    const [drId0010, drId20] = await Promise.all([latestStockLogId('stock_0010'), latestStockLogId('stock_20')])
     const [r0, r20] = await Promise.all([
-      supabase.from('stock_0010').select('material_code, material_name, weight_total').in('material_code', allRawSaps).gt('weight_total', 0),
-      supabase.from('stock_20').select('material_code, material_name, weight_total').in('material_code', allRawSaps).gt('weight_total', 0),
+      supabase.from('stock_0010').select('material_code, material_name, weight_total').eq('upload_log_id', drId0010).in('material_code', allRawSaps).gt('weight_total', 0),
+      supabase.from('stock_20').select('material_code, material_name, weight_total').eq('upload_log_id', drId20).in('material_code', allRawSaps).gt('weight_total', 0),
     ])
     stockRows.push(...(r0.data ?? []) as StockRow[], ...(r20.data ?? []) as StockRow[])
   }

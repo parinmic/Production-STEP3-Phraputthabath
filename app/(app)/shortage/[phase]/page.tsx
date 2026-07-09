@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabase, latestStockLogId } from '@/lib/supabase'
 import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
 interface ShortageRow {
@@ -164,10 +164,13 @@ export default function ShortagePage() {
 
       const stockByName = new Map<string, number>()
       if (expandedNames.length > 0) {
+        const [shId0010, shId20, shId100] = await Promise.all([
+          latestStockLogId('stock_0010'), latestStockLogId('stock_20'), latestStockLogId('stock_100'),
+        ])
         const [s0010, s20, s100] = await Promise.all([
-          supabase.from('stock_0010').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-          supabase.from('stock_20').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
-          supabase.from('stock_100').select('material_name, weight_total').in('material_name', expandedNames).gt('weight_total', 0),
+          supabase.from('stock_0010').select('material_name, weight_total').eq('upload_log_id', shId0010).in('material_name', expandedNames).gt('weight_total', 0),
+          supabase.from('stock_20').select('material_name, weight_total').eq('upload_log_id', shId20).in('material_name', expandedNames).gt('weight_total', 0),
+          supabase.from('stock_100').select('material_name, weight_total').eq('upload_log_id', shId100).in('material_name', expandedNames).gt('weight_total', 0),
         ])
         for (const row of [...(s0010.data ?? []), ...(s20.data ?? []), ...(s100.data ?? [])]) {
           const k = normName(row.material_name ?? '')
