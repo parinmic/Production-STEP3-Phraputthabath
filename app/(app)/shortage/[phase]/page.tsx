@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase, latestStockLogId } from '@/lib/supabase'
+import { productionDay } from '@/lib/production-day'
 import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
 interface ShortageRow {
@@ -59,7 +60,7 @@ const STATION_DISPLAY: Record<string, string> = {
 
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = productionDay()
   const [date, setDate]     = useState(today)
   const [rows, setRows]         = useState<ShortageRow[]>([])
   const [loading, setLoad]      = useState(false)
@@ -94,13 +95,22 @@ export default function ShortagePage() {
       const period = PERIOD_MAP[phase] ?? 'เช้า'
 
       // 1. Deficit production assignments
-      const { data: deficitRows } = await supabase
-        .from('production_assignments')
-        .select('sku, sku_name, target_quantity, deadline_time, note, table_name')
-        .eq('production_date', date)
-        .eq('period', period)
-        .like('note', '%|deficit%')
-        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
+      const [{ data: deficitRowsRaw }, { data: noWithdrawalRows }] = await Promise.all([
+        supabase
+          .from('production_assignments')
+          .select('sku, sku_name, target_quantity, deadline_time, note, table_name')
+          .eq('production_date', date)
+          .eq('period', period)
+          .like('note', '%|deficit%')
+          .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']),
+        supabase.from('no_withdrawal_skus').select('sap'),
+      ])
+
+      // Mas SKU "ไม่ต้องเบิกของ" — these SKUs shouldn't appear as raw-material shortages
+      const noWithdrawalSaps = new Set(
+        (noWithdrawalRows ?? []).map(r => String(r.sap ?? '').trim()).filter(Boolean)
+      )
+      const deficitRows = (deficitRowsRaw ?? []).filter(a => !noWithdrawalSaps.has(String(a.sku ?? '').trim()))
 
       if (!deficitRows?.length) { setRows([]); return }
 

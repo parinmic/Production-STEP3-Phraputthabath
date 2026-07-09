@@ -72,7 +72,9 @@
       "Bash(NODE_PATH='C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\e41f203b7505f1fb\\\\node_modules' node 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/bbox.cjs' http://localhost:3000/yield 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/storage-state.json' '[{\"selector\":\"input[type=\\\\\"date\\\\\"]\",\"label\":\"date\"},{\"selector\":\"text=ลากไฟล์มาวางที่นี่\",\"label\":\"dropzone\"}]')",
       "Bash(NODE_PATH='C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\e41f203b7505f1fb\\\\node_modules' node 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/bbox.cjs' http://localhost:3000/master-logic/calculation/mas-productivity 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/storage-state.json' '[{\"selector\":\"text=sample-productivity.xlsx\",\"label\":\"dropzone-file\"}]')",
       "Bash(NODE_PATH='C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\npm-cache\\\\_npx\\\\e41f203b7505f1fb\\\\node_modules' node 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/bbox.cjs' http://localhost:3000/master-logic/calculation/mas-productivity 'C:\\\\Users\\\\chayuth.rue\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-Production-STEP3-Phraputthabath\\\\4c0aaaab-8f67-420f-899e-f88e2809c0e5\\\\scratchpad/storage-state.json' '[{\"selector\":\"text=ลากไฟล์มาวางที่นี่\",\"label\":\"dropzone\"}]')",
-      "Bash(echo \"typecheck exit: $?\")"
+      "Bash(echo \"typecheck exit: $?\")",
+      "Bash(grep -iE \"\\\\.\\(sql|ts|tsx|js|jsx\\)$\")",
+      "Bash(npx next *)"
     ]
   }
 }

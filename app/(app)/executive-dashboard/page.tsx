@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Calendar, RefreshCw, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { productionDay } from '@/lib/production-day'
 
 const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 const STATION_COLORS: Record<string, string> = {
@@ -69,7 +70,7 @@ function aggregateBysku(rows: DashRow[]): DashRow[] {
 }
 
 export default function ExecutiveDashboardPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = productionDay()
   const [date,    setDate]    = useState(today)
   const [station, setStation] = useState('ทั้งหมด')
   const [rows,    setRows]    = useState<DashRow[]>([])

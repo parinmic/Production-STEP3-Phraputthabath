@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, BarChart3, PackageOpen, ClipboardList, Scissors, Layers, CalendarDays,
-  AlertTriangle, Beef, Users, CalendarPlus,
+  AlertTriangle, Beef, Users, CalendarPlus, Slice,
   Package, TrendingUp, Calculator, ShieldAlert,
 } from 'lucide-react'
 import type { ManualGroup, ManualOverview } from '@/components/ManualLayout'
@@ -214,6 +214,24 @@ const RAW_SPECIAL_GROUPS: ManualGroup[] = [
           'ปุ่ม "ปรับแผน เช้า" — ให้ระบบเสนอจัดลำดับ/ปรับตารางใหม่ของช่วงเช้า แล้วกดยืนยันบันทึก',
           'ปุ่ม "ปรับแผน บ่าย" — เช่นเดียวกันสำหรับช่วงบ่าย',
           'ปุ่ม "ปรับแผน ค่ำ" — เช่นเดียวกันสำหรับช่วงค่ำ',
+        ],
+      },
+      {
+        key: 'breakline',
+        label: 'Breakline',
+        href: '/breakline',
+        icon: Slice,
+        summary: 'บันทึกเหตุการณ์สายการผลิตหยุดชะงัก',
+        body: [
+          'บันทึกช่วงเวลาที่สายการผลิตหยุดทำงาน แยกตาม Station พร้อมสาเหตุ เพื่อใช้วิเคราะห์และแสดงผลบน Gantt คำสั่งผลิตราย Station',
+        ],
+        imageDescription: [
+          'ช่องเลือกวันที่ — ดู Breakline ของวันที่ต้องการ',
+          'ปุ่ม "Excel" — ส่งออกรายงานสรุป Breakline ของวันนั้นแยกตามสาเหตุและตาม Station',
+          'Dropdown "สถานี" — เลือก Station ที่หยุดสาย (หรือ "ทั้งหมด" ถ้ากระทบทุก Station)',
+          'Dropdown "เวลาเริ่ม" / "เวลาสิ้นสุด" — เลือกช่วงเวลาที่หยุดสาย',
+          'Dropdown "สาเหตุ" — เลือกจาก "วัตถุดิบไม่เพียงพอ", "เครื่องจักรมีปัญหา" หรือ "อื่นๆ" (พิมพ์เหตุผลเองได้)',
+          'ปุ่ม "บันทึก Breakline" — บันทึกเหตุการณ์ครั้งนี้เข้าระบบ จะไปแสดงบน Gantt คำสั่งผลิตราย Station ด้วย',
         ],
       },
       {

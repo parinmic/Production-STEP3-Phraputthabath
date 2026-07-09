@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
+import { productionDay } from '@/lib/production-day'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan':  { label: 'สามชั้น', accent: 'border-blue-500',    light: 'bg-blue-50'    },
@@ -20,7 +21,7 @@ const PHASES = [
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
   { phase: 2, label: 'Phase 2', sub: '14:30-16:30',      period: 'บ่าย', startH: 14.5, endH: 16.5,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
-  { phase: 3, label: 'Phase 3', sub: '16:30 เป็นต้นไป', period: 'ค่ำ',  startH: 16.5, endH: 24,
+  { phase: 3, label: 'Phase 3', sub: '16:30 - 07:00',   period: 'ค่ำ',  startH: 16.5, endH: 31,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },
 ]
 
@@ -1475,7 +1476,7 @@ export default function TablePage() {
   const tableSlug = params.table as string
   const cfg       = CFG[tableSlug]
 
-  const [date, setDate]             = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+  const [date, setDate]             = useState(productionDay())
   const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})

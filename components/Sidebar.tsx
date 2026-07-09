@@ -227,6 +227,13 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
           </NavLink>
 
+          <NavLink href="/breakline" allowed={has('16')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/breakline', has('16'))}`}
+            title="Breakline">
+            <Slice size={18} className="shrink-0" />
+            <span className={labelCls}>Breakline</span>
+          </NavLink>
+
           <NavLink href="/workforce-daily-status" allowed={canAll}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/workforce-daily-status', canAll)}`}
             title="ตรวจสอบสถานะกำลังคน (ดูอย่างเดียว)">
@@ -300,7 +307,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม',         key: '7.6' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material',  key: '8'   },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้',            key: '9'   },
-            { href: '/breakline',          icon: Slice,          label: 'Breakline',           key: '16'  },
           ].map((m) => (
             <NavLink key={m.href} href={m.href} allowed={has(m.key)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls(m.href, has(m.key))}`}
