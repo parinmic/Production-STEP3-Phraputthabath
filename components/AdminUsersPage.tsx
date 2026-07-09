@@ -109,6 +109,27 @@ const ACCESS_LABEL: Record<'edit' | 'view', { label: string; cls: string }> = {
   view: { label: 'View', cls: 'bg-gray-100 text-gray-600' },
 }
 
+function AccessToggle({ value, onChange }: { value: 'edit' | 'view'; onChange: (v: 'edit' | 'view') => void }) {
+  return (
+    <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-xs">
+      <button
+        type="button"
+        onClick={() => onChange('edit')}
+        className={`px-2 py-0.5 font-medium ${value === 'edit' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+      >
+        แก้ไข
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('view')}
+        className={`px-2 py-0.5 font-medium border-l border-gray-200 ${value === 'view' ? 'bg-gray-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+      >
+        ดูอย่างเดียว
+      </button>
+    </div>
+  )
+}
+
 const EMPTY_ADD = { username: '', password: '' }
 
 const MENU_CHECKLIST: [string, string][] = Object.entries(SPECIAL_MENU_LABELS)
@@ -127,7 +148,7 @@ export default function AdminUsersPage() {
 
   const [newPosName, setNewPosName] = useState('')
   const [newPosStep, setNewPosStep] = useState('3')
-  const [newPosMenus, setNewPosMenus] = useState<Set<string>>(new Set())
+  const [newPosMenus, setNewPosMenus] = useState<Map<string, 'edit' | 'view'>>(new Map())
 
   const [changePwId, setChangePwId] = useState<string | null>(null)
   const [newPw, setNewPw]           = useState('')
@@ -164,9 +185,9 @@ export default function AdminUsersPage() {
     if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว`); return }
 
     setAddLoading(true)
-    const menuKeys = newPosMenus.has('all') ? ['all'] : Array.from(newPosMenus)
-    const rows: PreviewRow[] = menuKeys.length > 0
-      ? menuKeys.map(key => ({ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: key, access: 'edit' as const }))
+    const menuEntries = newPosMenus.has('all') ? [['all', newPosMenus.get('all')!] as const] : Array.from(newPosMenus)
+    const rows: PreviewRow[] = menuEntries.length > 0
+      ? menuEntries.map(([key, access]) => ({ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: key, access }))
       : [{ position: name, username: addForm.username, password: addForm.password, step: newPosStep, menu: '', access: 'edit' as const }]
     const res  = await fetch('/api/admin/users/upload', {
       method: 'POST',
@@ -189,18 +210,27 @@ export default function AdminUsersPage() {
     setAddForm({ ...EMPTY_ADD })
     setNewPosName('')
     setNewPosStep('3')
-    setNewPosMenus(new Set())
+    setNewPosMenus(new Map())
   }
 
   function toggleNewPosMenu(key: string) {
     setNewPosMenus(prev => {
-      const next = new Set(prev)
+      const next = new Map(prev)
       if (key === 'all') {
-        return next.has('all') ? new Set() : new Set(['all'])
+        return next.has('all') ? new Map() : new Map([['all', 'edit']])
       }
       next.delete('all')
       if (next.has(key)) next.delete(key)
-      else next.add(key)
+      else next.set(key, 'edit')
+      return next
+    })
+  }
+
+  function setNewPosMenuAccess(key: string, access: 'edit' | 'view') {
+    setNewPosMenus(prev => {
+      if (!prev.has(key)) return prev
+      const next = new Map(prev)
+      next.set(key, access)
       return next
     })
   }
@@ -376,7 +406,7 @@ export default function AdminUsersPage() {
               setAddForm({ ...EMPTY_ADD })
               setNewPosName('')
               setNewPosStep('3')
-              setNewPosMenus(new Set())
+              setNewPosMenus(new Map())
             }}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
@@ -522,22 +552,32 @@ export default function AdminUsersPage() {
               </div>
               <label className="text-xs font-medium text-gray-600 block">เมนูที่เข้าถึงได้</label>
               <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-y-auto">
-                <label className="flex items-center gap-2 text-sm py-1 font-medium text-blue-700 cursor-pointer">
-                  <input type="checkbox" checked={newPosMenus.has('all')} onChange={() => toggleNewPosMenu('all')} />
-                  ทุกเมนู (all)
-                </label>
+                <div className="flex items-center justify-between gap-2 py-1">
+                  <label className="flex items-center gap-2 text-sm font-medium text-blue-700 cursor-pointer">
+                    <input type="checkbox" checked={newPosMenus.has('all')} onChange={() => toggleNewPosMenu('all')} />
+                    ทุกเมนู (all)
+                  </label>
+                  {newPosMenus.has('all') && (
+                    <AccessToggle value={newPosMenus.get('all')!} onChange={v => setNewPosMenuAccess('all', v)} />
+                  )}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
                   {MENU_CHECKLIST.map(([key, label]) => (
-                    <label key={key}
-                      className={`flex items-center gap-2 text-sm py-1 cursor-pointer ${newPosMenus.has('all') ? 'opacity-40' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={newPosMenus.has(key)}
-                        disabled={newPosMenus.has('all')}
-                        onChange={() => toggleNewPosMenu(key)}
-                      />
-                      <span className="text-gray-700">[{key}] {label}</span>
-                    </label>
+                    <div key={key}
+                      className={`flex items-center justify-between gap-2 py-1 ${newPosMenus.has('all') ? 'opacity-40' : ''}`}>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newPosMenus.has(key)}
+                          disabled={newPosMenus.has('all')}
+                          onChange={() => toggleNewPosMenu(key)}
+                        />
+                        <span className="text-gray-700">[{key}] {label}</span>
+                      </label>
+                      {newPosMenus.has(key) && !newPosMenus.has('all') && (
+                        <AccessToggle value={newPosMenus.get(key)!} onChange={v => setNewPosMenuAccess(key, v)} />
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
