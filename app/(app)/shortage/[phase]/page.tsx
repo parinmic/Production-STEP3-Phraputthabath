@@ -21,6 +21,13 @@ interface BasicRawPlanRow {
   note: string | null
 }
 
+interface MooIng {
+  ingredient_type: string
+  priority: number
+  sap_code: string | null
+  product_name: string
+}
+
 const PHASE_CONFIG = {
   '1': { label: 'Phase 1 — รอบเช้า',  dotColor: 'bg-blue-500' },
   '2': { label: 'Phase 2 — รอบบ่าย',  dotColor: 'bg-orange-500' },
@@ -100,10 +107,11 @@ export default function ShortagePage() {
       // 2. BOM for deficit SKUs → convert finished-product qty to raw material needs
       const skus     = Array.from(new Set(deficitRows.map(a => String(a.sku))))
       const skusNorm = Array.from(new Set(skus.map(s => s.replace(/^0+/, ''))))
-      const { data: bomRows } = await supabase
-        .from('bom_items')
-        .select('product_sap, raw_sap, raw_name, yield_pct')
-        .in('product_sap', [...skus, ...skusNorm])
+      const [{ data: bomRows }, { data: mooMasterRows }, { data: mooWithdrawalRows }] = await Promise.all([
+        supabase.from('bom_items').select('product_sap, raw_sap, raw_name, yield_pct').in('product_sap', [...skus, ...skusNorm]),
+        supabase.from('moo_chod_master').select('sap_code, fat_percent'),
+        supabase.from('moo_chod_withdrawal_master').select('ingredient_type, priority, sap_code, product_name').order('ingredient_type').order('priority').order('id'),
+      ])
 
       const bomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
       for (const b of bomRows ?? []) {
@@ -118,6 +126,19 @@ export default function ShortagePage() {
         }
       }
 
+      // หมูบด doesn't use a 1:1 BOM raw material — it draws เนื้อ/มัน by priority (P1/P2/P3)
+      // in proportion to each SKU's fat%. Mirrors the withdrawal calc in lib/generate-plan.ts.
+      const mooFatPctMap = new Map<string, number>()
+      for (const r of mooMasterRows ?? []) {
+        const c = String(r.sap_code ?? '').trim()
+        if (c) mooFatPctMap.set(c.replace(/^0+/, ''), Number(r.fat_percent ?? 0))
+      }
+      const mooIngs     = (mooWithdrawalRows ?? []) as MooIng[]
+      const mooFatIngs  = mooIngs.filter(i => i.ingredient_type === 'มัน')
+      const mooMeatIngs = mooIngs.filter(i => i.ingredient_type === 'เนื้อ')
+      let mooFatKg = 0, mooMeatKg = 0
+      let mooTime: string | null = null
+
       // 3. Aggregate raw material deficit by (station, raw_sap)
       //    Use note total qty as the original demand; fall back to target_quantity.
       const rawMap = new Map<string, ShortageRow>()
@@ -129,6 +150,17 @@ export default function ShortagePage() {
         const qty  = noteTotal > 0 ? noteTotal : Number(a.target_quantity)
         const stn  = String(a.table_name)
         const time = String(a.deadline_time ?? '').slice(0, 5)
+
+        if (stn === 'หมูบด') {
+          const fatPct = mooFatPctMap.get(norm) ?? mooFatPctMap.get(sku)
+          if (fatPct !== undefined) {
+            mooFatKg  += qty * fatPct / 100
+            mooMeatKg += qty * (1 - fatPct / 100)
+            if (time && (!mooTime || time < mooTime)) mooTime = time
+            continue
+          }
+        }
+
         const boms = bomMap.get(norm) ?? bomMap.get(sku) ?? []
 
         const addRow = (rawSku: string, rawName: string | null, rawQty: number) => {
@@ -155,9 +187,10 @@ export default function ShortagePage() {
       // 4. Check actual stock — only show rows where stock is truly insufficient.
       //    Query all 3 warehouses by raw material name (name-based match is more
       //    reliable than SAP code since BOM codes may differ from stock codes).
-      const rawNames = Array.from(new Set(
-        Array.from(rawMap.values()).map(r => r.sku_name).filter(Boolean) as string[]
-      ))
+      const rawNames = Array.from(new Set([
+        ...Array.from(rawMap.values()).map(r => r.sku_name).filter(Boolean) as string[],
+        ...[...mooFatIngs, ...mooMeatIngs].map(i => i.product_name).filter(Boolean),
+      ]))
       const expandedNames = Array.from(new Set(rawNames.flatMap(n => [
         n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
       ])))
@@ -178,12 +211,40 @@ export default function ShortagePage() {
         }
       }
 
+      // Priority-walk เนื้อ/มัน demand through P1→P2→P3 stock, same rule as generate-plan.ts:
+      // only the portion left over after every priority ingredient's stock is exhausted counts as short.
+      const allocateMooShortage = (demandKg: number, ings: MooIng[]): ShortageRow | null => {
+        if (demandKg <= 0.005 || !ings.length) return null
+        let remaining = demandKg
+        const byPriority = new Map<number, MooIng[]>()
+        for (const ing of ings) { const list = byPriority.get(ing.priority) ?? []; list.push(ing); byPriority.set(ing.priority, list) }
+        for (const priority of Array.from(byPriority.keys()).sort((a, b) => a - b)) {
+          if (remaining <= 0.005) break
+          for (const ing of byPriority.get(priority)!) {
+            if (remaining <= 0.005) break
+            const avail = stockByName.get(normName(ing.product_name)) ?? 0
+            if (avail <= 0.005) continue
+            remaining -= Math.min(remaining, avail)
+          }
+        }
+        if (remaining <= 0.005) return null
+        const lastIng = ings[ings.length - 1]
+        const qty = Math.round(remaining * 100) / 100
+        return { sku: lastIng.sap_code ?? '', sku_name: lastIng.product_name, quantity: qty, unit: 'กก.', deficit: qty, productionTime: mooTime, work_station: 'หมูบด' }
+      }
+      const mooShortageRows = [
+        allocateMooShortage(mooFatKg, mooFatIngs),
+        allocateMooShortage(mooMeatKg, mooMeatIngs),
+      ].filter((r): r is ShortageRow => r !== null)
+
       const merged = Array.from(rawMap.values())
+        .filter(r => !/เผา\s*-\s*wip/i.test(r.sku_name ?? ''))
         .filter(r => {
           // Only show if stock is less than needed (insufficient)
           const available = stockByName.get(normName(r.sku_name ?? '')) ?? 0
           return available < (r.quantity - 0.005)
         })
+        .concat(mooShortageRows)
         .map(r => ({ ...r, quantity: Math.round(r.quantity * 100) / 100, deficit: Math.round((r.deficit ?? 0) * 100) / 100 }))
         .sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')

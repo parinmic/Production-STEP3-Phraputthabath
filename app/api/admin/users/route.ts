@@ -45,12 +45,14 @@ export async function PATCH(req: NextRequest) {
   const denied = requireMenu12(req)
   if (denied) return denied
 
-  const { id, password, is_active, position_id } = await req.json()
+  const { id, password, is_active, position_id, username, menus } = await req.json()
   const { data, error } = await supabase.rpc('fn_admin_update_user', {
     p_id: id,
     p_password: password ?? null,
     p_is_active: is_active ?? null,
     p_position_id: position_id ?? null,
+    p_username: username ?? null,
+    p_menus: menus ?? null,
   })
   if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
   return NextResponse.json(data)

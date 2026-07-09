@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet, Download } from 'lucide-react'
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, KeyRound, Trash2, Check, X, Eye, EyeOff, UserCheck, UserX, Upload, FileSpreadsheet, Download, Pencil } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { STATION_LABEL_TO_SLUG } from '@/lib/station-access'
 import { SPECIAL_MENU_LABELS } from '@/lib/special-menu'
@@ -134,6 +134,65 @@ const EMPTY_ADD = { username: '', password: '' }
 
 const MENU_CHECKLIST: [string, string][] = Object.entries(SPECIAL_MENU_LABELS)
 
+type MenuMapSetter = React.Dispatch<React.SetStateAction<Map<string, 'edit' | 'view'>>>
+
+function toggleMenu(setter: MenuMapSetter, key: string) {
+  setter(prev => {
+    if (key === 'all') return prev.has('all') ? new Map() : new Map([['all', 'edit']])
+    const next = new Map(prev)
+    next.delete('all')
+    if (next.has(key)) next.delete(key)
+    else next.set(key, 'edit')
+    return next
+  })
+}
+
+function setMenuAccess(setter: MenuMapSetter, key: string, access: 'edit' | 'view') {
+  setter(prev => {
+    if (!prev.has(key)) return prev
+    const next = new Map(prev)
+    next.set(key, access)
+    return next
+  })
+}
+
+// Checklist เมนู (ทุกเมนู + รายเมนู) พร้อม AccessToggle ต่อรายการ — ใช้ทั้งฟอร์ม "เพิ่ม User"
+// และพาเนล "แก้ไข" โดยรับ setter ของ Map สิทธิ์เป็น parameter แทนการผูกกับ state ตัวใดตัวหนึ่ง
+function MenuChecklist({ menus, setter }: { menus: Map<string, 'edit' | 'view'>; setter: MenuMapSetter }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-y-auto">
+      <div className="flex items-center justify-between gap-2 py-1">
+        <label className="flex items-center gap-2 text-sm font-medium text-blue-700 cursor-pointer">
+          <input type="checkbox" checked={menus.has('all')} onChange={() => toggleMenu(setter, 'all')} />
+          ทุกเมนู (all)
+        </label>
+        {menus.has('all') && (
+          <AccessToggle value={menus.get('all')!} onChange={v => setMenuAccess(setter, 'all', v)} />
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+        {MENU_CHECKLIST.map(([key, label]) => (
+          <div key={key}
+            className={`flex items-center justify-between gap-2 py-1 ${menus.has('all') ? 'opacity-40' : ''}`}>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={menus.has(key)}
+                disabled={menus.has('all')}
+                onChange={() => toggleMenu(setter, key)}
+              />
+              <span className="text-gray-700">[{key}] {label}</span>
+            </label>
+            {menus.has(key) && !menus.has('all') && (
+              <AccessToggle value={menus.get(key)!} onChange={v => setMenuAccess(setter, key, v)} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function AdminUsersPage() {
   const canEdit = useCanEdit('12')
   const [users, setUsers]         = useState<UserRow[]>([])
@@ -213,26 +272,48 @@ export default function AdminUsersPage() {
     setNewPosMenus(new Map())
   }
 
-  function toggleNewPosMenu(key: string) {
-    setNewPosMenus(prev => {
-      const next = new Map(prev)
-      if (key === 'all') {
-        return next.has('all') ? new Map() : new Map([['all', 'edit']])
-      }
-      next.delete('all')
-      if (next.has(key)) next.delete(key)
-      else next.set(key, 'edit')
-      return next
-    })
+  const [editId, setEditId]         = useState<string | null>(null)
+  const [editUsername, setEditUsername] = useState('')
+  const [editMenus, setEditMenus]   = useState<Map<string, 'edit' | 'view'>>(new Map())
+  const [editLoading, setEditLoading] = useState(false)
+
+  function startEdit(u: UserRow) {
+    setEditId(u.id)
+    setEditUsername(u.username)
+    setEditMenus(new Map(u.menus.map(m => [m.key, m.access])))
+    setChangePwId(null)
+    setDeleteId(null)
   }
 
-  function setNewPosMenuAccess(key: string, access: 'edit' | 'view') {
-    setNewPosMenus(prev => {
-      if (!prev.has(key)) return prev
-      const next = new Map(prev)
-      next.set(key, access)
-      return next
+  function cancelEdit() {
+    setEditId(null)
+    setEditUsername('')
+    setEditMenus(new Map())
+  }
+
+  async function handleSaveEdit() {
+    if (!editId) return
+    const username = editUsername.trim()
+    if (!username) { flash(false, 'กรอก Username'); return }
+
+    setEditLoading(true)
+    const menus = editMenus.has('all')
+      ? [{ key: 'all', access: editMenus.get('all') }]
+      : Array.from(editMenus, ([key, access]) => ({ key, access }))
+    const res  = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editId, username, menus }),
     })
+    const data = await res.json()
+    if (data.success) {
+      flash(true, 'บันทึกการแก้ไขสำเร็จ')
+      cancelEdit()
+      load()
+    } else {
+      flash(false, data.message ?? 'เกิดข้อผิดพลาด')
+    }
+    setEditLoading(false)
   }
 
   async function handleToggleActive(u: UserRow) {
@@ -551,36 +632,7 @@ export default function AdminUsersPage() {
                 </select>
               </div>
               <label className="text-xs font-medium text-gray-600 block">เมนูที่เข้าถึงได้</label>
-              <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-y-auto">
-                <div className="flex items-center justify-between gap-2 py-1">
-                  <label className="flex items-center gap-2 text-sm font-medium text-blue-700 cursor-pointer">
-                    <input type="checkbox" checked={newPosMenus.has('all')} onChange={() => toggleNewPosMenu('all')} />
-                    ทุกเมนู (all)
-                  </label>
-                  {newPosMenus.has('all') && (
-                    <AccessToggle value={newPosMenus.get('all')!} onChange={v => setNewPosMenuAccess('all', v)} />
-                  )}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-                  {MENU_CHECKLIST.map(([key, label]) => (
-                    <div key={key}
-                      className={`flex items-center justify-between gap-2 py-1 ${newPosMenus.has('all') ? 'opacity-40' : ''}`}>
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newPosMenus.has(key)}
-                          disabled={newPosMenus.has('all')}
-                          onChange={() => toggleNewPosMenu(key)}
-                        />
-                        <span className="text-gray-700">[{key}] {label}</span>
-                      </label>
-                      {newPosMenus.has(key) && !newPosMenus.has('all') && (
-                        <AccessToggle value={newPosMenus.get(key)!} onChange={v => setNewPosMenuAccess(key, v)} />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <MenuChecklist menus={newPosMenus} setter={setNewPosMenus} />
             </div>
 
           <div className="flex gap-2">
@@ -623,7 +675,8 @@ export default function AdminUsersPage() {
               {users.map(u => {
                 const stepInfo = STEP_LABELS[u.step] ?? { label: u.step, cls: 'bg-gray-100 text-gray-500' }
                 return (
-                  <tr key={u.id} className={u.is_active ? '' : 'opacity-50 bg-gray-50'}>
+                  <Fragment key={u.id}>
+                  <tr className={u.is_active ? '' : 'opacity-50 bg-gray-50'}>
                     <td className="px-4 py-3 font-medium text-gray-800">{u.position_name}</td>
                     <td className="px-4 py-3 text-gray-700 font-mono">{u.username}</td>
                     <td className="px-4 py-3">
@@ -663,6 +716,14 @@ export default function AdminUsersPage() {
                       {!canEdit ? null : (
                       <div className="flex items-center gap-1.5 justify-end">
 
+                        <button
+                          onClick={() => editId === u.id ? cancelEdit() : startEdit(u)}
+                          title="แก้ไข Username / สิทธิ์เมนู"
+                          className={`p-1.5 rounded-lg transition-colors ${editId === u.id ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                        >
+                          <Pencil size={15} />
+                        </button>
+
                         {changePwId === u.id ? (
                           <div className="flex items-center gap-1.5">
                             <div className="relative">
@@ -688,7 +749,7 @@ export default function AdminUsersPage() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => { setChangePwId(u.id); setNewPw(''); setShowNewPw(false) }}
+                            onClick={() => { setChangePwId(u.id); setNewPw(''); setShowNewPw(false); setEditId(null) }}
                             title="เปลี่ยนรหัสผ่าน"
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           >
@@ -716,7 +777,7 @@ export default function AdminUsersPage() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => setDeleteId(u.id)}
+                            onClick={() => { setDeleteId(u.id); setEditId(null) }}
                             title="ลบ User"
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
@@ -727,6 +788,41 @@ export default function AdminUsersPage() {
                       )}
                     </td>
                   </tr>
+                  {editId === u.id && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-4 bg-gray-50 border-t border-gray-100">
+                        <div className="space-y-3">
+                          <div className="max-w-xs">
+                            <label className="text-xs font-medium text-gray-600 block mb-1">Username</label>
+                            <input
+                              type="text"
+                              value={editUsername}
+                              onChange={e => setEditUsername(e.target.value)}
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              autoFocus
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 block mb-1">เมนูที่เข้าถึงได้</label>
+                            <MenuChecklist menus={editMenus} setter={setEditMenus} />
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={handleSaveEdit} disabled={editLoading}
+                              className="flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+                              <Check size={15} />
+                              {editLoading ? 'กำลังบันทึก...' : 'บันทึก'}
+                            </button>
+                            <button type="button" onClick={cancelEdit}
+                              className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                              <X size={15} />
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>

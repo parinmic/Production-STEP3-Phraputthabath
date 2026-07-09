@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen, Slice } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -300,6 +300,7 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             { href: '/supplementary-plan', icon: CalendarPlus,   label: 'แผนรอบเสริม',         key: '7.6' },
             { href: '/stock-raw-material', icon: Package,        label: 'Stock Raw Material',  key: '8'   },
             { href: '/yield',              icon: TrendingUp,     label: 'รับผลได้',            key: '9'   },
+            { href: '/breakline',          icon: Slice,          label: 'Breakline',           key: '16'  },
           ].map((m) => (
             <NavLink key={m.href} href={m.href} allowed={has(m.key)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls(m.href, has(m.key))}`}
