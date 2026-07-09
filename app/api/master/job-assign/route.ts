@@ -56,7 +56,7 @@ async function fromMasterLogic(): Promise<JobAssignWorker[]> {
 }
 
 // ฝั่งพิเศษ (STEP 3) เลิกใช้ Master Logic กำลังคน แล้ว — ใช้ roster จาก employee_skills
-// (sync จากภายนอกทุกวัน 08:05) แทน ไม่มี nickname ในข้อมูลนี้ จึงแสดงชื่อจริงไปก่อน
+// (sync จากภายนอกทุกครั้งที่กดสร้าง Phase 1) แทน ไม่มี nickname ในข้อมูลนี้ จึงแสดงชื่อจริงไปก่อน
 async function fromEmployeeSkills(): Promise<JobAssignWorker[]> {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
   const { data, error } = await supabase
