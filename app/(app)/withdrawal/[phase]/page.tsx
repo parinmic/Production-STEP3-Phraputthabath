@@ -34,6 +34,7 @@ interface CalcItem {
   withdrawal_round?: string  // "08:00"
   bom_priority?: number | null
   raws?: { sap: string; name: string; qty: number }[]
+  shortage_kg?: number
 }
 
 type RowItem = CalcItem
@@ -265,6 +266,11 @@ export default function WithdrawalPage() {
                             <span>{item.sku_name ?? '-'}</span>
                             {item.note?.includes('WIP') && (
                               <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">WIP</span>
+                            )}
+                            {typeof item.shortage_kg === 'number' && item.shortage_kg > 0.005 && (
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-600 shrink-0">
+                                ⚠ ขาดสต็อก {Math.round(item.shortage_kg).toLocaleString()} กก.
+                              </span>
                             )}
                           </div>
                           <p className="md:hidden text-xs font-mono text-gray-400 mt-0.5">{item.sku}</p>
@@ -608,6 +614,18 @@ export default function WithdrawalPage() {
                 </div>
               )}
             </div>
+
+            {/* Shortage warning */}
+            {typeof popupItem.item.shortage_kg === 'number' && popupItem.item.shortage_kg > 0.005 && (
+              <div className="px-5 pb-4">
+                <div className="bg-red-50 rounded-2xl px-4 py-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-red-600">⚠ ขาดสต็อก — ตัวเลขถูกจำกัดโดยสต็อกวัตถุดิบ</span>
+                  <span className="text-base font-bold text-red-600 shrink-0 ml-3">
+                    {Math.round(popupItem.item.shortage_kg).toLocaleString()} กก.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* For products */}
             {(popupItem.item.for_products?.length ?? 0) > 0 && (
