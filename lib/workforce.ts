@@ -40,52 +40,34 @@ interface EmployeeSkillRow {
   skills: Record<string, number> | null
 }
 
+// The 7 production stations plan generation assigns workers to (see supabase.ts TableName).
+const ALL_STATIONS = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
+
 export async function fetchWorkforceAndSkills(productionDate: string, options?: {
-  // Emergency fallback: if today's roster hasn't been synced yet, fall back to
-  // the most recent prior work_date that does have data instead of failing.
+  // Emergency fallback: a partial roster sync can leave individual stations with zero
+  // workers today even though other stations are fine (e.g. source hasn't entered today's
+  // shift for that job_site yet). Rather than an all-or-nothing swap to one prior day, back
+  // each empty station independently from the most recent prior work_date that has workers
+  // for it — may be 1, 2, 3+ days back per station, whatever is most recent.
   fallbackToPreviousDay?: boolean
 }): Promise<{
   workforce: WorkforceRow[]
   jobAssignMap: JobAssignMap
   workDateUsed: string
+  stationFallbackDates: Record<string, string>
 }> {
-  let workDateUsed = productionDate
-  let data = (await supabase
-    .from('employee_skills')
-    .select('emp_id, name, work_station, shift, is_weigher, skills')
-    .eq('work_date', productionDate)).data
-
-  if (!data?.length && options?.fallbackToPreviousDay) {
-    const { data: prevDateRow } = await supabase
-      .from('employee_skills')
-      .select('work_date')
-      .lt('work_date', productionDate)
-      .order('work_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (prevDateRow?.work_date) {
-      workDateUsed = prevDateRow.work_date
-      data = (await supabase
-        .from('employee_skills')
-        .select('emp_id, name, work_station, shift, is_weigher, skills')
-        .eq('work_date', workDateUsed)).data
-    }
-  }
-
   const workforce: WorkforceRow[] = []
   const jobAssignMap: JobAssignMap = new Map()
+  const stationFallbackDates: Record<string, string> = {}
 
-  for (const row of (data ?? []) as EmployeeSkillRow[]) {
-    if (!row.name) continue
-
+  const pushRow = (row: EmployeeSkillRow) => {
+    if (!row.name) return
     workforce.push({
       emp_id: row.emp_id || row.name,
       name: row.name,
       work_station: row.work_station ?? '',
       shift: row.shift ?? '',
     })
-
     const groups = new Map<string, number>()
     for (const [key, val] of Object.entries(row.skills ?? {})) {
       const level = Number(val)
@@ -94,5 +76,44 @@ export async function fetchWorkforceAndSkills(productionDate: string, options?: 
     jobAssignMap.set(normName(row.name), { isWeigher: row.is_weigher, groups })
   }
 
-  return { workforce, jobAssignMap, workDateUsed }
+  const { data: todayRows } = await supabase
+    .from('employee_skills')
+    .select('emp_id, name, work_station, shift, is_weigher, skills')
+    .eq('work_date', productionDate)
+
+  const stationsPresent = new Set<string>()
+  for (const row of (todayRows ?? []) as EmployeeSkillRow[]) {
+    pushRow(row)
+    if (row.work_station) stationsPresent.add(row.work_station)
+  }
+
+  if (options?.fallbackToPreviousDay) {
+    const missingStations = ALL_STATIONS.filter(s => !stationsPresent.has(s))
+    if (missingStations.length > 0) {
+      const { data: priorRows } = await supabase
+        .from('employee_skills')
+        .select('work_date, emp_id, name, work_station, shift, is_weigher, skills')
+        .lt('work_date', productionDate)
+        .in('work_station', missingStations)
+        .order('work_date', { ascending: false })
+        .limit(3000)
+
+      // Rows come back newest-first, so the first row seen per station is its most recent
+      // available date — take every row from exactly that date for that station.
+      const latestDateByStation = new Map<string, string>()
+      for (const row of (priorRows ?? []) as (EmployeeSkillRow & { work_date: string })[]) {
+        const station = row.work_station ?? ''
+        if (!latestDateByStation.has(station)) latestDateByStation.set(station, row.work_date)
+      }
+      for (const row of (priorRows ?? []) as (EmployeeSkillRow & { work_date: string })[]) {
+        const station = row.work_station ?? ''
+        if (latestDateByStation.get(station) === row.work_date) {
+          pushRow(row)
+          stationFallbackDates[station] = row.work_date
+        }
+      }
+    }
+  }
+
+  return { workforce, jobAssignMap, workDateUsed: productionDate, stationFallbackDates }
 }

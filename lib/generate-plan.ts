@@ -1496,15 +1496,16 @@ export async function generatePlan(params: GeneratePlanParams): Promise<Generate
     supabase.from('moo_chod_master').select('sap_code, fat_percent').limit(5000),
   ])
 
-  const { workforce, jobAssignMap, workDateUsed } = await fetchWorkforceAndSkills(productionDate, {
+  const { workforce, jobAssignMap, stationFallbackDates } = await fetchWorkforceAndSkills(productionDate, {
     fallbackToPreviousDay: params.useFallbackWorkforce,
   })
   if (!workforce.length) return {
     success: false,
     message: 'ไม่พบข้อมูลพนักงานวันนี้ — กรุณาตรวจสอบข้อมูลกำลังคนจากต้นทาง',
   }
-  const workforceFallbackNote = workDateUsed !== productionDate
-    ? ` (ใช้ข้อมูลกำลังคนของวันที่ ${workDateUsed} แทน เนื่องจากยังไม่มีข้อมูลวันนี้)`
+  const fallbackStationEntries = Object.entries(stationFallbackDates)
+  const workforceFallbackNote = fallbackStationEntries.length
+    ? ` (ใช้ข้อมูลกำลังคนวันก่อนหน้าแทนสำหรับ: ${fallbackStationEntries.map(([station, date]) => `${station} (${date})`).join(', ')} เนื่องจากวันนี้ไม่มีข้อมูล)`
     : ''
 
   const wmToday    = (wmTodayRaw    ?? []) as OrderRow[]
