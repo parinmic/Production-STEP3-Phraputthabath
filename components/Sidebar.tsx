@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ClipboardList, ChevronDown, ChevronRight, ChevronLeft, Package, Calculator, PackageOpen, Layers, Menu, X, Scale, TrendingUp, ShieldAlert, CalendarPlus, CalendarDays, Ban, AlertTriangle, ArrowLeft, Beef, Scissors, LogOut, BookOpen, Slice } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { hasSpecialMenu, canAccessSpecialStation } from '@/lib/special-menu'
 
@@ -225,6 +225,13 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             title="แผนการใช้เครื่องเลื่อย">
             <Scissors size={18} className="shrink-0" />
             <span className={labelCls}>แผนการใช้เครื่องเลื่อย</span>
+          </NavLink>
+
+          <NavLink href="/breakline" allowed={has('16')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/breakline', has('16'))}`}
+            title="Breakline">
+            <Slice size={18} className="shrink-0" />
+            <span className={labelCls}>Breakline</span>
           </NavLink>
 
           <NavLink href="/workforce-daily-status" allowed={canAll}

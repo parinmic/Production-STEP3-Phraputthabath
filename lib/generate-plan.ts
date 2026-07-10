@@ -1,6 +1,7 @@
 import { supabase, fetchLatestPlan100, fetchLatestOrders, latestStockLogId } from '@/lib/supabase'
 import { allocateFIFOWithRules, RawMaterialRule } from '@/lib/withdrawal-rules'
 import { fetchWorkforceAndSkills, WorkforceRow, normName } from '@/lib/workforce'
+import { productionDay } from '@/lib/production-day'
 
 // ========== Types ==========
 
@@ -89,7 +90,7 @@ function wallClockFinish(fromMins: number, workMins: number): number {
 const PHASE_CONFIG = [
   { phase: 1, period: 'เช้า',  deadline: '14:30:00', hours: 6.0, startH: 8.5,  endH: 14.5 },
   { phase: 2, period: 'บ่าย',  deadline: '16:30:00', hours: 2.0, startH: 14.5, endH: 16.5 },
-  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 32 }, // 08:00 next day — no fixed cutoff
+  { phase: 3, period: 'ค่ำ',   deadline: null,        hours: 7.5, startH: 16.5, endH: 31 }, // ต้องจบไม่เกิน 07:00 ของวันถัดไป
 ]
 
 const PHASE_ROUND_MINS: Record<number, number[]> = {
@@ -1381,7 +1382,7 @@ async function autoGenerateWithdrawal(productionDate: string, selectedPhase: num
 // ========== Main Entry Point ==========
 
 export async function generatePlan(params: GeneratePlanParams): Promise<GeneratePlanResult> {
-  const defaultDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const defaultDate = productionDay()
   const productionDate: string = params.date ?? defaultDate
   const selectedPhase: number = params.phase ? Number(params.phase) : 1
   const deductMode: 'plan' | 'actual' | 'yield' =

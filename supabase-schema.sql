@@ -515,6 +515,20 @@ CREATE INDEX IF NOT EXISTS idx_basic_line_breaks_date ON basic_line_breaks(produ
 ALTER TABLE basic_line_breaks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all_basic_line_breaks" ON basic_line_breaks FOR ALL USING (true) WITH CHECK (true);
 
+-- 23b. Line Breaks (ฝั่งพิเศษ) — บันทึกการหยุดสาย (Breakline) พร้อมสาเหตุและช่วงเวลา
+CREATE TABLE IF NOT EXISTS line_breaks (
+  id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  production_date date        NOT NULL,
+  station         text        NOT NULL DEFAULT 'ทั้งหมด',
+  start_time      text        NOT NULL,
+  end_time        text        NOT NULL,
+  reason          text,
+  created_at      timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_line_breaks_date ON line_breaks(production_date);
+ALTER TABLE line_breaks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all_line_breaks" ON line_breaks FOR ALL USING (true) WITH CHECK (true);
+
 -- 24. เบิกหมูซีก — ลำดับตัดแต่งที่เลือก (1 แถวต่อ production_date, สถานะกลางให้ทุกเครื่องเห็นตรงกัน)
 CREATE TABLE IF NOT EXISTS pig_carcass_lot_selection (
   production_date date        PRIMARY KEY,

@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, Zap, LayoutList, BarChart2, Clock, Download, ClipboardList, Calendar, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
+import { productionDay } from '@/lib/production-day'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sam-chan':  { label: 'สามชั้น', accent: 'border-blue-500',    light: 'bg-blue-50'    },
@@ -20,7 +21,7 @@ const PHASES = [
     active: 'bg-sky-500 text-white',    inactive: 'text-sky-700 border border-sky-300 hover:bg-sky-50' },
   { phase: 2, label: 'Phase 2', sub: '14:30-16:30',      period: 'บ่าย', startH: 14.5, endH: 16.5,
     active: 'bg-purple-500 text-white', inactive: 'text-purple-700 border border-purple-300 hover:bg-purple-50' },
-  { phase: 3, label: 'Phase 3', sub: '16:30 เป็นต้นไป', period: 'ค่ำ',  startH: 16.5, endH: 24,
+  { phase: 3, label: 'Phase 3', sub: '16:30 - 07:00',   period: 'ค่ำ',  startH: 16.5, endH: 31,
     active: 'bg-orange-500 text-white', inactive: 'text-orange-700 border border-orange-300 hover:bg-orange-50' },
 ]
 
@@ -54,6 +55,25 @@ interface Assignment {
   seq: number | null
   channel: string | null
   note: string | null
+}
+
+interface LineBreak {
+  id: string
+  production_date: string
+  station: string
+  start_time: string  // 'HH:MM'
+  end_time: string
+  reason: string | null
+}
+
+function lineBreaksToPauses(lineBreaks: LineBreak[]): [number, number][] {
+  return lineBreaks
+    .map(lb => {
+      const [sh, sm] = lb.start_time.split(':').map(Number)
+      const [eh, em] = lb.end_time.split(':').map(Number)
+      return [sh * 60 + sm, eh * 60 + em] as [number, number]
+    })
+    .filter(([bs, be]) => be > bs)
 }
 
 const GOLD_COLOR = { bg: '#f59e0b', fg: '#78350f' }
@@ -170,11 +190,17 @@ function timeRangeLabel(startMins: number, endMins: number): string {
   return parts.join(' │ ')
 }
 
-function wallClockFinish(fromMins: number, workMins: number): number {
+function mergePauses(extraPauses: [number, number][]): [number, number][] {
+  if (!extraPauses.length) return BREAKS
+  return [...BREAKS, ...extraPauses].sort((a, b) => a[0] - b[0])
+}
+
+function wallClockFinish(fromMins: number, workMins: number, extraPauses: [number, number][] = []): number {
   if (workMins <= 0) return fromMins
+  const pauses = mergePauses(extraPauses)
   let pos = fromMins
   let remaining = workMins
-  for (const [bs, be] of BREAKS) {
+  for (const [bs, be] of pauses) {
     if (pos >= bs && pos < be) pos = be
     if (pos >= be) continue
     if (remaining <= 0) break
@@ -184,6 +210,41 @@ function wallClockFinish(fromMins: number, workMins: number): number {
     pos = be
   }
   return pos + remaining
+}
+
+/** Like wallClockFinish, but stops at limitEnd instead of running past it — reports how much
+ *  of workMins actually fit (usedMins <= workMins) so callers can scale quantity down to what's
+ *  achievable within the boundary rather than showing/committing the full amount. */
+function consumeAvailableTime(fromMins: number, workMins: number, limitEnd: number, extraPauses: [number, number][] = []): { finish: number; usedMins: number } {
+  const pauses = mergePauses(extraPauses)
+  let pos = fromMins
+  let remaining = workMins
+  let used = 0
+  while (remaining > 0.01) {
+    let advanced = true
+    while (advanced) {
+      advanced = false
+      for (const [bs, be] of pauses) {
+        if (pos >= bs && pos < be) { pos = be; advanced = true }
+      }
+    }
+    if (pos >= limitEnd) break
+    let nextEvent = limitEnd
+    for (const [bs, be] of pauses) {
+      if (bs > pos) nextEvent = Math.min(nextEvent, bs)
+    }
+    const chunk = nextEvent - pos
+    if (remaining <= chunk) {
+      pos += remaining
+      used += remaining
+      remaining = 0
+    } else {
+      used += chunk
+      remaining -= chunk
+      pos = nextEvent
+    }
+  }
+  return { finish: pos, usedMins: used }
 }
 
 function roundedDisplayQty(sku: string, qty: number, bagMap: Record<string, number>): number {
@@ -351,9 +412,10 @@ interface SkuScheduleViewProps {
   onToggleSkuAck: (sku: string) => void
   stationLabel: string
   stationMap: Record<string, string>
+  lineBreaks?: LineBreak[]
 }
 
-function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck, stationLabel, stationMap }: SkuScheduleViewProps) {
+function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColor, nameMap, ackedSkus, onToggleSkuAck, stationLabel, stationMap, lineBreaks = [] }: SkuScheduleViewProps) {
   // Task is supplementary if channel='เสริม' OR its SKU belongs to a different station in mas_productivity
   const isSupp = (t: Assignment) => {
     if (t.channel === 'เสริม') return true
@@ -362,6 +424,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
     // Fallback: check sku_name contains station label
     return !(t.sku_name ?? '').includes(stationLabel)
   }
+  const extraPauses = lineBreaksToPauses(lineBreaks)
   const [nowSecs, setNowSecs] = useState(() => {
     const d = new Date()
     return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()
@@ -380,6 +443,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   const allSkus = Array.from(new Set(items.map(a => a.sku)))
 
   const phaseStartMins = phaseStart * 60
+  const chartEndMins   = phaseEnd * 60
 
   const taskDurMins = (task: Assignment) => {
     const rate = rateMap[task.sku] ?? rateMap[task.sku.replace(/^0+/, '')]
@@ -424,14 +488,16 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           startMin = isConcurrent ? dl : Math.max(startMin, dl)
         }
       }
-      const endMin = wallClockFinish(startMin, dur)
+      const { finish: endMin, usedMins } = consumeAvailableTime(startMin, dur, chartEndMins, extraPauses)
       cur = Math.max(cur, endMin)
+      if (usedMins <= 0) continue
+      const achievableQty = dur > 0 ? Number(task.target_quantity) * (usedMins / dur) : 0
       if (!skuStats[task.sku]) {
         skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, maxEnd: endMin, workers: [], segments: [], minSeq: task.seq ?? 999999 }
       }
       const s = skuStats[task.sku]
-      s.totalQty += Number(task.target_quantity)
-      s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
+      s.totalQty += achievableQty
+      s.qtyByPeriod[task.period] = (s.qtyByPeriod[task.period] ?? 0) + achievableQty
       s.minStart = Math.min(s.minStart, startMin)
       s.maxEnd   = Math.max(s.maxEnd, endMin)
       s.minSeq   = Math.min(s.minSeq, task.seq ?? 999999)
@@ -465,9 +531,9 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
           startMin = isConcurrentRaw ? dl : Math.max(startMin, dl)
         }
       }
-      const endMin = wallClockFinish(startMin, dur)
+      const { finish: endMin, usedMins } = consumeAvailableTime(startMin, dur, chartEndMins, extraPauses)
       curRaw = Math.max(curRaw, endMin)
-      if (skuStats[task.sku]) {
+      if (usedMins > 0 && skuStats[task.sku]) {
         skuStats[task.sku].segments.push({ start: startMin, end: endMin, worker: task.worker_name, isDeficit: !!task.note?.includes('|deficit') })
       }
     }
@@ -491,7 +557,7 @@ function SkuScheduleView({ items, phaseStart, phaseEnd, rateMap, bagMap, skuColo
   if (!sortedSkus.length) return null
 
   const chartStart = Math.floor(phaseStartMins / 60) * 60
-  const chartEnd   = Math.max(phaseEnd * 60, ...sortedSkus.map(s => skuStats[s].maxEnd))
+  const chartEnd   = chartEndMins
   const totalRange = chartEnd - chartStart
 
   const ticks: number[] = []
@@ -711,11 +777,13 @@ interface ProductionSummaryViewProps {
   bagMap: Record<string, number>
   date: string
   tableName: string
+  lineBreaks?: LineBreak[]
 }
 
 type ActualEntry = { id: string; quantity: number; created_at: string | null; updated_at: string | null }
 
-function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName }: ProductionSummaryViewProps) {
+function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, tableName, lineBreaks = [] }: ProductionSummaryViewProps) {
+  const extraPauses = lineBreaksToPauses(lineBreaks)
   const [inputVals, setInputVals]   = useState<Record<string, string>>({})
   const [history, setHistory]       = useState<Record<string, ActualEntry[]>>({})
   const [popupSku, setPopupSku]     = useState<string | null>(null)
@@ -825,7 +893,7 @@ function ProductionSummaryView({ items, phaseStart, rateMap, bagMap, date, table
           startMin = Math.max(startMin, dh * 60 + dm)
         }
       }
-      cur = wallClockFinish(startMin, dur)
+      cur = wallClockFinish(startMin, dur, extraPauses)
       if (!skuStats[task.sku]) skuStats[task.sku] = { name: task.sku_name, totalQty: 0, qtyByPeriod: {}, minStart: startMin, minSeq: task.seq ?? 999999 }
       skuStats[task.sku].totalQty += Number(task.target_quantity)
       skuStats[task.sku].qtyByPeriod[task.period] = (skuStats[task.sku].qtyByPeriod[task.period] ?? 0) + Number(task.target_quantity)
@@ -1408,13 +1476,14 @@ export default function TablePage() {
   const tableSlug = params.table as string
   const cfg       = CFG[tableSlug]
 
-  const [date, setDate]             = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+  const [date, setDate]             = useState(productionDay())
   const [selectedPhase, setPhase]   = useState<number | 'all'>(1)
   const [items, setItems]           = useState<Assignment[]>([])
   const [rateMap, setRateMap]       = useState<Record<string, number>>({})
   const [stationMap, setStationMap] = useState<Record<string, string>>({})
   const [nameMap, setNameMap]       = useState<Record<string, string>>({})
   const [bagMap, setBagMap]         = useState<Record<string, number>>({})
+  const [lineBreaks, setLineBreaks] = useState<LineBreak[]>([])
   const [loading, setLoading]         = useState(false)
   const [generating, setGenerating]   = useState(false)
   const [genResult, setGenResult]     = useState<{ success: boolean; message: string; isScheduled?: boolean; effectiveFrom?: string } | null>(null)
@@ -1611,6 +1680,19 @@ export default function TablePage() {
   useEffect(() => {
     loadData(date)
     const id = setInterval(() => loadData(date, true), 3000)
+    return () => clearInterval(id)
+  }, [date, cfg?.label])
+
+  useEffect(() => {
+    if (!cfg) return
+    const fetchLineBreaks = () => {
+      fetch(`/api/line-break?date=${date}&station=${encodeURIComponent(cfg.label)}`)
+        .then(r => r.json())
+        .then(data => setLineBreaks(data.breaks ?? []))
+        .catch(() => {})
+    }
+    fetchLineBreaks()
+    const id = setInterval(fetchLineBreaks, 15000)
     return () => clearInterval(id)
   }, [date, cfg?.label])
 
@@ -1856,6 +1938,7 @@ export default function TablePage() {
                 onToggleSkuAck={toggleSkuAck}
                 stationLabel={cfg.label}
                 stationMap={stationMap}
+                lineBreaks={lineBreaks}
               />
             )}
             {viewMode === 'gantt' && (
@@ -1896,6 +1979,7 @@ export default function TablePage() {
                 bagMap={bagMap}
                 date={date}
                 tableName={cfg.label}
+                lineBreaks={lineBreaks}
               />
             )}
 

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Calendar, RefreshCw, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { productionDay } from '@/lib/production-day'
 
 const STATION_ORDER = ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา']
 const STATION_COLORS: Record<string, string> = {
@@ -35,6 +36,12 @@ function fmt(n: number): string {
   return n.toLocaleString('th-TH', { maximumFractionDigits: 1 })
 }
 
+// Baseline avg แสดงเป็นเลขปัดไม่มีทศนิยม
+function fmtBaseline(n: number): string {
+  if (n === 0) return '—'
+  return Math.round(n).toLocaleString('th-TH')
+}
+
 // When "ทั้งหมด" is selected, collapse rows to one per SKU so Order/Baseline aren't counted twice
 // Sort by station (STATION_ORDER) then by sku_name within each station
 function aggregateBysku(rows: DashRow[]): DashRow[] {
@@ -63,7 +70,7 @@ function aggregateBysku(rows: DashRow[]): DashRow[] {
 }
 
 export default function ExecutiveDashboardPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = productionDay()
   const [date,    setDate]    = useState(today)
   const [station, setStation] = useState('ทั้งหมด')
   const [rows,    setRows]    = useState<DashRow[]>([])
@@ -114,7 +121,7 @@ export default function ExecutiveDashboardPage() {
         : []),
       r.sku_name,
       r.order_qty || '',
-      r.baseline  || '',
+      r.baseline ? Math.round(r.baseline) : '',
       r.ph1       || '',
       r.ph2       || '',
       r.ph3       || '',
@@ -276,9 +283,9 @@ export default function ExecutiveDashboardPage() {
                           className="underline decoration-dotted underline-offset-2 hover:text-purple-900 transition-colors"
                           title="ดูยอดสั่งรายวัน"
                         >
-                          {fmt(r.baseline)}
+                          {fmtBaseline(r.baseline)}
                         </button>
-                      ) : fmt(r.baseline)}
+                      ) : fmtBaseline(r.baseline)}
                     </td>
                     <td className="px-4 py-2.5 text-right text-sky-700">{fmt(r.ph1)}</td>
                     <td className="px-4 py-2.5 text-right text-amber-700">{fmt(r.ph2)}</td>
@@ -307,7 +314,7 @@ export default function ExecutiveDashboardPage() {
                   {station === 'ทั้งหมด' && <td className="px-4 py-3" />}
                   <td className="px-4 py-3 text-gray-700">รวมทั้งหมด</td>
                   <td className="px-4 py-3 text-right text-blue-700">{fmt(totals.order_qty)}</td>
-                  <td className="px-4 py-3 text-right text-purple-700">{fmt(totals.baseline)}</td>
+                  <td className="px-4 py-3 text-right text-purple-700">{fmtBaseline(totals.baseline)}</td>
                   <td className="px-4 py-3 text-right text-sky-700">{fmt(totals.ph1)}</td>
                   <td className="px-4 py-3 text-right text-amber-700">{fmt(totals.ph2)}</td>
                   <td className="px-4 py-3 text-right text-violet-700">{fmt(totals.ph3)}</td>
@@ -348,7 +355,7 @@ export default function ExecutiveDashboardPage() {
             <div className="flex items-center justify-between px-3 py-2.5 mt-2 border-t border-gray-200 text-sm font-bold">
               <span className="text-gray-700">เฉลี่ย/วัน</span>
               <span className="text-purple-700">
-                {fmt(dailyPopup.daily.reduce((s, d) => s + d.qty, 0) / dailyPopup.daily.length)}
+                {fmtBaseline(dailyPopup.daily.reduce((s, d) => s + d.qty, 0) / dailyPopup.daily.length)}
               </span>
             </div>
           </div>

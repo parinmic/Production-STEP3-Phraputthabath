@@ -327,7 +327,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Calculate raw material per (station, raw_sap, round)
-  interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number; bom_priority: number | null }
+  interface RawEntry { station: string; raw_sap: string; raw_name: string | null; qty: number; roundMins: number; bom_priority: number | null; shortage_kg: number }
   const rawMap      = new Map<string, RawEntry>()
   const rawToProducts = new Map<string, { sku: string; sku_name: string | null; qty: number; rawQty: number }[]>()
   const noBom: { station: string; sku: string; sku_name: string | null; qty: number; roundMins: number }[] = []
@@ -372,7 +372,7 @@ export async function POST(req: NextRequest) {
             cur.bom_priority = b.priority
           }
         } else {
-          rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm, bom_priority: b.priority })
+          rawMap.set(rawKey, { station, raw_sap: b.raw_sap, raw_name: b.raw_name, qty: rawQty, roundMins: rm, bom_priority: b.priority, shortage_kg: 0 })
         }
         const prodList = rawToProducts.get(rawKey) ?? []
         prodList.push({ sku, sku_name, qty: finQty, rawQty })
@@ -477,7 +477,9 @@ export async function POST(req: NextRequest) {
       const rmAllocated = rmAllocMap.get(key)
       if (rmAllocated !== undefined && totalNeeded > 0.005 && rmAllocated < totalNeeded) {
         const scale = rmAllocated / totalNeeded
+        const before = entry.qty
         entry.qty = entry.qty * scale
+        entry.shortage_kg = before - entry.qty
         const rawKey = `${entry.station}|||${entry.raw_sap}|||${entry.roundMins}`
         const prods = rawToProducts.get(rawKey)
         if (prods) {
@@ -508,7 +510,7 @@ export async function POST(req: NextRequest) {
       (STATION_PRIORITY[a.station] ?? 9) - (STATION_PRIORITY[b.station] ?? 9) ||
       a.roundMins - b.roundMins
     )
-    .flatMap(({ station, raw_sap, raw_name, qty, roundMins, bom_priority }) => {
+    .flatMap(({ station, raw_sap, raw_name, qty, roundMins, bom_priority, shortage_kg }) => {
       const needed  = Math.round(qty * 100) / 100
       const nameKey = normMatName(raw_name ?? '')
       const lots    = stockByMat.get(raw_sap) ?? stockByName.get(nameKey)
@@ -558,17 +560,22 @@ export async function POST(req: NextRequest) {
       const allocated = Math.round(lotsResult.filter(l => !l.insufficient).reduce((s, l) => s + l.to_withdraw, 0) * 100) / 100
       if (allocated <= 0.005 && lotsResult.every(l => l.insufficient)) return []
       const noteBase = bom_priority !== null ? `P${bom_priority} — คำนวณจาก BOM` : 'คำนวณจาก BOM'
+      const roundedShortage = shortage_kg > 0.005 ? Math.round(shortage_kg * 100) / 100 : 0
+      const note = roundedShortage > 0
+        ? `${noteBase} — ⚠ ขาดสต็อก ${roundedShortage.toLocaleString('th-TH')} กก. (ถูกจำกัดโดยสต็อกวัตถุดิบ)`
+        : noteBase
       return [{
         sku:              raw_sap,
         sku_name:         raw_name,
         quantity:         allocated,
         unit:             'กก.',
         work_station:     station,
-        note:             noteBase,
+        note,
         lots:             lotsResult,
         for_products:     rawToProducts.get(rawKey) ?? [],
         withdrawal_round: minsToTime(roundMins),
         bom_priority,
+        shortage_kg:      roundedShortage > 0 ? roundedShortage : undefined,
       }]
     })
 

@@ -34,6 +34,7 @@ interface CalcItem {
   withdrawal_round?: string  // "08:00"
   bom_priority?: number | null
   raws?: { sap: string; name: string; qty: number }[]
+  shortage_kg?: number
 }
 
 type RowItem = CalcItem
@@ -69,6 +70,21 @@ const STATION_DISPLAY: Record<string, string> = {
   'ไหล่':    'ไหล่พิเศษ',
   'เผาขา':   'เผาขาพิเศษ',
   'เลาะขา':  'เลาะขาพิเศษ',
+}
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
+// รายการที่ withdrawal_round ไม่ตรงกับรอบมาตรฐาน (เช่น เผาขาพิเศษที่ -30 นาที) จะถูกยุบเข้ารอบมาตรฐานที่ใกล้ที่สุด
+function roundKeyFor(r: string | null | undefined, roundsList: string[]): string {
+  if (!r) return roundsList[0]
+  if (roundsList.includes(r)) return r
+  const rMin = timeToMinutes(r)
+  return roundsList.reduce((best, cur) =>
+    Math.abs(timeToMinutes(cur) - rMin) < Math.abs(timeToMinutes(best) - rMin) ? cur : best
+  )
 }
 
 export default function WithdrawalPage() {
@@ -137,10 +153,7 @@ export default function WithdrawalPage() {
     setDownloading(true)
     try {
       // PDF always uses ALL items regardless of station filter
-      const filteredItems = items.filter(item => {
-        const r = (item as CalcItem).withdrawal_round
-        return r ? printRoundSel.has(r) : true
-      })
+      const filteredItems = items.filter(item => printRoundSel.has(roundKeyFor(item.withdrawal_round, rounds)))
       await downloadWithdrawalPDF({
         date: printDate,
         phase,
@@ -191,15 +204,6 @@ export default function WithdrawalPage() {
     ? items.filter(item => item.work_station === selectedStation)
     : items
 
-  // Extra round times from items (e.g. เผาขา plan at -30 min offset from standard rounds)
-  const extraRoundTimes = Array.from(
-    new Set(
-      displayItems
-        .map(i => i.withdrawal_round)
-        .filter((r): r is string => !!r && !rounds.includes(r))
-    )
-  ).sort()
-  const allRounds = [...rounds, ...extraRoundTimes].sort()
   const totalQty = displayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
   const roundHeaderCls = cfg.color === 'blue'   ? 'bg-blue-600'
@@ -260,11 +264,13 @@ export default function WithdrawalPage() {
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{item.sku_name ?? '-'}</span>
-                            {item.bom_priority != null && (
-                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">P{item.bom_priority}</span>
-                            )}
                             {item.note?.includes('WIP') && (
                               <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 shrink-0">WIP</span>
+                            )}
+                            {typeof item.shortage_kg === 'number' && item.shortage_kg > 0.005 && (
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-600 shrink-0">
+                                ⚠ ขาดสต็อก {Math.round(item.shortage_kg).toLocaleString()} กก.
+                              </span>
                             )}
                           </div>
                           <p className="md:hidden text-xs font-mono text-gray-400 mt-0.5">{item.sku}</p>
@@ -483,18 +489,10 @@ export default function WithdrawalPage() {
 
           {!loading && displayItems.length > 0 && (
             <div className="space-y-4">
-              {/* Rounds — standard rounds + extra non-standard times (e.g. เผาขา plan slots) */}
-              {allRounds.map((roundTime) => {
-                const isStdRound = rounds.includes(roundTime)
-                const stdRoundIdx = rounds.indexOf(roundTime)
+              {/* Rounds — รายการที่มี withdrawal_round นอกรอบมาตรฐานจะถูกยุบเข้ารอบมาตรฐานที่ใกล้ที่สุด (ดู roundKeyFor) */}
+              {rounds.map((roundTime, stdRoundIdx) => {
                 const isCollapsed = collapsedRounds.has(roundTime)
-                // Standard rounds: items with matching time + items with no time (→ first std round)
-                // Extra rounds: items with exact matching time only
-                const roundDisplayItems = displayItems.filter(item => {
-                  const r = (item as CalcItem).withdrawal_round
-                  if (r) return r === roundTime
-                  return isStdRound && stdRoundIdx === 0
-                })
+                const roundDisplayItems = displayItems.filter(item => roundKeyFor(item.withdrawal_round, rounds) === roundTime)
                 const roundTotal = roundDisplayItems.reduce((s, i) => s + roundTo5Or0(i.quantity), 0)
 
                 if (roundDisplayItems.length === 0) return null
@@ -506,7 +504,7 @@ export default function WithdrawalPage() {
                   return acc
                 }, {})
 
-                const headerCls = isStdRound ? roundHeaderCls : 'bg-slate-500'
+                const headerCls = roundHeaderCls
 
                 return (
                   <div key={roundTime} className="round-section border border-gray-200 rounded-xl overflow-hidden">
@@ -518,9 +516,7 @@ export default function WithdrawalPage() {
                         <Clock size={18} />
                         <span className="font-bold text-lg">รอบ {roundTime} น.</span>
                         <span className="text-sm opacity-80">
-                          {isStdRound
-                            ? `(${stdRoundIdx + 1}/${rounds.length}) · ${roundTotal.toLocaleString()} กก.`
-                            : `เพิ่มเติม · ${roundTotal.toLocaleString()} กก.`}
+                          {`(${stdRoundIdx + 1}/${rounds.length}) · ${roundTotal.toLocaleString()} กก.`}
                         </span>
                       </div>
                       {isCollapsed
@@ -618,6 +614,18 @@ export default function WithdrawalPage() {
                 </div>
               )}
             </div>
+
+            {/* Shortage warning */}
+            {typeof popupItem.item.shortage_kg === 'number' && popupItem.item.shortage_kg > 0.005 && (
+              <div className="px-5 pb-4">
+                <div className="bg-red-50 rounded-2xl px-4 py-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-red-600">⚠ ขาดสต็อก — ตัวเลขถูกจำกัดโดยสต็อกวัตถุดิบ</span>
+                  <span className="text-base font-bold text-red-600 shrink-0 ml-3">
+                    {Math.round(popupItem.item.shortage_kg).toLocaleString()} กก.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* For products */}
             {(popupItem.item.for_products?.length ?? 0) > 0 && (

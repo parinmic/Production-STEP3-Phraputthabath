@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { supabase, latestStockLogId } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { productionDay } from '@/lib/production-day'
 import { Calendar, RefreshCw, AlertTriangle, Download } from 'lucide-react'
 
 interface ShortageRow {
@@ -19,6 +20,20 @@ interface ShortageRow {
 interface BasicRawPlanRow {
   sku: string
   note: string | null
+}
+
+interface CalcLot {
+  to_withdraw: number
+  insufficient?: boolean
+}
+
+interface CalcItem {
+  sku: string
+  sku_name: string | null
+  work_station: string | null
+  withdrawal_round?: string
+  shortage_kg?: number
+  lots?: CalcLot[]
 }
 
 const PHASE_CONFIG = {
@@ -52,7 +67,7 @@ const STATION_DISPLAY: Record<string, string> = {
 
 export default function ShortagePage() {
   const { phase } = useParams() as { phase: string }
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = productionDay()
   const [date, setDate]     = useState(today)
   const [rows, setRows]         = useState<ShortageRow[]>([])
   const [loading, setLoad]      = useState(false)
@@ -65,125 +80,48 @@ export default function ShortagePage() {
 
   const PERIOD_MAP: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }
 
-  // Parse total qty from note rounds (e.g. "rounds:510=60;600=40" → 100).
-  // This is the original demand the system tried to schedule, which is more
-  // accurate than target_quantity for deficit-backlog entries where the system
-  // could only fit a small residual amount at the end of the shift.
-  const parseNoteTotal = (note: string | null): number => {
-    if (!note) return 0
-    const clean = note.split('|')[0]
-    if (!clean.startsWith('rounds:')) return 0
-    return clean.replace('rounds:', '').split(';').reduce((s, p) => {
-      const [, q] = p.split('=')
-      return s + (parseFloat(q) || 0)
-    }, 0)
-  }
-
-  const normName = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
-
   const load = useCallback(async () => {
     setLoad(true)
     try {
       const period = PERIOD_MAP[phase] ?? 'เช้า'
 
-      // 1. Deficit production assignments
-      const { data: deficitRows } = await supabase
-        .from('production_assignments')
-        .select('sku, sku_name, target_quantity, deadline_time, note, table_name')
-        .eq('production_date', date)
-        .eq('period', period)
-        .like('note', '%|deficit%')
-        .in('table_name', ['สามชั้น', 'สะโพก', 'ไหล่', 'หมูบด', 'สไลด์', 'เผาขา', 'เลาะขา'])
+      // Source of truth: the exact same per-round shortage figures shown on the
+      // withdrawal page (หน้าเบิก) — shortage_kg from the rm-allocation pool cap,
+      // plus any lot marked insufficient during FIFO allocation. Reusing this
+      // computation (instead of re-deriving deficit from scratch) guarantees the
+      // two pages always agree on "ขาดเท่าไหร่" for the same item.
+      const res = await fetch('/api/withdrawal/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, phase: Number(phase) }),
+      })
+      const { items } = await res.json() as { items?: CalcItem[] }
 
-      if (!deficitRows?.length) { setRows([]); return }
-
-      // 2. BOM for deficit SKUs → convert finished-product qty to raw material needs
-      const skus     = Array.from(new Set(deficitRows.map(a => String(a.sku))))
-      const skusNorm = Array.from(new Set(skus.map(s => s.replace(/^0+/, ''))))
-      const { data: bomRows } = await supabase
-        .from('bom_items')
-        .select('product_sap, raw_sap, raw_name, yield_pct')
-        .in('product_sap', [...skus, ...skusNorm])
-
-      const bomMap = new Map<string, { raw_sap: string; raw_name: string; yield_pct: number }[]>()
-      for (const b of bomRows ?? []) {
-        if (!b.raw_name) continue
-        const norm = b.product_sap.replace(/^0+/, '')
-        for (const key of [b.product_sap, norm]) {
-          const list = bomMap.get(key) ?? []
-          if (!list.some(x => x.raw_sap === b.raw_sap)) {
-            list.push({ raw_sap: b.raw_sap ?? '', raw_name: b.raw_name, yield_pct: Number(b.yield_pct) || 1 })
-            bomMap.set(key, list)
-          }
-        }
-      }
-
-      // 3. Aggregate raw material deficit by (station, raw_sap)
-      //    Use note total qty as the original demand; fall back to target_quantity.
       const rawMap = new Map<string, ShortageRow>()
+      for (const item of items ?? []) {
+        const insufficientKg = (item.lots ?? [])
+          .filter(l => l.insufficient)
+          .reduce((s, l) => s + Number(l.to_withdraw ?? 0), 0)
+        const deficitKg = (item.shortage_kg ?? 0) + insufficientKg
+        if (deficitKg <= 0.005) continue
 
-      for (const a of deficitRows) {
-        const sku  = String(a.sku)
-        const norm = sku.replace(/^0+/, '')
-        const noteTotal = parseNoteTotal(a.note)
-        const qty  = noteTotal > 0 ? noteTotal : Number(a.target_quantity)
-        const stn  = String(a.table_name)
-        const time = String(a.deadline_time ?? '').slice(0, 5)
-        const boms = bomMap.get(norm) ?? bomMap.get(sku) ?? []
-
-        const addRow = (rawSku: string, rawName: string | null, rawQty: number) => {
-          const key = `${stn}|||${rawSku || rawName || norm}`
-          const ex  = rawMap.get(key)
-          if (ex) {
-            ex.quantity += rawQty
-            ex.deficit   = (ex.deficit ?? 0) + rawQty
-            if (time && (!ex.productionTime || time < ex.productionTime)) ex.productionTime = time
-          } else {
-            rawMap.set(key, { sku: rawSku || sku, sku_name: rawName ?? a.sku_name, quantity: rawQty, unit: 'กก.', deficit: rawQty, productionTime: time || null, work_station: stn })
-          }
-        }
-
-        if (!boms.length) {
-          addRow(sku, a.sku_name, qty)
+        const stn  = item.work_station ?? ''
+        const time = (item.withdrawal_round ?? '').slice(0, 5)
+        const key  = `${stn}|||${item.sku}`
+        const ex   = rawMap.get(key)
+        if (ex) {
+          ex.quantity += deficitKg
+          ex.deficit   = (ex.deficit ?? 0) + deficitKg
+          if (time && (!ex.productionTime || time < ex.productionTime)) ex.productionTime = time
         } else {
-          for (const b of boms) {
-            addRow(b.raw_sap || b.raw_name, b.raw_name, b.yield_pct > 0 ? qty / b.yield_pct : qty)
-          }
-        }
-      }
-
-      // 4. Check actual stock — only show rows where stock is truly insufficient.
-      //    Query all 3 warehouses by raw material name (name-based match is more
-      //    reliable than SAP code since BOM codes may differ from stock codes).
-      const rawNames = Array.from(new Set(
-        Array.from(rawMap.values()).map(r => r.sku_name).filter(Boolean) as string[]
-      ))
-      const expandedNames = Array.from(new Set(rawNames.flatMap(n => [
-        n, n.replace(/\s*-\s*/g, '-'), n.replace(/\s*-\s*/g, ' - '),
-      ])))
-
-      const stockByName = new Map<string, number>()
-      if (expandedNames.length > 0) {
-        const [shId0010, shId20, shId100] = await Promise.all([
-          latestStockLogId('stock_0010'), latestStockLogId('stock_20'), latestStockLogId('stock_100'),
-        ])
-        const [s0010, s20, s100] = await Promise.all([
-          supabase.from('stock_0010').select('material_name, weight_total').eq('upload_log_id', shId0010).in('material_name', expandedNames).gt('weight_total', 0),
-          supabase.from('stock_20').select('material_name, weight_total').eq('upload_log_id', shId20).in('material_name', expandedNames).gt('weight_total', 0),
-          supabase.from('stock_100').select('material_name, weight_total').eq('upload_log_id', shId100).in('material_name', expandedNames).gt('weight_total', 0),
-        ])
-        for (const row of [...(s0010.data ?? []), ...(s20.data ?? []), ...(s100.data ?? [])]) {
-          const k = normName(row.material_name ?? '')
-          stockByName.set(k, (stockByName.get(k) ?? 0) + Number(row.weight_total))
+          rawMap.set(key, {
+            sku: item.sku, sku_name: item.sku_name, quantity: deficitKg, unit: 'กก.',
+            deficit: deficitKg, productionTime: time || null, work_station: stn,
+          })
         }
       }
 
       const merged = Array.from(rawMap.values())
-        .filter(r => {
-          // Only show if stock is less than needed (insufficient)
-          const available = stockByName.get(normName(r.sku_name ?? '')) ?? 0
-          return available < (r.quantity - 0.005)
-        })
         .map(r => ({ ...r, quantity: Math.round(r.quantity * 100) / 100, deficit: Math.round((r.deficit ?? 0) * 100) / 100 }))
         .sort((a, b) => {
           const sa = STATION_ORDER.indexOf(a.work_station ?? '')

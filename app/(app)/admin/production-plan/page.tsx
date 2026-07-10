@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Calendar, RefreshCw, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
 import { useCanEdit } from '@/lib/session-context'
+import { productionDay } from '@/lib/production-day'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -49,7 +50,7 @@ const EMPTY_FORM = {
 
 export default function AdminProductionPlanPage() {
   const canEdit = useCanEdit('11')
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = productionDay()
   const [date, setDate]           = useState(today)
   const [period, setPeriod]       = useState<string>('')
   const [rows, setRows]           = useState<SkuRow[]>([])
