@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { RefreshCw, Timer } from 'lucide-react'
+import { RefreshCw, Timer, Check } from 'lucide-react'
 import Link from 'next/link'
 
 interface SelectedLot {
@@ -40,7 +40,9 @@ export default function CarcassCyclePage() {
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState('')
   const [rate,       setRate]       = useState('80')
+  const [saveState,  setSaveState]  = useState<'idle' | 'saving' | 'saved'>('idle')
   const rateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedResetRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadMaster = useCallback(async () => {
     setLoading(true)
@@ -67,16 +69,31 @@ export default function CarcassCyclePage() {
       .catch(() => {})
   }, [])
 
-  const persistRate = useCallback((val: string) => {
-    if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current)
-    rateDebounceRef.current = setTimeout(() => {
-      fetch('/api/pig-carcass-lot-selection', {
+  const saveRateNow = useCallback(async (val: string) => {
+    setSaveState('saving')
+    try {
+      await fetch('/api/pig-carcass-lot-selection', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ rate: parseFloat(val) || 80 }),
-      }).catch(() => {})
-    }, 600)
+      })
+      setSaveState('saved')
+      if (savedResetRef.current) clearTimeout(savedResetRef.current)
+      savedResetRef.current = setTimeout(() => setSaveState('idle'), 2000)
+    } catch {
+      setSaveState('idle')
+    }
   }, [])
+
+  const persistRate = useCallback((val: string) => {
+    if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current)
+    rateDebounceRef.current = setTimeout(() => { saveRateNow(val) }, 600)
+  }, [saveRateNow])
+
+  const handleSaveClick = useCallback(() => {
+    if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current)
+    saveRateNow(rate)
+  }, [rate, saveRateNow])
 
   useEffect(() => {
     try {
@@ -151,6 +168,17 @@ export default function CarcassCyclePage() {
           className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
         />
         <span className="text-sm text-gray-500">วิ/ตัว</span>
+        <button
+          onClick={handleSaveClick}
+          disabled={saveState === 'saving'}
+          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {saveState === 'saving' ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+          บันทึก
+        </button>
+        {saveState === 'saved' && (
+          <span className="text-sm text-emerald-600 font-medium">บันทึกแล้ว</span>
+        )}
       </div>
 
       {error && (
