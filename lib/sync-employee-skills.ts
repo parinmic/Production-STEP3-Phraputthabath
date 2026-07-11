@@ -76,13 +76,32 @@ export interface SyncResult {
   error?: string
 }
 
-export async function runSync(): Promise<SyncResult> {
-  try {
-    const { data: rows, error: extErr } = await externalSkillsSupabase
+const FETCH_BATCH = 1000
+
+// production_user has grown well past PostgREST's default 1000-row response
+// cap, and with no explicit ORDER BY, which rows land in an unpaginated
+// select('*') is unspecified — so a plain single-page fetch silently drops
+// an arbitrary subset of dates/stations instead of erroring. Page through
+// with .range() so every row is always retrieved.
+async function fetchAllProductionUserRows(): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = []
+  for (let from = 0; ; from += FETCH_BATCH) {
+    const { data, error } = await externalSkillsSupabase
       .from('production_user')
       .select('*')
+      .range(from, from + FETCH_BATCH - 1)
+    if (error) throw new Error(`External fetch: ${error.message}`)
+    if (!data?.length) break
+    rows.push(...data)
+    if (data.length < FETCH_BATCH) break
+  }
+  return rows
+}
 
-    if (extErr) throw new Error(`External fetch: ${extErr.message}`)
+export async function runSync(): Promise<SyncResult> {
+  try {
+    const rows = await fetchAllProductionUserRows()
+
     if (!rows?.length) return { success: true, inserted: 0, message: 'ไม่พบข้อมูลพนักงานจากต้นทาง' }
 
     // production_user is long-format: one row per (work_date, emp_id, skill).
