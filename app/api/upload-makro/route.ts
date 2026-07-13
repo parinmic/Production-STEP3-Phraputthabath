@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
+import { mapMakroBranch } from '@/lib/makro-branch-codes'
 
 function shiftDate(iso: string | null, days: number): string | null {
   if (!iso) return null
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
             sku:           String(r[skuCol] ?? '').trim(),
             sku_name:      String(r[nameCol] ?? '').trim(),
             quantity:      qty,
-            period:        String(r['rShip_name'] ?? '').trim() || null,
+            period:        mapMakroBranch(getRowValue(r, 'rCv_code')),
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',
           }
