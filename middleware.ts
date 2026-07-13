@@ -36,7 +36,7 @@ function getSessionUser(req: NextRequest): SessionUser | null {
   return null
 }
 
-const LOGIN_ENFORCEMENT_ENABLED = false
+const LOGIN_ENFORCEMENT_ENABLED = true
 
 export function middleware(req: NextRequest) {
   if (!LOGIN_ENFORCEMENT_ENABLED) {
