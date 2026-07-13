@@ -20,6 +20,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas %Variance Wet Market Basic', slug: 'mas-variance-wet-market-basic', dot: 'bg-cyan-500' },
   { label: 'Mas %Variance LOTUS Basic',      slug: 'mas-variance-lotus-basic',      dot: 'bg-lime-500' },
   { label: 'Mas สายพาน',                    slug: 'mas-saipan',                    dot: 'bg-yellow-500' },
+  { label: 'Mas Makro สาขา',                slug: 'mas-makro-branch',              dot: 'bg-indigo-500' },
 ]
 
 // เมนูที่ไม่มีสิทธิ์: แสดงให้เห็นเหมือนเดิม แต่จางลงและกดเข้าไม่ได้

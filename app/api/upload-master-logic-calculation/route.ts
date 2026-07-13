@@ -14,6 +14,7 @@ const VALID_TYPES = [
   'mas-special',
   'mas-sku-concurrent',
   'mas-raw-material',
+  'mas-makro-branch',
   // Basic
   'mas-productivity-basic',
   'mas-variance-makro-basic',
@@ -36,6 +37,7 @@ const TYPE_LABEL: Record<string, string> = {
   'mas-special':                     'Mas Special',
   'mas-sku-concurrent':              'Mas Sku ผลิตพร้อมกัน',
   'mas-raw-material':                'Mas Raw Material',
+  'mas-makro-branch':                'Mas Makro สาขา',
   'mas-productivity-basic':          'Mas Productivity Basic',
   'mas-variance-makro-basic':        'Mas %Variance Makro Basic',
   'mas-variance-wet-market-basic':   'Mas %Variance Wet Market Basic',

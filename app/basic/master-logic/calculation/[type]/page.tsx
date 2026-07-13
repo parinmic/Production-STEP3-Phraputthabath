@@ -54,6 +54,11 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
     desc: 'ปริมาณวัตถุดิบต่อตะกร้า',
     dot: 'border-amber-500',
   },
+  'mas-makro-branch': {
+    label: 'Mas Makro สาขา',
+    desc: 'อัพโหลด Master สาขา Makro — คอลัมน์: rCv_code/รหัสสาขา, rCv_name/ชื่อสาขา (ใช้ไฟล์ order ปกติของ Makro ได้เลย)',
+    dot: 'border-indigo-500',
+  },
 }
 
 export default function BasicCalculationTypePage({ params }: { params: { type: string } }) {

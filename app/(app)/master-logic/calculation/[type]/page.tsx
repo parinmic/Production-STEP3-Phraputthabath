@@ -13,6 +13,7 @@ const TYPE_CONFIG: Record<string, { label: string; desc: string; dot: string }> 
   'mas-special':             { label: 'Mas Special',              desc: 'อัพโหลด Master Calculation — Special SKUs', dot: 'border-pink-500' },
   'mas-sku-concurrent':      { label: 'Mas Sku ผลิตพร้อมกัน',    desc: 'อัพโหลด Master — กลุ่มสินค้าที่ผลิตพร้อมกัน (Sap ตั้งต้น, ชื่อสินค้าตั้งต้น, Sap ผลพลอยได้, ชื่อสินค้าผลพลอยได้)', dot: 'border-teal-500' },
   'mas-raw-material':        { label: 'Mas Raw Material',         desc: 'อัพโหลด Master Calculation — Raw Material (D16, D17)', dot: 'border-red-500' },
+  'mas-makro-branch':        { label: 'Mas Makro สาขา',           desc: 'อัพโหลด Master สาขา Makro — คอลัมน์: rCv_code/รหัสสาขา, rCv_name/ชื่อสาขา (ใช้ไฟล์ order ปกติของ Makro ได้เลย)', dot: 'border-indigo-500' },
 }
 
 export default function CalculationTypePage({ params }: { params: { type: string } }) {

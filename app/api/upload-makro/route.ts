@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { syncToDevAwaited, batchInsert } from '@/lib/sync-to-dev'
-import { mapMakroBranch } from '@/lib/makro-branch-codes'
+import { fetchLatestMakroBranchMap, mapMakroBranch } from '@/lib/mas-makro-branch'
 
 function shiftDate(iso: string | null, days: number): string | null {
   if (!iso) return null
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     const cols = Object.keys(rows[0])
     const isPlanMapped  = 'sku' in rows[0] && 'delivery_date' in rows[0]
     const isMakroNative = !isPlanMapped && 'rProduct_code' in rows[0]
+    const branchMap = isMakroNative ? await fetchLatestMakroBranchMap(supabase) : {}
 
     const getRowValue = (r: Record<string, unknown>, targetKey: string): string | null => {
       const key = Object.keys(r).find(k => k.toLowerCase() === targetKey.toLowerCase())
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
             sku:           String(r[skuCol] ?? '').trim(),
             sku_name:      String(r[nameCol] ?? '').trim(),
             quantity:      qty,
-            period:        mapMakroBranch(getRowValue(r, 'rCv_code')),
+            period:        mapMakroBranch(branchMap, getRowValue(r, 'rCv_code')),
             upload_round:  round ?? '0800',
             source_file:   filename ?? 'unknown',
           }

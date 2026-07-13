@@ -27,6 +27,7 @@ const CALCULATION_TYPES = [
   { label: 'Mas ตระกร้า',               slug: 'mas-trakra',              dot: 'bg-yellow-500' },
   { label: 'Mas Special',               slug: 'mas-special',             dot: 'bg-pink-500' },
   { label: 'Mas Sku ผลิตพร้อมกัน',     slug: 'mas-sku-concurrent',      dot: 'bg-teal-500' },
+  { label: 'Mas Makro สาขา',            slug: 'mas-makro-branch',        dot: 'bg-indigo-500' },
   // { label: 'Mas Raw Material',          slug: 'mas-raw-material',        dot: 'bg-red-500' },
 ]
 
