@@ -251,7 +251,9 @@ export default function AdminUsersPage() {
     const res  = await fetch('/api/admin/users/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows }),
+      // mirror: false — ฟอร์มนี้ส่งแค่ user ใหม่ 1 คน ไม่ใช่รายชื่อ user ทั้งระบบ
+      // ต้องไม่ให้ลบ user คนอื่นที่ไม่ได้อยู่ในคำขอนี้ทิ้งไปด้วย
+      body: JSON.stringify({ rows, mirror: false }),
     })
     const data = await res.json()
     if (data.success) {

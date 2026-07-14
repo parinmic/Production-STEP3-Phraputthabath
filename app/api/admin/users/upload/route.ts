@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'ไม่มีสิทธิ์เข้าถึงข้อมูลนี้' }, { status: 403 })
   }
 
-  const { rows }: { rows: RawRow[] } = await req.json()
+  const { rows, mirror = true }: { rows: RawRow[]; mirror?: boolean } = await req.json()
   if (!rows?.length) {
     return NextResponse.json({ success: false, message: 'ไม่มีข้อมูลในไฟล์' }, { status: 400 })
   }
@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase.rpc('fn_admin_bulk_upload_users', {
     p_users: users,
+    p_mirror: mirror,
   })
 
   if (error) {
