@@ -292,6 +292,13 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
             <span className={labelCls}>จัดสรรเนื้อ Raw Mat</span>
           </NavLink>
 
+          <NavLink href="/admin/production-plan" allowed={has('11')}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/admin/production-plan', has('11'))}`}
+            title="จัดการแผนผลิต">
+            <ShieldAlert size={18} className="shrink-0" />
+            <span className={labelCls}>จัดการแผนผลิต</span>
+          </NavLink>
+
           <div className="hidden md:block space-y-1">
 
           <p className={sectionCls}>อัพโหลดข้อมูล</p>
@@ -454,12 +461,6 @@ export default function Sidebar({ user }: { user: SessionUser | null }) {
 
           <p className={sectionCls}>Admin</p>
           <div className={dividerCls} />
-          <NavLink href="/admin/production-plan" allowed={has('11')}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/admin/production-plan', has('11'))}`}
-            title="จัดการแผนผลิต">
-            <ShieldAlert size={18} className="shrink-0" />
-            <span className={labelCls}>จัดการแผนผลิต</span>
-          </NavLink>
           <NavLink href="/admin/users" allowed={has('12')}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${linkCls('/admin/users', has('12'))}`}
             title="User ระบบผลิต">

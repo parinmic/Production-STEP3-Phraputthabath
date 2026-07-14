@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, RefreshCw, Plus, X, AlertTriangle, Pencil, Check, Zap } from 'lucide-react'
+import { Calendar, RefreshCw, Plus, X, AlertTriangle, Pencil, Check, Zap, CheckCircle2, CircleDashed } from 'lucide-react'
 import { useCanEdit } from '@/lib/session-context'
 import { productionDay } from '@/lib/production-day'
+import GeneratePlanButtonsBySide from '@/components/GeneratePlanButtonsBySide'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -64,6 +65,7 @@ export default function AdminProductionPlanPage() {
   const [editVal, setEditVal]     = useState<string>('')
   const [confirmEmergency, setConfirmEmergency] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [phaseStatus, setPhaseStatus] = useState<Record<string, boolean | null>>({ เช้า: null, บ่าย: null, ค่ำ: null })
 
   const rowKey = (r: SkuRow) => `${r.channel ?? ''}||${r.table_name}||${r.sku}`
 
@@ -83,6 +85,18 @@ export default function AdminProductionPlanPage() {
   }, [date, period])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    setPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null })
+    Promise.all(PERIODS.map(p => fetch(`/api/admin/production-plan?date=${date}&period=${p}`).then(r => r.json())))
+      .then(results => {
+        if (cancelled) return
+        setPhaseStatus(Object.fromEntries(PERIODS.map((p, i) => [p, (results[i].data?.length ?? 0) > 0])))
+      })
+      .catch(() => { if (!cancelled) setPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null }) })
+    return () => { cancelled = true }
+  }, [date])
 
   const flash = (ok: boolean, text: string) => {
     setMsg({ ok, text })
@@ -159,9 +173,32 @@ export default function AdminProductionPlanPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Admin — แผนผลิต</h1>
-        <p className="text-gray-500 mt-1">แก้ไขยอดผลิตราย SKU / เพิ่ม SKU</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Admin — แผนผลิต</h1>
+          <p className="text-gray-500 mt-1">แก้ไขยอดผลิตราย SKU / เพิ่ม SKU</p>
+        </div>
+        <GeneratePlanButtonsBySide menuKey="11" />
+      </div>
+
+      {/* Phase status */}
+      <div className="card flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-gray-700 shrink-0">สถานะแผนวันที่ {date}</span>
+        {PERIODS.map(p => {
+          const status = phaseStatus[p]
+          return (
+            <span key={p}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                status === null ? 'bg-gray-50 text-gray-400 border-gray-200'
+                  : status ? 'bg-green-50 text-green-700 border-green-200'
+                    : 'bg-red-50 text-red-600 border-red-200'
+              }`}>
+              {status === null ? <CircleDashed size={13} className="animate-spin" />
+                : status ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+              {PERIOD_PHASE[p]} ({p}) — {status === null ? 'กำลังตรวจสอบ...' : status ? 'มีแผนแล้ว' : 'ยังไม่มีแผน'}
+            </span>
+          )
+        })}
       </div>
 
       {msg && (
