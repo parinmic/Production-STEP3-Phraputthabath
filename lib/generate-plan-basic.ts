@@ -9,9 +9,7 @@ export type BasicPhase = 1 | 2 | 3
 export interface GenerateBasicPlanParams {
   date?: string
   phase?: BasicPhase
-  subtractPhase1FromPhase2?: boolean
-  subtractPhase1FromPhase3?: boolean
-  subtractPhase2FromPhase3?: boolean
+  deductMode?: 'plan' | 'actual' | 'yield'
 }
 
 export interface BasicYieldTarget {
@@ -872,11 +870,66 @@ function buildYieldTargetsFromLots(
     .sort((a, b) => (a.station ?? '').localeCompare(b.station ?? '') || a.productGroup.localeCompare(b.productGroup))
 }
 
-function targetDeductKey(target: BasicSkuTarget): string {
+function targetDeductKey(target: ProducedAmount): string {
   return `${normalizeSku(target.sku)}|||${channelPriorityKey(target.channel)}`
 }
 
-function subtractProducedTargets(targets: BasicSkuTarget[], producedTargets: BasicSkuTarget[]): BasicSkuTarget[] {
+// Minimal shape needed to deduct a prior phase's output from this phase's targets — satisfied by
+// BasicSkuTarget itself (plan mode) as well as by raw production_assignments rows (actual mode) and
+// synthesized yield_bags rows (yield mode), none of which carry the rest of BasicSkuTarget's fields.
+type ProducedAmount = { sku: string; channel: string; quantityKg: number }
+
+const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
+
+// deductMode === 'actual': only what was actually completed (status เสร็จแล้ว) in the prior phase's
+// own persisted production_assignments rows, instead of buildPhase1SkuTargets/buildPhase2AllocatedTargets'
+// theoretical recompute.
+async function fetchActualBasicAssignments(date: string, periods: string[]): Promise<ProducedAmount[]> {
+  const { data, error } = await supabase
+    .from('production_assignments')
+    .select('sku, channel, target_quantity')
+    .eq('production_date', date)
+    .in('period', periods)
+    .in('table_name', BASIC_STATIONS)
+    .eq('status', 'เสร็จแล้ว')
+  if (error) throw error
+  return (data ?? []).map(r => ({
+    sku: String(r.sku ?? ''),
+    channel: String(r.channel ?? ''),
+    quantityKg: Number(r.target_quantity) || 0,
+  }))
+}
+
+// deductMode === 'yield': flat per-SKU "ยอดรับผลได้ล่าสุด" from the yield_bags upload, with no
+// channel breakdown of its own (mirrors the Special-side yield deduction in generate-plan.ts).
+async function fetchBasicYieldFlatMap(date: string): Promise<Map<string, number>> {
+  const [{ data: yieldRows, error: yieldErr }, { data: pickingRows, error: pickErr }] = await Promise.all([
+    supabase.from('yield_bags').select('sap_code, bags').eq('work_date', date),
+    supabase.from('picking_unit_master_basic').select('sap, weight_per_bag'),
+  ])
+  if (yieldErr) throw yieldErr
+  if (pickErr) throw pickErr
+
+  const wpbMap = new Map<string, number>()
+  for (const r of pickingRows ?? []) wpbMap.set(String(r.sap ?? '').replace(/^0+/, ''), Number(r.weight_per_bag) || 0)
+
+  const flat = new Map<string, number>()
+  for (const y of (yieldRows ?? []) as { sap_code: string; bags: number }[]) {
+    const sku = String(y.sap_code ?? '').replace(/^0+/, '')
+    flat.set(sku, (flat.get(sku) ?? 0) + Number(y.bags) * (wpbMap.get(sku) ?? 0))
+  }
+  return flat
+}
+
+// Reuses the same flat yield qty for every channel a SKU appears in (rather than splitting it
+// across channels) — same behavior as Special's phase1Assigned flat map being reused per channel.
+function flatYieldToProducedAmounts(flatMap: Map<string, number>, targets: BasicSkuTarget[]): ProducedAmount[] {
+  return targets
+    .map(t => ({ sku: t.sku, channel: t.channel, quantityKg: flatMap.get(normalizeSku(t.sku)) ?? 0 }))
+    .filter(t => t.quantityKg > 0)
+}
+
+function subtractProducedTargets(targets: BasicSkuTarget[], producedTargets: ProducedAmount[]): BasicSkuTarget[] {
   const producedBySkuChannel = producedTargets.reduce((map, target) => {
     const key = targetDeductKey(target)
     map.set(key, (map.get(key) ?? 0) + target.quantityKg)
@@ -908,7 +961,7 @@ function isLotusWetChannel(channel: string): boolean {
 
 function subtractProducedTargetsAcrossLotusWetPool(
   targets: BasicSkuTarget[],
-  producedTargets: BasicSkuTarget[],
+  producedTargets: ProducedAmount[],
   field: 'phase1DeductedKg' | 'phase2DeductedKg',
 ): BasicSkuTarget[] {
   const producedBySkuPool = producedTargets.reduce((map, target) => {
@@ -1686,22 +1739,41 @@ export async function generateBasicPlan(params: GenerateBasicPlanParams): Promis
   // deadline, not a discretionary order.
   channelPriority.set('raw queue', 0)
   const rawQueueTargets = rawQueueResult.targets
-  const shouldSubtractPhase1 = phase === 2 && Boolean(params.subtractPhase1FromPhase2)
-  const shouldSubtractPhase1ForPhase3 = phase === 3 && Boolean(params.subtractPhase1FromPhase3)
-  const shouldSubtractPhase2ForPhase3 = phase === 3 && Boolean(params.subtractPhase2FromPhase3)
+  // Phase 2/3 always deduct the prior phase(s)' output now — only how it's computed varies (deductMode),
+  // matching the Special-side chooser (plan/actual/yield) instead of the old subtract-or-not toggle.
+  const deductMode: 'plan' | 'actual' | 'yield' =
+    params.deductMode === 'actual' || params.deductMode === 'yield' ? params.deductMode : 'plan'
+  const shouldSubtractPhase1 = phase === 2
+  const shouldSubtractPhase1ForPhase3 = phase === 3
+  const shouldSubtractPhase2ForPhase3 = phase === 3
   const baseOrderTargets = [
     ...makroTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_makro_0800_estimate' : 'makro_1400_order')),
     ...wetMarketTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_wet_market_average' : 'wet_market_plan100_or_1400')),
     ...lotusTargets.map(target => addAuditReason(target, phase === 1 ? 'phase1_lotus_average' : 'lotus_plan100_or_1400')),
   ]
-  const phase1SkuTargets = shouldSubtractPhase1
-    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
+  const yieldFlatMap = deductMode === 'yield' && (shouldSubtractPhase1 || shouldSubtractPhase1ForPhase3 || shouldSubtractPhase2ForPhase3)
+    ? await fetchBasicYieldFlatMap(date)
+    : null
+  const phase1SkuTargets: ProducedAmount[] = shouldSubtractPhase1
+    ? deductMode === 'actual'
+      ? await fetchActualBasicAssignments(date, ['เช้า'])
+      : deductMode === 'yield'
+        ? flatYieldToProducedAmounts(yieldFlatMap!, baseOrderTargets)
+        : await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
-  const phase3Phase1SkuTargets = shouldSubtractPhase1ForPhase3
-    ? await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
+  const phase3Phase1SkuTargets: ProducedAmount[] = shouldSubtractPhase1ForPhase3
+    ? deductMode === 'actual'
+      ? await fetchActualBasicAssignments(date, ['เช้า'])
+      : deductMode === 'yield'
+        ? flatYieldToProducedAmounts(yieldFlatMap!, [...makroTargets, ...wetMarketTargets, ...lotusTargets])
+        : await buildPhase1SkuTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, bagSizeMap)
     : []
-  const phase3Phase2SkuTargets = shouldSubtractPhase2ForPhase3
-    ? await buildPhase2AllocatedTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, shouldSubtractPhase1ForPhase3, bagSizeMap)
+  const phase3Phase2SkuTargets: ProducedAmount[] = shouldSubtractPhase2ForPhase3
+    ? deductMode === 'actual'
+      ? await fetchActualBasicAssignments(date, ['บ่าย'])
+      : deductMode === 'yield'
+        ? flatYieldToProducedAmounts(yieldFlatMap!, [...makroTargets, ...wetMarketTargets, ...lotusTargets])
+        : await buildPhase2AllocatedTargets(date, lots, rateSecPerPig, masYield, productivityByGroup, shouldSubtractPhase1ForPhase3, bagSizeMap)
     : []
   const phase3Plan100Targets = phase === 3
     ? (() => {
