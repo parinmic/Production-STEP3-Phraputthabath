@@ -4,6 +4,7 @@ import { Calendar, RefreshCw, Plus, X, AlertTriangle, Pencil, Check, Zap, CheckC
 import { useCanEdit } from '@/lib/session-context'
 import { productionDay } from '@/lib/production-day'
 import GeneratePlanButtonsBySide from '@/components/GeneratePlanButtonsBySide'
+import GenerateBasicPlanButtons from '@/components/GenerateBasicPlanButtons'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -66,6 +67,8 @@ export default function AdminProductionPlanPage() {
   const [confirmEmergency, setConfirmEmergency] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [phaseStatus, setPhaseStatus] = useState<Record<string, boolean | null>>({ เช้า: null, บ่าย: null, ค่ำ: null })
+  const [basicPhaseStatus, setBasicPhaseStatus] = useState<Record<string, boolean | null>>({ เช้า: null, บ่าย: null, ค่ำ: null })
+  const [checkingStatus, setCheckingStatus] = useState(false)
 
   const rowKey = (r: SkuRow) => `${r.channel ?? ''}||${r.table_name}||${r.sku}`
 
@@ -86,17 +89,30 @@ export default function AdminProductionPlanPage() {
 
   useEffect(() => { load() }, [load])
 
-  useEffect(() => {
+  const checkPhaseStatus = useCallback(() => {
     let cancelled = false
+    setCheckingStatus(true)
     setPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null })
-    Promise.all(PERIODS.map(p => fetch(`/api/admin/production-plan?date=${date}&period=${p}`).then(r => r.json())))
-      .then(results => {
+    setBasicPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null })
+    Promise.all([
+      Promise.all(PERIODS.map(p => fetch(`/api/admin/production-plan?date=${date}&period=${p}`).then(r => r.json()))),
+      Promise.all(PERIODS.map(p => fetch(`/api/basic/admin/production-plan?date=${date}&period=${p}`).then(r => r.json()))),
+    ])
+      .then(([special, basic]) => {
         if (cancelled) return
-        setPhaseStatus(Object.fromEntries(PERIODS.map((p, i) => [p, (results[i].data?.length ?? 0) > 0])))
+        setPhaseStatus(Object.fromEntries(PERIODS.map((p, i) => [p, (special[i].data?.length ?? 0) > 0])))
+        setBasicPhaseStatus(Object.fromEntries(PERIODS.map((p, i) => [p, (basic[i].data?.length ?? 0) > 0])))
       })
-      .catch(() => { if (!cancelled) setPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null }) })
+      .catch(() => {
+        if (cancelled) return
+        setPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null })
+        setBasicPhaseStatus({ เช้า: null, บ่าย: null, ค่ำ: null })
+      })
+      .finally(() => { if (!cancelled) setCheckingStatus(false) })
     return () => { cancelled = true }
   }, [date])
+
+  useEffect(() => checkPhaseStatus(), [checkPhaseStatus])
 
   const flash = (ok: boolean, text: string) => {
     setMsg({ ok, text })
@@ -182,23 +198,59 @@ export default function AdminProductionPlanPage() {
       </div>
 
       {/* Phase status */}
-      <div className="card flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-gray-700 shrink-0">สถานะแผนวันที่ {date}</span>
-        {PERIODS.map(p => {
-          const status = phaseStatus[p]
-          return (
-            <span key={p}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
-                status === null ? 'bg-gray-50 text-gray-400 border-gray-200'
-                  : status ? 'bg-green-50 text-green-700 border-green-200'
-                    : 'bg-red-50 text-red-600 border-red-200'
-              }`}>
-              {status === null ? <CircleDashed size={13} className="animate-spin" />
-                : status ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-              {PERIOD_PHASE[p]} ({p}) — {status === null ? 'กำลังตรวจสอบ...' : status ? 'มีแผนแล้ว' : 'ยังไม่มีแผน'}
-            </span>
-          )
-        })}
+      <div className="card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium text-gray-700">สถานะแผนวันที่ {date}</span>
+          <button onClick={checkPhaseStatus} disabled={checkingStatus}
+            className="flex items-center gap-1.5 text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 px-2.5 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50">
+            <RefreshCw size={12} className={checkingStatus ? 'animate-spin' : ''} />ตรวจสอบสถานะซ้ำ
+          </button>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="text-xs font-semibold text-gray-400">พิเศษ (STEP 3)</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {PERIODS.map(p => {
+              const status = phaseStatus[p]
+              return (
+                <span key={p}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                    status === null ? 'bg-gray-50 text-gray-400 border-gray-200'
+                      : status ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-red-50 text-red-600 border-red-200'
+                  }`}>
+                  {status === null ? <CircleDashed size={13} className="animate-spin" />
+                    : status ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                  {PERIOD_PHASE[p]} ({p}) — {status === null ? 'กำลังตรวจสอบ...' : status ? 'มีแผนแล้ว' : 'ยังไม่มีแผน'}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-1.5 pt-3 border-t border-gray-100">
+          <span className="text-xs font-semibold text-gray-400">เบสิค (STEP 2)</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {PERIODS.map(p => {
+              const status = basicPhaseStatus[p]
+              return (
+                <span key={p}
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                    status === null ? 'bg-gray-50 text-gray-400 border-gray-200'
+                      : status ? 'bg-green-50 text-green-700 border-green-200'
+                        : 'bg-red-50 text-red-600 border-red-200'
+                  }`}>
+                  {status === null ? <CircleDashed size={13} className="animate-spin" />
+                    : status ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                  {PERIOD_PHASE[p]} ({p}) — {status === null ? 'กำลังตรวจสอบ...' : status ? 'มีแผนแล้ว' : 'ยังไม่มีแผน'}
+                </span>
+              )
+            })}
+          </div>
+          <div className="pt-1">
+            <GenerateBasicPlanButtons menuKey="11" />
+          </div>
+        </div>
       </div>
 
       {msg && (
