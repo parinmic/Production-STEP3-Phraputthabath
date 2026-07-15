@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, latestStockLogId } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 // GET /api/production/detailed-report?date=YYYY-MM-DD&phase=1
 export async function GET(req: NextRequest) {
   const sp    = req.nextUrl.searchParams
-  const date  = sp.get('date') ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const date  = sp.get('date') ?? todayBangkok()
   const phase = sp.get('phase') // '1' | '2' | '3' | null = all
 
   const periodMap: Record<string, string> = { '1': 'เช้า', '2': 'บ่าย', '3': 'ค่ำ' }

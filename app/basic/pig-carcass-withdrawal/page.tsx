@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Package, Save } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 interface LotRow {
   spec_code: string
@@ -99,10 +100,6 @@ function getAvailableOrderNumbers(rowsLength: number, lotOrder: Record<string, s
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
   return isNaN(day) ? Infinity : day
-}
-
-function todayBangkok(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
 }
 
 export default function PigCarcassWithdrawalPage() {

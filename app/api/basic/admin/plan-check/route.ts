@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchProductivityByGroup, buildSkuLookup, normalizeSku, fetchPaged, fetchLatestOrders, fetchOpeningStock0010, lookupOpeningStockKg } from '@/lib/generate-plan-basic'
+import { todayBangkok } from '@/lib/date'
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
@@ -118,7 +119,7 @@ function buildNotes(row: PlanCheckRow): ChannelNotes {
 // เทียบ "แผน 100%" (ออเดอร์ที่อัพโหลด) กับ "แผนผลิต" (production_assignments จริง) แยกตามสายพานและ SKU
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date')
-    || new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+    || todayBangkok()
 
   try {
     const productivityByGroup = await fetchProductivityByGroup()

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Calendar, RefreshCw, ImageDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 const STATION_DISPLAY: Record<string, string> = {
   'สามชั้น': 'สามชั้นพิเศษ',
@@ -36,7 +37,7 @@ interface PlanRow {
 }
 
 export default function ProductionPlanPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]         = useState(today)
   const [rows, setRows]         = useState<PlanRow[]>([])
   const [bagMap, setBagMap]     = useState<Record<string, number>>({})

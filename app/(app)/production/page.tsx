@@ -2,9 +2,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Zap, CheckCircle2, AlertCircle } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 export default function ProductionMenuPage() {
-  const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+  const [date, setDate] = useState(todayBangkok)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{success:boolean;message:string}|null>(null)
 

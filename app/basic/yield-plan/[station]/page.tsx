@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Calendar } from 'lucide-react'
 import CarcassYieldPlanView from '../../production/[table]/carcass-yield-plan-view'
+import { todayBangkok } from '@/lib/date'
 
 const STATION_MAP: Record<string, string> = {
   'sa-phok-basic':  'สะโพกเบสิค',
@@ -20,7 +21,7 @@ export default function YieldPlanStationPage() {
   const { station } = useParams() as { station: string }
   const stationName = STATION_MAP[station] ?? ''
 
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date,          setDate]          = useState(today)
   const [selectedPhase, setSelectedPhase] = useState<number | 'all'>(1)
 

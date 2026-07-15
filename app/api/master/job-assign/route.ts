@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ async function fromMasterLogic(): Promise<JobAssignWorker[]> {
 // ฝั่งพิเศษ (STEP 3) เลิกใช้ Master Logic กำลังคน แล้ว — ใช้ roster จาก employee_skills
 // (sync จากภายนอกทุกครั้งที่กดสร้าง Phase 1) แทน ไม่มี nickname ในข้อมูลนี้ จึงแสดงชื่อจริงไปก่อน
 async function fromEmployeeSkills(): Promise<JobAssignWorker[]> {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const { data, error } = await supabase
     .from('employee_skills')
     .select('name, work_station, is_weigher, skills')

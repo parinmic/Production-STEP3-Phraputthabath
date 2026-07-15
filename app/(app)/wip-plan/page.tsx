@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase, fetchLatestOrders, latestStockLogId } from '@/lib/supabase'
 import { Calendar, Save, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 interface WipRow {
   sap_code: string
@@ -13,7 +14,7 @@ interface WipRow {
 }
 
 export default function WipPlanPage() {
-  const [date, setDate] = useState(() => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+  const [date, setDate] = useState(todayBangkok)
   const [rows, setRows] = useState<WipRow[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
@@ -81,9 +82,9 @@ export default function WipPlanPage() {
 
       const histDates: string[] = []
       for (let i = 1; i <= 7; i++) {
-        const dt = new Date()
-        dt.setDate(dt.getDate() - i)
-        histDates.push(dt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+        const dt = new Date(`${todayBangkok()}T00:00:00Z`)
+        dt.setUTCDate(dt.getUTCDate() - i)
+        histDates.push(dt.toISOString().slice(0, 10))
       }
 
       const [

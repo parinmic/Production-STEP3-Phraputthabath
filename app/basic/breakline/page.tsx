@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Slice, Trash2, Plus, AlertCircle, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { todayBangkok } from '@/lib/date'
 
 const STATIONS = ['ทั้งหมด', 'สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
@@ -107,7 +108,7 @@ function exportExcel(date: string, breaks: LineBreak[]) {
 }
 
 export default function BreaklinePage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]           = useState(today)
   const [breaks, setBreaks]       = useState<LineBreak[]>([])
   const [loading, setLoading]     = useState(false)

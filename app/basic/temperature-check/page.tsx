@@ -1,6 +1,7 @@
 'use client'
 import { Fragment, useState, useEffect, useRef } from 'react'
 import { RefreshCw, Thermometer, CheckCircle2, XCircle, PlayCircle, ChevronDown, X, Calendar } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 interface LotRow {
   spec_code: string
@@ -107,10 +108,6 @@ function statusClasses(status: TempStatus) {
 function lotAgeKey(spec: string): number {
   const day = parseInt(spec.slice(4, 7), 10)
   return isNaN(day) ? Infinity : day
-}
-
-function todayBangkok(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
 }
 
 function PointInput({ value, onChange, disabled, compact }: { value: string; onChange: (v: string) => void; disabled?: boolean; compact?: boolean }) {

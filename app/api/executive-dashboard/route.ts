@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, fetchLatestPlan100, fetchLatestOrders } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 type ChOrder = { sku?: string | null; sku_name?: string | null; quantity?: number | null; upload_round?: string | number | null }
 
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
   const hasPhase2 = periodsGenerated.has('บ่าย')
 
   // วันที่ย้อนหลัง → แสดง Order แบบ Phase 3 เสมอ (Plan 100% + channel orders)
-  const todayBKK = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const todayBKK = todayBangkok()
   const isHistorical = date !== todayBKK
 
   // ── Order

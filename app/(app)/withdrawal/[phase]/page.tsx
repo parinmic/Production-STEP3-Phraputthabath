@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Printer, RefreshCw, PackageOpen, X, ChevronDown, ChevronRight, Clock } from 'lucide-react'
 import { downloadWithdrawalPDF } from '@/lib/withdrawal-pdf'
+import { todayBangkok } from '@/lib/date'
 
 
 interface LotInfo {
@@ -89,7 +90,7 @@ function roundKeyFor(r: string | null | undefined, roundsList: string[]): string
 
 export default function WithdrawalPage() {
   const { phase } = useParams() as { phase: string }
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]           = useState(today)
   const [items, setItems]         = useState<CalcItem[]>([])
   const [calcMsg, setCalcMsg]     = useState<string | null>(null)

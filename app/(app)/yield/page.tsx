@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { Upload, AlertCircle, CheckCircle2, X, Calendar, Download } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 interface SapResult { sapCode: string; bags: number; weight: number }
 
@@ -50,7 +51,7 @@ function parseYieldFile(file: File): Promise<SapResult[]> {
 }
 
 export default function YieldPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [workDate, setWorkDate]     = useState(today)
   const [status, setStatus]         = useState<'idle' | 'parsing' | 'uploading' | 'success' | 'error'>('idle')
   const [message, setMessage]       = useState('')

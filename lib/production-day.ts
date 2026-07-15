@@ -1,7 +1,7 @@
 // วันผลิต (production day) ของฝั่ง Special: Phase 3 ทำงานต่อเนื่องข้ามเที่ยงคืน
-// และต้องจบไม่เกิน 07:00 ของวันถัดไป จึงนับ 00:00–06:59 เป็นของ "เมื่อวาน" ไม่ใช่ "วันนี้"
+// จึงนับ 00:00–03:59 เป็นของ "เมื่อวาน" ไม่ใช่ "วันนี้"
 const BANGKOK_TZ = 'Asia/Bangkok'
-const CUTOFF_HOUR = 7
+const CUTOFF_HOUR = 4
 
 export function productionDay(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', {

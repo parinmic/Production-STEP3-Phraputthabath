@@ -1,6 +1,7 @@
 'use client'
 import { Fragment, useState, useEffect, useCallback } from 'react'
 import { Calendar, RefreshCw, Trash2, Plus, X, AlertTriangle, Pencil, Check, ChevronRight, ChevronLeft } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 const PERIODS = ['เช้า', 'บ่าย', 'ค่ำ']
 const PERIOD_PHASE: Record<string, string> = { เช้า: 'Phase 1', บ่าย: 'Phase 2', ค่ำ: 'Phase 3' }
@@ -48,7 +49,7 @@ const EMPTY_FORM = {
 }
 
 export default function BasicAdminProductionPlanPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]           = useState(today)
   const [period, setPeriod]       = useState<string>('')
   const [rows, setRows]           = useState<SkuRow[]>([])

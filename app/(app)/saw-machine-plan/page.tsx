@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Scissors, Calendar, RefreshCw, ChevronDown, ChevronRight, Wand2, CheckCircle2, X, ArrowRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { OptimizeChange, SawScheduleEntry } from '@/app/api/saw-machine/optimize/route'
+import { todayBangkok } from '@/lib/date'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BREAKS: [number, number][] = [
@@ -57,7 +58,7 @@ function durLabel(mins: number): string {
 }
 
 function todayISO(): string {
-  return new Date().toLocaleDateString('sv-SE')
+  return todayBangkok()
 }
 
 // Strip พิเศษ suffix so 'สามชั้นพิเศษ' matches withdrawal 'สามชั้น'

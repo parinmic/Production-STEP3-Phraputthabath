@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import ExcelJS from 'exceljs'
+import { todayBangkok } from '@/lib/date'
 
 /* ── Constants ── */
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000
@@ -31,10 +32,6 @@ const EMPTY_PS: PartsSet   = { a1: EMPTY_PP, a2: EMPTY_PP, a3: EMPTY_PP }
 const EMPTY_PT: PartsTemps = { start: EMPTY_PS, end: EMPTY_PS }
 
 /* ── Helpers ── */
-function todayBangkok(): string {
-  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
-}
-
 function workDayBounds(dateStr: string) {
   const [y, mo, d] = dateStr.split('-').map(Number)
   const startMs = Date.UTC(y, mo - 1, d, 6, 0, 0) - BANGKOK_OFFSET_MS

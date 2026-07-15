@@ -1,11 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import { generatePlan } from '@/lib/generate-plan'
+import { todayBangkok } from '@/lib/date'
 
 const PHASE2_UPLOAD_TABLES = ['makro_orders_1400', 'lotus_orders_1400', 'wet_market_orders_1400']
-
-function todayBangkok(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-}
 
 /**
  * Check if all 3 Phase 2 order files (Makro/Lotus/Wet 14:00) have been uploaded

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { RefreshCw, ChevronRight, SkipForward, Camera } from 'lucide-react'
 import type { RmAllocationResult, AllocationGroup, WipPhaseNeeds } from '@/app/api/withdrawal/rm-allocation/route'
+import { todayBangkok } from '@/lib/date'
 
 const PRIORITY_COLOR: Record<number, { label: string; color: string; bg: string; border: string }> = {
   1: { label: 'P1', color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200' },
@@ -141,7 +142,7 @@ type PhaseMatRow = { raw_name: string; needed_kg: number; allocated_kg: number; 
 const normKey = (s: string) => s.trim().toLowerCase().replace(/\s*-\s*/g, '-')
 
 export default function RmAllocationPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]                 = useState(today)
   const [result, setResult]             = useState<RmAllocationResult | null>(null)
   const [loading, setLoading]           = useState(false)

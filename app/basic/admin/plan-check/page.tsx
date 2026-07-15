@@ -1,6 +1,7 @@
 'use client'
 import { Fragment, useState, useEffect, useCallback } from 'react'
 import { Calendar, RefreshCw } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 const STATION_ORDER = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 
@@ -91,7 +92,7 @@ function PlanQtyCell({
 }
 
 export default function BasicPlanCheckPage() {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate] = useState(today)
   const [rows, setRows] = useState<PlanCheckRow[]>([])
   const [loading, setLoading] = useState(false)

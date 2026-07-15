@@ -13,6 +13,7 @@ import {
   type BasicPhase,
 } from '@/lib/generate-plan-basic'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 const BASIC_STATIONS = ['สะโพกเบสิค', 'ไหล่เบสิค', 'สามชั้นเบสิค']
 const RAW_QUEUE_BUFFER_MINS = 15
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
     }
 
     const skuTargets = result.skuTargets ?? []
-    const productionDate = body.date ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+    const productionDate = body.date ?? todayBangkok()
     const effectiveFrom = new Date().toISOString()
 
     const plannedTargets = skuTargets.filter(t => t.station && Number(t.quantityKg ?? 0) > 0)

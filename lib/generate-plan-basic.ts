@@ -1,5 +1,6 @@
 import { supabase, fetchLatestOrders, latestStockLogId } from '@/lib/supabase'
 import { fetchLatestMasYield } from '@/lib/mas-yield'
+import { todayBangkok } from '@/lib/date'
 
 export { fetchLatestOrders }
 
@@ -137,10 +138,6 @@ export const BASIC_PHASES: Record<BasicPhase, BasicPhaseConfig> = {
 
 function isBasicPhase(value: unknown): value is BasicPhase {
   return value === 1 || value === 2 || value === 3
-}
-
-function todayBangkok(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
 }
 
 function shiftDate(isoDate: string, days: number): string {

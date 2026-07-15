@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CalendarDays, Search, Users, Weight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 interface EmployeeRow {
   emp_id: string
@@ -21,7 +22,7 @@ interface Props {
 
 // อ่านอย่างเดียว — ข้อมูลมาจาก employee_skills (sync จากภายนอกทุกครั้งที่กดสร้าง Phase 1) ไม่มีการแก้ไขสถานะในหน้านี้แล้ว
 export default function WorkforceStatusView({ title, stations, note }: Props) {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [date, setDate]       = useState(today)
   const [station, setStation] = useState<string>('all')
   const [shift, setShift]     = useState<'all' | 'กะ 1' | 'กะ 2'>('all')

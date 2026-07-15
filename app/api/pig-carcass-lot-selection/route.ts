@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-
-function todayBangkok(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-}
+import { todayBangkok } from '@/lib/date'
 
 export async function GET(req: NextRequest) {
   const date = req.nextUrl.searchParams.get('date') || todayBangkok()

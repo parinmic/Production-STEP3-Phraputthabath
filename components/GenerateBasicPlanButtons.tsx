@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { ClipboardList, CheckCircle2, AlertCircle, Calendar } from 'lucide-react'
 import { useCanEdit } from '@/lib/session-context'
+import { todayBangkok } from '@/lib/date'
 
 const PHASES = [
   { phase: 1, label: 'Phase 1' },
@@ -12,7 +13,7 @@ const PHASES = [
 // สร้างแผนผลิตฝั่งเบสิค (STEP 2) — ย้ายมาจากหน้าคำสั่งผลิตราย Station เดิม ตรรกะเหมือนเดิมทุกอย่าง
 // เพียงย้ายตำแหน่งมาไว้บนหน้าอัพโหลดคำสั่งซื้อ/แผน 100% แทน (ใช้ครั้งเดียวสร้างทุก Station พร้อมกัน)
 export default function GenerateBasicPlanButtons({ menuKey }: { menuKey: string }) {
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const canEdit = useCanEdit(menuKey)
   const [date, setDate]           = useState(today)
   const [generating, setGenerating] = useState<number | null>(null)

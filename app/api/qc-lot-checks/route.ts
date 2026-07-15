@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 const ROUND_DURATION_MS  = 60 * 60 * 1000  // 1 hour
 const BANGKOK_OFFSET_MS  = 7  * 60 * 60 * 1000  // UTC+7
@@ -41,7 +42,7 @@ function getTodayStart(): Date {
 }
 
 function todayDateStr(): string {
-  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
+  return todayBangkok()
 }
 
 // Work-day start (06:00 Asia/Bangkok) for an explicit 'YYYY-MM-DD' date, or today's if omitted.

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { Thermometer, RefreshCw, ChevronDown, FileText, FileSpreadsheet } from 'lucide-react'
+import { todayBangkok } from '@/lib/date'
 
 /* ── Carcass (ซีกสุกร) types ── */
 interface CarcassPoint {
@@ -47,10 +48,6 @@ const CARCASS_SETS = [
 const PARTS_SETS = CARCASS_SETS
 
 /* ── Helpers ── */
-function todayBangkok(): string {
-  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
-}
-
 function workDayBounds(dateStr: string): { start: Date; end: Date } {
   const [y, mo, d] = dateStr.split('-').map(Number)
   const startMs = Date.UTC(y, mo - 1, d, 6, 0, 0) - BANGKOK_OFFSET_MS

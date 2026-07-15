@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import { CheckCircle2, PlayCircle, AlertCircle, BarChart2, Download, ClipboardList, Calendar, RefreshCw, Store } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase, supabaseSchema } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 const CFG: Record<string, { label: string; accent: string; light: string }> = {
   'sa-phok-basic':  { label: 'สะโพกเบสิค',  accent: 'border-orange-500', light: 'bg-orange-50' },
@@ -2007,7 +2008,7 @@ export default function BasicTablePage() {
   const tableSlug = params.table as string
   const cfg       = CFG[tableSlug]
 
-  const [date, setDate]           = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' }))
+  const [date, setDate]           = useState(todayBangkok)
   const [selectedPhase, setPhase] = useState<number | 'all'>(1)
   const [items, setItems]         = useState<Assignment[]>([])
   const [nameMap, setNameMap]     = useState<Record<string, string>>({})

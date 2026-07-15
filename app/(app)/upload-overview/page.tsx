@@ -5,6 +5,7 @@ import { CheckCircle2, Upload, X, AlertCircle, Pencil, Check, Eye, Calendar } fr
 import ExcelIcon from '@/components/icons/ExcelIcon'
 import { ParsedRow, parseLotusWetMarketFile, parseMakroAuto, parsePlan100 } from '@/lib/parser'
 import { useCanEdit } from '@/lib/session-context'
+import { todayBangkok } from '@/lib/date'
 
 type ChannelKey = 'makro' | 'lotus' | 'wet-market' | 'fs'
 type SlotKey = '0800' | '1400' | '1600' | '100'
@@ -100,7 +101,7 @@ export default function UploadOverviewPage() {
   const [historySlot, setHistorySlot] = useState<'all' | SlotKey>('all')
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
+  const today = todayBangkok()
   const [phaseDate, setPhaseDate] = useState(today)
   const [midRecal, setMidRecal] = useState(() => {
     if (typeof window === 'undefined') return false

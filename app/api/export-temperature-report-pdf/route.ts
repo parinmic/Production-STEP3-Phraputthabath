@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { existsSync } from 'fs'
 import { supabase } from '@/lib/supabase'
+import { todayBangkok } from '@/lib/date'
 
 /* ── Types ── */
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000
@@ -30,10 +31,6 @@ const SETS = [
 ]
 
 /* ── Helpers ── */
-function todayBangkok() {
-  return new Date(Date.now() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10)
-}
-
 function workDayBounds(dateStr: string) {
   const [y, mo, d] = dateStr.split('-').map(Number)
   const ms = Date.UTC(y, mo - 1, d, 6, 0, 0) - BANGKOK_OFFSET_MS
