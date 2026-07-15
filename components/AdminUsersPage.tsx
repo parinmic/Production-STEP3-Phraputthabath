@@ -243,6 +243,13 @@ export default function AdminUsersPage() {
     const dup = positions.some(p => p.name.trim().toLowerCase() === name.toLowerCase())
     if (dup) { flash(false, `ตำแหน่ง "${name}" มีอยู่แล้ว`); return }
 
+    // username คือ unique key ของ sys_users — ถ้าซ้ำกับ user เดิม fn_admin_bulk_upload_users
+    // จะ ON CONFLICT แล้วเขียนทับตำแหน่ง/รหัสผ่าน/สิทธิ์เมนูของ user เดิมนั้นแบบเงียบๆ ทันที
+    // ต้องกันตั้งแต่ฝั่ง client ก่อนยิง request
+    const uname = addForm.username.trim()
+    const userDup = users.some(u => u.username.trim().toLowerCase() === uname.toLowerCase())
+    if (userDup) { flash(false, `Username "${uname}" มีอยู่แล้ว — ใช้ปุ่มแก้ไข/เปลี่ยนรหัสผ่านของ user เดิมแทน`); return }
+
     setAddLoading(true)
     const menuEntries = newPosMenus.has('all') ? [['all', newPosMenus.get('all')!] as const] : Array.from(newPosMenus)
     const rows: PreviewRow[] = menuEntries.length > 0
