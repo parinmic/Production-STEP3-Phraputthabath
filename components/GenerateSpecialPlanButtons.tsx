@@ -43,6 +43,7 @@ export default function GenerateSpecialPlanButtons({ menuKey }: { menuKey: strin
         body: JSON.stringify({
           date, phase, deductMode,
           disableMidRecal: phase === 1 ? !midRecal : true,
+          useFallbackWorkforce: true,
         }),
       })
       const result = await res.json()
