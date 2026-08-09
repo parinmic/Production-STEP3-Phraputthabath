@@ -137,17 +137,21 @@ function cellToISO(v: string | number | Date | null | undefined): string {
 }
 
 // ถ้า Excel ใช้ M/D/Y format จะทำให้ "3/6/2569" หมายถึง มี.ค. 6 ไม่ใช่ มิ.ย. 3
-// ตรวจ: ถ้าวันที่ที่ได้อยู่ในอดีต (> 20 วันที่แล้ว) ให้ลอง swap เดือน/วัน
+// (หรือกลับกัน "8/10/2569" ที่ควรหมายถึง 10 ส.ค. กลับถูกอ่านเป็น 8 ต.ค.)
+// ตรวจ: rReq_date ควรอยู่ใกล้วันนี้เสมอ (คำสั่งซื้อรายวัน) — ถ้าได้วันที่ที่ไกลจากวันนี้เกิน
+// 20 วันไม่ว่าจะในอดีตหรืออนาคต ให้ลอง swap เดือน/วันแล้วดูว่าอยู่ในช่วงที่สมเหตุสมผลไหม
 function resolveDeliveryDate(raw: string | number | Date | null | undefined): string {
   const iso = cellToISO(raw)
   if (!iso || iso.includes('NaN')) return ''
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' })
-  const cutoff = shiftISODate(todayStr, -20)
-  if (iso >= cutoff) return iso
-  // วันที่ในอดีตเกิน 20 วัน → ลอง swap เดือน/วัน (M/D → D/M)
+  const lowerCutoff = shiftISODate(todayStr, -20)
+  const upperCutoff = shiftISODate(todayStr, 20)
+  if (iso >= lowerCutoff && iso <= upperCutoff) return iso
+  // อยู่นอกช่วง ±20 วัน → ลอง swap เดือน/วัน (สลับได้ก็ต่อเมื่อ "วัน" เดิม ≤ 12 จึงจะเป็นเดือนที่ถูกต้องได้)
   const [y, mo, dd] = iso.split('-')
+  if (Number(dd) > 12) return iso
   const swapped = `${y}-${dd}-${mo}`
-  return swapped >= cutoff ? swapped : iso
+  return (swapped >= lowerCutoff && swapped <= upperCutoff) ? swapped : iso
 }
 
 /**
