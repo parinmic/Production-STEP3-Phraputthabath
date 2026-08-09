@@ -83,19 +83,30 @@ const FETCH_BATCH = 1000
 // select('*') is unspecified — so a plain single-page fetch silently drops
 // an arbitrary subset of dates/stations instead of erroring. Page through
 // with .range() so every row is always retrieved.
+//
+// Pages are independent range reads, so once we know the total count we fetch
+// them all in parallel instead of waiting on each round-trip serially — this
+// was the main reason Phase 1 generation (which syncs the roster first) was
+// slow on a table with many pages.
 async function fetchAllProductionUserRows(): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = []
-  for (let from = 0; ; from += FETCH_BATCH) {
+  const { count, error: countErr } = await externalSkillsSupabase
+    .from('production_user')
+    .select('*', { count: 'exact', head: true })
+  if (countErr) throw new Error(`External count: ${countErr.message}`)
+  if (!count) return []
+
+  const pageStarts: number[] = []
+  for (let from = 0; from < count; from += FETCH_BATCH) pageStarts.push(from)
+
+  const pages = await Promise.all(pageStarts.map(async from => {
     const { data, error } = await externalSkillsSupabase
       .from('production_user')
       .select('*')
       .range(from, from + FETCH_BATCH - 1)
-    if (error) throw new Error(`External fetch: ${error.message}`)
-    if (!data?.length) break
-    rows.push(...data)
-    if (data.length < FETCH_BATCH) break
-  }
-  return rows
+    if (error) throw new Error(`External fetch (${from}): ${error.message}`)
+    return data ?? []
+  }))
+  return pages.flat()
 }
 
 export async function runSync(): Promise<SyncResult> {
@@ -152,11 +163,14 @@ export async function runSync(): Promise<SyncResult> {
       }))
 
     // Full-replace scoped to whichever work_date(s) this batch covers —
-    // leaves any other already-synced dates untouched.
+    // leaves any other already-synced dates untouched. Deletes are on
+    // independent dates, so run them in parallel rather than one at a time.
     const workDates = [...new Set(records.map(r => r.work_date))]
-    for (const wd of workDates) {
-      const { error: delErr } = await supabase.from('employee_skills').delete().eq('work_date', wd)
-      if (delErr) throw new Error(`Delete (${wd}): ${delErr.message}`)
+    const delResults = await Promise.all(
+      workDates.map(wd => supabase.from('employee_skills').delete().eq('work_date', wd)),
+    )
+    for (let i = 0; i < delResults.length; i++) {
+      if (delResults[i].error) throw new Error(`Delete (${workDates[i]}): ${delResults[i].error!.message}`)
     }
 
     if (records.length > 0) {
@@ -166,10 +180,12 @@ export async function runSync(): Promise<SyncResult> {
 
     // Mirror the same batch into dev so it always reflects production's real roster —
     // best-effort only (syncToDevAwaited swallows errors), never blocks the real sync.
+    // Kept awaited (rather than fire-and-forget) because on serverless the function
+    // can be frozen right after the response is sent, which would silently drop an
+    // in-flight background write — the deletes below are parallelized instead to
+    // keep this step itself fast.
     await syncToDevAwaited(async (dev) => {
-      for (const wd of workDates) {
-        await dev.from('employee_skills').delete().eq('work_date', wd)
-      }
+      await Promise.all(workDates.map(wd => dev.from('employee_skills').delete().eq('work_date', wd)))
       if (records.length > 0) await batchInsert(dev, 'employee_skills', records)
     })
 
